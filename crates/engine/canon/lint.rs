@@ -5,16 +5,16 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{declared_flags, Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
-use crate::ecs::component::meter::MeterDef;
-use crate::ecs::component::modifier::ModifierDef;
+use crate::ecs::component::meter;
+use crate::ecs::component::modifier;
 use crate::ecs::id::{ActorId, PlaceId, StoryId};
 use crate::entity;
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
 use crate::rules::roll::Check;
 use crate::rules::rule::{
-    ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
-    RuleTable, When,
+    self, ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
+    When,
 };
 use crate::Reason;
 
@@ -94,7 +94,7 @@ pub(super) fn broken_exits(
 }
 
 pub(super) fn unknown_rule_items(
-    rules: &RuleTable,
+    rules: &rule::Table,
     items: &BTreeMap<String, ItemDef>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -141,8 +141,8 @@ pub(super) fn unknown_rule_items(
 
 /// Modifier effects naming a modifier `rules/modifiers.yaml` does not define.
 pub(super) fn unknown_modifiers(
-    rules: &RuleTable,
-    modifiers: &BTreeMap<String, ModifierDef>,
+    rules: &rule::Table,
+    modifiers: &BTreeMap<String, modifier::Descriptor>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
@@ -175,7 +175,7 @@ pub(crate) fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
     .at_path(path)
 }
 
-pub(super) fn resist_same_without_roll(rules: &RuleTable) -> Vec<Diagnostic> {
+pub(super) fn resist_same_without_roll(rules: &rule::Table) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let after_do = scan_resist(&rule.do_, false, rule, &mut diags);
@@ -218,7 +218,7 @@ fn scan_resist(
 }
 
 pub(super) fn reveal_problems(
-    rules: &RuleTable,
+    rules: &rule::Table,
     facts: &BTreeMap<String, FactDef>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -256,7 +256,7 @@ pub(super) fn reveal_problems(
 }
 
 pub(super) fn unknown_checks(
-    rules: &RuleTable,
+    rules: &rule::Table,
     checks: &BTreeMap<String, Check>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -280,7 +280,7 @@ pub(super) fn unknown_checks(
     diags
 }
 
-pub(super) fn unknown_reads(scope: &EntityScope, rules: &RuleTable) -> Vec<Diagnostic> {
+pub(super) fn unknown_reads(scope: &EntityScope, rules: &rule::Table) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let mut exprs = Vec::new();
@@ -310,7 +310,7 @@ pub(super) fn unknown_reads(scope: &EntityScope, rules: &RuleTable) -> Vec<Diagn
 
 /// Meter and flag effects and conditions whose entity is fixed by the pack and does not carry
 /// the meter or declare the flag. The world's flags are free names, so they are not checked.
-pub(super) fn unknown_carriers(scope: &EntityScope, rules: &RuleTable) -> Vec<Diagnostic> {
+pub(super) fn unknown_carriers(scope: &EntityScope, rules: &rule::Table) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let mut named = Vec::new();
@@ -358,8 +358,8 @@ fn fixed_self(rule: &Rule) -> Option<&str> {
 
 /// The meters each entity carries, and the cast, places and stories an `of` may name.
 pub(super) struct EntityScope<'a> {
-    pub meters: &'a BTreeMap<String, MeterDef>,
-    pub world_meters: &'a BTreeMap<String, MeterDef>,
+    pub meters: &'a BTreeMap<String, meter::Descriptor>,
+    pub world_meters: &'a BTreeMap<String, meter::Descriptor>,
     pub cast: &'a BTreeMap<ActorId, CastDef>,
     pub places: &'a BTreeMap<PlaceId, PlaceDef>,
     pub stories: &'a BTreeMap<StoryId, StoryDef>,
@@ -534,7 +534,7 @@ fn push_cost<'a>(cost: &'a Cost, exprs: &mut Vec<&'a Expr>) {
 
 /// Check stats that are not meters every actor carries.
 pub(super) fn unknown_meters(
-    meters: &BTreeMap<String, MeterDef>,
+    meters: &BTreeMap<String, meter::Descriptor>,
     checks: &BTreeMap<String, Check>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -942,9 +942,10 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
 /// actor's change as well as the world's.
 fn watches_actor_key(canon: &Canon, watch: &ChangeWatch) -> bool {
     match watch {
-        ChangeWatch::Meter { key, .. } => {
-            canon.meters.get(key).is_some_and(MeterDef::is_actor_meter)
-        }
+        ChangeWatch::Meter { key, .. } => canon
+            .meters
+            .get(key)
+            .is_some_and(meter::Descriptor::is_actor_meter),
         ChangeWatch::Flag { key, .. } => canon.cast.values().any(|cast| cast.flags.contains(key)),
         _ => false,
     }

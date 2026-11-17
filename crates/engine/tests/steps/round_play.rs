@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::testing::{faces, RollKey};
+use spookery_engine::testing::roll;
 use spookery_engine::{component, GlobalId, MoveReport, Note};
 
 use crate::{resolve_id, World};
@@ -834,8 +834,8 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
         .get(&check.stat)
         .unwrap_or_else(|| panic!("missing {actor_id}'s {}", check.stat));
     let stat = (live.base + live.offset).clamp(def.min, def.max);
-    let rolled = faces(
-        &RollKey {
+    let rolled = roll::faces(
+        &roll::Key {
             seed: session.world().seed.clone(),
             round_index: session.world().round_index,
             rule_id: "verb:strike".to_string(),

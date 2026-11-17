@@ -257,7 +257,7 @@ impl ecs::World {
 mod tests {
     use std::sync::Arc;
 
-    use crate::ecs::component::meter::{Meter, MeterWrite};
+    use crate::ecs::component::meter::{self, Meter};
     use crate::ecs::id::{ActorId, PlaceId, StoryId};
     use crate::ecs::{self, Presence, Save};
     use crate::ecs::{component, entity};
@@ -296,7 +296,7 @@ mod tests {
             let kind = EffectKind::Meter {
                 entity: entity::Id::Actor(actor.into()),
                 key: key.to_string(),
-                write: MeterWrite::Offset(delta),
+                write: meter::Write::Offset(delta),
             };
             let effect = Effect::new(intent.actor.as_ref(), &intent.id, kind);
             effect.apply(canon, &mut world, &nobody, &intent)
@@ -345,10 +345,10 @@ mod tests {
 
     #[test]
     fn a_meter_that_comes_back_inside_one_take_is_not_taken_and_stays_counted() {
-        use crate::ecs::component::modifier::{self, Modifier, ModifierDef};
+        use crate::ecs::component::modifier::{self, Modifier};
         let opened = docks();
         let mut canon = opened.canon().clone();
-        let fatigue = ModifierDef {
+        let fatigue = modifier::Descriptor {
             meter: "rest".to_string(),
             max_stacks: 1,
             hidden: false,

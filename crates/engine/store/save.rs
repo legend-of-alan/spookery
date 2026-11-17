@@ -91,7 +91,7 @@ pub(crate) fn find_missing_meters(world: &ecs::World) -> Vec<AddedMeter> {
 
 /// The entities `carrier` names that lack meter `id`. Every-actor and one-actor carriers are read
 /// off the save's actors, so a cast member the save does not list names nobody; any other carrier
-/// is itself. Migrate and `check_save` both read it, so they agree on who lacks a meter.
+/// is itself. Migrate and `check` both read it, so they agree on who lacks a meter.
 pub(crate) fn find_lacking_carriers(
     world: &ecs::World,
     carrier: &Option<entity::Id>,
@@ -194,7 +194,7 @@ pub fn migrate(mut world: ecs::World, record: &MigrateRecord) -> Result<ecs::Wor
 /// actor in a place or on an exit the pack lacks, every meter, item and wielded slot the pack does
 /// not define, every meter the pack gives an entity that the entity lacks, every meter outside its
 /// rules, every modifier the pack no longer gives that meter, and every empty id or zero count.
-pub fn check_save(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
+pub fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
     let canon = world.canon();
     let mut diags = Vec::new();
     let actors = world.actors();

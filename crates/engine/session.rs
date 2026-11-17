@@ -67,7 +67,7 @@ impl Session {
         presence: &Presence,
         now_wall: &str,
     ) -> Result<crate::round::Output, Reason> {
-        crate::round::play_round(self, presence, now_wall, false)
+        crate::round::play::run_round(self, presence, now_wall, false)
     }
 
     /// Commit a queued round, then fast-forward while every seated PC is busy.
@@ -89,7 +89,7 @@ impl Session {
 
     /// Play the rounds an absence earns. Only an empty table catches up.
     pub fn catch_up(&mut self, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {
-        crate::round::play_catch_up(self, now_wall, downtime_hours)
+        crate::round::play::catch_up(self, now_wall, downtime_hours)
     }
 
     /// Append a player's speech. `presence` is who can hear it. Speech to an actor reads
@@ -415,7 +415,7 @@ impl<Lock> Session<Lock> {
         presence: &Presence,
         viewer_id: &str,
     ) -> Result<crate::rules::perceive::View, Reason> {
-        crate::rules::perceive::perceive_budget(self, presence, viewer_id, PERCEIVE_BODY_CHARS)
+        crate::rules::perceive::build_view_by_id(self, presence, viewer_id, PERCEIVE_BODY_CHARS)
     }
 
     /// The `help` commands for `actor_id`: what they can do now, and what they can name.
@@ -438,7 +438,7 @@ impl<Lock> Session<Lock> {
         viewer_id: &str,
         max_body_chars: usize,
     ) -> Result<crate::rules::perceive::View, Reason> {
-        crate::rules::perceive::perceive_budget(self, presence, viewer_id, max_body_chars)
+        crate::rules::perceive::build_view_by_id(self, presence, viewer_id, max_body_chars)
     }
 
     fn read_digest(&self) -> Result<String, Reason> {
@@ -531,14 +531,14 @@ impl Session<()> {
     /// spookery_engine::Session::peek(root).unwrap().play(&presence, "");
     /// ```
     pub fn peek(root: &Path) -> Result<Session<()>, Reason> {
-        let _read = crate::store::lock::lock_read(root)?;
+        let _read = crate::store::lock::take_read(root)?;
         crate::round::replay::peek_at_tip(root)
     }
 
     /// The host text at the journal tip: effect rows from the journal, then the meter rows.
     /// One read guard covers the session and the journal read, so both come from one save.
     pub fn peek_digest(root: &Path) -> Result<String, Reason> {
-        let _read = crate::store::lock::lock_read(root)?;
+        let _read = crate::store::lock::take_read(root)?;
         crate::round::replay::peek_at_tip(root)?.read_digest()
     }
 
@@ -732,7 +732,7 @@ fn load_save_file(
         }
     }
     if let Some(canon) = canon.filter(|_| !continues) {
-        if let Err(more) = save::check_save(&ecs::World::new(save.clone(), Arc::clone(canon))) {
+        if let Err(more) = save::check(&ecs::World::new(save.clone(), Arc::clone(canon))) {
             problems.extend(more);
         }
     }

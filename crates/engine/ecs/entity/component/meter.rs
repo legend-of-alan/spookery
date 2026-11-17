@@ -10,7 +10,7 @@ use crate::ecs::{Reader, Save, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MeterDef {
+pub struct Descriptor {
     pub min: i64,
     pub base_cap: i64,
     pub max: i64,
@@ -21,7 +21,7 @@ pub struct MeterDef {
     pub carrier: Option<entity::Id>,
 }
 
-impl MeterDef {
+impl Descriptor {
     /// Whether `id` carries this meter.
     pub fn is_on(&self, id: entity::IdRef<'_>) -> bool {
         match &self.carrier {
@@ -46,18 +46,18 @@ pub struct Meter {
 /// A change to a meter's offset. A journal line writes it as `"write":"offset","delta":<n>`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "write", content = "delta", rename_all = "snake_case")]
-pub enum MeterWrite {
+pub enum Write {
     Offset(i64),
 }
 
 /// `base` is inside `[min, base_cap]`, and `base + offset` fits in `i64`.
 /// A sum outside `[min, max]` still returns true. `value` clamps that.
-pub fn is_storable(def: &MeterDef, base: i64, offset: i64) -> bool {
+pub fn is_storable(def: &Descriptor, base: i64, offset: i64) -> bool {
     (def.min..=def.base_cap).contains(&base) && base.checked_add(offset).is_some()
 }
 
 /// `base + offset`, plus what the entity's modifiers add to this meter, clamped to the bounds.
-pub fn value(def: &MeterDef, live: &Meter, modifiers: i64) -> Result<i64, Reason> {
+pub fn value(def: &Descriptor, live: &Meter, modifiers: i64) -> Result<i64, Reason> {
     let sum = live
         .base
         .checked_add(live.offset)
@@ -68,7 +68,7 @@ pub fn value(def: &MeterDef, live: &Meter, modifiers: i64) -> Result<i64, Reason
 
 /// `held` with its offset moved by `delta` inside `def`'s bounds: `UNKNOWN_ID` when nothing is
 /// held.
-fn shift(held: Option<&Meter>, def: &MeterDef, delta: i64) -> Result<Meter, Reason> {
+fn shift(held: Option<&Meter>, def: &Descriptor, delta: i64) -> Result<Meter, Reason> {
     let held = held.ok_or(Reason::UnknownId)?;
     let offset = held.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
     if !is_storable(def, held.base, offset) {
@@ -160,8 +160,8 @@ impl Mut<'_, Save, Meter> {
 mod tests {
     use super::*;
 
-    fn vigor() -> MeterDef {
-        MeterDef {
+    fn vigor() -> Descriptor {
+        Descriptor {
             min: 0,
             base_cap: 100,
             max: 110,

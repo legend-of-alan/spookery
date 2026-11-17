@@ -6,14 +6,14 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::canon::meters::{add_own_meters, meter_defs, MeterYaml};
+use crate::canon::meters::{self, meter_defs, MeterYaml};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{
     collect_files, load_tagged, unreadable_dir, Diags, FileText, Locator, STORY_SCHEMA,
 };
 use crate::canon::StoryDef;
 use crate::diagnostic::schema_error;
-use crate::ecs::component::meter::MeterDef;
+use crate::ecs::component::meter;
 use crate::ecs::id::StoryId;
 use crate::entity;
 use crate::rules::rule::{Owner, Rule};
@@ -23,8 +23,8 @@ use crate::rules::rule::{Owner, Rule};
 /// and skipped. A pack without `story/` has none.
 pub(super) fn load_stories(
     root: &Path,
-    mut meters: Option<&mut BTreeMap<String, MeterDef>>,
-    world_meters: Option<&BTreeMap<String, MeterDef>>,
+    mut meters: Option<&mut BTreeMap<String, meter::Descriptor>>,
+    world_meters: Option<&BTreeMap<String, meter::Descriptor>>,
     diags: &mut Diags,
 ) -> (Vec<Rule>, BTreeMap<StoryId, StoryDef>) {
     let dir = root.join("story");
@@ -69,7 +69,7 @@ pub(super) fn load_stories(
         let carrier = Some(entity::Id::Story(id.clone()));
         let own = diags.keep(meter_defs(&source, story.meters, carrier));
         if let (Some(meters), Some(own)) = (meters.as_deref_mut(), own) {
-            add_own_meters(meters, own, world_meters, &source, diags);
+            meters::add_own(meters, own, world_meters, &source, diags);
         }
         let name = story.name.unwrap_or_else(|| story.id.clone());
         stories.insert(
@@ -88,6 +88,7 @@ pub(super) fn load_stories(
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StoryDoc {
+    // repeats module: every file shape in canon ends in Doc
     #[serde(rename = "schema")]
     _schema: String,
     id: String,

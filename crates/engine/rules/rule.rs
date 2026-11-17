@@ -383,11 +383,11 @@ pub enum ResistSpec {
 }
 
 #[derive(Clone, Debug)]
-pub struct RuleTable {
+pub struct Table {
     rules: Vec<Rule>,
 }
 
-impl RuleTable {
+impl Table {
     pub(crate) fn new(rules: Vec<Rule>) -> Self {
         Self { rules }
     }

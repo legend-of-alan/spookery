@@ -10,7 +10,7 @@ use crate::intent::{Intent, Source, Target, Viewer};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
-use crate::rules::perceive::perceive_as;
+use crate::rules::perceive;
 use crate::rules::rule::{Owner, Rule, TargetKind, When};
 use crate::Reason;
 
@@ -255,7 +255,7 @@ pub(crate) fn list_ids(
         .filter(|(_, count)| **count > 0)
         .filter_map(|(id, _)| Some(NamedId::new(id, canon.name(id)?.to_string())))
         .collect();
-    if let Ok(view) = perceive_as(canon, world, presence, viewer) {
+    if let Ok(view) = perceive::build_view(canon, world, presence, viewer) {
         ids.push(NamedId::new(&view.place, view.place_name));
         let me = viewer.actor_id();
         let actors = view.visible_actors.iter().zip(view.actor_names);

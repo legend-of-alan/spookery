@@ -4,7 +4,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::testing::{faces, RollKey};
+use spookery_engine::testing::roll;
 use spookery_engine::{component, ecs, entity};
 
 use super::common::{resolve_id, split_line};
@@ -508,8 +508,8 @@ fn the_slot_clears_in_the_round(world: &mut World) {
 #[given(expr = "wren resists the poison with a seeded Constitution roll of 15 vs 12")]
 fn wren_resists_on_a_seeded_roll(world: &mut World) {
     let pack = support::copy_pack("docks", "resist");
-    let face = faces(
-        &RollKey {
+    let face = roll::faces(
+        &roll::Key {
             seed: "docks-001".to_string(),
             round_index: 1,
             rule_id: "item:poisoned_dagger/attack".to_string(),

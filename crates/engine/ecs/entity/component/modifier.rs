@@ -1,4 +1,4 @@
-//! Modifier defs from the pack, the stacks an actor holds of each, and an actor's meter as it
+//! Modifier descriptors from the pack, the stacks an actor holds of each, and an actor's meter as it
 //! reads with them.
 
 use std::collections::BTreeMap;
@@ -14,7 +14,7 @@ use crate::ecs::{Reader, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ModifierDef {
+pub struct Descriptor {
     /// The actor meter it modifies.
     pub meter: String,
     /// The most stacks one actor holds, from any source. At least 1.
@@ -53,7 +53,7 @@ fn stacks_value(live: &Modifier) -> ChangeValue {
 /// Below `max_stacks` it is one more stack. At the cap it replaces the first weakest
 /// stack when its absolute value is larger. Stacks past a `max_stacks` the pack lowered
 /// go first, weakest first.
-pub fn stack(def: &ModifierDef, live: &mut Modifier, add: i64, ticks: u64, now: u64) {
+pub fn stack(def: &Descriptor, live: &mut Modifier, add: i64, ticks: u64, now: u64) {
     live.max_ticks = live.max_ticks.max(ticks);
     let left = live.until.saturating_sub(now).saturating_add(ticks);
     live.until = now.saturating_add(left.min(live.max_ticks));
@@ -83,7 +83,7 @@ fn weakest(stacks: &[i64]) -> Option<usize> {
 }
 
 /// Whether `defs` still define modifier `id` on the meter `live` was applied to.
-pub fn is_defined(defs: &BTreeMap<String, ModifierDef>, id: &str, live: &Modifier) -> bool {
+pub fn is_defined(defs: &BTreeMap<String, Descriptor>, id: &str, live: &Modifier) -> bool {
     defs.get(id).is_some_and(|def| def.meter == live.meter)
 }
 
@@ -192,8 +192,8 @@ impl Writer<'_, entity::Actors> {
 mod tests {
     use super::*;
 
-    fn fatigue(max_stacks: usize) -> ModifierDef {
-        ModifierDef {
+    fn fatigue(max_stacks: usize) -> Descriptor {
+        Descriptor {
             meter: "vigor".to_string(),
             max_stacks,
             hidden: false,

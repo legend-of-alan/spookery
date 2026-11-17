@@ -11,7 +11,7 @@ use crate::rules::roll::MoveReport;
 use crate::rules::travel;
 use crate::rules::visibility::{RecipientLine, ViewerChanges};
 use crate::session;
-use crate::store::commit::CommitOutcome;
+use crate::store::commit;
 use crate::store::lock::lock_pack;
 use crate::Reason;
 
@@ -28,19 +28,20 @@ pub struct Output {
     pub seen: Vec<ViewerChanges>,
     pub(crate) effects: Vec<Effect>,
     /// Set when this round wrote the journal.
-    pub commit: Option<CommitOutcome>,
+    pub commit: Option<commit::Outcome>,
 }
 
 /// Play one round from the save.
 pub fn play_pack_once(path: &Path) -> Result<(), Reason> {
+    // repeats module: re-exported at the crate root
     let mut session = session::Session::resume(path, lock_pack(path)?)?;
     let wall = session.world().last_round_at.clone();
-    play_round(&mut session, &Presence::default(), &wall, false)?;
+    run_round(&mut session, &Presence::default(), &wall, false)?;
     Ok(())
 }
 
 /// Play the rounds `real_hours` of absence earn, at an empty table. A short absence plays one.
-pub(crate) fn play_catch_up(
+pub(crate) fn catch_up(
     session: &mut session::Session,
     wall: &str,
     real_hours: u64,
@@ -52,7 +53,7 @@ pub(crate) fn play_catch_up(
     };
     let empty = Presence::default();
     for _ in 0..rounds {
-        play_round(session, &empty, wall, false)?;
+        run_round(session, &empty, wall, false)?;
     }
     Ok(())
 }
@@ -94,7 +95,7 @@ pub(crate) fn fast_forward(
         && seated_busy(session, presence).contains(&true)
         && session.queued_intents().is_empty()
     {
-        outputs.push(play_round(session, presence, wall, true)?);
+        outputs.push(run_round(session, presence, wall, true)?);
         ran += 1;
     }
     Ok(outputs)
@@ -111,7 +112,7 @@ fn seated_busy<Lock>(session: &session::Session<Lock>, presence: &Presence) -> V
 }
 
 /// Play the queue and commit the round. Only a session that owns the pack lock can.
-pub(crate) fn play_round(
+pub(crate) fn run_round(
     session: &mut session::Session,
     presence: &Presence,
     wall: &str,

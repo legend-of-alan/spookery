@@ -20,7 +20,7 @@ use crate::ecs::component::Note;
 use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component, Presence};
 use crate::intent::Viewer;
-use crate::rules::perceive::{perceive_as, View};
+use crate::rules::perceive::{self, View};
 use crate::session;
 
 use super::support::runner_config;
@@ -179,7 +179,7 @@ fn assert_hidden_stays_hidden(canon: &Canon, world: &ecs::World) -> Result<(), T
             continue;
         }
         let known_facts = world.actors().get::<component::KnownFacts>(pc).get();
-        let view = perceive_as(
+        let view = perceive::build_view(
             canon,
             world,
             &Presence::default(),

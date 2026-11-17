@@ -16,7 +16,7 @@ use spookery_engine::testing::world_of;
 use tungstenite::protocol::Role;
 use tungstenite::{Message, WebSocket};
 
-use crate::support::{self, Process};
+use crate::support;
 use crate::World;
 
 /// One WebSocket connection to the game port's `/player` or `/gm`. A reader thread
@@ -179,7 +179,7 @@ pub struct Host {
     pub opened_save: Vec<u8>,
     pub seated_save: Vec<u8>,
     pub seated_rev: u64,
-    pub host: Option<Process>,
+    pub host: Option<support::Process>,
     /// A host `serve` runs in this process. Dropped last, so seats close first.
     pub in_process: Option<InProcess>,
 }
@@ -397,10 +397,10 @@ pub struct Pending {
     stderr_drain: Option<JoinHandle<()>>,
 }
 
-pub struct RunningTable {
+pub struct Process {
     pub game: SocketAddr,
     pub mcp_addr: SocketAddr,
-    pub host: Process,
+    pub host: support::Process,
 }
 
 pub fn listen(world: &mut World, pack: &Path) {
@@ -411,7 +411,7 @@ pub fn listen(world: &mut World, pack: &Path) {
 /// Starts `spook run` on `pack` in `dir`, where it writes its `logs/`.
 pub fn run_with_flags(world: &mut World, dir: &Path, pack: &Path, flags: &[&str]) -> (u16, u16) {
     drop(world.live.take());
-    let addrs = wait_addrs(spawn_table(dir, pack, flags));
+    let addrs = wait_addrs(spawn(dir, pack, flags));
     let ports = (addrs.game.port(), addrs.mcp_addr.port());
     attach_host(world, pack, addrs.game, addrs.mcp_addr).host = Some(addrs.host);
     ports
@@ -434,7 +434,7 @@ pub fn parse_addrs(stdout: &str) -> (SocketAddr, SocketAddr) {
 }
 
 /// Starts `spook run` on `pack` in `dir`, where it writes its `logs/`.
-pub fn spawn_table(dir: &Path, pack: &Path, flags: &[&str]) -> Pending {
+pub fn spawn(dir: &Path, pack: &Path, flags: &[&str]) -> Pending {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.arg("run").arg(support::pack_arg(pack)).args(flags);
     command
@@ -465,14 +465,14 @@ pub fn spawn_table(dir: &Path, pack: &Path, flags: &[&str]) -> Pending {
     }
 }
 
-pub fn wait_addrs(mut pending: Pending) -> RunningTable {
+pub fn wait_addrs(mut pending: Pending) -> Process {
     let (game, mcp_addr, seen) = expect_addrs(&mut pending);
     let stdout = Arc::new(Mutex::new(seen));
     let stdout_drain = support::drain(pending.stdout, Arc::clone(&stdout));
-    RunningTable {
+    Process {
         game,
         mcp_addr,
-        host: Process {
+        host: support::Process {
             child: pending.child,
             stdin: pending.stdin,
             stdout,

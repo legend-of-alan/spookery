@@ -11,13 +11,13 @@ use crate::hash::blake2s_tagged;
 use crate::session;
 use crate::store::durability::{fsync_dir, fsync_file, refuse_io, write_atomic};
 use crate::store::journal;
-use crate::store::lock::{lock_write, PackGuard, WriteGuard};
+use crate::store::lock::{self, PackGuard, WriteGuard};
 use crate::store::records::{MigrateRecord, Record, RoundRecord};
 use crate::store::recovery::close_finished;
-use crate::store::save::{self, check_save, find_missing_meters};
+use crate::store::save::{self, find_missing_meters};
 use crate::Reason;
 
-pub struct CommitOutcome {
+pub struct Outcome {
     pub state_rev: u64,
     pub journal_path: String,
     /// The committed round's index and the world time it ended at.
@@ -31,9 +31,9 @@ pub fn commit(
     session: &mut session::Session,
     mut world: ecs::World,
     record: RoundRecord,
-) -> Result<CommitOutcome, Reason> {
+) -> Result<Outcome, Reason> {
     let started = std::time::Instant::now();
-    let write = lock_write(&session.root, &session.lock)?;
+    let write = lock::take_write(&session.root, &session.lock)?;
     settle_checkpoint(session, &write)?;
     bump_state_rev(&mut world)?;
     let now_bytes = save::emit(&world)?.into_bytes();
@@ -70,7 +70,7 @@ pub fn commit(
         elapsed_ms = started.elapsed().as_millis(),
         "round committed"
     );
-    Ok(CommitOutcome {
+    Ok(Outcome {
         state_rev: session.world.state_rev,
         journal_path,
         round_index: session.world.round_index,
@@ -98,7 +98,7 @@ fn bump_state_rev(world: &mut ecs::World) -> Result<(), Reason> {
 /// `edited` means `world` is a hand edit of the checkpoint head. The journal does not hold
 /// that edit, so a checkpoint of the migrated save follows the record and replay restarts
 /// from it. The caller holds the pack lock.
-pub fn commit_migrate(
+pub fn seal_migrate(
     root: &Path,
     world: ecs::World,
     edited: bool,
@@ -125,11 +125,11 @@ pub fn commit_migrate(
         chain: String::new(),
     };
     let world = save::migrate(world, &record)?;
-    check_save(&world).map_err(|diags| first_reason(&diags))?;
+    save::check(&world).map_err(|diags| first_reason(&diags))?;
     let emitted = save::emit(&world)?.into_bytes();
     record.state_hash = blake2s_tagged(&emitted);
     let entry = Record::Migrate(record);
-    let write = lock_write(root, lock)?;
+    let write = lock::take_write(root, lock)?;
     let prev = journal::read_chain_tip(root).map_err(|fault| fault.reason)?;
     let line = journal::seal(&entry, &prev);
     if edited {

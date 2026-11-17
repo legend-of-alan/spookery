@@ -3,7 +3,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::testing::{faces, RollKey};
+use spookery_engine::testing::roll;
 
 use crate::support::{edit_as_saved, edit_meter, put_items, put_meter};
 use spookery_engine::MoveReport;
@@ -18,6 +18,7 @@ use crate::support::{
 use crate::World;
 #[given(expr = "a save from older rules")]
 fn a_save_from_older_rules(world: &mut World) {
+    // repeats module: mirrors its step text
     let rev = spookery_engine::testing::RULES_REV;
     let pack = crate::support::copy_pack("docks", "rules-rev");
     let path = pack.join("state/save.yaml");
@@ -517,8 +518,8 @@ fn attack_targets_defense(world: &mut World) {
 fn harbormouse_attacks(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let loaded = world_of(&pack);
-    let face = faces(
-        &RollKey {
+    let face = roll::faces(
+        &roll::Key {
             seed: loaded.seed.clone(),
             round_index: loaded.round_index + 1,
             rule_id: "verb:attack".to_string(),

@@ -7,15 +7,15 @@ use serde::Deserialize;
 
 use crate::canon::source::{load_tagged, Diags, DuplicateWords, FileText, Locator, METERS_SCHEMA};
 use crate::diagnostic::Diagnostic;
-use crate::ecs::component::meter::MeterDef;
+use crate::ecs::component::meter;
 use crate::entity;
 
 /// A meters file, whose meters `carrier` carries.
-pub(super) fn load_meters(
+pub(super) fn load(
     rel: &str,
     text: &str,
     carrier: Option<entity::Id>,
-) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
+) -> Result<BTreeMap<String, meter::Descriptor>, Vec<Diagnostic>> {
     let doc: MetersDoc = load_tagged(rel, text, METERS_SCHEMA, 0)?;
     let source = FileText {
         file: rel,
@@ -31,7 +31,7 @@ pub(super) fn meter_defs(
     source: &FileText,
     rows: Vec<MeterYaml>,
     carrier: Option<entity::Id>,
-) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
+) -> Result<BTreeMap<String, meter::Descriptor>, Vec<Diagnostic>> {
     let hidden_by_default = !matches!(carrier, None | Some(entity::Id::Actor(_)));
     let mut diags = Diags::default();
     let mut meters = BTreeMap::new();
@@ -64,7 +64,7 @@ pub(super) fn meter_defs(
         }
         meters.insert(
             entry.id,
-            MeterDef {
+            meter::Descriptor {
                 min: entry.min,
                 base_cap: entry.base_cap,
                 max: entry.max,
@@ -79,10 +79,10 @@ pub(super) fn meter_defs(
 
 /// Add the meters one cast, place or story file declares to `meters`. An id that
 /// `rules/meters.yaml`, another file or, when given, `world` has already is refused.
-pub(super) fn add_own_meters(
-    meters: &mut BTreeMap<String, MeterDef>,
-    own: BTreeMap<String, MeterDef>,
-    world: Option<&BTreeMap<String, MeterDef>>,
+pub(super) fn add_own(
+    meters: &mut BTreeMap<String, meter::Descriptor>,
+    own: BTreeMap<String, meter::Descriptor>,
+    world: Option<&BTreeMap<String, meter::Descriptor>>,
     source: &FileText,
     diags: &mut Diags,
 ) {
@@ -117,6 +117,7 @@ pub(super) fn add_own_meters(
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MetersDoc {
+    // repeats module: every file shape in canon ends in Doc
     #[serde(rename = "schema")]
     _schema: String,
     meters: Vec<MeterYaml>,
@@ -149,7 +150,7 @@ meters:
     base: 1
     kind: stat
 ";
-        let err = super::load_meters("rules/meters.yaml", unknown, None).unwrap_err();
+        let err = super::load("rules/meters.yaml", unknown, None).unwrap_err();
         assert_eq!(err.len(), 1, "{err:?}");
         assert!(err[0].message.contains("unknown field 'kind'"), "{err:?}");
         assert_eq!(err[0].line, Some(8), "{err:?}");

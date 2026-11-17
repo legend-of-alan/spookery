@@ -6,7 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use crate::canon::Canon;
-use crate::ecs::component::meter::MeterWrite;
+use crate::ecs::component::meter;
 use crate::ecs::component::modifier::{self, Modifier};
 use crate::ecs::component::Note;
 use crate::ecs::id::{ActorId, ExitId, GlobalId, PlaceId};
@@ -28,11 +28,12 @@ pub struct Effect {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EffectKind {
+    // repeats module: the tag of an Effect, named as a pair with it
     Meter {
         entity: entity::Id,
         key: String,
         #[serde(flatten)]
-        write: MeterWrite,
+        write: meter::Write,
     },
     Item {
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -185,7 +186,7 @@ impl Effect {
         }
         match self.kind {
             EffectKind::Meter { entity, key, write } => {
-                let MeterWrite::Offset(delta) = write;
+                let meter::Write::Offset(delta) = write;
                 (world.entities_mut().get_mut::<component::Meter>(&entity)).shift(&key, delta)
             }
             EffectKind::Item {

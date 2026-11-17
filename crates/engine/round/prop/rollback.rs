@@ -17,8 +17,8 @@ use std::sync::Arc;
 
 use crate::canon::StoryDef;
 use crate::ecs::change::{self, Change, ChangeValue};
-use crate::ecs::component::meter::{Meter, MeterDef, MeterWrite};
-use crate::ecs::component::modifier::{self, ModifierDef};
+use crate::ecs::component::meter::{self, Meter};
+use crate::ecs::component::modifier;
 use crate::ecs::component::{self, Component};
 use crate::ecs::id::{ActorId, ExitId};
 use crate::ecs::{self, ActCounter, Presence, Save};
@@ -91,7 +91,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         flags: vec!["told".to_string()],
     };
     canon.stories.insert("tale".into(), tale);
-    let fatigue = ModifierDef {
+    let fatigue = modifier::Descriptor {
         meter: "vigor".to_string(),
         max_stacks: 2,
         hidden: false,
@@ -105,7 +105,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         (entity::Id::Global, "tide"),
     ];
     for (carrier, key) in &carried {
-        let def = MeterDef {
+        let def = meter::Descriptor {
             min: 0,
             base_cap: 10,
             max: 10,
@@ -291,7 +291,7 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
         Step::Meter(carrier, key, delta) => EffectKind::Meter {
             entity: carrier.clone(),
             key: key.to_string(),
-            write: MeterWrite::Offset(*delta),
+            write: meter::Write::Offset(*delta),
         },
         Step::Fatigue(add) => EffectKind::Modifier {
             actor_id: mira,

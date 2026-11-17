@@ -10,7 +10,7 @@ use crate::round::Ledger;
 use crate::rules::context::Context;
 use crate::rules::expr::{self, eval_with_dice};
 use crate::rules::roll::Outcome;
-use crate::rules::roll::{self, faces, MoveReport, Roll, RollKey};
+use crate::rules::roll::{self, faces, MoveReport, Roll};
 use crate::rules::rule::RollSpec;
 use crate::Reason;
 
@@ -35,14 +35,14 @@ impl Dice {
     }
 
     /// The one allocator: the next key for this rule and subject.
-    pub(crate) fn next_key(&mut self, rule: &str, subject: Option<&ActorId>) -> RollKey {
+    pub(crate) fn next_key(&mut self, rule: &str, subject: Option<&ActorId>) -> roll::Key {
         let index = self
             .counts
             .entry((rule.to_string(), subject.cloned()))
             .or_insert(0);
         let roll_index = *index;
         *index += 1;
-        RollKey {
+        roll::Key {
             seed: self.seed.clone(),
             round_index: self.round_index,
             rule_id: rule.to_string(),
@@ -56,7 +56,7 @@ impl Dice {
         &mut self,
         canon: &Canon,
         world: &ecs::World,
-        key: RollKey,
+        key: roll::Key,
         check_id: &str,
         threshold: i64,
         partial_at: Option<i64>,
@@ -67,7 +67,7 @@ impl Dice {
             .filter(|id| world.actors().contains(id))
             .ok_or(Reason::UnknownId)?;
         let check = canon.checks.get(check_id).ok_or(Reason::UnknownId)?;
-        roll::roll_check(check, world, actor_id, &key, threshold, partial_at)
+        roll::check(check, world, actor_id, &key, threshold, partial_at)
     }
 
     pub(crate) fn roller<'a>(
@@ -95,7 +95,7 @@ pub(crate) struct Roller<'a> {
     ledger: &'a mut Ledger,
     rule: &'a str,
     subject: Option<&'a ActorId>,
-    key: Option<RollKey>,
+    key: Option<roll::Key>,
     drawn: usize,
     reports: Vec<MoveReport>,
 }
