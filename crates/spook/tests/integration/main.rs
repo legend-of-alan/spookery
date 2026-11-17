@@ -10,6 +10,7 @@ mod support;
 #[allow(dead_code)]
 mod mcp_client;
 
+mod doc_code_names;
 mod engine_guarantees;
 mod live_round;
 mod pack_reference;
