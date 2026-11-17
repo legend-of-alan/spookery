@@ -8,8 +8,8 @@ Start with the [README](../README.md) to build and play. This page points at eve
 | [Write your first pack](first-pack.md) | A walkthrough that starts from `spook new` and makes your first edits. |
 | [Pack reference](pack-reference.md) | Every pack field, for people and agents writing packs. |
 | [Expressions](spec.md) | The small number language pack fields use, like `2d6` or `self.might`. |
-| [Seat protocol](seat-protocol.md) | The seat protocol, for anyone writing a player client or a GM. |
-| [CONTRIBUTING](../CONTRIBUTING.md) | Issue rules, running the tests, and pointing a coding agent at the table. |
+| [Seat protocol](seat-protocol.md) | The seat protocol for player clients and GMs, including how to point a coding agent at the table. |
+| [CONTRIBUTING](../CONTRIBUTING.md) | Issue rules and running the tests. |
 
 Further down this page you'll find the [glossary](#glossary), [host options](#at-the-table), [GM setup](#game-master), [what the model sees](#privacy) and the [license](#license).
 
@@ -77,6 +77,15 @@ These are the host options and the commands that touch a save.
 | `spook status <pack>` | Prints the host digest. It doesn't write the pack. |
 | `spook round <pack>` | Plays one round and writes `state/`. |
 | `spook migrate <pack>` | Stores the current canon hash in the save. |
+| `spook verify <pack>` | Replays the journal and checks the save byte for byte. It does not write the pack, take the lock, or bind a port. |
+
+Each commit that changes the save appends one journal record under `state/journal`, and the first commit stores a replay base there. `verify` prints `verified <n> records, state_rev <r>` when the save matches. A fresh copy has never committed, so verify prints `verified 0 records, state_rev 0`. A later commit from a running server is ignored, because verify reads the save once and stops at that counter.
+
+```sh
+cp -r tests/packs/docks /tmp/docks
+spook round /tmp/docks
+spook verify /tmp/docks
+```
 
 While `spook run` serves a pack, `round` and `migrate` on that pack exit 1 with `COMMIT_CONFLICT` and write nothing. Stop `spook run` to use them.
 
