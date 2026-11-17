@@ -46,7 +46,9 @@ pub(super) async fn serve(
     let app = axum::Router::new().route_service("/mcp", service);
     // Close senders are dropped here, so the loop ends with `serve`.
     tokio::select! {
-        _ = axum::serve(listener, app) => {}
+        served = axum::serve(listener, app) => if let Err(error) = served {
+            tracing::error!(%error, "the MCP endpoint stopped serving");
+        },
         () = async {
             while let Some(id) = closes.recv().await {
                 let _ = sessions.close_session(&id).await;

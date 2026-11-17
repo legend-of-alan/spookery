@@ -330,12 +330,21 @@ pub fn list_bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
-    let entries = fs::read_dir(&dir)
-        .map_err(|_| Error::new(&dir, Reason::StoreIo, "the log directory could not be read"))?;
+    let entries = fs::read_dir(&dir).map_err(|_| {
+        Error::new(
+            &dir,
+            Reason::StoreIo,
+            "the journal directory could not be read",
+        )
+    })?;
     let mut by_index: BTreeMap<u32, (String, PathBuf)> = BTreeMap::new();
     for entry in entries {
         let entry = entry.map_err(|_| {
-            Error::new(&dir, Reason::StoreIo, "the log directory could not be read")
+            Error::new(
+                &dir,
+                Reason::StoreIo,
+                "the journal directory could not be read",
+            )
         })?;
         let bundle = entry.file_name();
         let bundle = bundle.to_string_lossy().into_owned();

@@ -42,7 +42,6 @@ pub struct Config {
     pub mcp_addr: Option<SocketAddr>,
     pub first_message_timeout: Duration,
     pub out: Box<dyn Write + Send>,
-    pub err: Box<dyn Write + Send>,
 }
 
 impl Config {
@@ -52,7 +51,6 @@ impl Config {
             mcp_addr: None,
             first_message_timeout: limits::FIRST_MESSAGE_TIMEOUT,
             out: Box::new(io::sink()),
-            err: Box::new(io::sink()),
         }
     }
 }
@@ -89,9 +87,8 @@ pub async fn serve(
             session.budget().round_every_real_seconds,
         ));
     }
-    let mut table = tokio::task::spawn_blocking(move || {
-        Table::new(session, restart_tx, config.out, config.err).run(rx)
-    });
+    let mut table =
+        tokio::task::spawn_blocking(move || Table::new(session, restart_tx, config.out).run(rx));
     // A table that ends on its own (a store fault) ends `serve` too.
     let done = tokio::select! {
         done = &mut table => done,

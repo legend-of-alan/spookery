@@ -7,8 +7,8 @@ use crate::intent::Intent;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
-use crate::round::log::RoundLog;
 use crate::round::stage::{apply, triggers};
+use crate::round::Ledger;
 
 /// Finish every due action, earliest first.
 pub(crate) fn run(
@@ -17,7 +17,7 @@ pub(crate) fn run(
     presence: &Presence,
     end: u64,
     dice: &mut RoundDice,
-    log: &mut RoundLog,
+    ledger: &mut Ledger,
 ) -> Result<(), Reason> {
     let due_actions = crate::rules::travel::take_due_actions(world, end)?;
     for due_action in due_actions {
@@ -32,9 +32,9 @@ pub(crate) fn run(
         let rule = canon.rules.get(&rule).ok_or(Reason::UnknownMove)?;
         let until = due_action.until;
         apply::finish(
-            canon, world, presence, &intent, rule, None, until, dice, log,
+            canon, world, presence, &intent, rule, None, until, dice, ledger,
         );
-        triggers::run(canon, world, presence, dice, log);
+        triggers::run(canon, world, presence, dice, ledger);
     }
     Ok(())
 }

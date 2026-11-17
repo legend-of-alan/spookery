@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::net::{SocketAddr, TcpStream};
+use std::path::Path;
 
 use cucumber::{then, when};
 
@@ -9,10 +10,50 @@ use crate::World;
 
 use super::table;
 
+/// The table starts in a directory of its own, where it writes its log file.
 #[when(expr = "the table listens on port 0")]
 fn the_table_listens_on_port_0(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
+    let dir = support::fresh_dir("host-start");
+    table::run_with_flags(world, &dir, &pack, &["--addr", "127.0.0.1:0"]);
+    world.scratch = dir.to_string_lossy().into_owned();
+}
+
+#[then(
+    expr = "the host names its log file in the directory it started in, and the file says the pack opened"
+)]
+fn the_host_names_its_log_file(world: &mut World) {
+    let stderr = table::poll_until("the log file's path", || {
+        let stderr = table::host_stderr(world);
+        if stderr.ends_with('\n') {
+            Ok(stderr)
+        } else {
+            Err(stderr)
+        }
+    });
+    let named = stderr
+        .strip_prefix("logging to ")
+        .and_then(|rest| rest.strip_suffix('\n'))
+        .unwrap_or_else(|| panic!("no log path on stderr:\n{stderr}"));
+    let file = fs::canonicalize(named).unwrap_or_else(|err| panic!("{named}: {err}"));
+    let logs = fs::canonicalize(Path::new(&world.scratch).join("logs"))
+        .unwrap_or_else(|err| panic!("no logs/ where the host started: {err}"));
+    assert_eq!(file.parent(), Some(logs.as_path()), "{stderr}");
+    let file_name = file.file_name().unwrap_or_default().to_string_lossy();
+    assert!(
+        file_name.starts_with("run-") && file_name.ends_with(".log"),
+        "{stderr}"
+    );
+    let text = fs::read_to_string(&file).unwrap_or_else(|err| panic!("{named}: {err}"));
+    assert!(text.contains("pack opened"), "{text}");
+}
+
+#[then(expr = "the pack holds no log file")]
+fn the_pack_holds_no_log_file(world: &mut World) {
+    for (path, _) in table::read_files(table::pack(world)) {
+        let is_log = path.extension().is_some_and(|extension| extension == "log");
+        assert!(!is_log, "{}", path.display());
+    }
 }
 
 #[then(expr = "the host reports the game port and the MCP address")]
@@ -60,8 +101,9 @@ fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
     let first = table::pack(world).to_path_buf();
     let second = copy_pack("docks", "ports-other");
     world.scratch = second.to_string_lossy().into_owned();
-    let started_first = table::spawn_table(&first, &["--addr", "127.0.0.1:0"]);
-    let started_second = table::spawn_table(&second, &["--addr", "127.0.0.1:0"]);
+    let (dir, flags) = (std::env::temp_dir(), ["--addr", "127.0.0.1:0"]);
+    let started_first = table::spawn_table(&dir, &first, &flags);
+    let started_second = table::spawn_table(&dir, &second, &flags);
     let first = table::wait_addrs(started_first);
     let second = table::wait_addrs(started_second);
     world.stdout = format!(

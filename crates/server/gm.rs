@@ -141,7 +141,7 @@ fn commit(
                 .commit
                 .as_ref()
                 .expect("a flush round writes the journal");
-            let journal_path = Some(outcome.log_path.as_str());
+            let journal_path = Some(outcome.journal_path.as_str());
             (
                 outcome.state_rev,
                 output.changed_keys.as_slice(),

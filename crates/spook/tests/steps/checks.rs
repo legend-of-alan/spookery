@@ -104,8 +104,8 @@ fn the_player_sees_a_check_success(world: &mut World) {
     );
 }
 
-#[then(expr = "the round log resolves the check without faces")]
-fn the_round_log_resolves_the_check_without_faces(world: &mut World) {
+#[then(expr = "the journal records the check without faces")]
+fn the_journal_records_the_check_without_faces(world: &mut World) {
     let text =
         spookery_engine::testing::journal::read_record_line(table::pack(world), "round-0001")
             .unwrap_or_else(|err| panic!("read round: {}", err.detail));
@@ -261,8 +261,8 @@ fn the_gm_sees_both_rolls(world: &mut World) {
     assert_opposed(&committed_checks(&text));
 }
 
-#[then(expr = "the round log records Mira's engine brace")]
-fn the_round_log_records_miras_engine_brace(world: &mut World) {
+#[then(expr = "the journal records Mira's engine brace")]
+fn the_journal_records_miras_engine_brace(world: &mut World) {
     let round = common::read_first_round(world);
     let ran: Vec<_> = super::record::read_extra_steps(&round)
         .into_iter()

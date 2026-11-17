@@ -15,17 +15,17 @@ use crate::rules::rule::{ChangeWatch, Op, Rule, When};
 use crate::store::records::Step;
 
 use crate::round::dice::RoundDice;
-use crate::round::log::RoundLog;
 use crate::round::stage::apply;
+use crate::round::Ledger;
 
 /// One trigger pass: fire the change rules the changes since the last pass match, and again on
-/// what they write, at most `max_trigger_depth` times. Every change record goes on the log.
+/// what they write, at most `max_trigger_depth` times. Every change record goes on the ledger.
 pub(crate) fn run(
     canon: &Canon,
     world: &mut ecs::World,
     presence: &Presence,
     dice: &mut RoundDice,
-    log: &mut RoundLog,
+    ledger: &mut Ledger,
 ) {
     let max = canon.budget.max_trigger_depth;
     let rules = change_rules(canon);
@@ -35,19 +35,19 @@ pub(crate) fn run(
         if changes.is_empty() {
             break;
         }
-        log.changes.extend(changes.iter().cloned());
+        ledger.changes.extend(changes.iter().cloned());
         let matched_triggers = match_rules(world, &rules, &changes);
         if matched_triggers.is_empty() {
             break;
         }
         if depth >= max {
-            log.extra_steps.push(Step::TriggerDepth);
+            ledger.extra_steps.push(Step::TriggerDepth);
             break;
         }
         depth += 1;
         for matched in matched_triggers {
             let subject = matched.subject.as_ref();
-            fire(canon, world, presence, dice, log, matched.rule, subject);
+            fire(canon, world, presence, dice, ledger, matched.rule, subject);
         }
     }
 }
@@ -109,7 +109,7 @@ fn fire(
     world: &mut ecs::World,
     presence: &Presence,
     dice: &mut RoundDice,
-    log: &mut RoundLog,
+    ledger: &mut Ledger,
     rule: &Rule,
     subject: Option<&ActorId>,
 ) {
@@ -120,12 +120,12 @@ fn fire(
     if cond::all_hold(&context, &rule.if_).is_err() {
         return;
     }
-    let roller = dice.roller(log, &rule.id, subject);
+    let roller = dice.roller(ledger, &rule.id, subject);
     match expand::expand(&context, rule, Cause::Trigger, None, roller) {
         Ok(expansion) => {
-            apply::land(canon, world, presence, &intent, rule, expansion, log);
+            apply::land(canon, world, presence, &intent, rule, expansion, ledger);
         }
-        Err(code) => log.refused.push(gate::Refusal::new(&intent, code)),
+        Err(code) => ledger.refused.push(gate::Refusal::new(&intent, code)),
     }
 }
 

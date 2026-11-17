@@ -2,8 +2,9 @@
 
 mod new;
 
+use std::fs;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
@@ -117,6 +118,9 @@ async fn main() {
 async fn dispatch(cli: Cli) -> Result<(), String> {
     // `--addr` is global: every command refuses an open host before any pack opens.
     let addr = parse_loopback(&cli.addr)?;
+    // Only `spook run` prints its log file's path.
+    #[cfg_attr(not(feature = "server"), allow(unused_variables))]
+    let log_path = start_logging(&cli.command)?;
     match cli.command {
         #[cfg(feature = "server")]
         Command::Run { pack, mcp_addr } => {
@@ -125,10 +129,12 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             let lock = spookery_engine::lock_pack(&pack).map_err(|e| e.to_string())?;
             let session =
                 spookery_engine::Session::resume(&pack, lock).map_err(|e| e.to_string())?;
+            if let Some(path) = &log_path {
+                eprintln!("logging to {}", path.display());
+            }
             let mut config = spookery_server::Config::new(addr);
             config.mcp_addr = mcp_addr;
             config.out = Box::new(std::io::stdout());
-            config.err = Box::new(std::io::stderr());
             // Ctrl+C stops the host. Listen before serving so an early one is caught.
             let ctrl_c = tokio::spawn(tokio::signal::ctrl_c());
             let shutdown = async {
@@ -165,12 +171,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "server")]
         Command::Round { pack } => {
-            if let Some(warning) =
-                spookery_engine::play_pack_once(&pack).map_err(|e| e.to_string())?
-            {
-                eprintln!("{warning}");
-            }
-            Ok(())
+            spookery_engine::play_pack_once(&pack).map_err(|e| e.to_string())
         }
         #[cfg(feature = "server")]
         Command::Status { pack } => {
@@ -245,6 +246,41 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
     }
 }
 
+/// Installs the one log subscriber. `spook run` and `spook ai-gm` log to a new file under
+/// `logs/`, whose path this returns. Every other command logs to stderr.
+fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
+    let (command_id, default_directives) = match command {
+        #[cfg(feature = "server")]
+        Command::Run { .. } => (Some("run"), "warn,spook=info"),
+        #[cfg(feature = "client")]
+        Command::AiGm => (Some("ai-gm"), "warn,spook=info"),
+        _ => (None, "warn"),
+    };
+    let directives = std::env::var("RUST_LOG")
+        .ok()
+        .filter(|text| !text.is_empty());
+    // A RUST_LOG whose directives are all invalid falls back to warnings, not to nothing.
+    let filter = tracing_subscriber::EnvFilter::builder()
+        .with_default_directive(tracing_subscriber::filter::LevelFilter::WARN.into())
+        .parse_lossy(directives.as_deref().unwrap_or(default_directives));
+    let subscriber = tracing_subscriber::fmt().with_env_filter(filter);
+    let Some(command_id) = command_id else {
+        subscriber.with_writer(std::io::stderr).init();
+        return Ok(None);
+    };
+    let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+    let path = std::path::absolute(Path::new("logs").join(format!("{command_id}-{stamp}.log")))
+        .map_err(|err| err.to_string())?;
+    fs::create_dir_all("logs").map_err(|err| format!("logs: {err}"))?;
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|err| format!("{}: {err}", path.display()))?;
+    subscriber.with_writer(file).init();
+    Ok(Some(path))
+}
+
 fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {
     if addr == "127.0.0.1" {
         return Ok(SocketAddr::from(([127, 0, 0, 1], 9737)));
@@ -300,8 +336,8 @@ mod tests {
         assert!(parse_loopback("127.0.0.1:").is_err());
     }
 
-    #[tokio::test]
-    async fn usage_is_not_an_engine_refusal() {
+    #[test]
+    fn usage_is_not_an_engine_refusal() {
         assert!(Cli::try_parse_from(["spook", "rnu", "x"]).is_err());
         assert!(Cli::try_parse_from(["spook", "gm", "pack"]).is_err());
         let gm = Cli::try_parse_from(["spook", "gm"]).unwrap();
@@ -311,9 +347,8 @@ mod tests {
         assert!(Cli::try_parse_from(["spook"]).is_err());
         assert!(Cli::try_parse_from(["spook", "mcp"]).is_err());
         assert!(Cli::try_parse_from(["spook", "mcp", "--addr", "127.0.0.1:9737"]).is_err());
-        let http = Cli::try_parse_from(["spook", "run", "--mcp-addr", "0.0.0.0:9", "no-such-pack"])
-            .unwrap();
-        assert_eq!(dispatch(http).await.unwrap_err(), "NOT_IN_SPEC");
+        let open = parse_mcp_addr(Some("0.0.0.0:9".into()));
+        assert_eq!(open.unwrap_err(), "NOT_IN_SPEC");
         let http_loopback =
             Cli::try_parse_from(["spook", "run", "--mcp-addr", "127.0.0.1:9801", "pack"]).unwrap();
         assert!(matches!(

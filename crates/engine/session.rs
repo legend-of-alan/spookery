@@ -33,7 +33,6 @@ pub struct Session<Lock = crate::PackGuard> {
     pub(crate) root: PathBuf,
     pub(crate) world: ecs::World,
     pub(crate) queue: Vec<Intent>,
-    warning: Option<&'static str>,
     pub(crate) lock: Lock,
 }
 
@@ -45,14 +44,19 @@ impl Session {
             root,
             world,
             queue,
-            warning,
             lock: (),
         } = crate::round::replay::open_at_tip(root, &lock)?;
+        tracing::info!(
+            pack_rev = world.pack_rev.as_str(),
+            state_rev = world.state_rev,
+            round_index = world.round_index,
+            world_time = world.world_time,
+            "pack opened"
+        );
         Ok(Session {
             root,
             world,
             queue,
-            warning,
             lock,
         })
     }
@@ -406,15 +410,6 @@ impl<Lock> Session<Lock> {
         self.queue.push(intent);
     }
 
-    /// A committed round whose checkpoint file was not finished. The host prints it.
-    pub fn take_warning(&mut self) -> Option<&'static str> {
-        self.warning.take()
-    }
-
-    pub(crate) fn set_warning(&mut self, text: &'static str) {
-        self.warning = Some(text);
-    }
-
     pub fn perceive(
         &self,
         presence: &Presence,
@@ -561,7 +556,6 @@ impl Session<()> {
             root: root.to_path_buf(),
             world: ecs::World::new(save, canon),
             queue: Vec::new(),
-            warning: None,
             lock: (),
         })
     }
@@ -573,7 +567,6 @@ impl Session<()> {
             root: pack.to_path_buf(),
             world,
             queue: Vec::new(),
-            warning: None,
             lock: (),
         }
     }

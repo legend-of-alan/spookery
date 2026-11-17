@@ -15,7 +15,7 @@ Feature: A line waits for the GM
     And no round record was written
     When the GM commits the round
     Then world_time is 1085
-    And the round log records the player wait
+    And the journal records the player wait
 
   Scenario: An empty commit writes no round file
     Given a docks table with a seated GM

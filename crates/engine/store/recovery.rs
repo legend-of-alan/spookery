@@ -115,6 +115,11 @@ fn cut_torn_tail(root: &Path) -> Result<(), Reason> {
         .map_err(refuse_io)?;
     file.set_len(end as u64).map_err(refuse_io)?;
     fsync_file(&path)?;
+    tracing::warn!(
+        bundle_path = %path.display(),
+        cut_bytes = bytes.len() - end,
+        "cut a torn journal record a crash left"
+    );
     Ok(())
 }
 

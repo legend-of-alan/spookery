@@ -15,8 +15,8 @@ use crate::rules::travel::find_exit;
 use crate::Reason;
 
 use crate::round::dice::shuffle_key;
-use crate::round::log::RoundLog;
 use crate::round::stage::apply::refuse;
+use crate::round::Ledger;
 
 /// The queue and the habits, stamped, in priority order, cut to the budget. Each intent past
 /// the cut is refused `BUDGET`.
@@ -25,7 +25,7 @@ pub(crate) fn run(
     world: &ecs::World,
     presence: &Presence,
     queue: &[Intent],
-    log: &mut RoundLog,
+    ledger: &mut Ledger,
 ) -> Result<Vec<Intent>, Reason> {
     let mut candidates = queue.to_vec();
     candidates.extend(habits::intents(canon, world, presence));
@@ -37,7 +37,7 @@ pub(crate) fn run(
     let limit = (canon.budget.max_intents_applied as usize).min(candidates.len());
     for intent in candidates.split_off(limit) {
         let refusal = gate::Refusal::new(&intent, Reason::Budget);
-        refuse(log, &intent, refusal, false);
+        refuse(ledger, &intent, refusal, false);
     }
     Ok(candidates)
 }

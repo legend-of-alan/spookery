@@ -15,7 +15,7 @@ use crate::store::records::Step;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
-use crate::round::log::RoundLog;
+use crate::round::Ledger;
 
 /// One candidate and how resolve left it for apply.
 pub(crate) struct Candidate<'a> {
@@ -42,7 +42,7 @@ pub(crate) enum Resolution<'a> {
 
 /// What every roll in the round shares. The rules it gates borrow `canon`, past the resolver
 /// and the save.
-/// `'r` is the round's dice and log.
+/// `'r` is the round's dice and ledger.
 struct Resolver<'c, 'a, 'r> {
     canon: &'c Canon,
     world: &'a ecs::World,
@@ -50,7 +50,7 @@ struct Resolver<'c, 'a, 'r> {
     queue: &'a [Intent],
     rolled: BTreeMap<String, Roll>,
     dice: &'r mut RoundDice,
-    log: &'r mut RoundLog,
+    ledger: &'r mut Ledger,
 }
 
 pub(crate) fn run<'a>(
@@ -60,7 +60,7 @@ pub(crate) fn run<'a>(
     picked: &'a [Intent],
     queue: &[Intent],
     dice: &mut RoundDice,
-    log: &mut RoundLog,
+    ledger: &mut Ledger,
 ) -> Vec<Candidate<'a>> {
     let mut resolver = Resolver {
         canon,
@@ -69,7 +69,7 @@ pub(crate) fn run<'a>(
         queue,
         rolled: BTreeMap::new(),
         dice,
-        log,
+        ledger,
     };
     picked
         .iter()
@@ -91,7 +91,7 @@ fn resolve_intent<'a>(resolver: &mut Resolver<'a, '_, '_>, intent: &'a Intent) -
     };
     match &rule.roll {
         Some(roll) if crate::rules::travel::span(&context, rule) == 0 => {
-            resolver.log.extra_steps.push(Step::CheckRolled);
+            resolver.ledger.extra_steps.push(Step::CheckRolled);
             match roll_check(resolver, &context, &rule.id, roll) {
                 Ok(rolled) => Resolution::Ready {
                     rule,
@@ -120,7 +120,7 @@ fn roll_check(
             Some(total) => (total, None),
             None => resolver
                 .dice
-                .roller(resolver.log, rule_id, actor_id)
+                .roller(resolver.ledger, rule_id, actor_id)
                 .eval_thresholds(context, roll)?,
         };
         let outcome = classify(out.total, threshold, partial_at);
@@ -140,7 +140,7 @@ fn roll_check(
         }
         None => resolver
             .dice
-            .roller(resolver.log, rule_id, actor_id)
+            .roller(resolver.ledger, rule_id, actor_id)
             .roll_spec(context, roll)?,
     };
     resolver.rolled.insert(intent.id.clone(), out.clone());

@@ -12,12 +12,12 @@ Feature: A rule's effects are all or nothing
 
   Scenario: A rule over the effect cap is refused, not truncated
     Given max_effects_per_intent is 1 and a row with 2 effects
-    Then no effect from that row applies and the round log names the refusal
+    Then no effect from that row applies and the round record names the refusal
 
-  Scenario: A change rule over the effect cap is refused whole, and the log records it
+  Scenario: A change rule over the effect cap is refused whole, and the round record names it
     Given max_effects_per_intent is 1 and a street rule that sets 2 flags when Rowan arrives
     When Rowan walks to the street
-    Then neither flag is set and the round log names the change rule's BUDGET refusal
+    Then neither flag is set and the round record names the change rule's BUDGET refusal
 
   Scenario: A refused roll is not reported as a success
     Given a docks row spilled that rolls exert and then removes 8 lamp oil
