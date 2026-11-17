@@ -133,7 +133,7 @@ SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.
 
 If the provider refuses a call, stderr shows `model call returned <status>: <text>`. The text is the provider's error on one line, cut to 200 characters, with your key replaced by `[key]`.
 
-Each model call is one line in the `spook ai-gm` log file: the model id, the attempts, the time it took and, when the reply has them, its `prompt_tokens`, `completion_tokens`, `cached_tokens` and `reasoning_tokens`. That file is where spend data collects, with no setting to change. The token counts are unverified for xAI.
+Each model call is one line in the `spook ai-gm` log file: the model id, the attempts, the time it took and, when the reply has them, its `prompt_tokens`, `completion_tokens`, `cached_tokens` and `reasoning_tokens`. That file is where spend data collects, with no setting to change.
 
 `crates/spook/tests/integration/live_round.rs` plays one real round against whatever those variables point at. It's ignored by default. CI runs it as described in [Live AI CI](../CONTRIBUTING.md#live-ai-ci).
 
