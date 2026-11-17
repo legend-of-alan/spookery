@@ -8,7 +8,7 @@ use crate::ecs::id::ActorId;
 use crate::hash::blake2s_256;
 use crate::round::Ledger;
 use crate::rules::context::Context;
-use crate::rules::expr::{eval_with_dice, Dice};
+use crate::rules::expr::{self, eval_with_dice};
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{self, faces, MoveReport, Roll, RollKey};
 use crate::rules::rule::RollSpec;
@@ -19,13 +19,13 @@ pub(crate) fn shuffle_key(seed: &str, round_index: u64, actor_id: &ActorId) -> [
 }
 
 /// Every roll key of one round.
-pub(crate) struct RoundDice {
+pub(crate) struct Dice {
     seed: String,
     round_index: u64,
     counts: BTreeMap<(String, Option<ActorId>), u32>,
 }
 
-impl RoundDice {
+impl Dice {
     pub(crate) fn new(seed: String, round_index: u64) -> Self {
         Self {
             seed,
@@ -91,7 +91,7 @@ impl RoundDice {
 /// Expression dice and resist rolls for one rule and subject, all keyed by the rule id.
 /// `into_reports` returns the resist reports. Dropping the roller discards them.
 pub(crate) struct Roller<'a> {
-    dice: &'a mut RoundDice,
+    dice: &'a mut Dice,
     ledger: &'a mut Ledger,
     rule: &'a str,
     subject: Option<&'a ActorId>,
@@ -135,7 +135,7 @@ impl Roller<'_> {
     }
 }
 
-impl Dice for Roller<'_> {
+impl expr::Dice for Roller<'_> {
     fn begin(&mut self) {
         self.key = None;
         self.drawn = 0;

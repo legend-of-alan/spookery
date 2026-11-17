@@ -14,11 +14,9 @@ use crate::rules::travel;
 use crate::store::records::Step;
 use crate::Reason;
 
-use crate::round::dice::RoundDice;
-use crate::round::stage::advance::RoundTime;
 use crate::round::stage::resolve::{Candidate, Resolution};
 use crate::round::stage::triggers;
-use crate::round::Ledger;
+use crate::round::{self, Ledger};
 
 /// What became of one rule's effects in `land`.
 pub(crate) enum Landing {
@@ -33,8 +31,8 @@ pub(crate) fn run(
     world: &mut ecs::World,
     presence: &Presence,
     candidates: Vec<Candidate>,
-    clock: &RoundTime,
-    dice: &mut RoundDice,
+    clock: &round::Time,
+    dice: &mut round::Dice,
     ledger: &mut Ledger,
 ) {
     let max_npcs = canon.budget.max_npcs_acting;
@@ -98,7 +96,7 @@ fn start(
     rule: &Rule,
     rolled: Option<Roll>,
     at: u64,
-    dice: &mut RoundDice,
+    dice: &mut round::Dice,
     ledger: &mut Ledger,
 ) -> Landing {
     let context = Context::new(canon, world, presence, intent);
@@ -215,7 +213,7 @@ pub(crate) fn finish(
     rule: &Rule,
     rolled: Option<Roll>,
     at: u64,
-    dice: &mut RoundDice,
+    dice: &mut round::Dice,
     ledger: &mut Ledger,
 ) -> Landing {
     let context = Context::new(canon, world, presence, intent);

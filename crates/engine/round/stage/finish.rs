@@ -6,9 +6,8 @@ use crate::ecs::{self, PendingAction, Presence};
 use crate::intent::Intent;
 use crate::Reason;
 
-use crate::round::dice::RoundDice;
 use crate::round::stage::{apply, triggers};
-use crate::round::Ledger;
+use crate::round::{self, Ledger};
 
 /// Finish every due action, earliest first.
 pub(crate) fn run(
@@ -16,7 +15,7 @@ pub(crate) fn run(
     world: &mut ecs::World,
     presence: &Presence,
     end: u64,
-    dice: &mut RoundDice,
+    dice: &mut round::Dice,
     ledger: &mut Ledger,
 ) -> Result<(), Reason> {
     let due_actions = crate::rules::travel::take_due_actions(world, end)?;

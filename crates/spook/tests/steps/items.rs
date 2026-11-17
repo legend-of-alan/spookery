@@ -48,7 +48,7 @@ fn handle_move(
     pack: &Path,
     actor: &str,
     line: &str,
-) -> Result<Vec<spookery_engine::RoundOutput>, spookery_engine::Refusal> {
+) -> Result<Vec<spookery_engine::round::Output>, spookery_engine::Refusal> {
     let mut session = super::rules::open(pack);
     let actor = resolve_id(session.canon(), actor);
     let (verb, target) = split_line(line);
