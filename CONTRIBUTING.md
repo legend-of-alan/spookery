@@ -94,7 +94,7 @@ Default to the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/
 5. Two names that look alike must do alike jobs.
 6. Use game terms like tick and round only in the sense the [glossary](docs/README.md#glossary) gives them. Game time is ticks, and a batch of work is a round. A bare game-time number carries the suffix `_ticks`. Minutes and hours are real time, or the shown clock.
 7. A type that carries messages between layers, such as a request, reply, frame, event or queue half, says in its doc comment which two layers it connects. Similar names get that comment, not a rename.
-8. Don't repeat the module name inside a name. This is checked in review, not by a lint.
+8. Don't repeat the module name inside a name. A name that is the module name, such as `query::Query`, is fine. CI checks the files a PR touches; a name kept on purpose, under rule 15 or as a pair like `ClientMessage`, ends its line with `// repeats module: <reason>`.
 9. A comment shouldn't have to explain a name. If it does, fix the name.
 10. Names collide only within one namespace, so `tokio::fs` and `std::fs` are fine. When a name exists in two namespaces anywhere in the project, a `use` keeps the path prefix (`fs::read`, never a bare `read`).
 11. Fix a bad name in the code you touch, even if it is older than your change. A rename-only commit changes no logic and updates the docs that mention the name.
