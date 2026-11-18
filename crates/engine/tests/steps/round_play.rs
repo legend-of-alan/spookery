@@ -502,7 +502,7 @@ fn a_docks_pack_with_a_broken_pick(world: &mut World) {
 #[when(expr = "Rowan walks to the street and Wren plays pick in the same round")]
 fn rowan_walks_and_wren_picks(world: &mut World) {
     let pick = intent("pick-1", "wren", "pick", None);
-    let (_state, round) = rowan_walks(world.pack(), vec![pick]);
+    let (_state, _rolls, round) = rowan_walks(world.pack(), vec![pick]);
     world.scratch = round.to_string();
 }
 
@@ -543,7 +543,7 @@ fn the_next_round_plays_and_verify_passes(world: &mut World) {
 }
 
 #[given(
-    expr = "a docks pack where the shop's \"rummage\" costs {int} rest and the shared \"rummage\" costs {int}"
+    expr = "a docks pack where the shop's \"rummage\" costs {int} rest and rolls against the actor's rest, and the shared \"rummage\" costs {int}"
 )]
 fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64) {
     let pack = support::copy_pack("docks", "rummage");
@@ -551,7 +551,7 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
         "  - id: rummage
     when: {{ verb: rummage }}
     cost: {{ meters: {{ rest: {shop} }} }}
-    roll: {{ check: exert, threshold: 0 }}
+    roll: {{ check: exert, threshold: self.rest }}
     do: []"
     );
     add_place_rules(&pack, "docks_shop", &rule);
@@ -569,11 +569,38 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
     world.pack = Some(pack);
 }
 
+#[given(expr = "the walk to the street costs {int} rest")]
+fn the_walk_to_the_street_costs_rest(world: &mut World, rest: i64) {
+    let path = world.pack().join("world/places/docks_shop.md");
+    let text = fs::read_to_string(&path).unwrap();
+    let exit = "  - to: docks_street\n    id: docks_street\n";
+    let cost = format!("{exit}    cost: {{ meters: {{ rest: {rest} }} }}\n");
+    let next = text.replacen(exit, &cost, 1);
+    assert_ne!(next, text, "the shop has no street exit");
+    fs::write(&path, next).unwrap();
+    support::stamp_pack_rev(world.pack());
+}
+
 #[when(expr = "Rowan walks to the street and rummages in the same round")]
 fn rowan_walks_and_rummages(world: &mut World) {
     let rummage = intent("rummage", "rowan", "rummage", None);
-    let (_state, round) = rowan_walks(world.pack(), vec![rummage]);
+    let (_state, rolls, round) = rowan_walks(world.pack(), vec![rummage]);
     world.scratch = round.to_string();
+    world.seen = rolls
+        .iter()
+        .filter_map(|report| match report {
+            MoveReport::Rolled { actor_id, roll } if actor_id == "rowan" => {
+                Some(roll.target.to_string())
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+}
+
+#[then(expr = "the GM sees Rowan's check against a bar of {int}")]
+fn the_gm_sees_rowans_check_against_a_bar_of(world: &mut World, bar: i64) {
+    assert_eq!(world.seen, bar.to_string(), "{}", world.scratch);
 }
 
 #[then(expr = "the journal records {string} and not {string}")]
@@ -608,7 +635,7 @@ fn a_street_rule_over_the_cap(world: &mut World) {
 
 #[when(expr = "Rowan walks to the street")]
 fn rowan_walks_to_the_street(world: &mut World) {
-    let (ecs_world, round) = rowan_walks(world.pack(), Vec::new());
+    let (ecs_world, _rolls, round) = rowan_walks(world.pack(), Vec::new());
     let rowan = "rowan".into();
     let flags = ecs_world.actors().get::<component::Flag>(&rowan);
     world.count = flags.iter().count();
@@ -762,12 +789,12 @@ fn set_budget(pack: &Path, key: &str, value: u64) {
 fn rowan_walks(
     pack: &Path,
     then: Vec<spookery_protocol::QueueArgs>,
-) -> (spookery_engine::ecs::World, Value) {
+) -> (spookery_engine::ecs::World, Vec<MoveReport>, Value) {
     let mut intents = vec![intent("walk", "rowan", "travel", Some("docks_street"))];
     intents.extend(then);
-    let (world, _rolls, round) = play_queued(pack, &["rowan"], intents);
+    let (world, rolls, round) = play_queued(pack, &["rowan"], intents);
     assert_eq!(place_of(&world, "rowan"), "docks_street", "{round}");
-    (world, round)
+    (world, rolls, round)
 }
 
 /// Give `place` its own `rules:` list, written just before its exits.
