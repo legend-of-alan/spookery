@@ -138,9 +138,9 @@ Feature: spook check explains a broken pack
     And a JSON diagnostic has code "WARNING" file "world/places" path "docks_street" and null line and column
     And stderr is empty
 
-  Scenario: Teleport in verbs.yaml is a warning and the check still exits 0
+  Scenario Outline: Teleport in verbs.yaml is a warning and the check still exits 0
     Given a docks table
-    When travel in verbs.yaml teleports
+    When travel in verbs.yaml teleports <walk>
     And the pack_rev is restamped
     And the operator runs spook check
     Then the check exits 0
@@ -152,6 +152,11 @@ Feature: spook check explains a broken pack
     And stdout is a JSON array of diagnostics
     And a JSON diagnostic has code "WARNING" file "rules/verbs.yaml" path "rules[1]" and null line and column
     And stderr is empty
+
+    Examples:
+      | walk                  |
+      | at once               |
+      | inside a nested check |
 
   Scenario: Long gm_notes are a warning and the check still exits 0
     Given a docks table
