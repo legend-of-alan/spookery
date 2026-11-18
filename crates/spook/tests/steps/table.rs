@@ -451,6 +451,12 @@ pub(crate) fn spawn(dir: &Path, pack: &Path, flags: &[&str]) -> Pending {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x200;
+        command.creation_flags(CREATE_NEW_PROCESS_GROUP);
+    }
     let mut child = command
         .spawn()
         .unwrap_or_else(|err| panic!("spawn spook: {err}"));
@@ -849,24 +855,37 @@ pub(crate) fn stop_host(world: &mut World) {
     }
 }
 
-/// Stops the `spook run` child the way a person does, with Ctrl+C, and returns its exit
-/// status and stderr. Seats stay open. Windows just drops it, which kills, so there is
-/// no exit to return.
+/// Stops the `spook run` child the way a person does, with Ctrl+C (Ctrl+Break on
+/// Windows), and returns its exit status and stderr. Seats stay open. `None` when no
+/// child host is running.
 pub(crate) fn interrupt_host(world: &mut World) -> Option<(ExitStatus, String)> {
     let mut server = live_mut(world).host.take()?;
-    if !cfg!(unix) {
-        return None;
-    }
-    let pid = server.child.id().to_string();
-    let kill = std::process::Command::new("kill")
-        .args(["-INT", &pid])
-        .status();
-    assert!(kill.is_ok_and(|s| s.success()), "kill -INT {pid}");
+    send_interrupt(&server.child);
     let status = server
         .child
         .wait()
         .unwrap_or_else(|err| panic!("wait: {err}"));
     Some((status, support::text_of(&server.stderr)))
+}
+
+/// Sends SIGINT, which is what Ctrl+C sends.
+#[cfg(unix)]
+fn send_interrupt(child: &Child) {
+    let pid = child.id().to_string();
+    let kill = Command::new("kill").args(["-INT", &pid]).status();
+    assert!(kill.is_ok_and(|s| s.success()), "kill -INT {pid}");
+}
+
+/// Sends Ctrl+Break to the console process group that `spawn` started the child in.
+#[cfg(windows)]
+fn send_interrupt(child: &Child) {
+    const CTRL_BREAK_EVENT: u32 = 1;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GenerateConsoleCtrlEvent(ctrl_event: u32, process_group_id: u32) -> i32;
+    }
+    let sent = unsafe { GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, child.id()) };
+    assert_ne!(sent, 0, "Ctrl+Break: {}", std::io::Error::last_os_error());
 }
 
 /// Releases the claim and waits until the table has let go of it.
