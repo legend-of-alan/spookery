@@ -67,6 +67,7 @@ fn the_operator_tries_a_round(world: &mut World) {
 
 #[when(expr = "the operator runs migrate")]
 fn the_operator_runs_migrate(world: &mut World) {
+    // repeats module: mirrors its step text
     let pack = table::pack(world).to_path_buf();
     table::run(world, &["migrate", pack.to_str().unwrap()]);
 }
@@ -208,6 +209,7 @@ fn the_journal_has_two_migrate_records(world: &mut World) {
 
 #[then(expr = "migrate keeps the hand edit")]
 fn migrate_keeps_the_hand_edit(world: &mut World) {
+    // repeats module: mirrors its step text
     let pack = table::pack(world);
     let rev = spookery_engine::pack_rev(pack).unwrap();
     assert_ne!(rev, docks_pack_rev());

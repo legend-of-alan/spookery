@@ -177,6 +177,7 @@ fn parse_idle(source: &FileText, value: Option<String>, diags: &mut Vec<Diagnost
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BudgetDoc {
+    // repeats module: every file shape in canon ends in Doc
     #[serde(rename = "schema")]
     _schema: String,
     max_intents_applied: Option<i64>,

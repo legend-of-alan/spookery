@@ -77,7 +77,8 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     std::fs::write(&path, edited).expect("write the save");
     let opened = session::Session::open(&pack.0).expect("docks pack opens");
     let mut canon = opened.canon().clone();
-    // Room for every key the steps can touch: a refusal past the budget is the unit tests'.
+    // Room for every key the steps can touch: a refusal past the budget is
+    // an_intent_the_round_has_no_room_for_is_refused_budget.feature's.
     canon.budget.max_state_keys_mutated = 1000;
     let street = canon.places.get_mut("docks_street").expect("the street");
     street.flags.extend(["lit".to_string(), "busy".to_string()]);

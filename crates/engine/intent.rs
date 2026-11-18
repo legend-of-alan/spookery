@@ -116,6 +116,7 @@ impl Target {
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IntentArgs {
+    // repeats module: re-exported at the crate root
     #[serde(rename = "to", default, skip_serializing_if = "Option::is_none")]
     pub message_to: Option<Vec<ActorId>>,
 }
@@ -289,5 +290,6 @@ impl TryFrom<TargetWire> for Target {
 /// Blake2s of `world|round|actor|line`: a player's line for the round after the save's,
 /// or a habit's local id for the save's round.
 pub(crate) fn intent_id(world_id: &str, round_index: u64, actor_id: &str, line: &str) -> String {
+    // repeats module: fills the intent_id field and journal key
     crate::hash::blake2s_hex(format!("{world_id}|{round_index}|{actor_id}|{line}").as_bytes())
 }
