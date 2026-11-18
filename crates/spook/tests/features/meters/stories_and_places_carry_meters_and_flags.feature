@@ -14,12 +14,6 @@ Feature: Stories and places carry meters and flags
     Then a rule testing flag walls_breached of "story:siege" is true sees it as set
     And the GM sees the flag change on the siege story
 
-  Scenario: The pack check refuses an undeclared story flag
-    Given story/siege.yaml declares no flags
-    And a rule sets flag walls_breached of "story:siege"
-    When the author runs spook check
-    Then it refuses the rule, saying the siege story does not declare walls_breached
-
   Scenario: A story meter shown by the pack reaches every player
     Given story/ending.yaml declares "dread" with hidden false
     And a rule in story/ending.yaml adds 1 to meter dread of "story:ending"
@@ -27,35 +21,12 @@ Feature: Stories and places carry meters and flags
     When the rule runs
     Then rowan's and wren's change lines show dread
 
-  Scenario Outline: A story meter id another file declares is refused
-    Given <file> declares a "<meter>" meter
-    And story/ending.yaml declares a "<meter>" meter
-    When the author runs spook check
-    Then it refuses the story's <meter> meter as "<why>"
-
-    Examples:
-      | file              | meter    | why                                                      |
-      | world/meters.yaml | dawn     | is already in world/meters.yaml                          |
-      | cast/mira.md      | shop_day | is already declared in another cast, place or story file |
-
-  Scenario: The pack check refuses a story meter on the wrong story
-    Given story/ending.yaml declares a "dread" meter
-    And a rule adds 1 to meter dread of "story:prologue"
-    When the author runs spook check
-    Then it refuses the rule, saying only the ending story carries dread
-
   Scenario: A place flag is set and tested on its place
     Given world/places/attic.md declares the flag "lamp_lit"
     And a rule sets flag lamp_lit of "place:attic" to true
     When the rule runs
     Then a rule testing flag lamp_lit of "place:attic" is true sees it as set
     And the GM sees the flag change on the attic
-
-  Scenario: The pack check refuses an undeclared place meter
-    Given world/places/attic.md declares no meters
-    And a rule adds 1 to meter light of "place:attic"
-    When the author runs spook check
-    Then it refuses the rule, saying the attic does not declare light
 
   Scenario: A place meter shown by the pack reaches the players in the place
     Given world/places/attic.md declares "light" with hidden false and "draft" with no hidden key
@@ -81,13 +52,3 @@ Feature: Stories and places carry meters and flags
     Given the docks pack gains world/places/attic.md and is migrated
     When a rule leaves a note in the attic
     Then rowan, standing in the attic, perceives the note
-
-  Scenario: The pack check refuses a repeated story id
-    Given story/a.yaml and story/b.yaml both have id samples
-    When the author runs spook check
-    Then it refuses story/b.yaml, saying story id samples is already defined
-
-  Scenario: The pack check refuses an empty story id
-    Given story/a.yaml has an empty id
-    When the author runs spook check
-    Then it refuses story/a.yaml, saying the story id is empty

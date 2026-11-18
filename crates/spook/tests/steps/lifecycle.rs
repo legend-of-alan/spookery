@@ -5,7 +5,7 @@ use std::fs;
 use cucumber::{given, then, when};
 use spookery_engine::{component, entity, MoveReport, Presence};
 
-use super::common::{give_key, resolve_id, split_line};
+use super::common::{give_key, split_line};
 use super::rules::open;
 use super::triggers::world_flags;
 use crate::support::{act_of, append, copy_pack, edit_save, read_round, stamp_pack_rev, world_of};
@@ -189,36 +189,6 @@ fn finished(world: &mut World, verb: String) {
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
     let done = format!("{verb}_done");
     assert!(flags.contains(&done), "{:?}", world_flags(&now));
-}
-
-#[then(expr = "spook check refuses the verb {string}")]
-fn spook_check_refuses_the_verb(world: &mut World, verb: String) {
-    let diags = spookery_engine::check_pack(world.pack.as_ref().unwrap());
-    let refused = diags.iter().any(|diag| {
-        diag.message
-            .contains(&format!("verb '{verb}' is a built-in command"))
-    });
-    assert!(refused, "{diags:?}");
-}
-
-#[given(regex = r"^(?P<actor>\S+) stands on (?P<place>\S+) in the save$")]
-fn stands_on(world: &mut World, actor: String, place: String) {
-    edit_save(world.pack.as_ref().unwrap(), |now| {
-        let [actor, place] = [actor, place].map(|text| resolve_id(now.canon(), &text));
-        now.actors_mut()
-            .get_mut::<component::Place>(&actor.into())
-            .set(&place)
-            .unwrap();
-    });
-}
-
-#[then(expr = "spook check refuses Rowan's place")]
-fn spook_check_refuses_rowans_place(world: &mut World) {
-    let diags = spookery_engine::check_pack(world.pack.as_ref().unwrap());
-    let refused = diags
-        .iter()
-        .any(|diag| diag.path.as_deref() == Some("actors.place.rowan"));
-    assert!(refused, "{diags:?}");
 }
 
 #[when(expr = "Rowan plays {string}")]

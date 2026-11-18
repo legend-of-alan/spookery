@@ -185,56 +185,6 @@ fn rowans_view_does_not_list_it(world: &mut World) {
     assert!(!ids.contains(&"shop_day"), "{ids:?}");
 }
 
-#[given(expr = "Bram has a habit that adds 1 to his own shop_day")]
-fn bram_adds_to_his_own_shop_day(world: &mut World) {
-    replace_in_file(
-        &pack(world).join("cast/bram.md"),
-        "  eligible: true\n",
-        "  eligible: true\nrules:\n  - id: tally_shop_day\n    when: habit\n    do:\n      - meter:\n          of: self\n          key: shop_day\n          add: 1\n",
-    );
-}
-
-#[when(expr = "the author runs spook check")]
-fn the_author_runs_spook_check(world: &mut World) {
-    run_check(world);
-}
-
-#[then(expr = "it refuses Bram's habit, saying only Mira carries shop_day")]
-fn it_refuses_brams_habit(world: &mut World) {
-    assert_refused(
-        world,
-        &[
-            "cast/bram.md",
-            "rule 'tally_shop_day'",
-            "only mira carries meter 'shop_day'",
-        ],
-    );
-}
-
-#[given(expr = "rules\\/meters.yaml defines {string}")]
-fn rules_meters_defines(world: &mut World, key: String) {
-    let pack = copy_pack("docks", "global-meter");
-    let text = fs::read_to_string(pack.join("rules/meters.yaml")).unwrap();
-    assert!(text.contains(&format!("  - id: {key}\n")), "{text}");
-    world.pack = Some(pack);
-}
-
-#[given(expr = "cast\\/mira.md also declares a {string} meter")]
-fn mira_also_declares(world: &mut World, key: String) {
-    add_mira_meter(pack(world), (&key, 1, None));
-}
-
-#[then(expr = "it refuses the second vigor")]
-fn it_refuses_the_second_vigor(world: &mut World) {
-    assert_refused(
-        world,
-        &[
-            "cast/mira.md",
-            "meter 'vigor' is already in rules/meters.yaml",
-        ],
-    );
-}
-
 #[given(expr = "rowan and Mira stand in the shop")]
 fn rowan_and_mira_stand_in_the_shop(world: &mut World) {
     let pack = copy_pack("docks", "meter-sight");
@@ -322,11 +272,6 @@ fn world_meters_declares_at(world: &mut World, key: String, base: i64) {
     let pack = copy_pack("docks", "world-meter");
     write_world_meter_rows(&pack, &[(&key, base, None)]);
     world.pack = Some(pack);
-}
-
-#[given(expr = "world\\/meters.yaml declares a {string} meter")]
-fn world_meters_declares(world: &mut World, key: String) {
-    world_meters_declares_at(world, key, 6);
 }
 
 /// A story change rule that adds -1 to the world's dawn each time rowan gains lamp oil.
@@ -491,28 +436,10 @@ fn rowan_and_nell_each_see_once(world: &mut World, text: String) {
     }
 }
 
-#[given(expr = "Mira carries no dawn meter")]
-fn mira_carries_no_dawn(world: &mut World) {
-    let canon = load_canon(pack(world)).unwrap_or_else(|err| panic!("load: {err:?}"));
-    assert!(canon.meter_desc(mira().as_ref(), "dawn").is_none());
-}
-
 #[given(expr = "Mira has a habit that adds 1 to meter dawn of {string}")]
 fn mira_adds_to_dawn(world: &mut World, of: String) {
     assert_eq!(of, "self");
     add_mira_meter_habit(pack(world), "dawn", 1);
-}
-
-#[then(expr = "it refuses Mira's habit, saying Mira carries no dawn meter")]
-fn it_refuses_miras_habit(world: &mut World) {
-    assert_refused(
-        world,
-        &[
-            "cast/mira.md",
-            "rule 'bump_dawn'",
-            "mira carries no meter 'dawn'",
-        ],
-    );
 }
 
 #[given(expr = "cast\\/mira.md declares her own {string} meter at {int}")]
@@ -540,17 +467,6 @@ fn the_worlds_meter_is(world: &mut World, key: String, value: i64) {
     assert_eq!(
         value_on(pack(world), &entity::Id::Global, &key),
         Some(value)
-    );
-}
-
-#[then(expr = "it refuses the rule, saying a world change rule has no self")]
-fn it_refuses_the_world_rule(world: &mut World) {
-    assert_refused(
-        world,
-        &[
-            "story/tide.yaml",
-            "rule 'mark' watches a world change, which has no self",
-        ],
     );
 }
 
@@ -649,22 +565,4 @@ fn the_catch_up_view_lists_dawn(world: &mut World, value: i64) {
 fn it_does_not_list_doom(world: &mut World) {
     let meters = world_meters_after_claim(world);
     assert!(meters.iter().all(|(id, _)| id != "doom"), "{meters:?}");
-}
-
-#[given(expr = "a verb narrates {string} with no to")]
-fn a_verb_narrates_with_no_to(world: &mut World, text: String) {
-    let pack = copy_pack("docks", "narrate-no-to");
-    add_verb(
-        &pack,
-        &format!("\n  - id: ring\n    when:\n      verb: ring\n    do:\n      - narrate:\n          text: {text}\n"),
-    );
-    world.pack = Some(pack);
-}
-
-#[then(expr = "it refuses the verb, saying its narrate has no to")]
-fn it_refuses_the_verb_narrate(world: &mut World) {
-    assert_refused(
-        world,
-        &["rules/verbs.yaml", "rule 'ring' has a narrate with no to"],
-    );
 }

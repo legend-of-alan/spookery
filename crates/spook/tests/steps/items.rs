@@ -345,25 +345,6 @@ fn the_drop_was_missing(world: &mut World) {
     );
 }
 
-#[given(expr = "save.yaml lists an item with no definition")]
-fn the_save_lists_an_unknown_item(world: &mut World) {
-    let pack = support::copy_pack("docks", "unknown-item");
-    support::edit_save(&pack, |now| give(now, "rowan", "ghost"));
-    world.pack = Some(pack);
-}
-
-#[then(expr = "spook check reports an unknown item diagnostic")]
-fn check_reports_an_unknown_item(world: &mut World) {
-    let pack = support::pack_arg(world.pack.as_ref().unwrap());
-    let output = support::run_spook(&["check", &pack]);
-    world.code = output.status.code();
-    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
-    let report = format!("{}{}", world.stdout, world.stderr);
-    assert!(report.contains("unknown item 'ghost'"), "{report}");
-}
-
 #[given(expr = "harbormouse holds a poisoned_dagger tagged weapon")]
 fn harbormouse_holds_a_dagger(world: &mut World) {
     let pack = support::copy_pack("docks", "wield");

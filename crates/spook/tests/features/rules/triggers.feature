@@ -23,13 +23,6 @@ Feature: Triggers
     Given two rules that set each other's watched flag
     Then spook check warns of a cycle, and a round stops at depth 4 and still commits
 
-  Scenario: A private change narrated to the room leaks
-    Given a rule on a known fact narrates to the room
-    When the operator runs spook check
-    Then the check exits 1
-    And the report names "TRIGGER_LEAK"
-    And the report says "leak"
-
   Scenario: A private change narrated to the subject does not leak
     Given a rule on a known fact narrates to the subject
     When the operator runs spook check

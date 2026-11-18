@@ -16,18 +16,3 @@ Feature: A world change rule runs once per change
     When a habit adds -1 to meter dawn of "world"
     Then the world's morning is 1
     And spook verify passes on this pack
-
-  Scenario Outline: The pack check refuses self or a check in a world change rule
-    Given a change rule watches world flag tide_turned and <line>
-    When the author runs spook check
-    Then it refuses the rule, saying a world change rule has no self
-
-    Examples:
-      | line                         |
-      | sets flag saw_tide of "self" |
-      | rolls a 2d6 check            |
-
-  Scenario: The pack check refuses a narrate with no to outside a world change rule
-    Given a verb narrates "The bell rings." with no to
-    When the author runs spook check
-    Then it refuses the verb, saying its narrate has no to

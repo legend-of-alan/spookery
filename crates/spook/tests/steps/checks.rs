@@ -127,7 +127,7 @@ fn the_player_sees_a_check_result_without_faces(world: &mut World) {
 fn a_docks_table_where_mira_can_notice(world: &mut World) {
     let pack = copy_pack("docks", "npc-notice");
     world.pack = Some(pack.clone());
-    append_verbs(&pack, NOTICE_ROWS);
+    common::add_verb(&pack, NOTICE_ROWS);
     insert_mira_flags(&pack, "    - braced\n    - slipped\n");
     support::stamp_pack_rev(&pack);
     listen_and_seat_both(world, &pack);
@@ -139,7 +139,7 @@ fn a_docks_table_where_mira_can_notice(world: &mut World) {
 fn a_docks_table_where_miras_vigor_contests_a_mark(world: &mut World) {
     let pack = copy_pack("docks", "contested-mark");
     world.pack = Some(pack.clone());
-    append_verbs(&pack, CONTESTED_MARK_ROW);
+    common::add_verb(&pack, CONTESTED_MARK_ROW);
     insert_mira_flags(&pack, "    - marked\n    - grazed\n    - missed\n");
     set_vigor(&pack, "mira", MIRA_VIGOR);
     super::common::edit_save(&pack, |now| {
@@ -304,13 +304,6 @@ fn queue_mira(world: &mut World, move_id: &str) {
     let text = table::gm_tool_call(world, 4, "queue", &args);
     assert!(text.contains("\"id\""), "{text}");
     assert!(!text.contains("UNKNOWN_ID"), "{text}");
-}
-
-fn append_verbs(pack: &Path, extra: &str) {
-    let path = pack.join("rules/verbs.yaml");
-    let mut moves = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read moves: {err}"));
-    moves.push_str(extra);
-    fs::write(&path, moves).unwrap_or_else(|err| panic!("write moves: {err}"));
 }
 
 fn insert_mira_flags(pack: &Path, flags: &str) {
@@ -493,7 +486,7 @@ fn a_docks_copy_where_press_vigor_base_is(world: &mut World, base: usize) {
 fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
     let pack = copy_pack("docks", "press-notice");
     world.pack = Some(pack.clone());
-    append_verbs(&pack, NOTICE_PARTIAL_ROW);
+    common::add_verb(&pack, NOTICE_PARTIAL_ROW);
     insert_mira_flags(&pack, PRESS_FLAGS);
     set_vigor(&pack, "mira", 6);
     support::stamp_pack_rev(&pack);
@@ -512,31 +505,6 @@ fn the_player_presses_mira(world: &mut World) {
 #[when(expr = "the GM queues Mira's partial notice")]
 fn the_gm_queues_miras_partial_notice(world: &mut World) {
     queue_mira(world, "notice_partial");
-}
-
-#[when(expr = "the verbs file gains {string}")]
-fn the_verbs_file_gains(world: &mut World, fault: String) {
-    let row = match fault.as_str() {
-        "partial_at without partial" => {
-            "\n  - id: press\n    when:\n      verb: press\n    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n      partial_at: 7\n    do:\n      - flag:\n          of: self\n          key: touched\n          value: true\n"
-        }
-        "partial without partial_at" => {
-            "\n  - id: press\n    when:\n      verb: press\n    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
-        }
-        "partial_at above success_at" => {
-            "\n  - id: press\n    when:\n      verb: press\n    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n      partial_at: 10\n    success:\n      - flag:\n          of: self\n          key: touched\n          value: true\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
-        }
-        "a nested partial_at without partial" => {
-            "\n  - id: press\n    when:\n      verb: press\n    do:\n      - check:\n          total: 2d6 + self.vigor\n          success_at: 10\n          partial_at: 7\n          success:\n            - flag:\n                of: self\n                key: touched\n                value: true\n"
-        }
-        "partial without a check" => {
-            "\n  - id: press\n    when:\n      verb: press\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
-        }
-        other => panic!("unknown partial fault {other}"),
-    };
-    let pack = table::pack(world).to_path_buf();
-    append_verbs(&pack, row);
-    support::stamp_pack_rev(&pack);
 }
 
 #[then(expr = "Mira is touched and clean")]
@@ -607,7 +575,7 @@ fn the_check_outcome_is_not(world: &mut World, outcome: String) {
 fn prepare_press(world: &mut World, base: i64, sit: bool) {
     let pack = copy_pack("docks", "press");
     world.pack = Some(pack.clone());
-    append_verbs(&pack, PRESS_ROW);
+    common::add_verb(&pack, PRESS_ROW);
     insert_mira_flags(&pack, PRESS_FLAGS);
     set_vigor(&pack, "rowan", base);
     super::common::edit_save(&pack, |now| {

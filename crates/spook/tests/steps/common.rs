@@ -89,6 +89,77 @@ pub(crate) fn replace_in_file(path: &Path, from: &str, to: &str) {
     fs::write(path, text.replacen(from, to, 1)).unwrap();
 }
 
+/// Adds `actor` to the save as a pc in the shop, whether or not the cast has them.
+fn add_saved_actor(pack: &Path, actor: &str) {
+    let acts = "last_act_round: 0\n      idle_acts_this_window: 0\n      live_acts_this_window: 0";
+    for (after, row) in [
+        ("    aldric: npc\n", format!("    {actor}: pc\n")),
+        (
+            "    aldric: docks_shop\n",
+            format!("    {actor}: docks_shop\n"),
+        ),
+        ("  acts:\n", format!("    {actor}:\n      {acts}\n")),
+    ] {
+        let path = pack.join("state/save.yaml");
+        replace_in_file(&path, after, &format!("{after}{row}"));
+    }
+}
+
+/// Writes `text` to the pack file at `file`, making its folder when the pack has none.
+fn write_file(pack: &Path, file: &str, text: &str) {
+    let path = pack.join(file);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, text).unwrap();
+}
+
+/// Writes `story/tide.yaml`: one rule, `mark`, that watches the world's tide turn, with
+/// `fields` written after its `when`.
+pub(crate) fn write_tide_story(pack: &Path, fields: &str) {
+    let when = "when:\n      change:\n        flag: tide_turned\n        becomes: true";
+    let text = format!("schema: story\nid: tide\nrules:\n  - id: mark\n    {when}\n{fields}");
+    write_file(pack, "story/tide.yaml", &text);
+}
+
+/// The body of a verb rule that sets the world flag `tide_turned`, which makes `mark` in
+/// `story/tide.yaml` a world change rule.
+const TURN_TIDE: &str = "    do:\n      - flag: { of: world, key: tide_turned, value: true }\n";
+
+/// Writes `rules/modifiers.yaml` with these rows.
+fn write_modifiers(pack: &Path, rows: &str) {
+    let text = format!("schema: modifiers\nmodifiers:\n{rows}");
+    write_file(pack, "rules/modifiers.yaml", &text);
+}
+
+/// Writes `world/meters.yaml` with one meter, `dawn`.
+fn write_world_dawn(pack: &Path) {
+    let text = format!(
+        "schema: meters\nmeters:\n{}",
+        format_meter_row("dawn", None)
+    );
+    write_file(pack, "world/meters.yaml", &text);
+}
+
+/// A meters list row for meter `id`, from 0 to 6 at base 0, with its `hidden` key when it
+/// has one.
+pub(crate) fn format_meter_row(id: &str, hidden: Option<bool>) -> String {
+    let hidden = hidden.map_or(String::new(), |hidden| format!("    hidden: {hidden}\n"));
+    format!("  - id: {id}\n    min: 0\n    base_cap: 6\n    max: 6\n    base: 0\n{hidden}")
+}
+
+/// Appends verb rule `verb`, for the verb of the same id, with `body` after its `when`.
+fn add_verb_rule(pack: &Path, verb: &str, body: &str) {
+    add_verb(
+        pack,
+        &format!("\n  - id: {verb}\n    when:\n      verb: {verb}\n{body}"),
+    );
+}
+
+/// Gives the `ending` story a `meters:` list of this one meter.
+fn declare_ending_meter(pack: &Path, meter: &str) {
+    let meters = format!("id: ending\nmeters:\n{}", format_meter_row(meter, None));
+    replace_in_file(&pack.join("story/ending.yaml"), "id: ending\n", &meters);
+}
+
 fn break_pack(pack: &Path, fault: &str) {
     match fault {
         "missing when" => replace_in_file(
@@ -147,19 +218,7 @@ fn break_pack(pack: &Path, fault: &str) {
             // inserting one 0 changes the stored hash.
             fs::write(path, text).unwrap();
         }
-        "an actor the cast lacks" => {
-            let path = pack.join("state/save.yaml");
-            for (after, ghost) in [
-                ("    aldric: npc\n", "    ghost: pc\n"),
-                ("    aldric: docks_shop\n", "    ghost: docks_shop\n"),
-                (
-                    "  acts:\n",
-                    "    ghost:\n      last_act_round: 0\n      idle_acts_this_window: 0\n      live_acts_this_window: 0\n",
-                ),
-            ] {
-                replace_in_file(&path, after, &format!("{after}{ghost}"));
-            }
-        }
+        "an actor the cast lacks" => add_saved_actor(pack, "ghost"),
         "a control type with two keys" => replace_in_file(
             &pack.join("state/save.yaml"),
             "    aldric: npc\n",
@@ -274,6 +333,147 @@ fn break_pack(pack: &Path, fault: &str) {
             &pack.join("world/places/gate_yard.md"),
             "          of: world\n          key: passage\n",
             "          of: target\n          key: passage\n",
+        ),
+        "a meter on the wrong actor" => replace_in_file(
+            &pack.join("cast/bram.md"),
+            "  eligible: true\n",
+            "  eligible: true\nrules:\n  - id: tally_shop_day\n    when: habit\n    do:\n      - meter: { of: self, key: shop_day, add: 1 }\n",
+        ),
+        "a cast meter that is global" => {
+            let meters = format!("meters:\n{}", format_meter_row("vigor", None));
+            replace_in_file(&pack.join("cast/mira.md"), "meters:\n", &meters);
+        }
+        "a meter its actor lacks" => {
+            write_world_dawn(pack);
+            replace_in_file(
+                &pack.join("cast/mira.md"),
+                "rules:\n",
+                "rules:\n  - id: bump_dawn\n    when: habit\n    do:\n      - meter: { of: self, key: dawn, add: 1 }\n",
+            );
+        }
+        "self in a world change rule" => {
+            add_verb_rule(pack, "turn_tide", TURN_TIDE);
+            let fields = "    do:\n      - flag: { of: self, key: saw_tide, value: true }\n";
+            write_tide_story(pack, fields);
+        }
+        "a check in a world change rule" => {
+            add_verb_rule(pack, "turn_tide", TURN_TIDE);
+            write_tide_story(pack, "    check:\n      total: 2d6\n      success_at: 7\n");
+        }
+        "a narrate with no to" => add_verb_rule(
+            pack,
+            "ring",
+            "    do:\n      - narrate: { text: The bell rings. }\n",
+        ),
+        "a room narrate of a known fact" => write_file(
+            pack,
+            "story/secret.yaml",
+            "schema: story\nid: secret\nrules:\n  - id: tell\n    when:\n      change:\n        knows: fact_ledger\n    do:\n      - narrate: { to: here, text: A secret moved. }\n",
+        ),
+        "max_stacks 0" => write_modifiers(
+            pack,
+            "  - id: fatigue\n    meter: vigor\n    max_stacks: 0\n",
+        ),
+        "a modifier of no meter" => write_modifiers(pack, "  - id: chill\n    meter: warmth\n"),
+        "a modifier for 0 ticks" => {
+            write_modifiers(pack, "  - id: numb\n    meter: vigor\n");
+            add_verb_rule(
+                pack,
+                "numbing",
+                "    do:\n      - modifier: { to: self, id: numb, add: -1, ticks: 0 }\n",
+            );
+        }
+        "a modifier listed twice" => write_modifiers(
+            pack,
+            "  - id: fatigue\n    meter: vigor\n    max_stacks: 4\n  - id: fatigue\n    meter: vigor\n",
+        ),
+        "an undefined modifier" => add_verb_rule(
+            pack,
+            "scorch",
+            "    do:\n      - modifier: { to: self, id: scorch, add: -1, ticks: 10 }\n",
+        ),
+        "an undeclared story flag" => {
+            write_file(pack, "story/siege.yaml", "schema: story\nid: siege\nrules:\n");
+            add_verb_rule(
+                pack,
+                "set_mark",
+                "    do:\n      - flag: { of: \"story:siege\", key: walls_breached, value: true }\n",
+            );
+        }
+        "a story meter the world declares" => {
+            write_world_dawn(pack);
+            declare_ending_meter(pack, "dawn");
+        }
+        "a story meter a cast declares" => declare_ending_meter(pack, "shop_day"),
+        "a story meter on the wrong story" => {
+            declare_ending_meter(pack, "dread");
+            write_file(
+                pack,
+                "story/prologue.yaml",
+                "schema: story\nid: prologue\nrules:\n  - id: on_oil\n    when:\n      change:\n        item: lamp_oil\n        gained: true\n    do:\n      - meter: { of: \"story:prologue\", key: dread, add: 1 }\n",
+            );
+        }
+        "an undeclared place meter" => add_verb_rule(
+            pack,
+            "bump",
+            "    do:\n      - meter: { of: \"place:docks_street\", key: light, add: 1 }\n",
+        ),
+        "a repeated story id" => {
+            write_file(pack, "story/later.yaml", "schema: story\nid: ending\nrules:\n");
+        }
+        "an empty story id" => {
+            replace_in_file(&pack.join("story/ending.yaml"), "id: ending\n", "id: \"\"\n");
+        }
+        "a walker on a missing exit" => replace_in_file(
+            &pack.join("state/save.yaml"),
+            "    rowan: docks_shop\n",
+            "    rowan: exit:docks_shop.ladder\n",
+        ),
+        "a verb named cancel" => replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "      verb: wait\n",
+            "      verb: cancel\n",
+        ),
+        "a saved item with no definition" => replace_in_file(
+            &pack.join("state/save.yaml"),
+            "      tonic: 1\n",
+            "      tonic: 1\n      ghost: 1\n",
+        ),
+        "partial_at without partial" => add_verb_rule(
+            pack,
+            "press",
+            "    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n      partial_at: 7\n    do:\n      - flag: { of: self, key: touched, value: true }\n",
+        ),
+        "partial without partial_at" => add_verb_rule(
+            pack,
+            "press",
+            "    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n    partial:\n      - flag: { of: self, key: halfway, value: true }\n",
+        ),
+        "partial_at above success_at" => add_verb_rule(
+            pack,
+            "press",
+            "    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n      partial_at: 10\n    success:\n      - flag: { of: self, key: touched, value: true }\n    partial:\n      - flag: { of: self, key: halfway, value: true }\n",
+        ),
+        "a nested partial_at without partial" => add_verb_rule(
+            pack,
+            "press",
+            "    do:\n      - check:\n          total: 2d6 + self.vigor\n          success_at: 10\n          partial_at: 7\n          success:\n            - flag: { of: self, key: touched, value: true }\n",
+        ),
+        "partial without a check" => add_verb_rule(
+            pack,
+            "press",
+            "    partial:\n      - flag: { of: self, key: halfway, value: true }\n",
+        ),
+        "a cast id world" => write_file(
+            pack,
+            "cast/world.md",
+            "---\nschema: cast\nid: world\ncontrol_type: npc\nname: World\nidle:\n  eligible: false\n---\nReserved.\n",
+        ),
+        "a saved actor world" => add_saved_actor(pack, "world"),
+        "a reveal of a missing fact" => add_verb_rule(
+            pack,
+            "bad",
+            "    do:\n      - reveal: { to: self, fact: missing_fact }\n",
         ),
         other => panic!("unknown fault {other}"),
     }

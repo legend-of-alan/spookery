@@ -10,18 +10,6 @@ Feature: Meters belong to their entity
     And the GM sees shop_day on Mira's meters
     And rowan's view does not list it
 
-  Scenario: The pack check refuses a rule that writes a scoped meter on the wrong actor
-    Given cast/mira.md declares a "shop_day" meter
-    And Bram has a habit that adds 1 to his own shop_day
-    When the author runs spook check
-    Then it refuses Bram's habit, saying only Mira carries shop_day
-
-  Scenario: A scoped meter id that is already global is refused
-    Given rules/meters.yaml defines "vigor"
-    And cast/mira.md also declares a "vigor" meter
-    When the author runs spook check
-    Then it refuses the second vigor
-
   Scenario: A player in the same room does not see another actor's meter change
     Given rowan and Mira stand in the shop
     When Mira's habit adds 1 to her shop_day
@@ -44,13 +32,6 @@ Feature: Meters belong to their entity
     Then dawn is 0, held once by the world
     And no actor carries a dawn meter
     And the vigil's change rule fires once
-
-  Scenario: A rule naming a meter its entity does not carry is refused
-    Given world/meters.yaml declares a "dawn" meter
-    And Mira carries no dawn meter
-    And Mira has a habit that adds 1 to meter dawn of "self"
-    When the author runs spook check
-    Then it refuses Mira's habit, saying Mira carries no dawn meter
 
   Scenario: The world and an actor may each have a meter with the same name
     Given world/meters.yaml declares a "dawn" meter at 6
