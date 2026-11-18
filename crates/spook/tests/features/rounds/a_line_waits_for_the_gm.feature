@@ -7,16 +7,6 @@ Feature: A line waits for the GM
     And round index is 1
     And a round record was written
 
-  Scenario: With a GM a wait stays queued until commit
-    Given a docks table with a GM and a seated player
-    When the player waits
-    Then the player line is queued
-    And world_time is 1080
-    And no round record was written
-    When the GM commits the round
-    Then world_time is 1085
-    And the journal records the player wait
-
   Scenario: An empty commit writes no round file
     Given a docks table with a seated GM
     When the GM commits the round

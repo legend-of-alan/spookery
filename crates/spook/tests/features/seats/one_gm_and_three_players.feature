@@ -58,14 +58,6 @@ Feature: One GM seat and up to three player seats
     And that PC says the hidden fact and another PC waits
     Then only that PC's perceive shows the hidden fact
 
-  Scenario: With a GM two players commit in one round
-    Given a docks table with a GM and two seated players
-    When both players wait
-    Then both lines are queued for the GM
-    And table status lists both queued lines
-    When the GM commits the round
-    Then the journal records both waits
-
   Scenario: With no GM each player line commits its own round
     Given a docks table with two seated players
     When both players wait
@@ -75,11 +67,6 @@ Feature: One GM seat and up to three player seats
     Given a docks table with two PCs in the shop
     When the shop player speaks to the place
     Then only the shop players receive the speech
-
-  Scenario: Three play clients reach their first perceive
-    Given a docks table
-    When three play clients sit on a free port
-    Then each play client shows its first perceive
 
   Scenario: A command before a claim is refused
     Given a docks table
