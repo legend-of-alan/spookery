@@ -53,7 +53,8 @@ Feature: The AI GM connects as the GM
     When the player says hello
     Then the tape from is gm
     And the tape contains the text "evening"
-    And the GM's own speech did not call the model
+    When the player says "bye"
+    Then the GM's own speech did not call the model
     And world_time is 1080
 
   Scenario: Travel still commits one round after a model transport error
