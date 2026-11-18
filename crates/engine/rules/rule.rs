@@ -128,19 +128,20 @@ impl Rule {
     }
 }
 
-/// What one slot of a rule or exit line names. The word `target` stands for whatever the move
-/// targets, so it is kept apart from the owners and items it could name.
+/// What one slot of a rule or exit line names, borrowed from that line (`'l`). The word
+/// `target` stands for whatever the move targets, so it is kept apart from the owners and items
+/// it could name.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Slot<'a> {
+pub(crate) enum Slot<'l> {
     /// An owner other than `target`.
     Owner(grammar::Object),
     /// An item id other than `target`.
-    Item(&'a str),
+    Item(&'l str),
     /// The word `target`, with what the move must target for it to name something.
     Target(TargetKind),
 }
 
-impl<'a> Slot<'a> {
+impl<'l> Slot<'l> {
     fn from_owner(of: &grammar::Object) -> Self {
         match of {
             grammar::Object::Actor(actor) => Slot::from_actor(actor),
@@ -155,7 +156,7 @@ impl<'a> Slot<'a> {
         }
     }
 
-    fn from_item_id(id: &'a str) -> Self {
+    fn from_item_id(id: &'l str) -> Self {
         match id {
             "target" => Slot::Target(TargetKind::Item),
             id => Slot::Item(id),
@@ -165,11 +166,11 @@ impl<'a> Slot<'a> {
 
 /// Every slot `conds` and `costs` fill, and every owner `exprs` read, as `a number`, with each
 /// slot's key as written: `subject:`, `id:` and `of:` on a condition, and a cost's `items:`.
-pub(crate) fn collect_slots<'a>(
-    conds: &'a [Cond],
-    costs: impl IntoIterator<Item = &'a Cost>,
+pub(crate) fn collect_slots<'l>(
+    conds: &'l [Cond],
+    costs: impl IntoIterator<Item = &'l Cost>,
     exprs: Vec<&Expr>,
-) -> Vec<(&'static str, Slot<'a>)> {
+) -> Vec<(&'static str, Slot<'l>)> {
     let mut slots = Vec::new();
     for cond in conds {
         cond.visit(|cond| match cond {
