@@ -42,18 +42,18 @@ pub(crate) fn eval_with_dice(
     Ok(eval_with_label(context, expr, dice, "")?.value)
 }
 
-/// Roll a rule's `let:` in written order on `dice`, each number reading the names above it. A
-/// name whose number rolls writes its dice line with the name in front.
+/// Roll a rule's `let:` in written order on `dice`, each number reading the ids above it. An
+/// id whose number rolls writes its dice line with the id in front.
 pub(crate) fn roll_lets(
     context: &Context,
     lets: &[(String, Expr)],
     dice: &mut dyn Dice,
 ) -> Result<Vec<LetValue>, Reason> {
     let mut values = Vec::new();
-    for (name, expr) in lets {
-        let step = eval_with_label(&context.bind(&values), expr, dice, &format!("{name}: "))?;
+    for (id, expr) in lets {
+        let step = eval_with_label(&context.bind(&values), expr, dice, &format!("{id}: "))?;
         values.push(LetValue {
-            name: name.clone(),
+            id: id.clone(),
             value: step.value,
             faces: step.faces,
         });
@@ -61,11 +61,11 @@ pub(crate) fn roll_lets(
     Ok(values)
 }
 
-/// Whether `word` can be a `let:` name: a bare word that a number reads back as that name, and
+/// Whether `word` can be a `let:` id: a bare word that a number reads back as that id, and
 /// not an owner word such as `self` or `world` or a call such as `min` or `high`.
-pub(crate) fn is_let_name(word: &str) -> bool {
+pub(crate) fn is_let_id(word: &str) -> bool {
     let read = Expr::Let {
-        name: word.to_string(),
+        id: word.to_string(),
         keep: None,
     };
     let cast_id = matches!(
@@ -76,10 +76,10 @@ pub(crate) fn is_let_name(word: &str) -> bool {
     Expr::parse(word) == Ok(read) && cast_id && !call
 }
 
-/// One `let:` name as the rule rolled it: its value, and its faces when its number is one dice
+/// One `let:` id as the rule rolled it: its value, and its faces when its number is one dice
 /// group, for `high` and `low` to read.
 pub(crate) struct LetValue {
-    pub name: String,
+    pub id: String,
     pub value: i64,
     pub faces: Vec<u32>,
 }
@@ -142,9 +142,9 @@ fn eval_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Eval
             })
         }
         Expr::Meter { of, key, .. } => Ok(EvalStep::from(read_meter(context, of, key)?)),
-        Expr::Let { name, keep } => {
+        Expr::Let { id, keep } => {
             let stored = (context.lets.iter())
-                .find(|stored| stored.name == *name)
+                .find(|stored| stored.id == *id)
                 .ok_or(Reason::Schema)?;
             Ok(EvalStep::from(match keep {
                 Some(_) => keep_faces(&stored.faces, *keep)?,
@@ -341,10 +341,10 @@ pub enum Expr {
         left: Box<Expr>,
         right: Box<Expr>,
     },
-    /// A read of a rule's `let:` name: its value, or with `keep`, the highest or lowest face of
+    /// A read of a rule's `let:` id: its value, or with `keep`, the highest or lowest face of
     /// its one dice group.
     Let {
-        name: String,
+        id: String,
         keep: Option<Keep>,
     },
 }
@@ -618,10 +618,10 @@ impl<'a> Parser<'a> {
         if (word == "high" || word == "low") && self.eat('(') {
             let keep = if word == "low" { Keep::Low } else { Keep::High };
             self.skip_whitespace();
-            let name = self.ident()?;
+            let id = self.ident()?;
             self.eat_closing_parenthesis()?;
             return Ok(Expr::Let {
-                name,
+                id,
                 keep: Some(keep),
             });
         }
@@ -632,7 +632,7 @@ impl<'a> Parser<'a> {
         let owner_and_key = &self.src[start..self.pos];
         if owner_and_key == word {
             return Ok(Expr::Let {
-                name: word,
+                id: word,
                 keep: None,
             });
         }

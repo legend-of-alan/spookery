@@ -17,7 +17,7 @@ pub(crate) struct Context<'c, 'a> {
     /// Who is seated, for the `players:` condition and NPC habits.
     pub presence: &'a Presence,
     pub intent: &'a Intent,
-    /// The rule's `let:` values rolled so far, which its numbers read by name.
+    /// The rule's `let:` values rolled so far, which its numbers read by id.
     pub lets: &'a [LetValue],
 }
 

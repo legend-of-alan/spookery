@@ -14,8 +14,8 @@ pub struct Rule {
     pub owner: Owner,
     pub when: When,
     pub if_: Vec<Cond>,
-    /// `let:`: each name and the number it stores, in the order written. They roll first, and
-    /// the rule's check, effects and later names read them by name.
+    /// `let:`: each id and the number it stores, in the order written. They roll first, and
+    /// the rule's check, effects and later ids read them by id.
     pub lets: Vec<(String, Expr)>,
     pub check: Option<Check>,
     /// Paid when the action starts. Its `cost` is the rule's `cost`, whose ticks are how long
