@@ -56,14 +56,14 @@ fn render_scrollback(scrollback: &[Speech]) -> String {
     )
 }
 
-/// Readable text for the messages of one sitting.
+/// Turns the messages of one sitting into readable text.
 #[derive(Default)]
-pub struct PlayerText {
+pub struct Renderer {
     seen_resume: bool,
     after_scrollback: bool,
 }
 
-impl PlayerText {
+impl Renderer {
     pub fn new() -> Self {
         Self::default()
     }
@@ -422,26 +422,9 @@ pub fn render_gm(body: &ServerBody) -> String {
 
 pub fn render_check(roll: &Roll) -> String {
     let Roll {
-        faces,
-        stat,
         total,
-        target,
+        success_at,
         outcome,
     } = roll;
-    let outcome = outcome.as_str();
-    let dice = faces
-        .iter()
-        .map(u32::to_string)
-        .collect::<Vec<_>>()
-        .join(" + ");
-    let sign = if *stat >= 0 {
-        format!("+{stat}")
-    } else {
-        stat.to_string()
-    };
-    if dice.is_empty() {
-        format!("Roll: {sign} = {total} vs {target}, {outcome}")
-    } else {
-        format!("Roll: {dice}, {sign} = {total} vs {target}, {outcome}")
-    }
+    format!("Roll: {total} vs {success_at}, {}", outcome.as_str())
 }

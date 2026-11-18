@@ -16,7 +16,6 @@ A place, item, cast member or story may have `name`, the name a player sees. Wit
 | `rules/verbs.yaml` | Shared verb rules. Tag `verbs`. |
 | `rules/meters.yaml` | The meters every actor carries. Tag `meters`. |
 | `rules/modifiers.yaml` | Optional. Modifiers that move an actor's meter for a while. Tag `modifiers`. |
-| `rules/checks.yaml` | Check definitions. Tag `checks`. |
 | `rules/budget.yaml` | Round budgets and the idle policy. Tag `budget`. |
 | `world/places/<id>.md` | One place: facts, exits, the meters and flags only it carries, and that place's rules. |
 | `world/items/<id>.md` | One item: name, tags, prose, and that item's rules. |
@@ -393,7 +392,7 @@ A pack line reads as a clause. Each word keeps one part of speech and one role:
 | `at` | preposition | when or where: a time or a place |
 | `via` | preposition | the way through |
 
-**One role per preposition.** A preposition is used only for the role it fits, and a word never changes role from one line to the next. `for` and `by` are not used. The number a roll has to beat is `threshold`, never `target`, because `target` is only ever the thing the verb acts on. `grammar::Object` in Rust is any grammatical object a line names, including but not limited to a direct object, an indirect object or the object of a preposition.
+**One role per preposition.** A preposition is used only for the role it fits, and a word never changes role from one line to the next. `for` and `by` are not used. The number a check has to reach is `success_at`, never `target`, because `target` is only ever the thing the verb acts on. `grammar::Object` in Rust is any grammatical object a line names, including but not limited to a direct object, an indirect object or the object of a preposition.
 
 The arrival in `tests/packs/docks/story/ending.yaml`:
 
@@ -420,9 +419,9 @@ The strike in `tests/packs/docks/rules/verbs.yaml`:
     when:
       verb: strike
       target: actor
-    roll:
-      check: strike
-      threshold: 38
+    check:
+      total: 1d20 + self.might
+      success_at: 38
       partial_at: 32
     success:
       - meter:
@@ -431,7 +430,7 @@ The strike in `tests/packs/docks/rules/verbs.yaml`:
           add: "-(self.might / 10)"
 ```
 
-reads as *the subject strikes an actor (the target): roll strike against 38, and on a success subtract might of self over 10 from hp of the target.* The subject is whoever played the move, written `self`. `target: actor` says what the verb acts on; `of: target` says the hp belongs to it.
+reads as *the subject strikes an actor (the target): roll 1d20 plus might of self, succeed at 38, and on a success subtract might of self over 10 from hp of the target.* The subject is whoever played the move, written `self`. `target: actor` says what the verb acts on; `of: target` says the hp belongs to it.
 
 The take in the same file:
 
@@ -465,21 +464,21 @@ Mira's restock in `tests/packs/docks/cast/mira.md`:
 
 reads as *while the day is from tick 480 to tick 960, add 4 lamp_oil of place:docks_shop.* A cycle window is `from` inclusive and `to` exclusive: tick 480 is inside it and tick 960 is not.
 
-In the `shrug` rule below, `resist: { subject: target, check: nerve, threshold: 4 }` on a nerve loss of self reads as *unless the target resists: the target rolls nerve against 4.* In `resist`, `subject` is the actor who rolls to resist, not the subject of the outer line; omitted, it is the move's `target`.
+In the `shrug` rule below, `resist: { subject: target, total: 2d6 + target.nerve, success_at: 4 }` on a nerve loss of self reads as *unless the target resists: the target rolls 2d6 plus its nerve, and succeeds at 4.* In `resist`, `subject` is the actor who rolls to resist, not the subject of the outer line; omitted, it is the move's `target`.
 
-In the `give_oil` rule below, the resist's `threshold: "self.nerve + 2"` reads as *nerve of self, plus 2*: in an [expression](spec.md) the owner comes first, then its meter.
+In the `give_oil` rule below, the resist's `success_at: "self.nerve + 2"` reads as *nerve of self, plus 2*: in an [expression](spec.md) the owner comes first, then its meter.
 
-A roll's total is its check's dice plus the rolling actor's stat meter, compared to `threshold` (`crates/engine/rules/roll.rs`):
+A check's `total`, `success_at` and `partial_at` are each a number, and each may roll dice (`crates/engine/rules/roll.rs`):
 
-- `total >= threshold` is a success.
-- `partial_at <= total < threshold` is a partial, only when the roll sets `partial_at`.
-- Any lower total is a miss. A roll without `partial_at` is a success or a miss.
+- `total >= success_at` is a success.
+- `partial_at <= total < success_at` is a partial, only when the check sets `partial_at`.
+- Any lower total is a miss. A check without `partial_at` is a success or a miss.
 
-The check rolls when the move lands, after the gate admits it and its start cost is paid. A defense is written in the rule: a threshold such as `"2d6 + target.vigor"` rolls its own dice and reads the target's meters. A resist roll has no partial band: on a success the effect is shrugged off and its `resisted` list runs in its place, and on a miss the effect lands.
+The check rolls when the move lands, after the gate admits it and its start cost is paid: `total`, then `success_at`, then `partial_at`, each writing its own dice line. A defense is written in the rule: a `success_at` such as `"2d6 + target.vigor"` rolls its own dice and reads the target's meters. A resist roll has no partial band: on a success the effect is shrugged off and its `resisted` list runs in its place, and on a miss the effect lands.
 
 ### Rule fields
 
-A rule has `id`, `when`, and `do`. It may have `if`, `cost`, `start`, `finish`, `cooldown`, `cancellable`, `roll`, `success`, `partial`, and `miss`.
+A rule has `id`, `when`, and `do`. It may have `if`, `cost`, `start`, `finish`, `cooldown`, `cancellable`, `check`, `success`, `partial`, and `miss`.
 
 `when` is `habit`, a map with `verb` and `target`, or a map with `change`. `target` is `none`, `actor`, `place`, `exit`, or `item`. An omitted `target` means `none`. `say` is speech, so that id is not a rule. A built-in player command, such as `say` or `look`, cannot be a verb. `when` has one of `verb` or `change`, not both.
 
@@ -494,9 +493,9 @@ A change rule fires when its watch becomes true. It does not fire again while th
 | Item | `item` is an item id, with `gained: true` or `lost: true`. |
 | Knows | `knows` is a fact id. The watch is that fact becoming known. |
 
-A change rule has no `cost`, `start`, `finish`, `cooldown`, or `cancellable`. Check rejects them. It may have `if`, `roll`, and the outcome lists. `if` is read after the change.
+A change rule has no `cost`, `start`, `finish`, `cooldown`, or `cancellable`. Check rejects them. It may have `if`, `check`, and the outcome lists. `if` is read after the change.
 
-Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. The subject is the actor whose value changed. A flag or meter of the world, a place, a story or an exit has no subject, so a rule watching one runs once per change, whoever is seated, and check refuses `self`, `here`, `location`, and `roll` in it: name the actor, or `world`. A flag counts as the world's when a rule sets it with `of: world`; a world flag only the save sets is not checked, and a `self` there is refused when the rule runs. A key the world and an actor both carry fires the rule for each, and `TRIGGER_LEAK` reads it as an actor's change. Change rules run right after each action starts and right after each one finishes, so a rule sees every action's change and can change the world before the next action in the round. A walk fires `leave` at its start and `arrive` at its finish. Two changes to one key inside one action count as one. They run once more at the end of the round, after doors open. `max_trigger_depth` in `rules/budget.yaml` caps the passes each time they run. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
+Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. The subject is the actor whose value changed. A flag or meter of the world, a place, a story or an exit has no subject, so a rule watching one runs once per change, whoever is seated, and check refuses `self`, `here`, `location`, and `check` in it: name the actor, or `world`. A flag counts as the world's when a rule sets it with `of: world`; a world flag only the save sets is not checked, and a `self` there is refused when the rule runs. A key the world and an actor both carry fires the rule for each, and `TRIGGER_LEAK` reads it as an actor's change. Change rules run right after each action starts and right after each one finishes, so a rule sees every action's change and can change the world before the next action in the round. A walk fires `leave` at its start and `arrive` at its finish. Two changes to one key inside one action count as one. They run once more at the end of the round, after doors open. `max_trigger_depth` in `rules/budget.yaml` caps the passes each time they run. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
 
 `if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `subject` on `has_item`, `at`, `knows`, and `wielding` is the subject of that verb: `has_item: { subject: self, id: key }` reads as *self has the key*. It is an actor: `self`, `target`, or an actor id; check refuses any other owner on that word's line. `of` on a meter, flag, or item is the owner whose value or count the line reads or changes: `self`, `target`, `here`, `world`, `place:<id>`, `story:<id>`, `exit:<place>.<exit>`, or an actor id. An exit holds only its flag `open`. An owner `target`, in a slot or a number such as `target.hp`, is the move's target, and check refuses it unless the rule targets an actor. On `has_item`, `wielding`, an item effect, `wield`, and a cost's `items`, `id: target` is the intent's target, and check refuses it unless the rule targets an item. A habit and a change rule target nothing, and an exit's `if` and `cost` cannot say `target`. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `id`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are ticks below the cycle's length and they differ; check compares them when they are integers, and a bound read from a meter that falls outside the cycle refuses the move `OUT_OF_RANGE`.
 
@@ -504,7 +503,7 @@ Every move but `say` is an action that starts and finishes. `cost` is what the s
 
 `start.counts_as_act` says whether the start uses the actor's act this round. Omitted, it is `true`. An NPC that has used its act sits out its habits that round, so a drink with `counts_as_act: false` leaves the act for one. `finish` may have `cost`, in `meters` and `items`, paid when the action finishes, and `counts_as_act`, which is `false` when omitted. A finish cost with `ticks` is rejected. Every effect lands at the finish, a timed walk's arrival and a timed teleport among them. `cooldown` is the ticks the actor stays busy after the finish. Omitted, it is 0. `cancellable: true` lets a player send the built-in command `cancel` while the action is under way: the action is dropped, its start cost is not refunded, and it never finishes. Omitted, it is `false`, and `cancel` is refused `INELIGIBLE`. A walk is never cancelled, whatever its rule says. The `chant` rule below takes five ticks, then three more to recover, and may be cancelled.
 
-`roll` names a `check` and a `threshold`. `partial_at` is an absolute total, strictly below a literal threshold, and it needs a `partial` list. `do` runs on every band. `success`, `partial`, and `miss` run on that band. A yield is `do: []` with no outcome lists.
+`check` has a `total` and a `success_at`. `partial_at` is an absolute total, strictly below `success_at` when both are integers, and it needs a `partial` list. Outcome lists need a `check`, and a `partial` or `miss` list needs a `success` list. `do` runs on every band. `success`, `partial`, and `miss` run on that band. A yield is `do: []` with no outcome lists.
 
 A number is an integer or an [expression](spec.md). A number in a condition or a cost cannot roll dice: check refuses it on its line.
 
@@ -564,9 +563,9 @@ rules:
         nerve: 1
       items:
         oil: 1
-    roll:
-      check: nerve
-      threshold: "6 + 2"
+    check:
+      total: 2d6 + self.nerve
+      success_at: "6 + 2"
       partial_at: 4
     do:
       - narrate:
@@ -635,8 +634,8 @@ rules:
           add: -1
           resist:
             subject: target
-            check: nerve
-            threshold: 4
+            total: 2d6 + target.nerve
+            success_at: 4
             resisted:
               - narrate:
                   to: self
@@ -708,8 +707,8 @@ rules:
           max: 4
           resist:
             subject: self
-            check: nerve
-            threshold: "self.nerve + 2"
+            total: 2d6 + self.nerve
+            success_at: "self.nerve + 2"
             resisted: []
 
   - id: show_stair
@@ -760,7 +759,7 @@ rules:
 
 `base` is the base a new meter takes on its entity when `spook migrate` runs, and migrate drops a meter from an entity the pack no longer gives it. A save that lacks a meter the pack gives an entity, with no migrate to add it, is refused. So is a save that lists a meter on an entity the pack does not give it, with no migrate to drop it.
 
-A meter effect, condition or read whose `of` is fixed by the pack names one entity: `world`, `place:<id>`, `story:<id>`, an actor id, or `self` on a cast member's own habit. Check refuses one that names a meter that entity does not carry. `target` and other entities known only at play time are not guessed. A check's `meter` is one every actor carries.
+A meter effect, condition or read whose `of` is fixed by the pack names one entity: `world`, `place:<id>`, `story:<id>`, an actor id, or `self` on a cast member's own habit. Check refuses one that names a meter that entity does not carry. `target` and other entities known only at play time are not guessed.
 
 Visibility: the GM sees every meter change. An actor's meter change is shown to that actor only, not to others in the same place. A world meter is hidden from players unless its row says `hidden: false`; then every player sees its changes and its current value in their view. A story or place meter is hidden the same way; with `hidden: false` every player sees a story meter's changes, and the players standing in a place see that place's, but neither is listed in a view. `hidden: true` keeps an actor's meter off that actor's own view. A flag change, on an actor, a place, a story or the world, is never shown to a player: use a meter with `hidden: false` or a fact for state players should see.
 
@@ -808,20 +807,6 @@ modifiers:
     hidden: true
 ```
 
-## Checks
-
-`meter` is a meter id. `dice.count` and `dice.sides` are the check's dice. A rule's target and partial band are expressions.
-
-```yaml file=rules/checks.yaml
-schema: checks
-checks:
-  - id: nerve
-    dice:
-      count: 2
-      sides: 6
-    meter: nerve
-```
-
 ## Budget
 
 `idle` is `on` or `off`. Omitted means `on`. Omitted counters use the engine defaults. Game time is counted in ticks, and players and the GM see plain ticks. `cycles` names each cycle a `cycle` condition reads, with its length in ticks; it may be left out. `idle_acts_per_window` caps an actor's idle acts in each window of `idle_act_window_ticks` ticks, and `live_acts_per_window` caps its live acts in each window of `live_act_window_ticks` ticks. `round_every_real_seconds` is real seconds between wakes, `idle_ticks_per_round` and `live_ticks_per_round` are the ticks one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_ticks_per_real_hour` is the ticks one real hour of absence may write. A move past `max_intents_applied` or `max_npcs_acting` is refused `BUDGET`, and so is a rule that goes over `max_state_keys_mutated` and every move after it that round. The file below sets them.
@@ -853,7 +838,7 @@ max_trigger_depth: 4
 
 One effect under each dash. The rules in `rules/verbs.yaml` are the examples. `step_through` on the yard is the `location.to` example.
 
-`resist` on `meter`, `flag`, `item`, or `narrate` names `subject`, `check`, `threshold`, and `resisted`. `subject` is an actor, as on a condition. An omitted `subject` is the move's `target`, so check refuses it unless the rule targets an actor. `resist: same` reuses the previous resist roll in that list. `do` counts for the lists after it. Check rejects `resist: same` when no earlier effect in that run has rolled a resist.
+`resist` on `meter`, `flag`, `item`, or `narrate` names `subject`, `total`, `success_at`, and `resisted`, and rolls as a check with no partial band. `subject` is an actor, as on a condition. An omitted `subject` is the move's `target`, so check refuses it unless the rule targets an actor. `resist: same` reuses the previous resist roll in that list. `do` counts for the lists after it. Check rejects `resist: same` when no earlier effect in that run has rolled a resist.
 
 `location.via` names an exit from the actor's current place. `travel` uses `via: target`, which needs a rule that targets an exit. `location.to` names a place, or `target`, which needs a rule that targets a place. Playing `to` without `teleport: true` is refused. `teleport: true` in `rules/verbs.yaml` is a warning.
 

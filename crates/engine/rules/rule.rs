@@ -11,7 +11,7 @@ pub struct Rule {
     pub owner: Owner,
     pub when: When,
     pub if_: Vec<Cond>,
-    pub roll: Option<RollSpec>,
+    pub check: Option<Check>,
     /// Paid when the action starts. Its `cost` is the rule's `cost`, whose ticks are how long
     /// the action takes.
     pub start: Phase,
@@ -67,14 +67,11 @@ impl Rule {
         walk(&self.miss, &mut visit);
     }
 
-    /// Every number the rule holds: its roll's threshold and band, its costs, its conditions'
-    /// numbers, and its effects' amounts, caps, ticks and resist thresholds.
+    /// Every number the rule holds: its check's total, success_at and partial_at, its costs, its
+    /// conditions' numbers, and its effects' amounts, caps, ticks and resist checks.
     pub(crate) fn exprs(&self) -> Vec<&Expr> {
         let mut exprs = Vec::new();
-        if let Some(roll) = &self.roll {
-            exprs.push(&roll.threshold);
-            exprs.extend(&roll.partial_at);
-        }
+        exprs.extend(self.check.iter().flat_map(Check::exprs));
         exprs.extend(self.costs().flat_map(Cost::exprs));
         exprs.extend(self.if_.iter().flat_map(Cond::exprs));
         self.visit_templates(|effect| {
@@ -84,8 +81,8 @@ impl Rule {
                 EffectTemplate::Item { add, max, .. } => exprs.extend([add].into_iter().chain(max)),
                 _ => {}
             }
-            if let Some(ResistSpec::Roll { threshold, .. }) = effect.resist() {
-                exprs.push(threshold);
+            if let Some(ResistSpec::Roll { check, .. }) = effect.resist() {
+                exprs.extend(check.exprs());
             }
         });
         exprs
@@ -289,11 +286,21 @@ pub enum ChangeWatch {
     },
 }
 
+/// A rule's `check:`: `total` against `success_at`, with an optional lower `partial_at` band.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RollSpec {
-    pub check: String,
-    pub threshold: Expr,
+pub struct Check {
+    pub total: Expr,
+    pub success_at: Expr,
     pub partial_at: Option<Expr>,
+}
+
+impl Check {
+    /// The total, the success bar, then the partial band.
+    pub(crate) fn exprs(&self) -> impl Iterator<Item = &Expr> {
+        [&self.total, &self.success_at]
+            .into_iter()
+            .chain(&self.partial_at)
+    }
 }
 
 /// Where a parsed meter read sits in the pack file. Line and column are 1-based.
@@ -523,10 +530,11 @@ pub enum NarrateTo {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResistSpec {
     Same,
+    /// `subject` rolls `check`; a success applies `resisted` in place of the effect. The check
+    /// has no partial band.
     Roll {
         subject: grammar::Actor,
-        check: String,
-        threshold: Expr,
+        check: Box<Check>,
         resisted: Vec<EffectTemplate>,
     },
 }

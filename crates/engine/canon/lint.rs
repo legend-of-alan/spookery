@@ -1,4 +1,4 @@
-//! Cross-file validation of rules, exits, checks, meters, items, facts, and triggers.
+//! Cross-file validation of rules, exits, meters, items, facts, and triggers.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -12,7 +12,6 @@ use crate::entity;
 use crate::rules::cond;
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
-use crate::rules::roll::Check;
 use crate::rules::rule::{
     self, ChangeWatch, Cond, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule, Slot,
     When,
@@ -211,31 +210,6 @@ pub(super) fn reveal_problems(
                 );
             }
         });
-    }
-    diags
-}
-
-pub(super) fn unknown_checks(
-    rules: &rule::Table,
-    checks: &BTreeMap<String, Check>,
-) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    for rule in rules.iter() {
-        let Some(roll) = &rule.roll else { continue };
-        if checks.contains_key(&roll.check) {
-            continue;
-        }
-        diags.push(
-            schema_error(
-                &rule.file,
-                &format!(
-                    "rule '{}' names check '{}', which is not a check in rules/checks.yaml",
-                    rule.local_id, roll.check
-                ),
-                "add the check or name one that exists",
-            )
-            .at_path(format!("rules[{}].roll.check", rule.index)),
-        );
     }
     diags
 }
@@ -441,34 +415,6 @@ impl EntityScope<'_> {
             }
         }
     }
-}
-
-/// Check stats that are not meters every actor carries.
-pub(super) fn unknown_meters(
-    meters: &BTreeMap<String, meter::Descriptor>,
-    checks: &BTreeMap<String, Check>,
-) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    for (id, check) in checks {
-        if meters
-            .get(&check.stat)
-            .is_some_and(|desc| desc.carrier.is_none())
-        {
-            continue;
-        }
-        diags.push(
-            schema_error(
-                "rules/checks.yaml",
-                &format!(
-                    "check '{id}' uses meter '{}', which is not in rules/meters.yaml",
-                    check.stat
-                ),
-                "add the meter or name one that exists",
-            )
-            .at_path(format!("checks.{id}.meter")),
-        );
-    }
-    diags
 }
 
 /// Static warnings and trigger-reach errors on a loaded `Canon`.
@@ -908,9 +854,9 @@ fn narrates_to_present(rule: &Rule) -> bool {
 
 /// Whether `rule` needs a subject: `self` or `here` named as `of`, `subject` or `to`, a
 /// resist's `subject`, a narrate's `to`, a location effect, which moves the subject, or a
-/// roll, which is the subject's.
+/// check, which is the subject's.
 fn names_subject(rule: &Rule) -> bool {
-    let mut needs = rule.roll.is_some();
+    let mut needs = rule.check.is_some();
     rule.visit_templates(|effect| match effect {
         EffectTemplate::Narrate { to, .. } => {
             needs |= matches!(to, NarrateTo::Self_ | NarrateTo::Here);

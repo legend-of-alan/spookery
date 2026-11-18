@@ -14,7 +14,7 @@ use crate::Error;
 
 pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
     let mut printer = Printer {
-        text: text::PlayerText::new(),
+        text: text::Renderer::new(),
         raw,
         last_seq: 0,
     };
@@ -160,7 +160,7 @@ async fn take_claim(
 
 /// What play prints, and the last `seq` it read, so a reconnect asks for what came after.
 struct Printer {
-    text: text::PlayerText,
+    text: text::Renderer,
     raw: bool,
     last_seq: u64,
 }

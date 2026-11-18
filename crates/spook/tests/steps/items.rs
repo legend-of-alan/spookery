@@ -91,9 +91,9 @@ const DAGGER_ATTACK: &str = "
       - wielding:
           subject: self
           id: poisoned_dagger
-    roll:
-      check: strike
-      threshold: 0
+    check:
+      total: 1d20 + self.might
+      success_at: 0
     success:
       - meter:
           of: target
@@ -118,9 +118,9 @@ const BARE_HANDS_ATTACK: &str = "
     when:
       verb: attack
       target: actor
-    roll:
-      check: strike
-      threshold: 0
+    check:
+      total: 1d20 + self.might
+      success_at: 0
     success:
       - meter:
           of: target
@@ -530,14 +530,6 @@ fn wren_resists_on_a_seeded_roll(world: &mut World) {
         ),
     )
     .unwrap();
-    let checks = fs::read_to_string(pack.join("rules/checks.yaml")).unwrap();
-    fs::write(
-        pack.join("rules/checks.yaml"),
-        format!(
-            "{checks}  - id: constitution\n    dice:\n      count: 1\n      sides: 20\n    meter: constitution\n"
-        ),
-    )
-    .unwrap();
     let wren = fs::read_to_string(pack.join("cast/pc-wren.md")).unwrap();
     let next = wren.replace(
         "  eligible: false\n",
@@ -556,9 +548,9 @@ fn wren_resists_on_a_seeded_roll(world: &mut World) {
       - wielding:
           subject: self
           id: poisoned_dagger
-    roll:
-      check: strike
-      threshold: 0
+    check:
+      total: 1d20 + self.might
+      success_at: 0
     success:
       - meter:
           of: target
@@ -570,8 +562,8 @@ fn wren_resists_on_a_seeded_roll(world: &mut World) {
           add: -2
           resist:
             subject: target
-            check: constitution
-            threshold: 12
+            total: 1d20 + target.constitution
+            success_at: 12
             resisted:
               - narrate:
                   to: here
@@ -612,12 +604,8 @@ fn harbormouse_hits_wren_with_the_dagger(world: &mut World) {
     let Some(wren) = wren else {
         panic!("wren did not roll: {:?}", output.reports);
     };
-    assert_eq!(
-        wren.total, 15,
-        "stat {} face {:?}",
-        world.scratch, wren.faces
-    );
-    assert_eq!(wren.target, 12);
+    assert_eq!(wren.total, 15, "stat {}", world.scratch);
+    assert_eq!(wren.success_at, 12);
     assert_eq!(output.reports.len(), 2, "{:?}", output.reports);
 }
 

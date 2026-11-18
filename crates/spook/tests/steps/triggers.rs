@@ -371,9 +371,9 @@ rules:
       change:
         arrive: here
         subject: pc
-    roll:
-      check: stamina
-      threshold: 100
+    check:
+      total: 1d6 + self.vigor
+      success_at: 100
     success:
       - meter:
           of: self
@@ -389,11 +389,6 @@ The ground gives.
 ",
     )
     .unwrap();
-    replace_in_file(
-        &pack.join("rules/checks.yaml"),
-        "    meter: vigor\n",
-        "    meter: vigor\n  - id: stamina\n    dice:\n      count: 1\n      sides: 6\n    meter: vigor\n",
-    );
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
@@ -598,7 +593,8 @@ fn a_rule_counts_tides(world: &mut World, of: String) {
     write_tide_story(
         pack,
         &format!(
-            "      - meter:
+            "    do:
+      - meter:
           of: {of}
           key: tides
           add: 1
@@ -610,18 +606,30 @@ fn a_rule_counts_tides(world: &mut World, of: String) {
 #[given(expr = "a change rule watches world flag tide_turned and sets flag saw_tide of {string}")]
 fn a_world_rule_marks_self(world: &mut World, of: String) {
     a_verb_sets_the_tide(world);
-    let effect = format!(
-        "      - flag:
+    let fields = format!(
+        "    do:
+      - flag:
           of: {of}
           key: saw_tide
           value: true
 "
     );
-    write_tide_story(world.pack.as_ref().unwrap(), &effect);
+    write_tide_story(world.pack.as_ref().unwrap(), &fields);
 }
 
-/// `story/tide.yaml`: one rule, `mark`, that runs `effects` when the world's tide turns.
-fn write_tide_story(pack: &Path, effects: &str) {
+#[given(expr = "a change rule watches world flag tide_turned and rolls a 2d6 check")]
+fn a_world_rule_rolls_a_check(world: &mut World) {
+    a_verb_sets_the_tide(world);
+    let fields = "    check:
+      total: 2d6
+      success_at: 7
+";
+    write_tide_story(world.pack.as_ref().unwrap(), fields);
+}
+
+/// `story/tide.yaml`: one rule, `mark`, that watches the world's tide turn, with `fields`
+/// written after its `when`.
+fn write_tide_story(pack: &Path, fields: &str) {
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(
         pack.join("story/tide.yaml"),
@@ -634,8 +642,7 @@ rules:
       change:
         flag: tide_turned
         becomes: true
-    do:
-{effects}"
+{fields}"
         ),
     )
     .unwrap();

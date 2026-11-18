@@ -23,9 +23,9 @@ rules:
           id: nerve
           op: ">="
           value: 1
-    roll:
-      check: strike
-      threshold: 12
+    check:
+      total: 1d20 + self.might
+      success_at: 12
     success:
       - meter:
           of: corin
@@ -48,9 +48,9 @@ rules:
           id: nerve
           op: ">="
           value: 1
-    roll:
-      check: banish
-      threshold: 12
+    check:
+      total: 1d20 + self.grace
+      success_at: 12
       partial_at: 7
     success:
       - meter:

@@ -32,9 +32,9 @@ rules:
           id: hp
           op: ">="
           value: 1
-    roll:
-      check: strike
-      threshold: 40
+    check:
+      total: 1d20 + self.might
+      success_at: 40
       partial_at: 34
     success:
       - meter:

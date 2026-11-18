@@ -69,8 +69,8 @@ Feature: A roll can partly succeed
     And stdout is empty
 
     Examples:
-      | fault                       | phrase                 |
-      | partial_at without partial  | without a partial      |
-      | partial without partial_at  | without partial_at     |
-      | partial_at above difficulty | at or above the threshold |
-      | partial_at without a check  | without a roll         |
+      | fault                       | phrase                  |
+      | partial_at without partial  | without a partial       |
+      | partial without partial_at  | without partial_at      |
+      | partial_at above success_at | at or above success_at  |
+      | partial without a check     | outcome without a check |

@@ -16,9 +16,9 @@ rules:
   - id: steady
     when:
       verb: steady
-    roll:
-      check: nerve
-      threshold: 0
+    check:
+      total: 2d6 + self.nerve
+      success_at: 0
     do: []
 
   - id: take

@@ -1,5 +1,4 @@
 use spookery_engine::testing::world_of;
-use std::fs;
 use std::io::Write;
 
 use cucumber::gherkin::Step;
@@ -56,20 +55,9 @@ fn the_gm_queues_the_door_note_and_commits(world: &mut World) {
 }
 
 #[given(expr = "a docks table with a GM and {string} seated")]
-fn a_docks_table_with_a_gm_terminal(world: &mut World, actor: String) {
+fn a_docks_table_with_a_gm_and_a_seat(world: &mut World, actor: String) {
     let pack = support::copy_pack("docks", "typed-gm");
-    world.pack = Some(pack);
-    let pack = table::pack(world).to_path_buf();
-    // Stock exert rolls a check and notes no expression dice. A 2d6 on the
-    // verb gives the commit reply one dice line beside that check.
-    let verbs = pack.join("rules/verbs.yaml");
-    let text = fs::read_to_string(&verbs).unwrap_or_else(|err| panic!("read verbs: {err}"));
-    let from = "    roll:\n      check: exert\n      threshold: 0\n    do: []\n";
-    let to = "    roll:\n      check: exert\n      threshold: 0\n    do:\n      - meter:\n          of: self\n          key: vigor\n          add: \"2d6\"\n";
-    assert!(text.contains(from), "{text}");
-    fs::write(&verbs, text.replacen(from, to, 1))
-        .unwrap_or_else(|err| panic!("write verbs: {err}"));
-    support::stamp_pack_rev(&pack);
+    world.pack = Some(pack.clone());
     table::listen(world, &pack);
     table::seat_actor(world, &pack, &actor);
     let addr = table::game_addr(world);

@@ -1,26 +1,17 @@
-//! Check definitions, one roll of a check, and the band its total lands in.
+//! Roll keys, the faces a key rolls, and the band a check's total lands in.
 
-use crate::ecs;
-use crate::ecs::component::modifier;
 use crate::ecs::id::ActorId;
 use crate::hash::blake2s_256;
 use crate::rules::gate;
 use crate::Reason;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Check {
-    pub dice_count: u32,
-    pub dice_sides: u32,
-    pub stat: String,
-}
-
 pub use spookery_protocol::Outcome;
 
-/// `total` against `threshold`, with an optional lower band.
-/// `total >= threshold` is success. `partial_at <= total < threshold` is partial.
+/// `total` against `success_at`, with an optional lower band.
+/// `total >= success_at` is success. `partial_at <= total < success_at` is partial.
 /// Anything lower, and any binary roll, is a miss.
-fn classify(total: i64, threshold: i64, partial_at: Option<i64>) -> Outcome {
-    if total >= threshold {
+pub(crate) fn classify(total: i64, success_at: i64, partial_at: Option<i64>) -> Outcome {
+    if total >= success_at {
         Outcome::Success
     } else if partial_at.is_some_and(|band| total >= band) {
         Outcome::Partial
@@ -29,8 +20,8 @@ fn classify(total: i64, threshold: i64, partial_at: Option<i64>) -> Outcome {
     }
 }
 
-/// One roll's dice, total, and band. The save does not store it, and the journal keeps only
-/// the round's dice lines.
+/// One check's total, the bar it met or missed, and its band. The save does not store it, and
+/// the journal keeps only the round's dice lines.
 pub use spookery_protocol::Roll;
 
 /// What the round did with a move: the roll, or a refusal and its reason. Returned from the
@@ -81,28 +72,6 @@ pub fn faces(key: &Key, start: usize, count: u32, sides: u32) -> Result<Vec<u32>
     Ok(faces)
 }
 
-/// The only roll: `check`'s dice from this key's own seed, plus the actor's stat, against
-/// `threshold`. `partial_at` `None` keeps the roll binary.
-pub(crate) fn check(
-    check: &Check,
-    world: &ecs::World,
-    actor_id: &ActorId,
-    key: &Key,
-    threshold: i64,
-    partial_at: Option<i64>,
-) -> Result<Roll, Reason> {
-    let stat = modifier::value(world.actors(), actor_id, &check.stat)?;
-    let faces = faces(key, 0, check.dice_count, check.dice_sides)?;
-    let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
-    Ok(Roll {
-        faces,
-        stat,
-        total,
-        target: threshold,
-        outcome: classify(total, threshold, partial_at),
-    })
-}
-
 /// Die `n` reads 4 bytes from the roll seed. Past 8 dice, block `k` is `blake2s(seed || k)`.
 fn face_at(seed: &[u8; 32], n: usize, sides: u32) -> Result<u32, Reason> {
     if sides == 0 {
@@ -127,26 +96,7 @@ fn block_bytes(seed: &[u8; 32], block: usize) -> [u8; 32] {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify, face_at, Check, Key, Outcome};
-    use crate::ecs::id::ActorId;
-
-    fn check_of(count: u32) -> Check {
-        Check {
-            dice_count: count,
-            dice_sides: 6,
-            stat: "vigor".to_string(),
-        }
-    }
-
-    fn key(index: u32) -> Key {
-        Key {
-            seed: "docks".to_string(),
-            round_index: 1,
-            rule_id: "exert".to_string(),
-            subject_id: Some("mira".into()),
-            index,
-        }
-    }
+    use super::{classify, face_at, Outcome};
 
     fn seed_of(words: &[u32]) -> [u8; 32] {
         let mut seed = [0u8; 32];
@@ -172,19 +122,7 @@ mod tests {
     }
 
     #[test]
-    fn the_same_key_rolls_the_same_faces() {
-        let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
-        let docks = crate::session::Session::open(&pack).expect("open");
-        let (world, mira) = (docks.world(), ActorId::from("mira"));
-        let check = check_of(2);
-        let once = super::check(&check, world, &mira, &key(0), 9, None).unwrap();
-        let twice = super::check(&check, world, &mira, &key(0), 9, None).unwrap();
-        assert_eq!(once, twice);
-        assert_eq!(once.faces.len(), 2);
-    }
-
-    #[test]
-    fn classification_meets_every_threshold() {
+    fn classification_meets_every_bar() {
         let success = Outcome::Success;
         let partial = Outcome::Partial;
         let miss = Outcome::Miss;
@@ -202,11 +140,11 @@ mod tests {
             (-1, 0, Some(-1), partial),
             (-2, 0, Some(-1), miss),
         ];
-        for (total, threshold, partial_at, expected) in cases {
+        for (total, success_at, partial_at, expected) in cases {
             assert_eq!(
-                classify(total, threshold, partial_at),
+                classify(total, success_at, partial_at),
                 expected,
-                "{total} vs {threshold} band {partial_at:?}"
+                "{total} vs {success_at} band {partial_at:?}"
             );
         }
     }

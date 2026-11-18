@@ -529,26 +529,14 @@
       ]
     },
     "Roll": {
-      "description": "One check roll in `CommitBody`, sent from the table to a GM client.",
+      "description": "One check roll in `CommitBody`, sent from the table to a GM client. Its dice are in the\nbody's `dice` lines.",
       "type": "object",
       "properties": {
-        "faces": {
-          "type": "array",
-          "items": {
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0
-          }
-        },
-        "stat": {
-          "type": "integer",
-          "format": "int64"
-        },
         "total": {
           "type": "integer",
           "format": "int64"
         },
-        "target": {
+        "success_at": {
           "type": "integer",
           "format": "int64"
         },
@@ -557,10 +545,8 @@
         }
       },
       "required": [
-        "faces",
-        "stat",
         "total",
-        "target",
+        "success_at",
         "outcome"
       ]
     },

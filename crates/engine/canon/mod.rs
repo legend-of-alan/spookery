@@ -13,14 +13,12 @@ use crate::ecs::id::{ActorId, ExitId, PlaceId, StoryId};
 use crate::entity;
 use crate::hash::blake2s_tagged;
 use crate::rules::expr::Expr;
-use crate::rules::roll::Check;
 use crate::rules::rule::{self, Cond, Cost, Owner, TargetKind, When};
 use crate::Reason;
 pub use spookery_protocol::{ControlType, MenuRow, PackSummary};
 
 mod budget;
 mod cast;
-mod checks;
 mod fact;
 mod item;
 mod lint;
@@ -34,12 +32,11 @@ mod story;
 
 use budget::load_budget;
 pub(crate) use budget::Budget;
-use checks::load_checks;
 use fact::Facts;
 use item::add_item;
 use lint::{
-    broken_exits, resist_same_without_roll, reveal_problems, unknown_carriers, unknown_checks,
-    unknown_meters, unknown_modifiers, unknown_reads, unknown_rule_items, EntityScope,
+    broken_exits, resist_same_without_roll, reveal_problems, unknown_carriers, unknown_modifiers,
+    unknown_reads, unknown_rule_items, EntityScope,
 };
 pub(crate) use lint::{check_canon, unknown_item};
 use modifiers::MODIFIERS_FILE;
@@ -60,7 +57,6 @@ pub struct Canon {
     pub facts: BTreeMap<String, FactDef>,
     pub stories: BTreeMap<StoryId, StoryDef>,
     pub rules: rule::Table,
-    pub checks: BTreeMap<String, Check>,
     /// The meters `rules/meters.yaml` gives every actor, and those one cast, place or story
     /// file gives its entity. An id is listed once.
     pub meters: BTreeMap<String, meter::Descriptor>,
@@ -382,8 +378,8 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     if root.join("rules/moves.yaml").is_file() {
         diags.push(rule_list::replaced_moves_file());
     }
-    // 5. The other three rule files are read in this order; a missing one is reported here.
-    let [verbs, checks, budget] = ["rules/verbs.yaml", "rules/checks.yaml", "rules/budget.yaml"]
+    // 5. The other two rule files are read in this order; a missing one is reported here.
+    let [verbs, budget] = ["rules/verbs.yaml", "rules/budget.yaml"]
         .map(|rel| diags.keep(read_text(root, rel)).map(|text| (rel, text)));
     // 6. Verbs.
     if let Some((rel, text)) = &verbs {
@@ -402,16 +398,9 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.extend(taken.then(|| source.refuse_duplicate(&rule.id, "", Locator::Nowhere, twice)));
     }
     let rules = rule::Table::new(loaded);
-    // 9. Checks. 10. Meters. 11. Budget.
-    let checks = checks.and_then(|(rel, text)| diags.keep(load_checks(rel, &text)));
+    // 9. Budget.
     let budget = budget.and_then(|(rel, text)| diags.keep(load_budget(rel, &text)));
-    // 12. Lints across files.
-    if let Some(checks) = &checks {
-        diags.extend(unknown_checks(&rules, checks));
-    }
-    if let (Some(meters), Some(checks)) = (&meters, &checks) {
-        diags.extend(unknown_meters(meters, checks));
-    }
+    // 10. Lints across files.
     if let (Some(meters), Some(world_meters)) = (&meters, &world_meters) {
         let scope = EntityScope {
             meters,
@@ -430,14 +419,13 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     diags.extend(reveal_problems(&rules, &facts.0));
     diags.extend(resist_same_without_roll(&rules));
     diags.extend(broken_exits(&places, &facts.0, &items));
-    // 13. checkpoint_every.
+    // 11. checkpoint_every.
     let checkpoint_every = pack
         .as_ref()
         .and_then(|pack| diags.keep(pack.checkpoint_every()));
     diags.into_result(())?;
     let (
         Some(pack),
-        Some(checks),
         Some(meters),
         Some(world_meters),
         Some(modifiers),
@@ -445,7 +433,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         Some(checkpoint_every),
     ) = (
         pack,
-        checks,
         meters,
         world_meters,
         modifiers,
@@ -465,7 +452,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         facts: facts.0,
         stories,
         rules,
-        checks,
         meters,
         world_meters,
         modifiers,

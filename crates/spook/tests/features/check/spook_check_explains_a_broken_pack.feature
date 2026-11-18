@@ -24,16 +24,12 @@ Feature: spook check explains a broken pack
       | fault                        | file                       | code              | phrase                             |
       | missing when                 | rules/verbs.yaml           | SCHEMA            | missing field 'when'               |
       | unknown field                | rules/verbs.yaml           | SCHEMA            | unknown field                      |
-      | unknown check                | rules/verbs.yaml           | SCHEMA            | not a check                        |
       | duplicate move               | rules/verbs.yaml           | SCHEMA            | listed twice                       |
       | unknown format tag           | rules/verbs.yaml           | SCHEMA            | does not use                       |
       | missing meters               | rules/meters.yaml          | NOT_IN_SPEC       | missing                            |
       | meter min above base_cap     | rules/meters.yaml          | SCHEMA            | min above base_cap                 |
       | meter base_cap above max     | rules/meters.yaml          | SCHEMA            | base_cap above max                 |
       | meter base outside its range | rules/meters.yaml          | SCHEMA            | base outside min and base_cap      |
-      | check rolls zero dice        | rules/checks.yaml          | SCHEMA            | rolls zero dice                    |
-      | a die with zero sides        | rules/checks.yaml          | SCHEMA            | a die with zero sides              |
-      | check names no meter         | rules/checks.yaml          | SCHEMA            | names no meter                     |
       | pack_rev mismatch            | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                           |
       | an actor the cast lacks      | state/save.yaml            | SCHEMA            | is not a cast member               |
       | a control type with two keys | state/save.yaml            | SCHEMA            | two keys where one belongs         |

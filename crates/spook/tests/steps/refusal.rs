@@ -152,14 +152,14 @@ fn a_docks_table_with_a_stub_gm_and_harbormouse_seated(world: &mut World) {
 }
 
 #[given(
-    expr = "a docks table with a stub GM, Harbormouse seated and a strike threshold of {string}"
+    expr = "a docks table with a stub GM, Harbormouse seated and a strike success_at of {string}"
 )]
-fn a_docks_table_with_a_strike_threshold_of(world: &mut World, threshold: String) {
+fn a_docks_table_with_a_strike_success_at_of(world: &mut World, success_at: String) {
     let pack = support::copy_pack("docks", "rolling-gap");
     let path = pack.join("rules/verbs.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
-    let from = "      check: strike\n      threshold: 38\n";
-    let to = format!("      check: strike\n      threshold: \"{threshold}\"\n");
+    let from = "      success_at: 38\n";
+    let to = format!("      success_at: \"{success_at}\"\n");
     assert!(text.contains(from), "{text}");
     fs::write(&path, text.replacen(from, &to, 1))
         .unwrap_or_else(|err| panic!("write verbs: {err}"));

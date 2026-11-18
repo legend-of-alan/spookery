@@ -26,7 +26,7 @@ Feature: A round refusal names the gap
     Then Harbormouse's refused frame for "MISSING_ITEM" has no missing field
 
   Scenario: A strike on someone who is out of sight when the round applies is refused
-    Given a docks table with a stub GM, Harbormouse seated and a strike threshold of "1d20 + 18"
+    Given a docks table with a stub GM, Harbormouse seated and a strike success_at of "1d20 + 18"
     When Harbormouse queues "travel wheel_shed"
     And Harbormouse queues "strike briar"
     And the GM commits the round

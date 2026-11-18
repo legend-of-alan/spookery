@@ -200,7 +200,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:c5f4d0e329a757e90b37e97250880b5e287149412d0687c63d23052429b227d6",
+    "pack_rev": "blake2s:dfa26ffe8863d67f4c07225df607002c69e59dcaa70015792a02f1c748d11531",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {
@@ -322,7 +322,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 
 <!-- example: gm-committed -->
 ```json
-{"seq":15,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["actor_last_act_round aldric","actor_last_act_round mira","actor_last_act_round rowan","actor_live_acts_this_window aldric","actor_live_acts_this_window mira","actor_live_acts_this_window rowan","world_note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[5,2],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
+{"seq":15,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["actor_last_act_round aldric","actor_last_act_round mira","actor_last_act_round rowan","actor_live_acts_this_window aldric","actor_live_acts_this_window mira","actor_live_acts_this_window rowan","world_note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"total":8,"success_at":0,"outcome":"success"}],"dice":["2d6 → 5, 2 = 7 + 1"]}}
 ```
 
 `changed_keys` are the state keys the round changed, every one of them. Each is spelled `<collection>_<component> <id> <entry>`: the collection is `actor`, `place`, `story` or `world`, the world has no `<id>`, and a component an entity holds one of has no `<entry>`. So a meter is `actor_meter <actor> <id>` or `world_meter <id>`, a modifier is `actor_modifier <actor> <id>`, and a door is `place_exit_open <place> <exit>`. The keys are:
@@ -333,7 +333,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 - `story_flag` and `story_meter`;
 - `world_flag`, `world_meter`, and `world_note` under the note's id.
 
-`journal_path` is the round's journal file, or null when the round wrote none. `rolls` are the checks rolled, faces and all. Faces go to the GM only.
+`journal_path` is the round's journal file, or null when the round wrote none. `rolls` are the checks rolled: each one's `total`, the `success_at` it was held to, and its `outcome`. `dice` holds one line for each number that rolled dice, a check's `total` among them, in the order rolled. Faces go to the GM only.
 
 ## Bodies
 
@@ -653,5 +653,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 renamed a say's listener before any release, on purpose, so a say reads `from`, `to` and `as`: `address` and its `place` or `actor` key became one `to`, which is `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`, in the `say` command, the `say` message and the session tape. The schema's `$defs/Say` became `$defs/Speech`, and a speech's `recipients` became `recipient_ids` on the `say` message and the tape. The recording took the new key with it. The version stayed 2 because no build had shipped.
 - Version 2 renamed every identifier to `id` before any release, on purpose, so `name` is only text a player reads: a `help` command's `name` and a `status` menu row's `name` became `id`, and an exit's `name` and `to` became `exit_id` and `place_id`, with `name` now the text a player reads for it. A `say` gained `from_name`, and `entry_name` is left out for an entry with no name, such as a meter. The recording took the new names and the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
 - Version 2 renamed a note's readers and place before any release, on purpose, so every identifier is `id` or ends in `_id`: a note's `to` and `place` became `to_ids` and `place_id` on `NoteView`, and the same names in pack note effects and journal note effects. The recording took the new names and the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
+- Version 2 narrowed a roll before any release, on purpose, when a rule's `check:` replaced `roll:`: a `committed` roll dropped `faces` and `stat`, and `target` became `success_at`. The check's dice are a line in `dice`, like any other number's. The recording took the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

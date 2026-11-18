@@ -158,9 +158,9 @@ fn a_docks_row_spilled(world: &mut World, remove: i64) {
   - id: spilled
     when:
       verb: spilled
-    roll:
-      check: exert
-      threshold: 0
+    check:
+      total: 2d6 + self.vigor
+      success_at: 0
     do:
       - item:
           of: place:docks_shop
@@ -272,34 +272,27 @@ fn harbormouse_and_briar_strike_each_other(world: &mut World) {
     world.scratch = rolls
         .iter()
         .filter_map(|report| match report {
-            MoveReport::Rolled { actor_id, roll } => Some(format!(
-                "{actor_id}={}:{}:{}",
-                roll.faces
-                    .iter()
-                    .map(|face| face.to_string())
-                    .collect::<Vec<_>>()
-                    .join(","),
-                roll.total,
-                roll.target
-            )),
+            MoveReport::Rolled { actor_id, roll } => {
+                Some(format!("{actor_id}={}:{}", roll.total, roll.success_at))
+            }
             MoveReport::Refused { .. } => None,
         })
         .collect::<Vec<_>>()
         .join(";");
 }
 
-#[then(expr = "each strike rolls once against threshold {int}")]
-fn each_strike_rolls_once_against_threshold(world: &mut World, threshold: i64) {
+#[then(expr = "each strike rolls once against success_at {int}")]
+fn each_strike_rolls_once_against_success_at(world: &mut World, expected: i64) {
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(world.scratch.split(';').count(), 2, "{}", world.scratch);
     for actor_id in ["harbormouse", "briar"] {
-        let (faces, total, target) = strike_line(&world.scratch, actor_id);
+        let (total, success_at) = strike_line(&world.scratch, actor_id);
         assert_eq!(
-            (faces, total),
+            total,
             derive_first_strike(pack, actor_id),
             "{actor_id} did not roll its own first key"
         );
-        assert_eq!(target, threshold, "{actor_id}'s strike took another bar");
+        assert_eq!(success_at, expected, "{actor_id}'s strike took another bar");
     }
 }
 
@@ -479,18 +472,16 @@ fn the_refused_finish_commits(world: &mut World) {
     spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
 }
 
-#[given(
-    expr = "a docks pack whose \"pick\" rule rolls exert against a threshold that divides by zero"
-)]
+#[given(expr = "a docks pack whose \"pick\" rule has a success_at that divides by zero")]
 fn a_docks_pack_with_a_broken_pick(world: &mut World) {
-    let pack = support::copy_pack("docks", "broken-threshold");
+    let pack = support::copy_pack("docks", "broken-success-at");
     // Vigor starts at 1, so the divisor is 0 only at play, past `spook check`.
     support::append(
         &pack.join("rules/verbs.yaml"),
         "
   - id: pick
     when: { verb: pick }
-    roll: { check: exert, threshold: \"10 / (self.vigor - 1)\" }
+    check: { total: 2d6 + self.vigor, success_at: \"10 / (self.vigor - 1)\" }
     do: []
 ",
     );
@@ -551,7 +542,7 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
         "  - id: rummage
     when: {{ verb: rummage }}
     cost: {{ meters: {{ rest: {shop} }} }}
-    roll: {{ check: exert, threshold: self.rest }}
+    check: {{ total: 2d6 + self.vigor, success_at: self.rest }}
     do: []"
     );
     add_place_rules(&pack, "docks_shop", &rule);
@@ -590,7 +581,7 @@ fn rowan_walks_and_rummages(world: &mut World) {
         .iter()
         .filter_map(|report| match report {
             MoveReport::Rolled { actor_id, roll } if actor_id == "rowan" => {
-                Some(roll.target.to_string())
+                Some(roll.success_at.to_string())
             }
             _ => None,
         })
@@ -819,32 +810,28 @@ fn assert_refusal(world: &World, oil: i64, reason: &str) {
     );
 }
 
-fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
+fn strike_line(scratch: &str, actor: &str) -> (i64, i64) {
     let prefix = format!("{actor}=");
     let line = scratch
         .split(';')
         .find(|item| item.starts_with(&prefix))
         .unwrap_or_else(|| panic!("no roll for {actor} in {scratch}"));
     let rest = line.trim_start_matches(&prefix);
-    let mut parts = rest.split(':');
-    let faces = parts.next().unwrap().to_string();
-    let total = parts.next().unwrap().parse().unwrap();
-    let target = parts.next().unwrap().parse().unwrap();
-    (faces, total, target)
+    let (total, success_at) = rest.split_once(':').unwrap();
+    (total.parse().unwrap(), success_at.parse().unwrap())
 }
 
-/// The faces and total of `actor_id`'s first strike key this round.
-fn derive_first_strike(pack: &Path, actor_id: &str) -> (String, i64) {
+/// The total of `actor_id`'s first strike key this round: the docks strike's `1d20 + self.might`.
+fn derive_first_strike(pack: &Path, actor_id: &str) -> i64 {
     let session = spookery_engine::Session::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
-    let check = session.canon().checks.get("strike").unwrap();
-    let desc = session.canon().meters.get(&check.stat).unwrap();
+    let desc = session.canon().meters.get("might").unwrap();
     let actor = actor_id.into();
     let live = session
         .world()
         .actors()
         .get::<component::Meter>(&actor)
-        .get(&check.stat)
-        .unwrap_or_else(|| panic!("missing {actor_id}'s {}", check.stat));
+        .get("might")
+        .unwrap_or_else(|| panic!("missing {actor_id}'s might"));
     let stat = (live.base + live.offset).clamp(desc.min, desc.max);
     let rolled = roll::faces(
         &roll::Key {
@@ -855,17 +842,11 @@ fn derive_first_strike(pack: &Path, actor_id: &str) -> (String, i64) {
             index: 0,
         },
         0,
-        check.dice_count,
-        check.dice_sides,
+        1,
+        20,
     )
     .unwrap_or_else(|err| panic!("roll: {err}"));
-    let total = rolled.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
-    let faces = rolled
-        .iter()
-        .map(|face| face.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-    (faces, total)
+    i64::from(rolled[0]) + stat
 }
 
 fn harbormouse_roll(pack: &Path, extra_first: bool) -> (String, i64) {
@@ -879,22 +860,17 @@ fn harbormouse_roll(pack: &Path, extra_first: bool) -> (String, i64) {
         ));
     }
     intents.push(intent("harbormouse-exert", "harbormouse", "exert", None));
-    let (_state, rolls, _round) = play_queued(pack, &[], intents);
-    let rolled = rolls.into_iter().find_map(|report| match report {
-        MoveReport::Rolled {
-            actor_id,
-            roll: out,
-        } if actor_id == *"harbormouse" => Some((
-            out.faces
-                .iter()
-                .map(|face| face.to_string())
-                .collect::<Vec<_>>()
-                .join(","),
-            out.total,
-        )),
+    let (_state, rolls, round) = play_queued(pack, &[], intents);
+    let total = rolls.into_iter().find_map(|report| match report {
+        MoveReport::Rolled { actor_id, roll } if actor_id == *"harbormouse" => Some(roll.total),
         _ => None,
     });
-    rolled.unwrap_or_else(|| panic!("Harbormouse did not roll"))
+    let total = total.unwrap_or_else(|| panic!("Harbormouse did not roll"));
+    let exert_line = (round["dice"].as_array().into_iter().flatten())
+        .filter_map(Value::as_str)
+        .find(|line| line.starts_with("2d6 "))
+        .unwrap_or_else(|| panic!("no exert dice line\n{round}"));
+    (exert_line.to_string(), total)
 }
 
 /// The GM queues `intents`, then one round plays. Any `seated` players are at the table for it.

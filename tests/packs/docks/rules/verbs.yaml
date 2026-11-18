@@ -16,18 +16,18 @@ rules:
   - id: exert
     when:
       verb: exert
-    roll:
-      check: exert
-      threshold: 0
+    check:
+      total: 2d6 + self.vigor
+      success_at: 0
     do: []
 
   - id: strike
     when:
       verb: strike
       target: actor
-    roll:
-      check: strike
-      threshold: 38
+    check:
+      total: 1d20 + self.might
+      success_at: 38
       partial_at: 32
     success:
       - meter:

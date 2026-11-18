@@ -325,7 +325,7 @@ fn the_round_resolves_three_moves(world: &mut World) {
 #[then(expr = "the player sees the GM narrate the result, not the dice")]
 fn the_player_sees_the_narration(world: &mut World) {
     let seen = table::wait_player_from(world, world.mark, NARRATION);
-    assert!(!seen.contains("faces"), "{seen}");
+    assert!(!seen.contains("\"dice\""), "{seen}");
 }
 
 #[then(expr = "the client stops after {int} model calls")]
