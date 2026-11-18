@@ -79,19 +79,19 @@ Feature: Dice and arithmetic in rule numbers
 
   Scenario Outline: Dice in a condition or a cost fail spook check
     Given a docks table
-    When the pack's <holder> has "1d6" as <field>
-    And the operator runs spook check
+    And the pack has "1d6" as <field>
+    When the operator runs spook check
     Then the check exits 1
     And the report says "cannot roll dice"
     And the report names the line in <file> holding "1d6"
 
     Examples:
-      | holder      | field             | file                       |
-      | hit         | a condition value | rules/verbs.yaml           |
-      | hit         | a cost amount     | rules/verbs.yaml           |
-      | hit         | a cost item count | rules/verbs.yaml           |
-      | hit         | its cost ticks    | rules/verbs.yaml           |
-      | street exit | its cost ticks    | world/places/docks_shop.md |
+      | field                     | file                       |
+      | the hit's condition value | rules/verbs.yaml           |
+      | the hit's cost amount     | rules/verbs.yaml           |
+      | the hit's cost item count | rules/verbs.yaml           |
+      | the hit's cost ticks      | rules/verbs.yaml           |
+      | the street exit's ticks   | world/places/docks_shop.md |
 
   Scenario: Every number in a rule line can read a meter, and an exit's ticks are read for each viewer
     Given a docks table with Rowan and Wren seated in the shop

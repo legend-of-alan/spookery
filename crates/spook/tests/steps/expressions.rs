@@ -56,24 +56,11 @@ fn one_round_plays(world: &mut World) {
 }
 
 #[when(
-    regex = r#"^the pack's hit has "(.+)" as (a condition value|a cost amount|a cost item count|its cost ticks)$"#
-)]
-fn the_packs_hit_has(world: &mut World, dice: String, field: String) {
-    append_hit_line(world, "", &dice, &field);
-}
-
-#[when(expr = "the pack's street exit has {string} as its cost ticks")]
-fn the_packs_street_exit_has(world: &mut World, number: String) {
-    let pack = table::pack(world).to_path_buf();
-    set_street_exit_ticks(&pack, &number);
-    crate::support::stamp_pack_rev(&pack);
-}
-
-#[when(
     regex = r#"^the pack's hit stores "(.+)" and has "(.+)" as (its vigor add|a condition value|a cost amount|a second let)$"#
 )]
 fn the_packs_hit_stores_and_has(world: &mut World, lets: String, number: String, field: String) {
-    append_hit_line(world, &format!("let: {{ {lets} }}\n    "), &number, &field);
+    let (_, field) = field.split_once(' ').unwrap();
+    append_hit_line(world, &format!("let: {{ {lets} }}\n    "), &number, field);
 }
 
 #[when(expr = "the pack's hit stores {string} and adds {string} to Rowan's and Mira's vigor")]
@@ -128,15 +115,21 @@ fn stock_reads_rest(world: &mut World) {
 }
 
 #[given(
-    regex = r#"^the pack has "(.+)" as (the street exit's ticks|the strain's modifier ticks|the strain's cycle bound)$"#
+    regex = r#"^the pack has "(.+)" as (the hit's (?:condition value|cost amount|cost item count|cost ticks)|the street exit's ticks|the strain's modifier ticks|the strain's cycle bound)$"#
 )]
 fn the_pack_has(world: &mut World, number: String, field: String) {
     let pack = world.pack.clone().unwrap();
     let verbs = pack.join("rules/verbs.yaml");
     let strain = "\n  - id: strain\n    when: { verb: strain }\n";
+    if let Some(hit_field) = field.strip_prefix("the hit's ") {
+        return append_hit_line(world, "", &number, hit_field);
+    }
     match field.as_str() {
         "the street exit's ticks" => {
-            set_street_exit_ticks(&pack, &number);
+            let path = pack.join("world/places/docks_shop.md");
+            let text = fs::read_to_string(&path).unwrap();
+            let cost = format!("    id: docks_street\n    cost: {{ ticks: \"{number}\" }}\n");
+            fs::write(&path, text.replace("    id: docks_street\n", &cost)).unwrap();
         }
         "the strain's modifier ticks" => {
             super::modifiers::add_modifier(&pack, "fatigue", "vigor", "");
@@ -331,37 +324,17 @@ fn the_journal_rejects_the_hit_as_out_of_range(world: &mut World) {
 /// Append rule `hit`, its `lets` line, then `number` as `field`.
 fn append_hit_line(world: &World, lets: &str, number: &str, field: &str) {
     let lines = match field {
-        "a condition value" => format!(
+        "condition value" => format!(
             "if: [meter: {{ of: self, id: vigor, op: \">=\", value: \"{number}\" }}]\n    do: []"
         ),
-        "a cost amount" => format!("cost: {{ meters: {{ vigor: \"{number}\" }} }}\n    do: []"),
-        "a cost item count" => format!("cost: {{ items: {{ chock: \"{number}\" }} }}\n    do: []"),
-        "its cost ticks" => format!("cost: {{ ticks: \"{number}\" }}\n    do: []"),
-        "a second let" => format!("let: {{ {number} }}\n    do: []"),
+        "cost amount" => format!("cost: {{ meters: {{ vigor: \"{number}\" }} }}\n    do: []"),
+        "cost item count" => format!("cost: {{ items: {{ chock: \"{number}\" }} }}\n    do: []"),
+        "cost ticks" => format!("cost: {{ ticks: \"{number}\" }}\n    do: []"),
+        "second let" => format!("let: {{ {number} }}\n    do: []"),
         _ => format!("do: [meter: {{ of: self, key: vigor, add: \"{number}\" }}]"),
     };
     let rule = format!("\n  - id: hit\n    when: {{ verb: hit }}\n    {lets}{lines}\n");
     append_rule(world, &rule);
-}
-
-/// Give the shop's street exit `number` as its cost ticks.
-fn set_street_exit_ticks(pack: &Path, number: &str) {
-    let path = pack.join("world/places/docks_shop.md");
-    let text = fs::read_to_string(&path).unwrap();
-    let cost = format!(
-        "    id: docks_street
-    cost: {{ ticks: \"{number}\" }}
-"
-    );
-    fs::write(
-        &path,
-        text.replace(
-            "    id: docks_street
-",
-            &cost,
-        ),
-    )
-    .unwrap();
 }
 
 /// Append `rule` to the pack's verbs and restamp its save.
