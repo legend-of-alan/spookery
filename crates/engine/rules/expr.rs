@@ -567,13 +567,12 @@ impl<'a> Parser<'a> {
                 right: Box::new(right),
             });
         }
-        // A meter read is `<owner>.<key>`, and an owner may hold `:` and `.` itself.
         self.pos = start;
         while self.peek().is_ascii_alphanumeric() || matches!(self.peek(), '_' | ':' | '.') {
             self.pos += 1;
         }
-        let read = &self.src[start..self.pos];
-        let Some((owner, key)) = read.rsplit_once('.') else {
+        let owner_and_key = &self.src[start..self.pos];
+        let Some((owner, key)) = owner_and_key.rsplit_once('.') else {
             return Err(self.error());
         };
         if !key.starts_with(|ch: char| ch.is_ascii_alphabetic() || ch == '_') || key.contains(':') {
