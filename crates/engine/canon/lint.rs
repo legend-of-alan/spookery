@@ -1,4 +1,4 @@
-//! Cross-file validation of rules, exits, checks, meters, items, facts, and triggers.
+//! Cross-file validation of rules, exits, meters, items, facts, and triggers.
 
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -67,8 +67,8 @@ impl Rule {
         walk(&self.miss, &mut visit);
     }
 
-    /// Every number the rule holds: its check's total and bands, its costs, its conditions'
-    /// numbers, and its effects' amounts, caps, ticks and resist checks.
+    /// Every number the rule holds: its check's total, success_at and partial_at, its costs, its
+    /// conditions' numbers, and its effects' amounts, caps, ticks and resist checks.
     pub(crate) fn exprs(&self) -> Vec<&Expr> {
         let mut exprs = Vec::new();
         exprs.extend(self.check.iter().flat_map(Check::exprs));

@@ -472,9 +472,7 @@ fn the_refused_finish_commits(world: &mut World) {
     spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
 }
 
-#[given(
-    expr = "a docks pack whose \"pick\" rule checks exert against a success_at that divides by zero"
-)]
+#[given(expr = "a docks pack whose \"pick\" rule has a success_at that divides by zero")]
 fn a_docks_pack_with_a_broken_pick(world: &mut World) {
     let pack = support::copy_pack("docks", "broken-success-at");
     // Vigor starts at 1, so the divisor is 0 only at play, past `spook check`.
