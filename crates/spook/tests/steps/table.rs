@@ -286,7 +286,7 @@ pub fn live_mut(world: &mut World) -> &mut Host {
         .unwrap_or_else(|| panic!("no table is listening"))
 }
 
-fn live(world: &World) -> &Host {
+pub fn live(world: &World) -> &Host {
     world
         .live
         .as_ref()
@@ -405,7 +405,7 @@ pub struct Process {
 
 pub fn listen(world: &mut World, pack: &Path) {
     let flags = ["--addr", "127.0.0.1:0"];
-    let _ = run_with_flags(world, &std::env::temp_dir(), pack, &flags);
+    let _ = run_with_flags(world, env!("CARGO_TARGET_TMPDIR").as_ref(), pack, &flags);
 }
 
 /// Starts `spook run` on `pack` in `dir`, where it writes its `logs/`.
@@ -758,12 +758,6 @@ pub fn poll_until<T, Seen: std::fmt::Display>(
             Err(_) => std::thread::sleep(Duration::from_millis(20)),
         }
     }
-}
-
-pub fn host_stderr(world: &World) -> String {
-    let host = live(world).host.as_ref();
-    host.map(|server| support::text_of(&server.stderr))
-        .unwrap_or_default()
 }
 
 pub fn host_stdout(world: &World) -> String {

@@ -269,8 +269,8 @@ fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
         return Ok(None);
     };
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
-    let path = std::path::absolute(Path::new("logs").join(format!("{command_id}-{stamp}.log")))
-        .map_err(|err| err.to_string())?;
+    let name = format!("{command_id}-{stamp}-{}.log", std::process::id());
+    let path = std::path::absolute(Path::new("logs").join(name)).map_err(|err| err.to_string())?;
     fs::create_dir_all("logs").map_err(|err| format!("logs: {err}"))?;
     let file = fs::OpenOptions::new()
         .create(true)
