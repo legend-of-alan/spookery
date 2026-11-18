@@ -9,16 +9,18 @@ Feature: A rule stores a roll in let
     And the player text has no dice faces
     And replaying the round reproduces the save
 
-  Scenario Outline: high and low read one face of a stored pool
+  Scenario Outline: high and low read one face of a stored pool, also from a nested check under by: target
     Given a docks table
-    When the pack's hit stores "dmg: 2d8" and has "<read>" as its vigor add
-    And the player hits and the GM commits
+    When the pack's hit stores "dmg: 2d8" and has "<read>" as <field>
+    And the player <hits> and the GM commits
     Then Rowan's vigor rose by the <kept> face of dmg:
+    And the journal and the GM commit reply hold dice lines for "dmg: 2d8"
 
     Examples:
-      | read      | kept   |
-      | high(dmg) | higher |
-      | low(dmg)  | lower  |
+      | read      | kept   | field                      | hits        |
+      | high(dmg) | higher | its vigor add              | hits        |
+      | low(dmg)  | lower  | its vigor add              | hits        |
+      | high(dmg) | higher | a nested check's vigor add | hits Aldric |
 
   Scenario Outline: A rule's dice roll in the order the rule reads, an effect that does not run rolls nothing, and a move that takes time rolls at its finish
     Given a docks table
