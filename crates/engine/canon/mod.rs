@@ -32,7 +32,6 @@ mod story;
 
 pub(crate) use budget::Budget;
 use fact::Facts;
-
 use lint::{
     broken_exits, reveal_problems, unknown_carriers, unknown_modifiers, unknown_reads,
     unknown_rule_items, EntityScope,
