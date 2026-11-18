@@ -169,13 +169,11 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     writeln!(play_in, "travel docks_street").unwrap();
     play_in.flush().unwrap();
     wait_stub(&seen, 2, 0);
-    // The view after the round shows the street.
     table::wait_suffix(&play.stdout, mark, "You are in Docks Street.");
     assert_eq!(place_of(&world_of(&pack), "rowan"), "docks_street");
     let second = seen.lock().unwrap().posts[1].clone();
     assert!(second.contains("end_turn"), "{second}");
     assert_chat_post(&second);
-    // The table answers in order, so this look's view follows any round it played first.
     let mark = support::text_of(&play.stdout).len();
     writeln!(play_in, "look").unwrap();
     play_in.flush().unwrap();
@@ -256,8 +254,6 @@ fn world_time_moved_one_round(world: &mut World) {
 
 #[then(expr = "the GM's own speech did not call the model")]
 fn the_gms_own_speech_did_not_call_the_model(world: &mut World) {
-    // A turn the GM's own speech started would show it in that turn's observation, and it
-    // would start before the AI GM reads the player's bye, so read the calls before that one.
     let calls = table::poll_until("a model call that shows bye", || {
         let calls = world.model.calls();
         let bye = calls.iter().position(|call| observation_shows(call, "bye"));
@@ -349,7 +345,6 @@ fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
     let (pack, _) = queued_travel(world, "host-hang");
     let (stub, seen) = start_model_stub([Reply::Hang, Reply::Hang]);
     let gm = start_ai_gm(world, http_model(stub));
-    // The paused clock moves only here: past each call's limit, and past the pause between.
     wait_stub(&seen, 1, 0);
     gm.advance(MODEL_CALL_TIMEOUT);
     wait_stub(&seen, 1, 1);
@@ -378,7 +373,6 @@ fn a_model_answers_500_once_and_then_speaks(world: &mut World) {
     ];
     let (stub, seen) = start_model_stub(replies);
     let gm = start_ai_gm(world, http_model(stub));
-    // Its socket closes once the 500 is read, so this lands in the pause before the retry.
     wait_stub(&seen, 1, 1);
     gm.advance(RETRY_BACKOFF);
     finish_http_turn(world, gm, pack, seen);

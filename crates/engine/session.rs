@@ -786,7 +786,6 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
 
 fn check_save_text(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    // Read as the file holds it: a save on its own has no canon to read its actors against.
     let saved = serde_json::to_value(save).unwrap_or_default();
     if saved["actors"]["control_type"].get("world").is_some() {
         let diag = schema_error(

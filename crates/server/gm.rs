@@ -134,7 +134,6 @@ fn commit(
     } else {
         Vec::new()
     };
-    // The queued round is the first output. Fast-forward rounds name no keys.
     let (state_rev, changed_keys, journal_path) = match committed.then(|| &outputs[0]) {
         Some(output) => {
             let outcome = output

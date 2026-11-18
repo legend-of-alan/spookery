@@ -332,7 +332,6 @@ fn the_shop_player_speaks_to_the_place(world: &mut World) {
 fn only_the_shop_players_receive_the_speech(world: &mut World) {
     assert!(table::actor_text(world, "rowan").contains("the blue rope is tied"));
     assert!(table::actor_text(world, "harbormouse").contains("the blue rope is tied"));
-    // The table answers in order, so Wren's seat would have the speech before this reply.
     let wren = &table::player_client(world, "wren").seat;
     let id = wren.send("look", serde_json::json!({}));
     wren.wait_reply(&id);

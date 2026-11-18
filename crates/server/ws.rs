@@ -137,7 +137,6 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
     let mut bucket = TokenBucket::new(RATE_PER_SEC, BURST);
     let mut spoke = false;
     loop {
-        // Wait before reading so a full window slows the sender. The message is kept.
         if !wait_for_token(&mut bucket, &mut cancel_rx).await {
             break;
         }
@@ -177,7 +176,6 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
             message,
             reply: reply_tx,
         };
-        // A connection the table dropped is cancelled, so the next wait ends the loop.
         if acceptor.tx.send(request).is_err() || reply_rx.await.is_err() {
             break;
         }

@@ -30,7 +30,6 @@ impl Writer<'_, entity::Actors> {
 
     /// Add `to`, standing at `place`, with everything `from` has.
     pub fn copy_actor(&mut self, from: &ActorId, to: &ActorId, place: &str) -> Result<(), Reason> {
-        // Every store, with no `..`: a store added later must be copied here to compile.
         let entity::Actors {
             control_type,
             place: _,
@@ -70,7 +69,6 @@ impl Writer<'_, entity::Actors> {
 
     /// Take `actor` off every store, `control_type` last.
     pub fn remove_actor(&mut self, actor: &ActorId) -> Result<(), Reason> {
-        // Every store, with no `..`: a store added later must be emptied here to compile.
         let entity::Actors {
             control_type: _,
             place: _,
@@ -96,7 +94,6 @@ impl Writer<'_, entity::Actors> {
         for (key, ()) in nested_map::entries_of(&flags, actor) {
             self.get_mut::<component::Flag>(actor).set(key, false)?;
         }
-        // No production writer takes these off: production removes no actor.
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         components
             .known_facts

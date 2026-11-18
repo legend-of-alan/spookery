@@ -44,7 +44,6 @@ entity::has!(Places, component::OpenExit, open_exits);
 impl Places {
     /// Every store, as the history a rollback undoes and an accept clears.
     pub(in crate::ecs) fn history_mut(&mut self) -> [&mut dyn undo::History; 4] {
-        // Every store, with no `..`: a store added later must be listed here to compile.
         let Places {
             items,
             meters,

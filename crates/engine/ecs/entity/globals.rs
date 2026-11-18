@@ -42,7 +42,6 @@ entity::has!(Globals, Note, notes);
 impl Globals {
     /// Every store, as the history a rollback undoes and an accept clears.
     pub(in crate::ecs) fn history_mut(&mut self) -> [&mut dyn undo::History; 3] {
-        // Every store, with no `..`: a store added later must be listed here to compile.
         let Globals {
             meters,
             flags,

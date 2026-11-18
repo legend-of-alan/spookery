@@ -49,7 +49,6 @@ pub(crate) fn help(
             let Some(rule) = verb_for(canon, world, actor_id, &verb_id, hint) else {
                 continue;
             };
-            // A rule reached by naming its owner carries that owner. Any other is bare.
             let (owner, target) = match (&rule.owner, hint) {
                 (_, None) => (None, Target::Empty),
                 (Owner::Cast(id), Some(hint)) if id == hint => {

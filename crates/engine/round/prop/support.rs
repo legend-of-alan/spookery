@@ -82,7 +82,6 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[Plan]) -> Result<(), String> {
         for plan in &round.moves {
             queue_move(&mut session, plan);
         }
-        // Every round rolls when the PC can, by `exert`.
         let pcs = pc_count(&session);
         for pc in 0..pcs {
             queue_move(
@@ -151,7 +150,6 @@ fn queue_move(session: &mut session::Session, plan: &MovePlan) {
     let Some(target) = target_for(session, actor, verb, plan.token) else {
         return;
     };
-    // A line the gate refuses, or one already queued, is left out.
     let _ = session.queue_player_move(&Presence::default(), actor, verb, target.token());
 }
 

@@ -43,7 +43,6 @@ fn start_docks_table_with_mira(world: &mut World, notes: Option<&str>) {
     if let Some(notes) = notes {
         table::append_gm_notes(&pack, notes);
     }
-    // Aldric starts in the shop. Mira starts upstairs.
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"mira".into())
@@ -251,7 +250,7 @@ fn rowans_perceive_holds_no_facts(world: &mut World) {
 
 #[then(expr = "the player saw Mira say hello")]
 fn the_player_saw_mira_say_hello(world: &mut World) {
-    super::speech::wait_for_speech(world, "rowan", world.mark, "Mira: hello");
+    super::speech::wait_for_line(world, "rowan", world.mark, "Mira: hello");
 }
 
 #[then(expr = "the model's next call shows Mira's \"hello\" from npc:mira")]

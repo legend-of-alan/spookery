@@ -77,7 +77,6 @@ fn a_seated_players_host_is_killed_and_restarted(world: &mut World) {
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "rowan");
     table::wait_players(world, 1);
-    // A hard kill, so the restart has a crashed presence to repair.
     table::live_mut(world).host.take();
     table::stop_host(world);
     table::listen(world, &pack);
@@ -553,6 +552,5 @@ fn the_first_closed_checkpoint_snapshot_is_changed(world: &mut World) {
     let mut text = fs::read(&path).unwrap();
     text.extend_from_slice(b"# changed\n");
     fs::write(&path, text).unwrap();
-    // verify names the bundle whose checkpoint it checked.
     world.scratch = "bundle-0000.jsonl.gz: state hash differed".into();
 }

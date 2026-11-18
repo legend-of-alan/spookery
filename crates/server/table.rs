@@ -147,7 +147,6 @@ impl Table {
                     reply,
                 } => {
                     self.tool_call = Some((conn, Vec::new()));
-                    // An MCP session holds no seat until its event stream opens.
                     if self.seats.connection(conn).is_some() {
                         self.handle_message(conn, Ok(message));
                     } else {
@@ -203,7 +202,6 @@ impl Table {
             (open, taken) = self.open_and_taken();
             let canon = self.session.canon();
             let ids = open.iter().chain(&taken);
-            // Load refuses a save actor the cast lacks, so each PC is a cast member.
             let name = |id: &String| canon.cast[id.as_str()].name.clone();
             pc_names = ids.map(|id| (id.clone(), name(id))).collect();
         }
@@ -279,14 +277,12 @@ impl Table {
                 }) => return self.say_as_player(conn, id, &actor_id, &to, &text),
                 _ => ServerBody::Refused(Reason::Schema.into()),
             },
-            // The view, not text: the client writes the look from it.
             "look" if read::<NoArgs>(&args).is_some() => {
                 match self.session.perceive(&presence, actor_id.as_str()) {
                     Ok(view) => frames::render_view(&view),
                     Err(code) => ServerBody::Refused(code.into()),
                 }
             }
-            // Data, read from the world as it is now. The client writes the text.
             "help" if read::<NoArgs>(&args).is_some() => {
                 match self.session.help(&presence, &actor_id) {
                     Ok(commands) => ServerBody::Help { commands },
@@ -320,7 +316,6 @@ impl Table {
             Ok(taken) => taken,
             Err(code) => return self.reply(conn, id, ServerBody::Refused(code.into())),
         };
-        // After the claim, so the view counts this player as present.
         let [resume, view] = match refresh(&self.session, &self.seats.presence(), &actor) {
             Ok(bodies) => bodies,
             Err(code) => {
@@ -330,8 +325,6 @@ impl Table {
                 return self.reply(conn, id, ServerBody::Refused(code.into()));
             }
         };
-        // The reply goes out before this connection drives the claim, so no catch-up
-        // carries it.
         self.reply(conn, id, claimed);
         tracing::info!(conn_id = %conn, actor_id = %actor, by_token = !fresh, "PC claimed");
         if let Some(claim) = self.seats.claim_of_actor_mut(&actor) {
@@ -471,7 +464,6 @@ impl Table {
         let reply = gm::run(&mut self.session, &presence, &body.kind, &body.args)
             .unwrap_or_else(Reply::refused);
         self.after_rounds(&reply.outputs);
-        // A say's reply is the GM's copy of its speech.
         match &reply.speech {
             Some(speech) => self.deliver_speech(speech, Some((conn, id))),
             None => self.reply(conn, id, reply.body),
@@ -488,8 +480,9 @@ impl Table {
         let _ = self.out.flush();
     }
 
+    /// Plays the idle rounds due at an empty table. A claim whose connection dropped still
+    /// seats its player.
     fn wake(&mut self) -> Result<(), Reason> {
-        // A seated table plays its own rounds. A claim whose connection dropped still seats it.
         if !self.seats.claims.is_empty() || self.seats.gm.is_some() {
             return Ok(());
         }

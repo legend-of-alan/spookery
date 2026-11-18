@@ -57,7 +57,7 @@ impl Config {
 
 /// Bind both ports, report them and serve on the caller's runtime until
 /// `shutdown` resolves. `session` owns the pack lock until the table ends.
-/// Returns the table's result.
+/// Returns the table's result. A table that ends on its own, on a store fault, ends `serve` too.
 pub async fn serve(
     session: spookery_engine::Session,
     mut config: Config,
@@ -89,7 +89,6 @@ pub async fn serve(
     }
     let mut table =
         tokio::task::spawn_blocking(move || Table::new(session, restart_tx, config.out).run(rx));
-    // A table that ends on its own (a store fault) ends `serve` too.
     let done = tokio::select! {
         done = &mut table => done,
         () = shutdown => {

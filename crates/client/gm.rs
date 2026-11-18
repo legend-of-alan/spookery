@@ -50,7 +50,6 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
     };
     emit(HELP);
     let mut input = crate::stdin_lines();
-    // Made once, so every Ctrl+C is seen, even one that lands mid-print.
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
     loop {
@@ -79,7 +78,6 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
                     Some((command, Some(args))) => {
                         seat.send(command, args).await?;
                     }
-                    // A listed command that cannot read the line: its arguments are wrong.
                     Some((_, None)) => {
                         report(&text::render_refusal(&Refusal::from(Reason::Schema), raw));
                     }

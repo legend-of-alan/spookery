@@ -194,7 +194,6 @@ pub(crate) fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
             tokio::pin!(run);
             loop {
                 tokio::select! {
-                    // `run` first, so an advance lands after it has read what is ready.
                     biased;
                     result = &mut run => break result,
                     Some((by, ack)) = advances.recv() => {

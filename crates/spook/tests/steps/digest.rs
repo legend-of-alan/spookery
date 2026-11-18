@@ -76,7 +76,6 @@ fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
     table::listen(world, &pack);
     let printed = table::host_stdout(world).matches(PRINTOUT_END).count();
     table::seat_actor(world, &pack, &actor);
-    // The host prints the seat change after the player's view.
     table::wait_host_until(world, "the seat's printout", |text| {
         text.matches(PRINTOUT_END).count() > printed
     });
@@ -87,7 +86,6 @@ fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
 fn has_waited_once(world: &mut World, actor: String) {
     let printed = table::host_stdout(world).matches(PRINTOUT_END).count();
     table::actor_send(world, &actor, "wait", "\"kind\":");
-    // The host prints the round after the player's reply.
     table::wait_host_until(world, "the wait's printout", |text| {
         text.matches(PRINTOUT_END).count() > printed
     });
@@ -126,7 +124,6 @@ fn the_host_printed_the_door_note_exactly_once(world: &mut World) {
 fn every_host_printout_ends_with_the_meters(world: &mut World) {
     let text = table::host_stdout(world);
     let body = text.split_once('\n').map(|(_, rest)| rest).unwrap_or("");
-    // An effect after a printout's end starts the next one.
     let mut in_meters = false;
     let mut open = false;
     let mut saw = false;

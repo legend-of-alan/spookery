@@ -207,8 +207,6 @@ fn break_pack(pack: &Path, fault: &str) {
             let path = pack.join("state/save.yaml");
             let text = fs::read_to_string(&path).unwrap();
             let text = text.replacen("pack_rev: blake2s:", "pack_rev: blake2s:0", 1);
-            // The original hash does not start with an extra 0 in a way that stays equal:
-            // inserting one 0 changes the stored hash.
             fs::write(path, text).unwrap();
         }
         "an actor the cast lacks" => add_saved_actor(pack, "ghost"),

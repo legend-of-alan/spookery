@@ -34,7 +34,6 @@ pub fn render(body: &ServerBody) -> String {
 
 fn render_speech(speech: &Speech) -> String {
     match &speech.from {
-        // One player sits this socket, so a player id is the seated PC.
         Speaker::Player(_) => format!("You: {}", speech.text),
         Speaker::Gm | Speaker::Npc(_) => format!("{}: {}", speaker_name(speech), speech.text),
     }

@@ -173,7 +173,6 @@ fn the_rounds_update_shows_the_door_note_only_under_notes(world: &mut World) {
 #[then(expr = "play shows earlier speech under one heading")]
 fn play_shows_earlier_speech_under_one_heading(world: &mut World) {
     let shown = capture_play_stdout(world);
-    // The picker comes first, then what the claim shows.
     let (picker, stdout) = shown.split_at(shown.find("Earlier:").unwrap_or(0));
     assert!(picker.starts_with("Choose a character:\n"), "{shown}");
     let earlier = "\
@@ -209,7 +208,6 @@ fn play_shows_the_raw_resume_digest(world: &mut World) {
 #[then(expr = "stderr shows {string}")]
 fn stderr_shows(world: &mut World, text: String) {
     assert_eq!(world.stderr.trim(), text, "{}", world.stderr);
-    // A blank line after the message counts as a second print.
     assert_eq!(
         world.stderr.lines().count(),
         text.lines().count(),
