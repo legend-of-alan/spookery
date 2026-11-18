@@ -278,7 +278,11 @@ pub(super) fn load_tagged<T: serde::de::DeserializeOwned>(
     if let Some(diag) = check_tag(text, expected, file, line_base) {
         return Err(vec![diag]);
     }
-    parse_file(file, text, line_base)
+    let holds_rule_lines = matches!(
+        expected,
+        VERBS_SCHEMA | CAST_SCHEMA | ITEM_SCHEMA | PLACE_SCHEMA | STORY_SCHEMA
+    );
+    parse_file(file, text, line_base, holds_rule_lines)
 }
 
 /// A Markdown file split at its frontmatter fence. `text` is the whole file.
