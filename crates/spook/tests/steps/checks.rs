@@ -47,8 +47,6 @@ const NOTICE_ROWS: &str = "
           value: true
 ";
 
-// The mark's success_at rolls its own dice and reads the target's vigor: a defense written in
-// the pack.
 const CONTESTED_MARK_ROW: &str = "
   - id: mark
     when:
@@ -69,6 +67,8 @@ const CONTESTED_MARK_ROW: &str = "
           value: true
 ";
 
+const MIRA_VIGOR: i64 = 100;
+
 #[when(expr = "the player rolls exert")]
 fn the_player_rolls_exert(world: &mut World) {
     let (mark, added) = table::player_send(world, "exert", "\"kind\":");
@@ -84,7 +84,7 @@ fn the_player_sees_a_check_success(world: &mut World) {
         "{\"kind\":\"check\",\"outcome\":\"success\"}",
     );
     assert!(
-        !world.player_added.contains("\"faces\""),
+        !world.player_added.contains("\"dice\""),
         "{}",
         world.player_added
     );
@@ -124,7 +124,7 @@ fn the_player_sees_a_check_result_without_faces(world: &mut World) {
         "{added}"
     );
     assert!(!added.contains("\"success\":"), "{added}");
-    assert!(!added.contains("\"faces\""), "{added}");
+    assert!(!added.contains("\"dice\""), "{added}");
 }
 
 #[given(expr = "a docks table where Mira can notice")]
@@ -145,7 +145,7 @@ fn a_docks_table_where_miras_vigor_contests_a_mark(world: &mut World) {
     world.pack = Some(pack.clone());
     append_verbs(&pack, CONTESTED_MARK_ROW);
     insert_mira_flags(&pack, "    - marked\n    - missed\n");
-    set_vigor(&pack, "mira", 100);
+    set_vigor(&pack, "mira", MIRA_VIGOR);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"mira".into())
@@ -224,7 +224,7 @@ fn the_player_sees_only_their_own_check(world: &mut World) {
         "{\"kind\":\"check\",\"outcome\":\"miss\"}",
     );
     assert_eq!(added.matches("\"kind\":\"check\"").count(), 1, "{added}");
-    assert!(!added.contains("\"faces\""), "{added}");
+    assert!(!added.contains("\"dice\""), "{added}");
     assert!(!added.contains("\"success\":"), "{added}");
 }
 
@@ -233,10 +233,17 @@ fn the_gm_sees_one_roll_and_its_two_dice_lines(world: &mut World) {
     let body = table::read_reply(&world.stdout);
     let dice = body["dice"].as_array().unwrap_or_else(|| panic!("{body}"));
     assert_eq!(dice.len(), 2, "{body}");
-    // 2d6 plus Mira's vigor of 100.
-    let success_at = dice_line_total(dice[1].as_str().unwrap_or_else(|| panic!("{body}")));
-    assert!((102..=112).contains(&success_at), "{body}");
-    assert_roll(&body, 1, success_at, "miss");
+    let (faces, _) = dice[1]
+        .as_str()
+        .and_then(|line| line.strip_prefix("2d6 → "))
+        .and_then(|rest| rest.split_once(" = "))
+        .unwrap_or_else(|| panic!("{body}"));
+    let face_sum = faces
+        .split(", ")
+        .map(str::parse::<i64>)
+        .sum::<Result<i64, _>>()
+        .unwrap_or_else(|err| panic!("{err}: {body}"));
+    assert_roll(&body, 1, face_sum + MIRA_VIGOR, "miss");
 }
 
 #[then(expr = "the journal records Mira's engine brace")]
@@ -374,19 +381,19 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
     flags.iter().map(|(flag, ())| flag.to_string()).collect()
 }
 
-fn assert_one_roll(world: &mut World, stat: i64, success_at: i64, outcome: &str) {
+fn assert_one_roll(world: &mut World, vigor: i64, success_at: i64, outcome: &str) {
     let text = table::wait_gm(world, "\"rolls\"");
-    assert_roll(&read_committed(&text), stat, success_at, outcome);
+    assert_roll(&read_committed(&text), vigor, success_at, outcome);
 }
 
-/// `body` holds one 2d6 roll: its first dice line reads `2d6 → a, b = a+b + stat`, and the roll
+/// `body` holds one 2d6 roll: its first dice line reads `2d6 → a, b = a+b + vigor`, and the roll
 /// totals that line against `success_at`.
-fn assert_roll(body: &Value, stat: i64, success_at: i64, outcome: &str) {
+fn assert_roll(body: &Value, vigor: i64, success_at: i64, outcome: &str) {
     let rolls = body["rolls"].as_array().unwrap_or_else(|| panic!("{body}"));
     assert_eq!(rolls.len(), 1, "{body}");
     let line = body["dice"][0].as_str().unwrap_or_else(|| panic!("{body}"));
     assert!(
-        line.starts_with("2d6 → ") && line.ends_with(&format!(" + {stat}")),
+        line.starts_with("2d6 → ") && line.ends_with(&format!(" + {vigor}")),
         "{body}"
     );
     assert_eq!(
@@ -582,7 +589,7 @@ fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String) {
     let added = table::wait_player_from(world, world.mark, &needle);
     world.player_added = added;
     assert!(
-        !world.player_added.contains("\"faces\""),
+        !world.player_added.contains("\"dice\""),
         "{}",
         world.player_added
     );

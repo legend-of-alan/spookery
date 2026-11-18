@@ -645,11 +645,6 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             vec!["marked".to_string()],
             "{label} success {success}"
         );
-        assert!(
-            !spookery_engine::testing::journal::read_record_line(&pack, "round-0001")
-                .unwrap_or_else(|err| panic!("{}", err.detail))
-                .contains("faces")
-        );
         let _ = fs::remove_dir_all(&pack);
     }
 

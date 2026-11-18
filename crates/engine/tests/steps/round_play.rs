@@ -289,7 +289,7 @@ fn each_strike_rolls_once_against_success_at(world: &mut World, expected: i64) {
         let (total, success_at) = strike_line(&world.scratch, actor_id);
         assert_eq!(
             total,
-            first_strike_total(pack, actor_id),
+            derive_first_strike(pack, actor_id),
             "{actor_id} did not roll its own first key"
         );
         assert_eq!(success_at, expected, "{actor_id}'s strike took another bar");
@@ -472,9 +472,7 @@ fn the_refused_finish_commits(world: &mut World) {
     spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
 }
 
-#[given(
-    expr = "a docks pack whose \"pick\" rule checks exert against a success_at that divides by zero"
-)]
+#[given(expr = "a docks pack whose \"pick\" rule has a success_at that divides by zero")]
 fn a_docks_pack_with_a_broken_pick(world: &mut World) {
     let pack = support::copy_pack("docks", "broken-success-at");
     // Vigor starts at 1, so the divisor is 0 only at play, past `spook check`.
@@ -797,7 +795,7 @@ fn strike_line(scratch: &str, actor: &str) -> (i64, i64) {
 }
 
 /// The total of `actor_id`'s first strike key this round: the docks strike's `1d20 + self.might`.
-fn first_strike_total(pack: &Path, actor_id: &str) -> i64 {
+fn derive_first_strike(pack: &Path, actor_id: &str) -> i64 {
     let session = spookery_engine::Session::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let desc = session.canon().meters.get("might").unwrap();
     let actor = actor_id.into();

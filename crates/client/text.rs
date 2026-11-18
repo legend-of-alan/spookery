@@ -56,14 +56,14 @@ fn render_scrollback(scrollback: &[Speech]) -> String {
     )
 }
 
-/// Readable text for the messages of one sitting.
+/// Turns the messages of one sitting into readable text.
 #[derive(Default)]
-pub struct Sitting {
+pub struct Renderer {
     seen_resume: bool,
     after_scrollback: bool,
 }
 
-impl Sitting {
+impl Renderer {
     pub fn new() -> Self {
         Self::default()
     }

@@ -7,11 +7,11 @@ use crate::Reason;
 
 pub use spookery_protocol::Outcome;
 
-/// `total` against `threshold`, with an optional lower band.
-/// `total >= threshold` is success. `partial_at <= total < threshold` is partial.
+/// `total` against `success_at`, with an optional lower band.
+/// `total >= success_at` is success. `partial_at <= total < success_at` is partial.
 /// Anything lower, and any binary roll, is a miss.
-pub(crate) fn classify(total: i64, threshold: i64, partial_at: Option<i64>) -> Outcome {
-    if total >= threshold {
+pub(crate) fn classify(total: i64, success_at: i64, partial_at: Option<i64>) -> Outcome {
+    if total >= success_at {
         Outcome::Success
     } else if partial_at.is_some_and(|band| total >= band) {
         Outcome::Partial
@@ -122,7 +122,7 @@ mod tests {
     }
 
     #[test]
-    fn classification_meets_every_threshold() {
+    fn classification_meets_every_bar() {
         let success = Outcome::Success;
         let partial = Outcome::Partial;
         let miss = Outcome::Miss;
@@ -140,11 +140,11 @@ mod tests {
             (-1, 0, Some(-1), partial),
             (-2, 0, Some(-1), miss),
         ];
-        for (total, threshold, partial_at, expected) in cases {
+        for (total, success_at, partial_at, expected) in cases {
             assert_eq!(
-                classify(total, threshold, partial_at),
+                classify(total, success_at, partial_at),
                 expected,
-                "{total} vs {threshold} band {partial_at:?}"
+                "{total} vs {success_at} band {partial_at:?}"
             );
         }
     }

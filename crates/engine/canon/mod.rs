@@ -119,15 +119,16 @@ impl Exit {
         }
     }
 
-    /// Every number the exit holds: its cost's, then its conditions' values.
+    /// Every number the exit holds: its cost's, then its conditions'.
     pub(crate) fn exprs(&self) -> Vec<&Expr> {
-        let values = self.if_.iter().flat_map(Cond::exprs);
-        self.cost.exprs().chain(values).collect()
+        let cond_numbers = self.if_.iter().flat_map(Cond::exprs);
+        self.cost.exprs().chain(cond_numbers).collect()
     }
 
-    /// Every item id the exit's conditions and cost name, with its slot.
-    pub(crate) fn item_ids(&self) -> Vec<(&'static str, &str)> {
-        rule::collect_item_ids(&self.if_, [&self.cost])
+    /// Every slot the exit's conditions and cost fill, and every owner its numbers read, with
+    /// each slot's key as written.
+    pub(crate) fn slots(&self) -> Vec<(&'static str, rule::Slot<'_>)> {
+        rule::collect_slots(&self.if_, [&self.cost], self.exprs())
     }
 }
 
