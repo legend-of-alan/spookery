@@ -13,7 +13,8 @@ use crate::rules::expr::Expr;
 use crate::rules::grammar;
 use crate::rules::roll::Check;
 use crate::rules::rule::{
-    self, ChangeWatch, Cond, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule, When,
+    self, ChangeWatch, Cond, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule, Slot,
+    When,
 };
 use crate::Reason;
 
@@ -61,10 +62,7 @@ pub(super) fn broken_exits(
                     );
                 }
             }
-            let mut named: Vec<&str> = exit.item_ids().into_iter().map(|(_, id)| id).collect();
-            named.sort();
-            named.dedup();
-            for id in named {
+            for id in collect_item_ids(exit.slots()) {
                 if !items.contains_key(id) {
                     diags.push(
                         schema_error(
@@ -87,12 +85,7 @@ pub(super) fn unknown_rule_items(
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
-        let mut ids: Vec<&str> = rule.item_ids().into_iter().map(|(_, id)| id).collect();
-        // The load refuses `id: target` unless the rule targets an item; the item is the intent's.
-        ids.retain(|id| *id != "target");
-        ids.sort();
-        ids.dedup();
-        for id in ids {
+        for id in collect_item_ids(rule.slots()) {
             if items.contains_key(id) {
                 continue;
             }
@@ -104,6 +97,15 @@ pub(super) fn unknown_rule_items(
         }
     }
     diags
+}
+
+/// The item ids `slots` name, each once and in order.
+fn collect_item_ids<'a>(slots: Vec<(&'static str, Slot<'a>)>) -> BTreeSet<&'a str> {
+    let ids = slots.into_iter().filter_map(|(_, slot)| match slot {
+        Slot::Item(id) => Some(id),
+        Slot::Owner(_) | Slot::Target(_) => None,
+    });
+    ids.collect()
 }
 
 /// Modifier effects naming a modifier `rules/modifiers.yaml` does not define.
@@ -917,8 +919,9 @@ fn names_subject(rule: &Rule) -> bool {
         EffectTemplate::Location { .. } => needs = true,
         _ => {}
     });
-    let subject = grammar::Object::Actor(grammar::Actor::Self_);
-    needs || (rule.objects().iter()).any(|(_, of)| *of == subject || *of == grammar::Object::Here)
+    let subject = Slot::Owner(grammar::Object::Actor(grammar::Actor::Self_));
+    let here = Slot::Owner(grammar::Object::Here);
+    needs || (rule.slots().iter()).any(|(_, slot)| *slot == subject || *slot == here)
 }
 
 fn mark_cycles(next: &[Vec<usize>], hit: &mut [bool]) {
