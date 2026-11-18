@@ -29,7 +29,7 @@ Feature: A player and a GM share a table
     When the player sends "map"
     Then the player's map lists "Docks Shop"
     And the GM sees nothing queued
-    And no round record was written
+    And no round was played
 
   Scenario: A locked exit is refused and nothing is queued
     Given rowan is in the shop and a GM is seated

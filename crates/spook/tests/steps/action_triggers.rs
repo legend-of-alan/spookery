@@ -5,7 +5,6 @@ use std::fs;
 use cucumber::{given, then, when};
 use spookery_engine::{component, entity, Presence};
 
-use super::record::read_extra_steps;
 use super::rules::open;
 use super::triggers::world_flags;
 use crate::support::{append, copy_pack, edit_save, read_round, stamp_pack_rev, world_of};
@@ -93,7 +92,7 @@ fn three_in_the_shop(world: &mut World) {
 fn a_bell_on_the_cellar_door(world: &mut World) {
     let verbs = flag_verb("open_cellar", "cellar_open", true, "")
         + &flag_verb("close_cellar", "cellar_open", false, "");
-    let ring = "  - id: ring\n    when:\n      change:\n        flag: cellar_open\n        becomes: true\n    do: []\n";
+    let ring = "  - id: ring\n    when:\n      change:\n        flag: cellar_open\n        becomes: true\n    do:\n      - meter:\n          of: rowan\n          key: vigor\n          add: 1\n";
     write_rules(world, &verbs, "cellar", ring);
 }
 
@@ -109,14 +108,16 @@ fn open_close_open(world: &mut World) {
     );
 }
 
-#[then(expr = "the bell rings twice this round")]
+#[then(expr = "the bell rings twice this round, raising Rowan's vigor by 2")]
 fn the_bell_rings_twice(world: &mut World) {
-    let round = latest_round(world);
-    let rings = read_extra_steps(&round)
-        .iter()
-        .filter(|step| step.as_str() == "story:cellar/ring")
-        .count();
-    assert_eq!(rings, 2, "{round}");
+    let now = world_of(world.pack.as_ref().unwrap());
+    let rowan = entity::Id::Actor("rowan".into());
+    assert_eq!(
+        now.entities()
+            .get::<component::Meter>(&rowan)
+            .value("vigor"),
+        Ok(3)
+    );
 }
 
 #[given(expr = "a rule locks the gate when Rowan arrives in the street")]

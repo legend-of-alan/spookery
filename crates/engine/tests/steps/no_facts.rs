@@ -80,16 +80,6 @@ fn a_docks_round_plays(world: &mut World) {
 #[then(expr = "Mira's habit fires")]
 fn miras_habit_fires(world: &mut World) {
     let pack = world.pack();
-    let fired = list_round_keys(pack).iter().any(|key| {
-        support::read_round(pack, key)["extra_steps"]
-            .as_array()
-            .is_some_and(|steps| {
-                steps
-                    .iter()
-                    .any(|step| step["rule"] == "cast:mira/leave_door_note")
-            })
-    });
-    assert!(fired, "leave_door_note did not run");
     let ecs_world = support::world_of(pack);
     let notes = ecs_world.globals().get::<Note>(&GlobalId);
     assert!(

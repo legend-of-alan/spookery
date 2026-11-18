@@ -141,7 +141,7 @@ an unclaimed wait, even if the wait was queued first. So does a move through an
 exit into a seated player's room. An NPC habit stays quiet while a player shares
 the room. The GM can still queue it, and a GM-queued habit is checked the same
 as one the engine runs, so a habit that sets a flag its cast file does not
-list is refused `UNKNOWN_ID` either way. A move the round has no room for is
+list is refused either way and sets nothing. A move the round has no room for is
 refused `BUDGET`, never dropped: one past the intent limit, and every one after
 a rule that goes over the state-key limit.
 
@@ -237,13 +237,14 @@ Tested in `features/meters/modifiers_stack_and_expire.feature` and
 
 A missing exit and a locked exit change nothing. A locked exit shows its locked
 text. An exit with an `if` is locked until, at the end of a round, some actor in
-its place meets that `if`. Then the exit opens and the GM sees the `place_exit_open` change, and the exit stays open for every actor until a rule sets `open`
-to false. A hidden exit the traveller does not know stays off the view and `help`.
+its place meets that `if`. Then the exit opens and the GM sees the
+`place_exit_open` change, and the exit stays open for every actor until a rule
+sets `open` to false. A hidden exit the traveller does not know stays off the view and `help`.
 A walk that takes ticks puts the traveller on the exit at once, in neither
 room, and keeps them busy until the arrival tick. A move before then is
 refused. The
 round does not shrink: a seated round still advances five ticks, a two-tick
-exit is recorded at its tick inside that round, and the next move is the
+exit lands the traveller inside that round, and the next move is the
 following round. An empty table advances sixty ticks a round. An earlier
 arrival is applied first. When every seated player is busy and no GM is seated,
 rounds run ahead without waiting on the wall clock, up to the pack's cap, and

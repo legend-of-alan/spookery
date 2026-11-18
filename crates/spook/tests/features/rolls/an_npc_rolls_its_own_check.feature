@@ -37,4 +37,4 @@ Feature: An NPC rolls its own check
     Given a docks table with a seated player
     When the player sends a line with a player prefix
     Then world_time is 1080
-    And no round record was written
+    And no round was played

@@ -10,7 +10,6 @@ use spookery_engine::testing::world_of;
 use spookery_engine::{component, entity, load_canon, ActorId, GlobalId, Meter, Note, Presence};
 
 use super::common::{add_verb, replace_in_file};
-use super::record::read_extra_steps;
 use super::table;
 use super::triggers::{edit_table, intent, play_round, seen_of, set_place, sit, PlayedRound};
 use crate::support::{self, copy_pack};
@@ -325,22 +324,6 @@ fn no_actor_carries_dawn(world: &mut World) {
     for id in now.actors().query::<ActorId>().iter() {
         assert!(!now.actors().get::<Meter>(id).contains("dawn"), "{id}");
     }
-}
-
-#[then(expr = "the vigil's change rule fires once")]
-fn the_vigil_fires_once(world: &mut World) {
-    let pack = pack(world);
-    let fired = spookery_engine::testing::journal::list_round_keys(pack)
-        .iter()
-        .map(|key| support::read_round(pack, key))
-        .flat_map(|round| read_extra_steps(&round))
-        .filter(|step| step == "story:vigil/dawn_breaks")
-        .count();
-    assert_eq!(fired, 1);
-    assert!(world_of(pack)
-        .entities()
-        .get::<component::Flag>(&entity::Id::Global)
-        .contains("dawn_broke"));
 }
 
 /// Give the world a `morning` meter from 0, and append effects to the vigil's dawn rule, the

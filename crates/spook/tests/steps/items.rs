@@ -110,7 +110,7 @@ const DAGGER_STRIKE: &str = "
       - meter:
           of: target
           key: hp
-          add: -3
+          add: -4
 ";
 
 const BARE_HANDS_ATTACK: &str = "
@@ -395,13 +395,6 @@ fn harbormouse_wields_nothing(world: &mut World) {
     add_attack_rules(&pack, DAGGER_ATTACK);
     support::edit_save(&pack, |now| hold_dagger(now, false));
     world.pack = Some(pack);
-}
-
-#[when(expr = "harbormouse attacks wren and hits")]
-fn harbormouse_attacks_wren_and_hits(world: &mut World) {
-    let pack = world.pack.clone().unwrap();
-    handle_move(&pack, "harbormouse", "attack wren")
-        .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 
 #[when(expr = "harbormouse attacks wren")]

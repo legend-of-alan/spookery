@@ -255,9 +255,7 @@ fn rowan_travels_in_the_evening_round(world: &mut World) {
 
 #[then(expr = "the round still ends at tick 1295")]
 fn the_round_still_ends_at_tick_1295(world: &mut World) {
-    let round = crate::support::read_round(table::pack(world), "round-0001");
-    assert_eq!(round["world_time_before"], EVENING);
-    assert_eq!(round["world_time_after"], EVENING + 5);
+    assert_eq!(world_of(table::pack(world)).world_time, EVENING + 5);
 }
 
 #[then(expr = "a move from rowan is accepted from the round starting at tick 1295")]
@@ -269,9 +267,7 @@ fn the_next_round_accepts_a_move(world: &mut World) {
     assert!(!is_busy(&now, "rowan"));
 }
 
-#[then(
-    expr = "every round line shows world_time_after minus world_time_before equal to 5 seated or 60 unseated"
-)]
+#[then(expr = "a seated round advances world_time by 5 and an empty one by 60")]
 fn rounds_never_shorten(_world: &mut World) {
     let seated = copy_pack("docks", "seated-length");
     let mut seated_session = spookery_engine::testing::resume(&seated);
@@ -284,18 +280,9 @@ fn rounds_never_shorten(_world: &mut World) {
     drop(seated_session);
     let idle = copy_pack("docks", "idle-length");
     spookery_engine::play_pack_once(&idle).unwrap();
-    let seated_round = crate::support::read_round(&seated, "round-0001");
-    let idle_round = crate::support::read_round(&idle, "round-0001");
-    assert_eq!(
-        seated_round["world_time_after"].as_u64().unwrap()
-            - seated_round["world_time_before"].as_u64().unwrap(),
-        5
-    );
-    assert_eq!(
-        idle_round["world_time_after"].as_u64().unwrap()
-            - idle_round["world_time_before"].as_u64().unwrap(),
-        60
-    );
+    let start = world_of(&copy_pack("docks", "start-time")).world_time;
+    assert_eq!(world_of(&seated).world_time - start, 5);
+    assert_eq!(world_of(&idle).world_time - start, 60);
 }
 
 #[given(expr = "rowan and nell are seated and both busy, with no GM")]

@@ -11,7 +11,7 @@ Feature: The player sees success and the GM sees faces
     When the player rolls exert
     Then the player line is queued
     And world_time is 1080
-    And no round record was written
+    And no round was played
     When the GM commits the round
     Then the GM sees the exert faces
     And the player sees a check result without faces

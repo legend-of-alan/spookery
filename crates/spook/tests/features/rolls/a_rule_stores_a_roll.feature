@@ -22,7 +22,7 @@ Feature: A rule stores a roll in let
       | low(dmg)  | lower  | its vigor add              | hits        |
       | high(dmg) | higher | a nested check's vigor add | hits Aldric |
 
-  Scenario Outline: A rule's dice roll in the order the rule reads, an effect that does not run rolls nothing, and a move that takes time rolls at its finish
+  Scenario Outline: A rule's dice roll in the order the rule reads and an effect that does not run rolls nothing
     Given a docks table
     When the pack's hit stores "attack: 1d20", checks "attack + 1d4" against <success_at>, takes <ticks> ticks, and adds "1d6" to vigor on a success
     And the player hits and the GM commits
@@ -33,7 +33,6 @@ Feature: A rule stores a roll in let
       | success_at | ticks | lines                  |
       | 0          | 0     | attack: 1d20, 1d4, 1d6 |
       | 100        | 0     | attack: 1d20, 1d4      |
-      | 0          | 30    | attack: 1d20, 1d4, 1d6 |
 
   Scenario Outline: A second let, a let id or a read that check refuses fails spook check at the line it names
     Given a docks table

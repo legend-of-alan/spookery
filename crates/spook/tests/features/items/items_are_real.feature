@@ -69,7 +69,7 @@ Feature: Items are real
 
   Scenario: Attack uses the wielded weapon's rule
     Given harbormouse wields poisoned_dagger
-    When harbormouse attacks wren and hits
+    When harbormouse attacks wren
     Then wren's hp is 5
 
   Scenario: Bare hands fall back
@@ -80,7 +80,7 @@ Feature: Items are real
   Scenario: A wielded item's rule wins for any verb
     Given harbormouse wields a poisoned_dagger with a strike rule
     When Harbormouse types "strike wren"
-    Then wren's hp is 5
+    Then wren's hp is 4
 
   Scenario: Dropping the wielded item empties the slot
     Given harbormouse wields poisoned_dagger

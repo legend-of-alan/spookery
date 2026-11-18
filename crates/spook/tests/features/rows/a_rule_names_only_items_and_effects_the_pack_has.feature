@@ -9,4 +9,4 @@ Feature: A rule names only items and effects the pack has
     Given a docks table where mark needs a knife
     When the player marks Nell
     Then world_time is 1080
-    And no round record was written
+    And no round was played

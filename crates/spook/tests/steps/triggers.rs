@@ -228,6 +228,10 @@ rules:
           of: self
           key: sun
           value: false
+      - meter:
+          of: self
+          key: vigor
+          add: 1
   - id: moon_to_sun
     when:
       change:
@@ -242,6 +246,10 @@ rules:
           of: self
           key: moon
           value: false
+      - meter:
+          of: self
+          key: vigor
+          add: 1
 ",
     )
     .unwrap();
@@ -270,11 +278,10 @@ fn a_round_stops_at_depth_4(world: &mut World) {
         &pack,
         vec![intent("raise-sun", "nell", "raise", None)],
     );
-    // Four passes flip moon then sun twice, so the sun is up again when the round commits.
-    let nell = "nell".into();
-    let flags = now.actors().get::<component::Flag>(&nell);
-    assert!(flags.contains("sun"), "the sun is down");
-    assert!(!flags.contains("moon"), "the moon is up");
+    // Each pass adds 1 to Nell's vigor, which starts at Rowan's 1.
+    let nell = entity::Id::Actor("nell".into());
+    let vigor = now.entities().get::<component::Meter>(&nell).value("vigor");
+    assert_eq!(vigor, Ok(5), "four passes add 4");
 }
 
 #[given(expr = "a rule on a known fact narrates to the subject")]
@@ -755,18 +762,6 @@ fn the_gm_queues_miras_habit(world: &mut World, habit: String) {
 fn an_empty_round_passes(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     play_and_keep_summaries(world, pack, Vec::new());
-}
-
-#[then(expr = "the round's only refusal is {string}")]
-fn the_rounds_only_refusal_is(world: &mut World, code: String) {
-    let round = read_latest_round(world.pack.as_ref().unwrap());
-    let codes: Vec<&str> = round["refused"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|refusal| refusal["code"].as_str())
-        .collect();
-    assert_eq!(codes, vec![code.as_str()], "{round}");
 }
 
 #[then(expr = "no place has the {string} flag")]

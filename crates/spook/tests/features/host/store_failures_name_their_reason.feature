@@ -5,7 +5,7 @@ Feature: Store failures name their reason
     When the tape cannot be written
     And the player tries to say "hello"
     Then the player is refused with "STORE_IO"
-    And no round record was written
+    And no round was played
 
   Scenario: A journal bundle the disk will not read is STORE_IO
     Given a docks table with a seated player

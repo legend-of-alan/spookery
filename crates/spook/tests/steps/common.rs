@@ -6,7 +6,6 @@ use std::io::Write;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::{component, ecs};
 
 use super::table;
@@ -775,17 +774,14 @@ fn the_gm_commits_the_round(world: &mut World) {
     world.stdout = table::gm_tool_call(world, 2, "commit", r#"{"include_round":true}"#);
 }
 
-#[then(expr = "a round record was written")]
-fn a_round_record_was_written(world: &mut World) {
-    assert_eq!(
-        list_round_keys(table::pack(world)),
-        vec!["round-0001".to_string()]
-    );
+#[then(expr = "one round was played")]
+fn one_round_was_played(world: &mut World) {
+    assert_eq!(world_of(table::pack(world)).round_index, 1);
 }
 
-#[then(expr = "no round record was written")]
-fn no_round_record_was_written(world: &mut World) {
-    assert!(list_round_keys(table::pack(world)).is_empty());
+#[then(expr = "no round was played")]
+fn no_round_was_played(world: &mut World) {
+    assert_eq!(world_of(table::pack(world)).round_index, 0);
 }
 
 #[then(expr = "save.yaml is unchanged since the seat")]

@@ -7,14 +7,13 @@ Feature: A hand edit waits for migrate
     Then the command exits 1
     And the round writes nothing
 
-  Scenario: Two migrates bump state_rev and append evidence
+  Scenario: Two migrates bump state_rev
     Given a docks table
     When the operator migrates twice
     Then state_rev is 2
     And world_time is 1080
     And round index is 0
-    And no round record was written
-    And the journal has two migrate records, at state_rev 1 and 2
+    And no round was played
 
   Scenario: Migrate keeps a hand edit and rewrites pack_rev
     Given a docks table
