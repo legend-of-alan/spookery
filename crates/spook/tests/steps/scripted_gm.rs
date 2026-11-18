@@ -141,6 +141,14 @@ pub fn read_tool_results(messages: &[model::Message]) -> Vec<String> {
         .collect()
 }
 
+/// What the HTTP model stub has seen: each request in order, and how many of their
+/// connections the client has closed.
+#[derive(Default)]
+pub struct Seen {
+    pub posts: Vec<String>,
+    pub closes: usize,
+}
+
 /// `ai_gm::run` on its own thread, on a current-thread runtime whose clock starts paused.
 /// A blocking task held for the run keeps tokio from auto-advancing, so paused time moves
 /// only on `advance`.

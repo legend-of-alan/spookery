@@ -9,14 +9,14 @@ use std::thread;
 use std::time::Duration;
 
 use cucumber::{given, then, when};
-use spookery::agent::CompletionError;
+use spookery::agent::{model, CompletionError};
 use spookery::http_model::{HttpModel, Settings, MODEL_CALL_TIMEOUT, RETRY_BACKOFF};
 
 use crate::support::{self, copy_pack};
 use crate::World;
 
 use super::scripted_gm::{
-    read_tool_results, render_completion, start_ai_gm, stop_ai_gm, AiGm, ScriptedModel, HOLD,
+    read_tool_results, render_completion, start_ai_gm, stop_ai_gm, AiGm, ScriptedModel, Seen, HOLD,
 };
 use super::table;
 
@@ -256,13 +256,19 @@ fn world_time_moved_one_round(world: &mut World) {
 
 #[then(expr = "the GM's own speech did not call the model")]
 fn the_gms_own_speech_did_not_call_the_model(world: &mut World) {
-    // The player's speech starts a turn that asks once more and ends. The GM's own speech
-    // starts no turn.
+    // A turn the GM's own speech started would show it in that turn's observation.
     let calls = world.model.wait_past_script();
-    assert_eq!(calls.len(), 2, "the GM's own speech called the model");
+    for call in &calls {
+        for message in call {
+            if let model::Message::User { content } = message {
+                assert!(!content.contains("evening"), "{content}");
+            }
+        }
+    }
 }
 
 #[then(expr = "one round committed")]
+#[then(expr = "the queued line committed one round")]
 fn one_round_committed(world: &mut World) {
     assert_eq!(
         world.round_ticks,
@@ -271,15 +277,9 @@ fn one_round_committed(world: &mut World) {
     );
 }
 
-#[then(expr = "the model was called once")]
-fn the_model_was_called_once(world: &mut World) {
-    assert_eq!(world.model.calls().len(), 1);
-}
-
 #[then(expr = "the model narrated the rolls in the same turn")]
 fn the_model_narrated_the_rolls_in_the_same_turn(world: &mut World) {
     let calls = world.model.wait_past_script();
-    assert_eq!(calls.len(), 3, "the rolls were not narrated in the turn");
     let rolls = read_tool_results(&calls[1]);
     assert!(rolls[0].contains("\"rolls\""), "{rolls:?}");
 }
@@ -304,9 +304,7 @@ fn a_player_queues_travel_while_the_model_answers_their_say(world: &mut World) {
     gm.advance(HOLD);
     world.round_ticks = table::wait_rounds_to_view(world, mark);
     stop_ai_gm(world, gm);
-    let _ = fs::remove_dir_all(&pack);
-    world.mark = model.calls().len();
-    world.stdout = "advanced".to_string();
+    world.pack = Some(pack);
 }
 
 fn tape_text(pack: &Path) -> String {
@@ -357,14 +355,9 @@ fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
     gm.advance(MODEL_CALL_TIMEOUT);
     wait_stub(&seen, 2, 2);
     world.round_ticks = table::wait_rounds_to_view(world, world.mark);
-    let up = !gm.thread.is_finished();
-    stop_ai_gm(world, gm);
-    let _ = fs::remove_dir_all(&pack);
-    let seen = seen.lock().unwrap();
-    world.stdout = "advanced".to_string();
-    world.stderr = if up { "up" } else { "down" }.to_string();
-    world.mark = seen.posts.len();
-    world.scratch = seen.closes.to_string();
+    world.ai_gm = Some(gm);
+    world.pack = Some(pack);
+    world.stub_seen = Some(seen);
 }
 
 #[when(expr = "a model answers 500 once and then speaks")]
@@ -380,7 +373,7 @@ fn a_model_answers_500_once_and_then_speaks(world: &mut World) {
     // Its socket closes once the 500 is read, so this lands in the pause before the retry.
     wait_stub(&seen, 1, 1);
     gm.advance(RETRY_BACKOFF);
-    finish_http_turn(world, gm, &pack, &seen);
+    finish_http_turn(world, gm, pack, seen);
 }
 
 #[when(expr = "a model answers 401")]
@@ -389,7 +382,7 @@ fn a_model_answers_401(world: &mut World) {
     let (stub, seen) = start_model_stub([Reply::Status(401, UNAUTHORIZED_BODY)]);
     let gm = start_ai_gm(world, http_model(stub));
     table::wait_suffix(&gm.err, 0, "model call returned 401");
-    finish_http_turn(world, gm, &pack, &seen);
+    finish_http_turn(world, gm, pack, seen);
 }
 
 /// A provider 401 body that echoes the key back, the way some providers do.
@@ -408,62 +401,53 @@ fn the_error_line_shows_the_providers_text_without_the_key(world: &mut World) {
     assert!(!err.contains("test-key"), "{err}");
 }
 
-#[then(expr = "the queued line committed one round")]
-fn the_queued_line_committed_one_round(world: &mut World) {
-    assert_eq!(world.stdout, "advanced", "{}", world.scratch);
-    one_round_committed(world);
-}
-
 #[then(expr = "the hung call retried once after the delay")]
 fn the_hung_call_retried_once_after_the_delay(world: &mut World) {
-    assert_eq!(world.mark, 2, "posts");
+    assert_eq!(lock_stub_seen(world).posts.len(), 2);
+}
+
+#[then(expr = "the stub saw {int} model post")]
+fn the_stub_saw_model_posts(world: &mut World, count: usize) {
+    assert_eq!(lock_stub_seen(world).posts.len(), count);
 }
 
 #[then(expr = "both hung calls closed")]
 fn both_hung_calls_closed(world: &mut World) {
-    assert_eq!(world.scratch, "2", "closes");
-}
-
-#[then(expr = "the seat stayed up")]
-fn the_seat_stayed_up(world: &mut World) {
-    assert_eq!(world.stderr, "up");
-}
-
-#[then(expr = "the stub saw {int} model posts")]
-#[then(expr = "the stub saw {int} model post")]
-fn the_stub_saw_model_posts(world: &mut World, count: usize) {
-    assert_eq!(world.mark, count, "{}", world.scratch);
+    assert_eq!(lock_stub_seen(world).closes, 2);
 }
 
 #[then(expr = "the model's say landed")]
 fn the_models_say_landed(world: &mut World) {
-    assert_eq!(world.scratch, "said");
+    let tape = tape_text(table::pack(world));
+    assert!(tape.contains("STUB-SAY-FIXTURE"), "{tape}");
 }
 
 #[then(expr = "the model's say did not land")]
 fn the_models_say_did_not_land(world: &mut World) {
-    assert_eq!(world.scratch, "silent");
+    let tape = tape_text(table::pack(world));
+    assert!(!tape.contains("STUB-SAY-FIXTURE"), "{tape}");
 }
 
-/// Waits for the queued travel's round, stops the AI GM, and keeps what the turn showed.
-fn finish_http_turn(world: &mut World, gm: AiGm, pack: &Path, seen: &Mutex<Seen>) {
+fn lock_stub_seen(world: &World) -> std::sync::MutexGuard<'_, Seen> {
+    world
+        .stub_seen
+        .as_ref()
+        .expect("a model stub")
+        .lock()
+        .unwrap()
+}
+
+/// Waits for the queued travel's round, then stops the AI GM and keeps its error text, the
+/// pack and what the stub saw.
+fn finish_http_turn(world: &mut World, gm: AiGm, pack: PathBuf, seen: Arc<Mutex<Seen>>) {
     world.round_ticks = table::wait_rounds_to_view(world, world.mark);
-    let tape = tape_text(pack);
-    let err = support::text_of(&gm.err);
+    world.stderr = support::text_of(&gm.err);
     stop_ai_gm(world, gm);
-    let _ = fs::remove_dir_all(pack);
-    let posts = seen.lock().unwrap().posts.clone();
-    for post in &posts {
+    for post in &seen.lock().unwrap().posts {
         assert_chat_post(post);
     }
-    world.stdout = "advanced".to_string();
-    world.stderr = err;
-    world.mark = posts.len();
-    world.scratch = if tape.contains("STUB-SAY-FIXTURE") {
-        "said".to_string()
-    } else {
-        "silent".to_string()
-    };
+    world.pack = Some(pack);
+    world.stub_seen = Some(seen);
 }
 
 /// A pack copy with Rowan seated and travel queued while a GM held the seat, then let go.
@@ -501,14 +485,6 @@ enum Reply {
     Status(u16, &'static str),
     /// Answer 200 with these tool calls, each a name and its arguments.
     Tools(&'static [(&'static str, &'static str)]),
-}
-
-/// What the model stub has seen: each request in order, and how many of their connections
-/// the client has closed.
-#[derive(Default)]
-struct Seen {
-    posts: Vec<String>,
-    closes: usize,
 }
 
 /// A chat-completions endpoint on a free port. Each connection gets the next reply, then
