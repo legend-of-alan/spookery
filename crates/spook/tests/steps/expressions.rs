@@ -47,14 +47,14 @@ fn one_round_plays(world: &mut World) {
 #[when(
     regex = r#"^the pack's hit has "(.+)" as (a condition value|a cost amount|a cost item count|its cost ticks)$"#
 )]
-fn the_packs_hit_has(world: &mut World, number: String, slot: String) {
-    let line = match slot.as_str() {
+fn the_packs_hit_has(world: &mut World, dice: String, field: String) {
+    let line = match field.as_str() {
         "a condition value" => {
-            format!("if: [meter: {{ of: self, id: vigor, op: \">=\", value: \"{number}\" }}]")
+            format!("if: [meter: {{ of: self, id: vigor, op: \">=\", value: \"{dice}\" }}]")
         }
-        "a cost amount" => format!("cost: {{ meters: {{ vigor: \"{number}\" }} }}"),
-        "a cost item count" => format!("cost: {{ items: {{ chock: \"{number}\" }} }}"),
-        _ => format!("cost: {{ ticks: \"{number}\" }}"),
+        "a cost amount" => format!("cost: {{ meters: {{ vigor: \"{dice}\" }} }}"),
+        "a cost item count" => format!("cost: {{ items: {{ chock: \"{dice}\" }} }}"),
+        _ => format!("cost: {{ ticks: \"{dice}\" }}"),
     };
     let pack = table::pack(world).to_path_buf();
     let rule = format!("\n  - id: hit\n    when: {{ verb: hit }}\n    {line}\n    do: []\n");
@@ -80,6 +80,36 @@ fn stock_reads_rest(world: &mut World) {
       - modifier: { to: self, id: fatigue, add: -1, ticks: "self.rest + 2" }
 "#,
     );
+    crate::support::stamp_pack_rev(&pack);
+}
+
+#[given(
+    regex = r#"^the pack has "(.+)" as (the street exit's ticks|the strain's modifier ticks|the strain's cycle bound)$"#
+)]
+fn the_pack_has(world: &mut World, number: String, field: String) {
+    let pack = world.pack.clone().unwrap();
+    let verbs = pack.join("rules/verbs.yaml");
+    let strain = "\n  - id: strain\n    when: { verb: strain }\n";
+    match field.as_str() {
+        "the street exit's ticks" => {
+            let path = pack.join("world/places/docks_shop.md");
+            let text = fs::read_to_string(&path).unwrap();
+            let cost = format!("    id: docks_street\n    cost: {{ ticks: \"{number}\" }}\n");
+            fs::write(&path, text.replace("    id: docks_street\n", &cost)).unwrap();
+        }
+        "the strain's modifier ticks" => {
+            super::modifiers::add_modifier(&pack, "fatigue", "vigor", "");
+            let modifier = format!("{{ to: self, id: fatigue, add: -1, ticks: \"{number}\" }}");
+            crate::support::append(&verbs, &format!("{strain}    do: [modifier: {modifier}]\n"));
+        }
+        _ => {
+            let cycle = format!("{{ id: day, from: \"{number}\", to: 0 }}");
+            crate::support::append(
+                &verbs,
+                &format!("{strain}    if: [cycle: {cycle}]\n    do: []\n"),
+            );
+        }
+    }
     crate::support::stamp_pack_rev(&pack);
 }
 

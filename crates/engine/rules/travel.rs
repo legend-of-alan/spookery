@@ -6,7 +6,7 @@ use crate::ecs::{self, component, PendingAction, Presence};
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::round::Ledger;
 use crate::rules::cond;
-use crate::rules::context::{self, Context};
+use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::gate;
@@ -188,7 +188,7 @@ pub(crate) fn exits_at(
 }
 
 /// `exit` as `actor_id` sees it now: where it goes, its ticks read for their walk (0 when they
-/// cannot be read), and whether it is locked. The ticks are read against [`context::probe`]
+/// cannot be read), and whether it is locked. The ticks are read against a probe with no id,
 /// with no one seated, since a number reads no presence.
 pub(crate) fn exit_view(
     canon: &Canon,
@@ -198,10 +198,17 @@ pub(crate) fn exit_view(
 ) -> ExitView {
     let viewer = (world.actors().get::<component::ControlType>(actor_id)).viewer();
     let ticks = viewer.and_then(|viewer| {
-        let probe = context::probe(world, &viewer, "travel", Target::Exit(exit.id.clone()));
+        let probe = Intent::new(
+            String::new(),
+            world.round_index,
+            Some(viewer),
+            Source::Player,
+            "travel",
+            Target::Exit(exit.id.clone()),
+        );
         let presence = Presence::default();
         let context = Context::new(canon, world, &presence, &probe);
-        cost::count_ticks(&context, &exit.cost).ok()
+        cost::read_ticks(&context, &exit.cost).ok()
     });
     ExitView {
         exit_id: exit.id.clone(),
@@ -251,9 +258,9 @@ pub(crate) fn visible_exits(
 /// finishes now. A negative count is `OUT_OF_RANGE`.
 pub(crate) fn span(context: &Context, rule: &Rule) -> Result<u64, Reason> {
     let start = rule.start.cost.as_ref();
-    let mut ticks = start.map_or(Ok(0), |cost| cost::count_ticks(context, cost))?;
+    let mut ticks = start.map_or(Ok(0), |cost| cost::read_ticks(context, cost))?;
     if let Ok(Some(exit)) = exit_of(context, rule) {
-        ticks = ticks.saturating_add(cost::count_ticks(context, &exit.cost)?);
+        ticks = ticks.saturating_add(cost::read_ticks(context, &exit.cost)?);
     }
     Ok(ticks)
 }
