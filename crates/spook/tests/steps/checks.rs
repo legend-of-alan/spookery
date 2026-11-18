@@ -47,8 +47,6 @@ const NOTICE_ROWS: &str = "
           value: true
 ";
 
-// The mark's threshold rolls its own dice and reads the target's vigor: a defense written in
-// the pack.
 const CONTESTED_MARK_ROW: &str = "
   - id: mark
     when:
@@ -68,6 +66,8 @@ const CONTESTED_MARK_ROW: &str = "
           key: missed
           value: true
 ";
+
+const MIRA_VIGOR: i64 = 100;
 
 #[when(expr = "the player rolls exert")]
 fn the_player_rolls_exert(world: &mut World) {
@@ -154,7 +154,7 @@ fn a_docks_table_where_miras_vigor_contests_a_mark(world: &mut World) {
     world.pack = Some(pack.clone());
     append_verbs(&pack, CONTESTED_MARK_ROW);
     insert_mira_flags(&pack, "    - marked\n    - missed\n");
-    set_vigor(&pack, "mira", 100);
+    set_vigor(&pack, "mira", MIRA_VIGOR);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"mira".into())
@@ -242,18 +242,19 @@ fn the_gm_sees_one_roll_and_the_thresholds_dice_line(world: &mut World) {
     let body = table::read_reply(&world.stdout);
     let rolls = body["rolls"].as_array().unwrap_or_else(|| panic!("{body}"));
     assert_eq!(rolls.len(), 1, "{body}");
-    // 2d6 plus Mira's vigor of 100.
-    let target = rolls[0]["target"]
-        .as_i64()
-        .unwrap_or_else(|| panic!("{body}"));
-    assert!((102..=112).contains(&target), "{body}");
-    assert_roll(&rolls[0], 1, target, "miss");
     let dice = body["dice"].as_array().unwrap_or_else(|| panic!("{body}"));
     assert_eq!(dice.len(), 1, "{body}");
-    assert!(
-        dice[0].as_str().is_some_and(|line| line.contains("2d6 →")),
-        "{body}"
-    );
+    let (faces, _) = dice[0]
+        .as_str()
+        .and_then(|line| line.strip_prefix("2d6 → "))
+        .and_then(|rest| rest.split_once(" = "))
+        .unwrap_or_else(|| panic!("{body}"));
+    let face_sum = faces
+        .split(", ")
+        .map(str::parse::<i64>)
+        .sum::<Result<i64, _>>()
+        .unwrap_or_else(|err| panic!("{err}: {body}"));
+    assert_roll(&rolls[0], 1, face_sum + MIRA_VIGOR, "miss");
 }
 
 #[then(expr = "the journal records Mira's engine brace")]

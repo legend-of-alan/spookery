@@ -122,7 +122,7 @@ refused effect rolls the whole rule back. A rule over the effect cap is refused
 whole, not cut short, and the journal records the refusal. That holds for a change
 rule too. A move's check rolls when the move lands, after the gate admits it
 and its start cost is paid, so a move the gate refuses then rolls no dice, and a
-roll whose effects are refused is not reported as a success. A roll threshold
+roll whose effects are refused is not reported as a success. A roll target
 that fails to evaluate refuses that move with its error, and the rest of the
 round lands and commits. A move pays the cost of the rule resolve picked for it,
 even when an earlier move that round changed which rule its verb would pick. A place's verb rule beats the shared rule. A cast

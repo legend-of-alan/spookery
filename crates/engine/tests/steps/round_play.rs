@@ -296,7 +296,7 @@ fn each_strike_rolls_once_against_threshold(world: &mut World, threshold: i64) {
         let (faces, total, target) = strike_line(&world.scratch, actor_id);
         assert_eq!(
             (faces, total),
-            first_strike_roll(pack, actor_id),
+            derive_first_strike(pack, actor_id),
             "{actor_id} did not roll its own first key"
         );
         assert_eq!(target, threshold, "{actor_id}'s strike took another bar");
@@ -807,7 +807,7 @@ fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
 }
 
 /// The faces and total of `actor_id`'s first strike key this round.
-fn first_strike_roll(pack: &Path, actor_id: &str) -> (String, i64) {
+fn derive_first_strike(pack: &Path, actor_id: &str) -> (String, i64) {
     let session = spookery_engine::Session::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let check = session.canon().checks.get("strike").unwrap();
     let desc = session.canon().meters.get(&check.stat).unwrap();

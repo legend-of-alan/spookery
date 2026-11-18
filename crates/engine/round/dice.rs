@@ -101,7 +101,7 @@ pub(crate) struct Roller<'a> {
 }
 
 impl Roller<'_> {
-    /// Evaluate a rule's `roll:` spec, threshold then partial_at, then roll its check.
+    /// Evaluate a rule's `roll:` spec, `threshold` then `partial_at`, then roll its check.
     pub(crate) fn roll_spec(&mut self, context: &Context, spec: &RollSpec) -> Result<Roll, Reason> {
         let threshold = eval_with_dice(context, &spec.threshold, self)?;
         let partial_at = match &spec.partial_at {
