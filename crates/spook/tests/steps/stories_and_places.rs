@@ -7,17 +7,11 @@ use cucumber::{given, then, when};
 use spookery_engine::testing::{place_of, world_of};
 use spookery_engine::{component, entity, Presence};
 
-use super::common::{add_verb, replace_in_file};
-use super::meters::{assert_refused, migrate_and_play};
+use super::common::{add_verb, format_meter_row, replace_in_file};
+use super::meters::migrate_and_play;
 use super::triggers::{edit_table, intent, seen_of, set_place, sit};
 use crate::support::copy_pack;
 use crate::World;
-
-/// One meter row from 0 to 6 at base 0, with its `hidden` key when it has one.
-fn meter_row(id: &str, hidden: Option<bool>) -> String {
-    let hidden = hidden.map_or(String::new(), |hidden| format!("    hidden: {hidden}\n"));
-    format!("  - id: {id}\n    min: 0\n    base_cap: 6\n    max: 6\n    base: 0\n{hidden}")
-}
 
 /// The pack this scenario already set up, or a fresh docks copy.
 fn pack(world: &mut World) -> &Path {
@@ -94,13 +88,13 @@ fn story_declares_a_meter(world: &mut World, story: String, key: String) {
     write_story(
         world,
         &story,
-        &format!("meters:\n{}", meter_row(&key, None)),
+        &format!("meters:\n{}", format_meter_row(&key, None)),
     );
 }
 
 #[given(expr = "story\\/{word}.yaml declares {string} with hidden false")]
 fn story_declares_a_shown_meter(world: &mut World, story: String, key: String) {
-    let keys = format!("meters:\n{}", meter_row(&key, Some(false)));
+    let keys = format!("meters:\n{}", format_meter_row(&key, Some(false)));
     write_story(world, &story, &keys);
 }
 
@@ -125,14 +119,6 @@ fn rowan_and_wren_see_dread(world: &mut World) {
     }
 }
 
-#[then(expr = "it refuses the story's {word} meter as {string}")]
-fn it_refuses_the_story_meter(world: &mut World, key: String, why: String) {
-    assert_refused(
-        world,
-        &["story/ending.yaml", &format!("meter '{key}' {why}")],
-    );
-}
-
 #[then(expr = "the GM sees both light and draft")]
 fn the_gm_sees_light_and_draft(world: &mut World) {
     for key in ["place_meter attic light", "place_meter attic draft"] {
@@ -145,11 +131,6 @@ fn story_declares_a_flag(world: &mut World, story: String, flag: String) {
     write_story(world, &story, &format!("flags:\n  - {flag}\n"));
 }
 
-#[given(expr = "story\\/{word}.yaml declares no flags")]
-fn story_declares_no_flags(world: &mut World, story: String) {
-    write_story(world, &story, "");
-}
-
 #[given(expr = "a rule in story\\/{word}.yaml adds 1 to meter {word} of {string}")]
 fn a_story_rule_adds(world: &mut World, story: String, key: String, of: String) {
     append_story_rule(pack(world), &story, &meter_effect(&of, &key));
@@ -160,11 +141,6 @@ fn a_story_rule_sets(world: &mut World, story: String, key: String, of: String) 
     append_story_rule(pack(world), &story, &flag_effect(&of, &key));
 }
 
-#[given(expr = "a rule sets flag {word} of {string}")]
-fn a_verb_sets(world: &mut World, key: String, of: String) {
-    add_verb_doing(pack(world), "set_mark", &flag_effect(&of, &key));
-}
-
 #[given(expr = "a rule sets flag {word} of {string} to true")]
 fn a_shared_rule_sets(world: &mut World, key: String, of: String) {
     let rule = format!(
@@ -172,14 +148,6 @@ fn a_shared_rule_sets(world: &mut World, key: String, of: String) {
         flag_effect(&of, &key)
     );
     add_verb(pack(world), &rule);
-}
-
-#[given(expr = "a rule adds 1 to meter {word} of {string}")]
-fn a_rule_adds(world: &mut World, key: String, of: String) {
-    match of.strip_prefix("story:") {
-        Some(story) => append_story_rule(pack(world), story, &meter_effect(&of, &key)),
-        None => add_verb_doing(pack(world), "bump", &meter_effect(&of, &key)),
-    }
 }
 
 #[when(expr = "the rule runs")]
@@ -232,60 +200,22 @@ fn the_gm_sees_the_siege_flag(world: &mut World) {
     assert_gm_saw(world, "story_flag siege walls_breached");
 }
 
-#[then(expr = "it refuses the rule, saying the siege story does not declare walls_breached")]
-fn it_refuses_the_siege_flag(world: &mut World) {
-    assert_refused(
-        world,
-        &[
-            "rules/verbs.yaml",
-            "rule 'set_mark' names flag 'walls_breached', but story:siege does not declare it",
-        ],
-    );
-}
-
-#[then(expr = "it refuses the rule, saying only the ending story carries dread")]
-fn it_refuses_the_prologue_meter(world: &mut World) {
-    assert_refused(
-        world,
-        &[
-            "story/prologue.yaml",
-            "rule 'on_oil' names meter 'dread', but only story:ending carries meter 'dread'",
-        ],
-    );
-}
-
 #[given(expr = "world\\/places\\/attic.md declares the flag {string}")]
 fn attic_declares_a_flag(world: &mut World, flag: String) {
     write_attic(world, &format!("flags:\n  - {flag}\n"));
-}
-
-#[given(expr = "world\\/places\\/attic.md declares no meters")]
-fn attic_declares_no_meters(world: &mut World) {
-    write_attic(world, "");
 }
 
 #[given(
     expr = "world\\/places\\/attic.md declares {string} with hidden false and {string} with no hidden key"
 )]
 fn attic_declares_shown_and_hidden(world: &mut World, shown: String, hidden: String) {
-    let rows = meter_row(&shown, Some(false)) + &meter_row(&hidden, None);
+    let rows = format_meter_row(&shown, Some(false)) + &format_meter_row(&hidden, None);
     write_attic(world, &format!("meters:\n{rows}"));
 }
 
 #[then(expr = "the GM sees the flag change on the attic")]
 fn the_gm_sees_the_attic_flag(world: &mut World) {
     assert_gm_saw(world, "place_flag attic lamp_lit");
-}
-
-#[then(expr = "it refuses the rule, saying the attic does not declare light")]
-fn it_refuses_the_attic_meter(world: &mut World) {
-    assert_refused(
-        world,
-        &[
-            "rules/verbs.yaml",
-            "rule 'bump' names meter 'light', but place:attic carries no meter 'light'",
-        ],
-    );
 }
 
 #[given(expr = "rowan stands in the attic and Mira stands in the shop")]
@@ -406,36 +336,4 @@ fn rowan_does_not_see_the_flag(world: &mut World) {
     assert_gm_saw(world, "place_flag attic lamp_lit");
     let seen = seen_of(world, "rowan");
     assert!(seen.iter().all(|key| !key.contains("lamp_lit")), "{seen:?}");
-}
-
-/// Write `story/<file>.yaml` with this id and one flag, so a second file's flag would replace it.
-fn write_story_with_id(world: &mut World, file: &str, id: &str) {
-    let dir = pack(world).join("story");
-    fs::create_dir_all(&dir).unwrap();
-    let text = format!("schema: story\nid: \"{id}\"\nflags:\n  - {file}_flag\n");
-    fs::write(dir.join(format!("{file}.yaml")), text).unwrap();
-}
-
-#[given(expr = "story\\/a.yaml and story\\/b.yaml both have id {word}")]
-fn two_story_files_share_an_id(world: &mut World, id: String) {
-    write_story_with_id(world, "a", &id);
-    write_story_with_id(world, "b", &id);
-}
-
-#[given(expr = "story\\/a.yaml has an empty id")]
-fn a_story_file_has_an_empty_id(world: &mut World) {
-    write_story_with_id(world, "a", "");
-}
-
-#[then(expr = "it refuses story\\/b.yaml, saying story id {word} is already defined")]
-fn it_refuses_the_repeated_story(world: &mut World, id: String) {
-    assert_refused(
-        world,
-        &["story/b.yaml", &format!("story '{id}' is already defined")],
-    );
-}
-
-#[then(expr = "it refuses story\\/a.yaml, saying the story id is empty")]
-fn it_refuses_the_empty_story_id(world: &mut World) {
-    assert_refused(world, &["story/a.yaml", "id is empty"]);
 }

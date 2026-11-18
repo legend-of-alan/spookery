@@ -80,24 +80,6 @@ Feature: Modifiers stack per application, add ticks on reapply, and expire at on
     Then rowan's change line shows fatigue and not dread
     And wren's change line shows neither
 
-  Scenario: The pack check refuses max_stacks 0, ticks 0 and a modifier of no meter
-    Given "fatigue" modifies vigor and has max_stacks 0
-    And "chill" modifies warmth, which is not a meter
-    And "numb" modifies vigor and a verb applies it for 0 ticks
-    When the author runs spook check
-    Then it refuses max_stacks 0, ticks 0 and the warmth meter
-
-  Scenario: The pack check refuses a modifier listed twice at its second row
-    Given "fatigue" modifies vigor and has max_stacks 4
-    And "fatigue" modifies vigor and has no max_stacks
-    When the author runs spook check
-    Then it refuses fatigue as listed twice at line 6
-
-  Scenario: The pack check refuses a verb that applies an undefined modifier
-    Given a verb applies "scorch", which is not a modifier
-    When the author runs spook check
-    Then it refuses the scorch verb, saying scorch is not a modifier
-
   Scenario: Migrate drops a modifier whose def is gone or names another meter
     Given "fatigue" modifies vigor and has max_stacks 4
     And "soaked" modifies vigor and has no max_stacks

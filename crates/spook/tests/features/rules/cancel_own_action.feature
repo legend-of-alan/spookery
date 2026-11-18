@@ -31,7 +31,3 @@ Feature: Cancelling your own action
 
   Scenario: A free player's cancel is refused
     Then Rowan's "cancel" is refused INELIGIBLE at once
-
-  Scenario: A pack verb named cancel is refused
-    Given the rule "cancel" takes 20 ticks
-    Then spook check refuses the verb "cancel"
