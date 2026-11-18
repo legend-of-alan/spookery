@@ -27,15 +27,14 @@ Feature: An NPC rolls its own check
     And the journal records the check without faces
     And replaying the round reproduces the save
 
-  Scenario: An NPC supplies the opposing total
-    Given a docks table where Mira can oppose a mark
-    When the GM queues Mira's defense
-    And the player marks Mira
+  Scenario: A threshold that reads the target's vigor defends the target
+    Given a docks table where Mira's vigor contests a mark
+    When the player marks Mira
     Then the player line is queued
     When the GM commits the round
-    Then Mira guarded and the mark missed
+    Then the mark missed Mira
     And the player sees only their own check
-    And the GM sees both rolls
+    And the GM sees one roll and the threshold's dice line
     And the journal records the check without faces
     And replaying the round reproduces the save
 

@@ -475,7 +475,7 @@ A roll's total is its check's dice plus the rolling actor's stat meter, compared
 - `partial_at <= total < threshold` is a partial, only when the roll sets `partial_at`.
 - Any lower total is a miss. A roll without `partial_at` is a success or a miss.
 
-When another player's move opposes this one, the opposing total is the threshold and the roll has no partial band. A resist roll has no partial band either: on a success the effect is shrugged off and its `resisted` list runs in its place, and on a miss the effect lands.
+The check rolls when the move lands, after the gate admits it and its start cost is paid. A defense is written in the rule: a threshold such as `"2d6 + target.vigor"` rolls its own dice and reads the target's meters. A resist roll has no partial band: on a success the effect is shrugged off and its `resisted` list runs in its place, and on a miss the effect lands.
 
 ### Rule fields
 

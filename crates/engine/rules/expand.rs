@@ -36,19 +36,18 @@ pub(crate) struct Expansion {
     pub cause: Cause,
 }
 
-/// Roll the rule's `roll:` spec unless `rolled` already holds its roll, then expand the lists
-/// its band picks, with the resist rolls `roller` makes on the way. More effects than
+/// Roll the rule's `roll:` spec, the one place a check rolls, then expand the lists its band
+/// picks, with the resist rolls `roller` makes on the way. More effects than
 /// `max_effects_per_intent` is `BUDGET`.
 pub(crate) fn expand(
     context: &Context,
     rule: &Rule,
     cause: Cause,
-    rolled: Option<Roll>,
     mut roller: Roller,
 ) -> Result<Expansion, Reason> {
-    let rolled = match (rolled, &rule.roll) {
-        (None, Some(spec)) => Some(roller.roll_spec(context, spec)?),
-        (rolled, _) => rolled,
+    let rolled = match &rule.roll {
+        Some(spec) => Some(roller.roll_spec(context, spec)?),
+        None => None,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
     let effects = build_effects(context, rule, outcome, &mut roller)?;

@@ -288,35 +288,19 @@ fn harbormouse_and_briar_strike_each_other(world: &mut World) {
         .join(";");
 }
 
-#[then(expr = "each strike is scored on the other's own roll")]
-fn each_strike_is_scored_on_the_others_own_roll(world: &mut World) {
+#[then(expr = "each strike rolls once against threshold {int}")]
+fn each_strike_rolls_once_against_threshold(world: &mut World, threshold: i64) {
     let pack = world.pack.as_ref().unwrap();
-    let harbormouse = strike_line(&world.scratch, "harbormouse");
-    let briar = strike_line(&world.scratch, "briar");
-    let harbormouse_once = indexed_roll(pack, "harbormouse", 0);
-    let harbormouse_again = indexed_roll(pack, "harbormouse", 1);
-    let briar_once = indexed_roll(pack, "briar", 0);
-    let briar_again = indexed_roll(pack, "briar", 1);
-    assert_ne!(
-        harbormouse_once.1, harbormouse_again.1,
-        "harbormouse's two indexes collide"
-    );
-    assert_ne!(briar_once.1, briar_again.1, "briar's two indexes collide");
-    assert_eq!(
-        harbormouse.0, harbormouse_once.0,
-        "harbormouse was rolled twice"
-    );
-    assert_eq!(briar.0, briar_once.0, "briar was rolled twice");
-    assert_eq!(harbormouse.1, harbormouse_once.1);
-    assert_eq!(briar.1, briar_once.1);
-    assert_eq!(
-        harbormouse.2, briar.1,
-        "harbormouse's target is not briar's roll"
-    );
-    assert_eq!(
-        briar.2, harbormouse.1,
-        "briar's target is not harbormouse's roll"
-    );
+    assert_eq!(world.scratch.split(';').count(), 2, "{}", world.scratch);
+    for actor_id in ["harbormouse", "briar"] {
+        let (faces, total, target) = strike_line(&world.scratch, actor_id);
+        assert_eq!(
+            (faces, total),
+            first_strike_roll(pack, actor_id),
+            "{actor_id} did not roll its own first key"
+        );
+        assert_eq!(target, threshold, "{actor_id}'s strike took another bar");
+    }
 }
 
 #[given(expr = "max_effects_per_intent is 1 and a row with 2 effects")]
@@ -822,7 +806,8 @@ fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
     (faces, total, target)
 }
 
-fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
+/// The faces and total of `actor_id`'s first strike key this round.
+fn first_strike_roll(pack: &Path, actor_id: &str) -> (String, i64) {
     let session = spookery_engine::Session::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let check = session.canon().checks.get("strike").unwrap();
     let desc = session.canon().meters.get(&check.stat).unwrap();
@@ -840,7 +825,7 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
             round_index: session.world().round_index,
             rule_id: "verb:strike".to_string(),
             subject_id: Some(actor_id.into()),
-            index: roll_index,
+            index: 0,
         },
         0,
         check.dice_count,

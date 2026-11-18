@@ -151,6 +151,28 @@ fn a_docks_table_with_a_stub_gm_and_harbormouse_seated(world: &mut World) {
     seat_gm_and_harbormouse(world, pack);
 }
 
+#[given(
+    expr = "a docks table with a stub GM, Harbormouse seated and a strike threshold of {string}"
+)]
+fn a_docks_table_with_a_strike_threshold_of(world: &mut World, threshold: String) {
+    let pack = support::copy_pack("docks", "rolling-gap");
+    let path = pack.join("rules/verbs.yaml");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
+    let from = "      check: strike\n      threshold: 38\n";
+    let to = format!("      check: strike\n      threshold: \"{threshold}\"\n");
+    assert!(text.contains(from), "{text}");
+    fs::write(&path, text.replacen(from, &to, 1))
+        .unwrap_or_else(|err| panic!("write verbs: {err}"));
+    support::stamp_pack_rev(&pack);
+    seat_gm_and_harbormouse(world, pack);
+}
+
+#[then(expr = "the round records no dice line")]
+fn the_round_records_no_dice_line(world: &mut World) {
+    let round = super::common::read_first_round(world);
+    assert!(round.get("dice").is_none(), "{round}");
+}
+
 #[given(expr = "a docks table where one effect is over budget and the GM is seated")]
 fn one_effect_is_over_budget(world: &mut World) {
     let pack = support::copy_pack("docks", "over-budget");

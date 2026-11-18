@@ -74,7 +74,8 @@ run, verify names that round and the first effect that differs. Each journal
 record reads back as the bytes that were written. Verify leaves the pack
 unchanged. Each roll keeps its own dice. An
 unrelated roll in the same round does not move them, and verify reproduces
-them. A number in a rule can roll dice, including an NPC habit's effect. Those faces derive from the world's
+them. Two moves that target each other in one round each roll once, against
+their own rule's threshold. A number in a rule can roll dice, including an NPC habit's effect. Those faces derive from the world's
 seed and the round, are written on the journal line, and are shown to the GM. A
 save with no seed gets a fresh one the first time the world opens for play, so
 each copy of a shipped pack rolls its own dice; writing `seed:` into
@@ -119,10 +120,12 @@ Tested in `features/seats/one_gm_and_three_players.feature`,
 A later move sees what an earlier move in that round already changed. One
 refused effect rolls the whole rule back. A rule over the effect cap is refused
 whole, not cut short, and the journal records the refusal. That holds for a change
-rule too. A refused roll is not reported as a success. A roll target that
-fails to evaluate refuses that move with its error, and the rest of the round
-lands and commits. A move pays the cost of the rule it rolled for, even when an
-earlier move that round changed which rule its verb would pick. A place's verb rule beats the shared rule. A cast
+rule too. A move's check rolls when the move lands, after the gate admits it
+and its start cost is paid, so a move the gate refuses then rolls no dice, and a
+roll whose effects are refused is not reported as a success. A roll threshold
+that fails to evaluate refuses that move with its error, and the rest of the
+round lands and commits. A move pays the cost of the rule resolve picked for it,
+even when an earlier move that round changed which rule its verb would pick. A place's verb rule beats the shared rule. A cast
 member's verb rule is picked by naming them while they share the actor's place,
 and a bare verb never reaches it. A wielded item's rule for any verb beats the
 target's, the place's and the shared rule, so a wielded weapon's attack beats the
@@ -139,7 +142,8 @@ a rule that goes over the state-key limit.
 Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/round/an_intent_the_round_has_no_room_for_is_refused_budget.feature`,
 `features/round/a_broken_roll_threshold_refuses_one_move.feature`,
-`features/round/apply_pays_the_rule_that_rolled.feature`,
+`features/round/apply_pays_the_rule_resolve_picked.feature`,
+`features/seats/a_round_refusal_names_the_gap.feature`,
 `features/rules/rules_live_with_their_owner.feature`,
 `features/rules/a_gm_queued_habit_is_judged_like_the_engines.feature`,
 `features/items/items_are_real.feature`, and

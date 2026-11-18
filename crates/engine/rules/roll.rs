@@ -19,7 +19,7 @@ pub use spookery_protocol::Outcome;
 /// `total` against `threshold`, with an optional lower band.
 /// `total >= threshold` is success. `partial_at <= total < threshold` is partial.
 /// Anything lower, and any binary roll, is a miss.
-pub(crate) fn classify(total: i64, threshold: i64, partial_at: Option<i64>) -> Outcome {
+fn classify(total: i64, threshold: i64, partial_at: Option<i64>) -> Outcome {
     if total >= threshold {
         Outcome::Success
     } else if partial_at.is_some_and(|band| total >= band) {
@@ -82,7 +82,7 @@ pub fn faces(key: &Key, start: usize, count: u32, sides: u32) -> Result<Vec<u32>
 }
 
 /// The only roll: `check`'s dice from this key's own seed, plus the actor's stat, against
-/// `threshold`. `partial_at` `None` keeps the roll binary; an opposing total passes `None`.
+/// `threshold`. `partial_at` `None` keeps the roll binary.
 pub(crate) fn check(
     check: &Check,
     world: &ecs::World,

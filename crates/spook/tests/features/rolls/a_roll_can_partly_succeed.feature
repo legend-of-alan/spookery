@@ -48,16 +48,6 @@ Feature: A roll can partly succeed
     And the GM sees outcome "success" and the faces
     And the check outcome is not "partial"
 
-  Scenario: An opposed roll on a three-band row is binary
-    Given a docks table where Mira opposes a three-band press
-    When the GM queues Mira's defense
-    And the player presses Mira
-    Then the player line is queued
-    When the GM commits the round
-    Then Mira guarded and the press missed
-    And the player sees outcome "miss" and no faces
-    And the GM sees a binary opposed press
-
   Scenario: An NPC roll on a three-band row can be partial
     Given a docks table where Mira can partly notice
     When the GM queues Mira's partial notice

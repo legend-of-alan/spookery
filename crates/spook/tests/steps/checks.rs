@@ -47,14 +47,16 @@ const NOTICE_ROWS: &str = "
           value: true
 ";
 
-const OPPOSE_ROWS: &str = "
+// The mark's threshold rolls its own dice and reads the target's vigor: a defense written in
+// the pack.
+const CONTESTED_MARK_ROW: &str = "
   - id: mark
     when:
       verb: mark
       target: actor
     roll:
       check: exert
-      threshold: 0
+      threshold: \"2d6 + target.vigor\"
     success:
       - flag:
           of: target
@@ -64,17 +66,6 @@ const OPPOSE_ROWS: &str = "
       - flag:
           of: target
           key: missed
-          value: true
-  - id: defend
-    when:
-      verb: defend
-    roll:
-      check: exert
-      threshold: 0
-    success:
-      - flag:
-          of: self
-          key: guarded
           value: true
 ";
 
@@ -109,7 +100,6 @@ fn the_journal_records_the_check_without_faces(world: &mut World) {
     let text =
         spookery_engine::testing::journal::read_record_line(table::pack(world), "round-0001")
             .unwrap_or_else(|err| panic!("read round: {}", err.detail));
-    assert!(text.contains("\"check_rolled\""), "{text}");
     assert!(!text.contains("faces"), "{text}");
 }
 
@@ -158,12 +148,12 @@ fn a_docks_table_where_mira_can_notice(world: &mut World) {
     world.mark = table::player_mark(world);
 }
 
-#[given(expr = "a docks table where Mira can oppose a mark")]
-fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
-    let pack = copy_pack("docks", "npc-oppose");
+#[given(expr = "a docks table where Mira's vigor contests a mark")]
+fn a_docks_table_where_miras_vigor_contests_a_mark(world: &mut World) {
+    let pack = copy_pack("docks", "contested-mark");
     world.pack = Some(pack.clone());
-    append_verbs(&pack, OPPOSE_ROWS);
-    insert_mira_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
+    append_verbs(&pack, CONTESTED_MARK_ROW);
+    insert_mira_flags(&pack, "    - marked\n    - missed\n");
     set_vigor(&pack, "mira", 100);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
@@ -183,11 +173,6 @@ fn the_gm_queues_miras_sure_notice(world: &mut World) {
 #[when(expr = "the GM queues Mira's hard notice")]
 fn the_gm_queues_miras_hard_notice(world: &mut World) {
     queue_mira(world, "notice_hard");
-}
-
-#[when(expr = "the GM queues Mira's defense")]
-fn the_gm_queues_miras_defense(world: &mut World) {
-    queue_mira(world, "defend");
 }
 
 #[when(expr = "an engine habit rolls a check for Mira")]
@@ -219,12 +204,9 @@ fn mira_slipped(world: &mut World) {
     assert_eq!(flags_of(world, "mira"), vec!["slipped".to_string()]);
 }
 
-#[then(expr = "Mira guarded and the mark missed")]
-fn mira_guarded_and_the_mark_missed(world: &mut World) {
-    assert_eq!(
-        flags_of(world, "mira"),
-        vec!["guarded".to_string(), "missed".to_string()]
-    );
+#[then(expr = "the mark missed Mira")]
+fn the_mark_missed_mira(world: &mut World) {
+    assert_eq!(flags_of(world, "mira"), vec!["missed".to_string()]);
 }
 
 #[then(expr = "the GM sees Mira's sure notice")]
@@ -255,10 +237,23 @@ fn the_player_sees_only_their_own_check(world: &mut World) {
     assert!(!added.contains("\"success\":"), "{added}");
 }
 
-#[then(expr = "the GM sees both rolls")]
-fn the_gm_sees_both_rolls(world: &mut World) {
-    let text = table::wait_gm(world, "\"rolls\"");
-    assert_opposed(&read_committed_rolls(&text));
+#[then(expr = "the GM sees one roll and the threshold's dice line")]
+fn the_gm_sees_one_roll_and_the_thresholds_dice_line(world: &mut World) {
+    let body = table::read_reply(&world.stdout);
+    let rolls = body["rolls"].as_array().unwrap_or_else(|| panic!("{body}"));
+    assert_eq!(rolls.len(), 1, "{body}");
+    // 2d6 plus Mira's vigor of 100.
+    let target = rolls[0]["target"]
+        .as_i64()
+        .unwrap_or_else(|| panic!("{body}"));
+    assert!((102..=112).contains(&target), "{body}");
+    assert_roll(&rolls[0], 1, target, "miss");
+    let dice = body["dice"].as_array().unwrap_or_else(|| panic!("{body}"));
+    assert_eq!(dice.len(), 1, "{body}");
+    assert!(
+        dice[0].as_str().is_some_and(|line| line.contains("2d6 →")),
+        "{body}"
+    );
 }
 
 #[then(expr = "the journal records Mira's engine brace")]
@@ -403,22 +398,6 @@ fn assert_one_roll(world: &mut World, stat: i64, target: i64, outcome: &str) {
     assert_roll(&rolls[0], stat, target, outcome);
 }
 
-fn assert_opposed(rolls: &[Value]) {
-    assert_eq!(rolls.len(), 2, "{rolls:?}");
-    let npc = rolls
-        .iter()
-        .find(|roll| roll["stat"].as_i64() == Some(100))
-        .unwrap_or_else(|| panic!("{rolls:?}"));
-    let pc = rolls
-        .iter()
-        .find(|roll| roll["stat"].as_i64() == Some(1))
-        .unwrap_or_else(|| panic!("{rolls:?}"));
-    let npc_total = npc["total"].as_i64().unwrap_or_else(|| panic!("{npc}"));
-    assert_roll(npc, 100, 0, "success");
-    assert_roll(pc, 1, npc_total, "miss");
-    assert!(npc_total >= 102, "{npc}");
-}
-
 fn assert_roll(roll: &Value, stat: i64, target: i64, outcome: &str) {
     let faces = roll["faces"].as_array().unwrap_or_else(|| panic!("{roll}"));
     assert_eq!(faces.len(), 2, "{roll}");
@@ -519,20 +498,6 @@ const NOTICE_PARTIAL_ROW: &str = "
           value: true
 ";
 
-const DEFEND_ROW: &str = "
-  - id: defend
-    when:
-      verb: defend
-    roll:
-      check: exert
-      threshold: 0
-    success:
-      - flag:
-          of: self
-          key: guarded
-          value: true
-";
-
 const BAND_CHECK: &str = "
   - id: band
     dice:
@@ -541,8 +506,7 @@ const BAND_CHECK: &str = "
     meter: vigor
 ";
 
-const PRESS_FLAGS: &str =
-    "    - touched\n    - clean\n    - halfway\n    - missed\n    - guarded\n";
+const PRESS_FLAGS: &str = "    - touched\n    - clean\n    - halfway\n    - missed\n";
 
 #[given(expr = "a docks table where press vigor base is {int}")]
 fn a_docks_table_where_press_vigor_base_is(world: &mut World, base: usize) {
@@ -552,26 +516,6 @@ fn a_docks_table_where_press_vigor_base_is(world: &mut World, base: usize) {
 #[given(expr = "a docks copy where press vigor base is {int}")]
 fn a_docks_copy_where_press_vigor_base_is(world: &mut World, base: usize) {
     prepare_press(world, base as i64, false);
-}
-
-#[given(expr = "a docks table where Mira opposes a three-band press")]
-fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
-    let pack = copy_pack("docks", "press-oppose");
-    world.pack = Some(pack.clone());
-    append_verbs(&pack, PRESS_ROW);
-    append_verbs(&pack, DEFEND_ROW);
-    append_check(&pack, BAND_CHECK);
-    insert_mira_flags(&pack, PRESS_FLAGS);
-    set_vigor(&pack, "rowan", 6);
-    set_vigor(&pack, "mira", 100);
-    super::common::edit_save(&pack, |now| {
-        now.actors_mut()
-            .get_mut::<component::Place>(&"mira".into())
-            .set("docks_shop")
-            .unwrap();
-    });
-    listen_and_seat_both(world, &pack);
-    world.scratch = snapshot_pack(&pack).display().to_string();
 }
 
 #[given(expr = "a docks table where Mira can partly notice")]
@@ -646,18 +590,6 @@ fn mira_is_touched_and_missed(world: &mut World) {
     );
 }
 
-#[then(expr = "Mira guarded and the press missed")]
-fn mira_guarded_and_the_press_missed(world: &mut World) {
-    assert_eq!(
-        flags_of(world, "mira"),
-        vec![
-            "guarded".to_string(),
-            "missed".to_string(),
-            "touched".to_string()
-        ]
-    );
-}
-
 #[then(expr = "the player sees outcome {string} and no faces")]
 fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String) {
     let needle = format!("{{\"kind\":\"check\",\"outcome\":\"{outcome}\"}}");
@@ -699,12 +631,6 @@ fn the_check_outcome_is_not(world: &mut World, outcome: String) {
     );
     let text = table::wait_gm(world, "\"rolls\"");
     assert!(!text.contains(&word), "{text}");
-}
-
-#[then(expr = "the GM sees a binary opposed press")]
-fn the_gm_sees_a_binary_opposed_press(world: &mut World) {
-    let text = table::wait_gm(world, "\"rolls\"");
-    assert_binary_opposed(&read_committed_rolls(&text));
 }
 
 fn prepare_press(world: &mut World, base: i64, sit: bool) {
@@ -753,36 +679,4 @@ fn assert_outcome_faces(roll: &Value, outcome: &str) {
         assert_eq!(roll["total"].as_i64(), Some(stat + 1), "{roll}");
         assert_eq!(roll["target"].as_i64(), Some(10), "{roll}");
     }
-}
-
-fn assert_binary_opposed(rolls: &[Value]) {
-    assert_eq!(rolls.len(), 2, "{rolls:?}");
-    let npc = rolls
-        .iter()
-        .find(|roll| roll["stat"].as_i64() == Some(100))
-        .unwrap_or_else(|| panic!("{rolls:?}"));
-    let pc = rolls
-        .iter()
-        .find(|roll| roll["stat"].as_i64() == Some(6))
-        .unwrap_or_else(|| panic!("{rolls:?}"));
-    let npc_total = npc["total"].as_i64().unwrap_or_else(|| panic!("{npc}"));
-    assert_eq!(npc["outcome"].as_str(), Some("success"), "{npc}");
-    assert_eq!(npc["target"].as_i64(), Some(0), "{npc}");
-    assert!(
-        npc["faces"]
-            .as_array()
-            .is_some_and(|faces| !faces.is_empty()),
-        "{npc}"
-    );
-    assert_eq!(pc["outcome"].as_str(), Some("miss"), "{pc}");
-    assert_eq!(pc["target"].as_i64(), Some(npc_total), "{pc}");
-    assert!(npc_total >= 102, "{npc}");
-    assert!(
-        rolls.iter().all(|roll| roll["outcome"] != "partial"),
-        "{rolls:?}"
-    );
-    assert!(
-        rolls.iter().all(|roll| roll.get("success").is_none()),
-        "{rolls:?}"
-    );
 }
