@@ -30,7 +30,6 @@ mod rule_list;
 mod source;
 mod story;
 
-use budget::load_budget;
 pub(crate) use budget::Budget;
 use fact::Facts;
 use item::add_item;
@@ -394,7 +393,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     }
     let rules = rule::Table::new(loaded);
     // 8. Budget.
-    let budget = budget.and_then(|(rel, text)| diags.keep(load_budget(rel, &text)));
+    let budget = budget.and_then(|(rel, text)| diags.keep(budget::load(rel, &text)));
     // 9. Lints across files.
     if let (Some(meters), Some(world_meters)) = (&meters, &world_meters) {
         let scope = EntityScope {

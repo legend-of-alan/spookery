@@ -60,7 +60,7 @@ impl Default for Budget {
     }
 }
 
-pub(crate) fn load_budget(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
+pub(crate) fn load(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
     let doc: BudgetDoc = load_tagged(rel, text, BUDGET_SCHEMA, 0)?;
     let source = FileText {
         file: rel,
@@ -214,8 +214,8 @@ mod tests {
     use crate::diagnostic::Diagnostic;
     use crate::Reason;
 
-    fn load_budget(text: &str) -> Result<Budget, Vec<Diagnostic>> {
-        super::load_budget("rules/budget.yaml", text)
+    fn load(text: &str) -> Result<Budget, Vec<Diagnostic>> {
+        super::load("rules/budget.yaml", text)
     }
 
     fn text(tag: &str) -> String {
@@ -225,7 +225,7 @@ mod tests {
     #[test]
     fn a_negative_budget_names_the_field() {
         let text = "schema: budget\nmax_npcs_acting: -1\nidle_catchup_max_rounds: -3\n";
-        let err = load_budget(text).unwrap_err();
+        let err = load(text).unwrap_err();
         assert!(err
             .iter()
             .any(|diag| diag.message.contains("max_npcs_acting") && diag.line.is_some()));
@@ -236,14 +236,14 @@ mod tests {
 
     #[test]
     fn idle_defaults_to_on_and_off_is_loaded() {
-        let on = load_budget(&text("budget")).unwrap();
+        let on = load(&text("budget")).unwrap();
         assert!(on.idle_rounds);
         let mut explicit = text("budget");
         explicit.push_str("idle: on\n");
-        assert!(load_budget(&explicit).unwrap().idle_rounds);
+        assert!(load(&explicit).unwrap().idle_rounds);
         let mut off = text("budget");
         off.push_str("idle: off\n");
-        assert!(!load_budget(&off).unwrap().idle_rounds);
+        assert!(!load(&off).unwrap().idle_rounds);
     }
 
     #[test]
@@ -251,7 +251,7 @@ mod tests {
         use crate::diagnostic::first_reason;
         let mut empty = text("budget");
         empty.push_str("idle:\n");
-        let err = load_budget(&empty).unwrap_err();
+        let err = load(&empty).unwrap_err();
         assert_eq!(first_reason(&err), Reason::Schema);
     }
 }
