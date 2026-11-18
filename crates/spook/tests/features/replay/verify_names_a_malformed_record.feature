@@ -1,4 +1,4 @@
-Feature: Journal records are typed
+Feature: Verify names a malformed journal record
 
   Scenario: A field with the wrong type is named
     Given a docks table

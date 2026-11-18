@@ -1,4 +1,4 @@
-Feature: The GM reads typed events
+Feature: A commit shows the GM its check, dice and changes
 
   Scenario: The GM view shows a commit's checks and dice from the typed reply
     Given a docks table with a GM and "wren" seated

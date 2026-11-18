@@ -1,4 +1,4 @@
-Feature: The engine counts only ticks
+Feature: Cycle and act windows read the tick
 
   Scenario Outline: A cycle window reads the tick within the named cycle
     Given rules/budget.yaml sets cycle <cycle> to <length>

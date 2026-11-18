@@ -1,4 +1,4 @@
-Feature: Hash-chained journal bundles
+Feature: Startup repairs the journal and verify finds any edit
 
   Scenario: A torn tail is cut off on startup
     Given a docks table
