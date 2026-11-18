@@ -46,7 +46,7 @@ pub fn parse(text: &str) -> Result<Save, Vec<Diagnostic>> {
             return Err(vec![rules_rev_diagnostic(text)]);
         }
     }
-    parse_file(FILE, text, 0)
+    parse_file(FILE, text, 0, false)
 }
 
 pub fn emit(save: &Save) -> Result<String, Reason> {
