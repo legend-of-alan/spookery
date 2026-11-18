@@ -9,6 +9,7 @@ use crate::ecs::component::meter;
 use crate::ecs::component::modifier;
 use crate::ecs::id::{ActorId, PlaceId, StoryId};
 use crate::entity;
+use crate::rules::cond;
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
 use crate::rules::roll::Check;
@@ -527,7 +528,7 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
                 }
             });
         }
-        for (id, bounds) in cycles {
+        for (id, constant_bounds) in cycles {
             let Some(&length) = canon.budget.cycles.get(id) else {
                 diags.push(
                     schema_error(
@@ -539,9 +540,8 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
                 );
                 continue;
             };
-            // A bound that reads a meter is checked when it is read at play.
-            let outside = |bound| u64::try_from(bound).map_or(true, |bound| bound >= length);
-            if bounds.into_iter().flatten().any(outside) {
+            let is_outside = |bound| cond::cycle_tick_of(bound, length).is_none();
+            if constant_bounds.into_iter().flatten().any(is_outside) {
                 diags.push(
                     schema_error(
                         file,
@@ -728,10 +728,9 @@ fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<Write>) {
         }
         EffectTemplate::Meter { key, .. } => out.push(Write::Meter(key.clone())),
         EffectTemplate::Item { id, add, .. } => {
-            // An amount that is not constant may be a gain or a loss.
-            let sign = add.constant().map(i64::signum);
-            for (gained, signum) in [(true, 1), (false, -1)] {
-                if sign.is_none_or(|sign| sign == signum) {
+            let constant_sign = add.constant().map(i64::signum);
+            for (gained, sign) in [(true, 1), (false, -1)] {
+                if constant_sign.is_none_or(|constant| constant == sign) {
                     out.push(Write::Item {
                         id: id.clone(),
                         gained,

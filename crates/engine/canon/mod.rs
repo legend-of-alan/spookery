@@ -123,10 +123,10 @@ impl Exit {
         }
     }
 
-    /// Every number the exit holds: its cost's, then its conditions' values.
+    /// Every number the exit holds: its cost's, then its conditions'.
     pub(crate) fn exprs(&self) -> Vec<&Expr> {
-        let values = self.if_.iter().flat_map(Cond::exprs);
-        self.cost.exprs().chain(values).collect()
+        let cond_numbers = self.if_.iter().flat_map(Cond::exprs);
+        self.cost.exprs().chain(cond_numbers).collect()
     }
 
     /// Every slot the exit's conditions and cost fill, and every owner its numbers read, with

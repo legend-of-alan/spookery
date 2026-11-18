@@ -101,16 +101,19 @@ fn start(
 ) -> Landing {
     let context = Context::new(canon, world, presence, intent);
     let exit = travel::exit_of(&context, rule).ok().flatten().cloned();
-    // A count that cannot be read refuses the start below, before any cost is paid.
-    let span = travel::span(&context, rule);
-    let ticks = span.unwrap_or(0);
+    let ticks = match travel::span(&context, rule) {
+        Ok(ticks) => ticks,
+        Err(code) => {
+            refuse(ledger, intent, gate::Refusal::new(intent, code), false);
+            return landing_of(code);
+        }
+    };
     let mut costs = rule
         .start
         .cost
         .iter()
         .chain(exit.as_ref().map(|exit| &exit.cost));
-    let mut started = span
-        .and_then(|_| costs.try_for_each(|cost| cost::pay(canon, world, presence, intent, cost)));
+    let mut started = costs.try_for_each(|cost| cost::pay(canon, world, presence, intent, cost));
     if rule.start.counts_as_act {
         started = started.and_then(|()| count_act(world, presence, intent));
     }

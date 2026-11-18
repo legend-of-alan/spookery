@@ -767,7 +767,8 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
             fact: knows.fact.clone(),
         },
         CondYaml::Cycle(cycle) => {
-            let (from, to) = (refuse_dice(&cycle.from)?, refuse_dice(&cycle.to)?);
+            let from = refuse_dice(&cycle.from)?;
+            let to = refuse_dice(&cycle.to)?;
             if from.constant().is_some() && from.constant() == to.constant() {
                 return Err("cycle needs from and to that differ".into());
             }
