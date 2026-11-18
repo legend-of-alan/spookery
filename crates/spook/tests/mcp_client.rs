@@ -2,15 +2,12 @@
 
 use std::collections::VecDeque;
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use rmcp::model::{
     CallToolRequestParams, ClientCapabilities, ClientConfig, CustomNotification, Implementation,
     ProtocolVersion, Tool,
 };
 use rmcp::service::{NotificationContext, RoleClient, RunningService};
-use rmcp::transport::common::client_side_sse::NeverRetry;
-use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::{StreamableHttpClientTransport, Transport};
 use rmcp::{ClientHandler, ServiceExt};
 use serde_json::Value;
@@ -49,45 +46,28 @@ impl ClientHandler for EventSender {
 
 pub(crate) struct GmClient {
     service: RunningService<RoleClient, EventSender>,
-    /// Finishes when the host closes the MCP endpoint.
-    watch: tokio::task::JoinHandle<()>,
     rx: mpsc::UnboundedReceiver<EventItem>,
     buffered: VecDeque<EventItem>,
 }
 
 impl GmClient {
     /// Dial `http://<mcp_addr>/mcp`, finish the handshake, and wait for the event stream to
-    /// take the seat: its hello. A refused seat is the refusal's sentence. A `spook run` that
-    /// stops or is killed ends the events, and the client never redials it.
+    /// take the seat: its hello. A refused seat is the refusal's sentence.
     pub(crate) async fn connect(mcp_addr: SocketAddr) -> Result<Self, String> {
         let url = format!("http://{mcp_addr}/mcp");
         let (tx, rx) = mpsc::unbounded_channel();
-        let mut config = StreamableHttpClientTransportConfig::with_uri(url);
-        config.retry_config = Arc::new(NeverRetry::default());
-        config.reinit_on_expired_session = false;
         let transport = ClientTransport {
-            inner: StreamableHttpClientTransport::from_config(config),
+            inner: StreamableHttpClientTransport::from_uri(url),
             tx: tx.clone(),
             closed: false,
         };
-        let sender = EventSender { tx: tx.clone() };
+        let sender = EventSender { tx };
         let service = sender
             .serve(transport)
             .await
             .map_err(|err| err.to_string())?;
-        let watch = tokio::spawn(async move {
-            if let Ok(mut socket) = tokio::net::TcpStream::connect(mcp_addr).await {
-                let mut buf = [0u8; 1];
-                tokio::select! {
-                    _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf) => {}
-                    () = tx.closed() => return,
-                }
-            }
-            let _ = tx.send(None);
-        });
         let mut gm = GmClient {
             service,
-            watch,
             rx,
             buffered: VecDeque::new(),
         };
@@ -173,12 +153,9 @@ impl GmClient {
         out
     }
 
-    /// Give the seat back. The host has freed it when this returns, and it returns at once when
-    /// the host is gone.
+    /// Give the seat back. The host has freed it when this returns.
     pub(crate) async fn close(self) {
-        if !self.watch.is_finished() {
-            let _ = self.service.cancel().await;
-        }
+        let _ = self.service.cancel().await;
     }
 }
 
