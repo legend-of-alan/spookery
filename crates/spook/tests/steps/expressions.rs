@@ -63,7 +63,7 @@ fn the_packs_hit_has(world: &mut World, dice: String, field: String) {
 }
 
 #[when(
-    regex = r#"^the pack's hit stores "(.+)" and has "(.+)" as (its vigor add|a condition value|a cost amount)$"#
+    regex = r#"^the pack's hit stores "(.+)" and has "(.+)" as (its vigor add|a condition value|a cost amount|a second let)$"#
 )]
 fn the_packs_hit_stores_and_has(world: &mut World, lets: String, number: String, field: String) {
     append_hit_line(world, &format!("let: {{ {lets} }}\n    "), &number, &field);
@@ -327,6 +327,7 @@ fn append_hit_line(world: &World, lets: &str, number: &str, field: &str) {
         "a cost amount" => format!("cost: {{ meters: {{ vigor: \"{number}\" }} }}\n    do: []"),
         "a cost item count" => format!("cost: {{ items: {{ chock: \"{number}\" }} }}\n    do: []"),
         "its cost ticks" => format!("cost: {{ ticks: \"{number}\" }}\n    do: []"),
+        "a second let" => format!("let: {{ {number} }}\n    do: []"),
         _ => format!("do: [meter: {{ of: self, key: vigor, add: \"{number}\" }}]"),
     };
     let rule = format!("\n  - id: hit\n    when: {{ verb: hit }}\n    {lets}{lines}\n");

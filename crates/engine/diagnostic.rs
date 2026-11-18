@@ -271,6 +271,11 @@ pub(crate) fn diagnose_yaml(
             };
             (None, problem.to_string(), hint.to_string())
         }
+        YamlError::DuplicateMappingKey { key: Some(key), .. } => (
+            Some(key.clone()),
+            format!("'{key}' is listed twice"),
+            "keep one".to_string(),
+        ),
         YamlError::InvalidScalar { ty, .. } => (
             None,
             format!("this value is not a valid {ty}"),

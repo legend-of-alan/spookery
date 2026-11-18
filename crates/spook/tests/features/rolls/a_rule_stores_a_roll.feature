@@ -34,7 +34,7 @@ Feature: A rule stores a roll in let
       | 100        | 0     | attack: 1d20, 1d4      |
       | 0          | 30    | attack: 1d20, 1d4, 1d6 |
 
-  Scenario Outline: A let id or read that check refuses fails spook check at the line it names
+  Scenario Outline: A second let, a let id or a read that check refuses fails spook check at the line it names
     Given a docks table
     When the pack's hit stores "<let>" and has "<number>" as <field>
     And the operator runs spook check
@@ -48,7 +48,8 @@ Feature: A rule stores a roll in let
       | soon: late, late: 2d6 | soon         | its vigor add     | rule 'hit' reads 'late' in let: at or above the line that holds it                           | id: hit   |
       | attack: 1d20 + 2      | high(attack) | its vigor add     | rule 'hit' reads high or low of 'attack', which is not one dice group with no keep          | id: hit   |
       | adv: 2d20kh1          | low(adv)     | its vigor add     | rule 'hit' reads high or low of 'adv', which is not one dice group with no keep             | id: hit   |
-      | a: 1d4, a: 1d6        | a            | its vigor add     | SCHEMA                                                                                       | a: 1d6    |
+      | a: 1d4, a: 1d6        | a            | its vigor add     | 'a' is listed twice; keep one                                                                | a: 1d6    |
+      | a: 1d4                | b: 1d6       | a second let      | 'let' is listed twice; keep one                                                              | b: 1d6    |
       | a.b: 1d4              | 1            | its vigor add     | let: id 'a.b' is not a word a number can read                                              | a.b: 1d4  |
       | self: 1d4             | 1            | its vigor add     | let: id 'self' is not a word a number can read                                             | self: 1d4 |
       | dmg: 2d8              | dmg          | a condition value | a condition or a cost cannot roll dice                                                       | op:       |
