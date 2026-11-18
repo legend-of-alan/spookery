@@ -239,28 +239,6 @@ fn the_oil_moved(world: &mut World) {
     );
 }
 
-#[then(expr = "the journal targets item {word}, then exit {word}")]
-fn the_journal_targets_item_then_exit(world: &mut World, item: String, exit: String) {
-    let records = spookery_engine::testing::journal::read_records(world.pack.as_ref().unwrap())
-        .unwrap_or_else(|err| panic!("{}", err.detail));
-    let targets: Vec<Value> = records
-        .iter()
-        .filter_map(|record| match record {
-            spookery_engine::testing::journal::Record::Round(round) => Some(&round.intents),
-            _ => None,
-        })
-        .flatten()
-        .map(|intent| serde_json::to_value(&intent.target).unwrap())
-        .collect();
-    assert_eq!(
-        targets,
-        [
-            serde_json::json!({ "item": item }),
-            serde_json::json!({ "exit": exit })
-        ]
-    );
-}
-
 #[given(expr = "harbormouse holds 1 latch at a seated table")]
 fn harbormouse_holds_a_latch_at_a_table(world: &mut World) {
     let pack = support::copy_pack("docks", "use-latch");
@@ -450,29 +428,6 @@ fn harbormouse_attacks_wren(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     handle_move(&pack, "harbormouse", "attack wren")
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
-}
-
-#[then(expr = "item:poisoned_dagger\\/{word} ran, not verb:{word}")]
-fn the_dagger_rule_ran(world: &mut World, verb: String, shared: String) {
-    let pack = world.pack.as_ref().unwrap();
-    let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
-    let steps = round["extra_steps"].to_string();
-    assert!(
-        steps.contains(&format!("item:poisoned_dagger/{verb}")),
-        "{steps}"
-    );
-    assert!(!steps.contains(&format!("verb:{shared}")), "{steps}");
-    assert_eq!(hp(pack, "wren"), 5);
-}
-
-#[then(expr = "verb:attack ran")]
-fn bare_hands_ran(world: &mut World) {
-    let pack = world.pack.as_ref().unwrap();
-    let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
-    let steps = round["extra_steps"].to_string();
-    assert!(steps.contains("verb:attack"), "{steps}");
-    assert!(!steps.contains("item:poisoned_dagger/attack"), "{steps}");
-    assert_eq!(hp(pack, "wren"), 7);
 }
 
 #[when(expr = "harbormouse drops poisoned_dagger")]

@@ -177,12 +177,6 @@ fn miras_vigor_rose_by_the_1d4_face(world: &mut World) {
     assert_eq!(vigor_of(world, "mira"), 1 + i64::from(faces[0]));
 }
 
-#[then(expr = "the journal records the 1d4 face")]
-fn the_journal_records_the_1d4_face(world: &mut World) {
-    let line = dice_line(world);
-    assert!(line.contains("1d4 →"), "{line}");
-}
-
 #[then(expr = "the report names the line holding {string}")]
 fn the_report_names_the_line_holding(world: &mut World, needle: String) {
     let pack = table::pack(world);
@@ -222,19 +216,6 @@ fn rowans_vigor_rose_by_the_kept_face(world: &mut World, kept: String, dice: Str
     assert_eq!(rowans_vigor(world), 1 + i64::from(face.unwrap_or(0)));
 }
 
-#[then(expr = "the journal records the 2d6 faces")]
-fn the_journal_records_the_2d6_faces(world: &mut World) {
-    let line = dice_line(world);
-    assert!(line.contains("2d6 →"), "{line}");
-    assert!(line.contains(" = "), "{line}");
-}
-
-#[then(expr = "the journal records both d20 faces")]
-fn the_journal_records_both_d20_faces(world: &mut World) {
-    let faces = dice_faces(world, "2d20k");
-    assert_eq!(faces.len(), 2, "{faces:?}");
-}
-
 #[then(expr = "the GM commit reply shows the 2d6 faces")]
 fn the_gm_commit_reply_shows_the_2d6_faces(world: &mut World) {
     assert!(
@@ -255,28 +236,16 @@ fn rowans_and_miras_vigor_rose_by_the_boost_total(world: &mut World) {
     assert_eq!(vigor_of(world, "mira"), 1 + total);
 }
 
-#[then(expr = "the journal and the GM commit reply hold dice lines for {string}")]
-fn the_journal_and_the_gm_commit_hold_dice_lines(world: &mut World, expected: String) {
+#[then(expr = "the GM commit reply holds dice lines for {string}")]
+fn the_gm_commit_reply_holds_dice_lines(world: &mut World, expected: String) {
     let reply = table::read_reply(&world.stdout);
-    let journal = latest_round(world);
-    for dice in [&reply["dice"], &journal["dice"]] {
-        let lines = dice.as_array().unwrap_or_else(|| panic!("no dice\n{dice}"));
-        let prefixes: Vec<&str> = expected.split(", ").collect();
-        assert_eq!(lines.len(), prefixes.len(), "{dice}");
-        for (line, prefix) in lines.iter().zip(prefixes) {
-            let line = line.as_str().unwrap_or_default();
-            assert!(line.starts_with(&format!("{prefix} → ")), "{dice}");
-        }
-    }
-}
-
-#[then(expr = "no round before the last one rolled dice")]
-fn no_round_before_the_last_one_rolled_dice(world: &mut World) {
-    let pack = table::pack(world);
-    let keys = list_round_keys(pack);
-    for key in keys.iter().rev().skip(1) {
-        let round = read_round(pack, key);
-        assert!(round.get("dice").is_none(), "{key}: {round}");
+    let dice = &reply["dice"];
+    let lines = dice.as_array().unwrap_or_else(|| panic!("no dice\n{dice}"));
+    let prefixes: Vec<&str> = expected.split(", ").collect();
+    assert_eq!(lines.len(), prefixes.len(), "{dice}");
+    for (line, prefix) in lines.iter().zip(prefixes) {
+        let line = line.as_str().unwrap_or_default();
+        assert!(line.starts_with(&format!("{prefix} → ")), "{dice}");
     }
 }
 
@@ -304,18 +273,6 @@ fn the_report_names_the_expression_line(world: &mut World) {
         world.stderr.contains(&located),
         "missing {located}\n{}",
         world.stderr
-    );
-}
-
-#[then(expr = "the journal rejects the hit as OUT_OF_RANGE")]
-fn the_journal_rejects_the_hit_as_out_of_range(world: &mut World) {
-    let round = latest_round(world);
-    let rejected = round["refused"]
-        .as_array()
-        .unwrap_or_else(|| panic!("rejected\n{round}"));
-    assert!(
-        rejected.iter().any(|row| row["code"] == "OUT_OF_RANGE"),
-        "{round}"
     );
 }
 

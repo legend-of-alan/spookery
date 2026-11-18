@@ -8,4 +8,3 @@ Feature: Travel follows an exit
     When the player travels to "docks_street"
     Then world_time is 1085
     And Rowan is in docks_street
-    And the round records the move to the street

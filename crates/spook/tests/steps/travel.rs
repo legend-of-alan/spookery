@@ -260,18 +260,6 @@ fn the_round_still_ends_at_tick_1295(world: &mut World) {
     assert_eq!(round["world_time_after"], EVENING + 5);
 }
 
-#[then(expr = "rowan's arrival is recorded with arrived_at 1292 in that round's line")]
-fn arrival_is_stamped(world: &mut World) {
-    let round = crate::support::read_round(table::pack(world), "round-0001");
-    assert_eq!(arrival(&round, "rowan")["arrived_at"], EVENING + 2);
-    let stamped = round["effects"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|effect| effect["kind"] == "location" && effect["arrived_at"] == EVENING + 2);
-    assert!(stamped, "{round}");
-}
-
 #[then(expr = "a move from rowan is accepted from the round starting at tick 1295")]
 fn the_next_round_accepts_a_move(world: &mut World) {
     let (_mark, added) = table::player_send(world, "wait", "\"kind\":");

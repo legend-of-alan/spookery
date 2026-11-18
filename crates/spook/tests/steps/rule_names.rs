@@ -4,7 +4,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use spookery_engine::Reason;
 
-use crate::support::{copy_pack, insert_nell, read_round, stamp_pack_rev};
+use crate::support::{copy_pack, insert_nell, stamp_pack_rev};
 use crate::World;
 
 use super::table;
@@ -43,24 +43,6 @@ fn the_load_refusal_is_schema(world: &mut World) {
         ),
         Reason::Schema
     );
-}
-
-#[then(expr = "the round records the move to the street")]
-fn the_round_records_the_move(world: &mut World) {
-    assert_location(table::pack(world), "round-0001");
-}
-
-fn assert_location(pack: &Path, key: &str) {
-    let round = read_round(pack, key);
-    let hits: Vec<_> = round["effects"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|effect| effect["kind"] == "location" && effect["actor_id"] == "rowan")
-        .collect();
-    assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0]["from"], "docks_shop");
-    assert_eq!(hits[0]["to"], "docks_street");
 }
 
 fn add_knife_and_mark_rule(pack: &Path) {

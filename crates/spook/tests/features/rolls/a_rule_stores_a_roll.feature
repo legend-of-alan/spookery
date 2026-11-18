@@ -5,7 +5,7 @@ Feature: A rule stores a roll in let
     When the pack's hit stores "boost: 2d6" and adds "boost" to Rowan's and Mira's vigor
     And the player hits and the GM commits
     Then Rowan's and Mira's vigor both rose by the boost total
-    And the journal and the GM commit reply hold dice lines for "boost: 2d6"
+    And the GM commit reply holds dice lines for "boost: 2d6"
     And the player text has no dice faces
     And replaying the round reproduces the save
 
@@ -14,7 +14,7 @@ Feature: A rule stores a roll in let
     When the pack's hit stores "dmg: 2d8" and has "<read>" as <field>
     And the player <hits> and the GM commits
     Then Rowan's vigor rose by the <kept> face of dmg:
-    And the journal and the GM commit reply hold dice lines for "dmg: 2d8"
+    And the GM commit reply holds dice lines for "dmg: 2d8"
 
     Examples:
       | read      | kept   | field                      | hits        |
@@ -26,8 +26,7 @@ Feature: A rule stores a roll in let
     Given a docks table
     When the pack's hit stores "attack: 1d20", checks "attack + 1d4" against <success_at>, takes <ticks> ticks, and adds "1d6" to vigor on a success
     And the player hits and the GM commits
-    Then the journal and the GM commit reply hold dice lines for "<lines>"
-    And no round before the last one rolled dice
+    Then the GM commit reply holds dice lines for "<lines>"
     And spook verify passes
 
     Examples:

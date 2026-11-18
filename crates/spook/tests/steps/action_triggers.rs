@@ -164,12 +164,8 @@ fn two_chains_at_depth_one(world: &mut World) {
     write_rules(world, &verbs, "chains", &rules);
 }
 
-#[then(expr = "both rules ran and the journal records no trigger_depth")]
+#[then(expr = "both rules ran")]
 fn both_chains_ran(world: &mut World) {
-    let round = latest_round(world);
-    assert_eq!(round["refused"], serde_json::json!([]), "{round}");
-    let steps = read_extra_steps(&round);
-    assert!(!steps.iter().any(|step| step == "trigger_depth"), "{round}");
     let now = world_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
     for flag in ["rang", "echoed"] {

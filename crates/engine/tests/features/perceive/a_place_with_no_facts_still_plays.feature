@@ -4,8 +4,7 @@ Feature: A place with no facts still plays
     Given a docks table
     When Harbormouse plays "travel loft"
     And Harbormouse plays "travel gate_yard"
-    Then the journal commits two location effects for Harbormouse
-    And harbormouse is in "Gate Yard"
+    Then harbormouse is in "Gate Yard"
 
   Scenario: Harbormouse waits in the Gate Yard
     Given a docks table

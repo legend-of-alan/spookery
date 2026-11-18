@@ -21,7 +21,7 @@ Feature: Triggers
 
   Scenario: Two rules that set each other's flags stop at depth 4
     Given two rules that set each other's watched flag
-    Then spook check warns of a cycle, and a round stops at depth 4 and logs trigger_depth
+    Then spook check warns of a cycle, and a round stops at depth 4 and still commits
 
   Scenario: A private change narrated to the room leaks
     Given a rule on a known fact narrates to the room

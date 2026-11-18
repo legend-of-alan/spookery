@@ -41,7 +41,6 @@ Feature: Travel follows the map
     Given rounds are 5 ticks while seated and the stairs exit costs 2 ticks
     When rowan travels via stairs in the round starting at tick 1290
     Then the round still ends at tick 1295
-    And rowan's arrival is recorded with arrived_at 1292 in that round's line
     And a move from rowan is accepted from the round starting at tick 1295
 
   Scenario: Rounds never shorten

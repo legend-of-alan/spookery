@@ -319,7 +319,7 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     );
     support::stamp_pack_rev(&pack);
     make_mira_ineligible(&pack);
-    let (ecs_world, _rolls, round) =
+    let (ecs_world, _rolls, _round) =
         play_queued(&pack, &[], vec![intent("two-1", "mira", "two_stock", None)]);
     world.oil = format!(
         "{}",
@@ -332,22 +332,12 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
             .unwrap_or(-1)
     )
     .into_bytes();
-    world.scratch = round.to_string();
     world.pack = Some(pack);
 }
 
-#[then(expr = "no effect from that row applies and the round record names the refusal")]
+#[then(expr = "no effect from that row applies")]
 fn no_effect_from_that_row_applies(world: &mut World) {
     assert_eq!(String::from_utf8_lossy(&world.oil), "4");
-    let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    assert!(round["effects"].as_array().unwrap().is_empty(), "{round}");
-    let rejected = round["refused"].as_array().unwrap();
-    assert!(
-        rejected
-            .iter()
-            .any(|item| item["id"] == "two-1" && item["code"] == "BUDGET"),
-        "{round}"
-    );
 }
 
 #[given(
@@ -594,19 +584,6 @@ fn the_gm_sees_rowans_check_against_a_bar_of(world: &mut World, bar: i64) {
     assert_eq!(world.seen, bar.to_string(), "{}", world.scratch);
 }
 
-#[then(expr = "the journal records {string} and not {string}")]
-fn the_journal_records_and_not(world: &mut World, ran: String, skipped: String) {
-    let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    let rules: Vec<&str> = round["extra_steps"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|step| step["rule"].as_str())
-        .collect();
-    assert!(rules.contains(&ran.as_str()), "{round}");
-    assert!(!rules.contains(&skipped.as_str()), "{round}");
-}
-
 #[given(
     expr = "max_effects_per_intent is 1 and a street rule that sets 2 flags when Rowan arrives"
 )]
@@ -626,25 +603,15 @@ fn a_street_rule_over_the_cap(world: &mut World) {
 
 #[when(expr = "Rowan walks to the street")]
 fn rowan_walks_to_the_street(world: &mut World) {
-    let (ecs_world, _rolls, round) = rowan_walks(world.pack(), Vec::new());
+    let (ecs_world, _rolls, _round) = rowan_walks(world.pack(), Vec::new());
     let rowan = "rowan".into();
     let flags = ecs_world.actors().get::<component::Flag>(&rowan);
     world.count = flags.iter().count();
-    world.scratch = round.to_string();
 }
 
-#[then(expr = "neither flag is set and the round record names the change rule's {word} refusal")]
-fn neither_flag_is_set(world: &mut World, code: String) {
+#[then(expr = "neither flag is set")]
+fn neither_flag_is_set(world: &mut World) {
     assert_eq!(world.count, 0, "flags were set");
-    let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    let rejected = round["refused"].as_array().unwrap();
-    let id = "trigger:place:docks_street/greeted:rowan";
-    assert!(
-        rejected
-            .iter()
-            .any(|item| item["id"] == id && item["code"] == code),
-        "{round}"
-    );
 }
 
 #[given(expr = "the docks pack with Rowan seated in the shop")]

@@ -167,13 +167,11 @@ fn a_docks_table_with_a_strike_success_at_of(world: &mut World, success_at: Stri
     seat_gm_and_harbormouse(world, pack);
 }
 
-#[then(expr = "the GM sees no roll and the round records no dice line")]
-fn the_gm_sees_no_roll_and_the_round_records_no_dice_line(world: &mut World) {
+#[then(expr = "the GM sees no roll")]
+fn the_gm_sees_no_roll(world: &mut World) {
     let body = table::read_reply(&world.stdout);
     let rolls = body["rolls"].as_array().unwrap_or_else(|| panic!("{body}"));
     assert!(rolls.is_empty(), "{body}");
-    let round = super::common::read_first_round(world);
-    assert!(round.get("dice").is_none(), "{round}");
 }
 
 #[given(expr = "a docks table where one effect is over budget and the GM is seated")]

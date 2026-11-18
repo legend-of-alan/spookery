@@ -72,11 +72,6 @@ pub(crate) fn run_check_json(world: &mut World) {
     );
 }
 
-/// The first round record of the table's journal.
-pub(crate) fn read_first_round(world: &World) -> serde_json::Value {
-    crate::support::read_round(table::pack(world), "round-0001")
-}
-
 /// Appends `yaml`, one or more verb rules, to the pack's `rules/verbs.yaml`.
 pub(crate) fn add_verb(pack: &Path, yaml: &str) {
     let path = pack.join("rules/verbs.yaml");
