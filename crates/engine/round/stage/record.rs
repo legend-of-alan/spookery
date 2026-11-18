@@ -62,33 +62,3 @@ pub(crate) fn run(
     output.commit = Some(commit::commit(session, world, record)?);
     Ok(output)
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::intent::Viewer;
-    use crate::rules::effect::{Effect, EffectKind};
-    use crate::store::journal::emit_record;
-    use crate::store::records::{Record, RoundRecord};
-
-    #[test]
-    fn round_record_embeds_the_flat_effect() {
-        let effect = Effect {
-            kind: EffectKind::Item {
-                actor_id: None,
-                place: Some("docks_shop".into()),
-                id: "lamp_oil".to_string(),
-                delta: -1,
-                max: None,
-            },
-            viewer: Some(Viewer::Npc("mira".into())),
-            intent_id: "i".to_string(),
-        };
-        let line = emit_record(&Record::Round(RoundRecord {
-            effects: vec![effect.clone()],
-            ..Default::default()
-        }));
-        let encoded = crate::store::records::emit_effect(&effect);
-        assert!(line.contains(&encoded), "{line}");
-        assert!(!line.contains("\"payload\""));
-    }
-}

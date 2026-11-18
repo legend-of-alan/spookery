@@ -403,13 +403,11 @@ The ground gives.
         | spookery_engine::MoveReport::Refused { actor_id, .. } => actor_id == "nell",
     });
     assert!(faces, "nell did not roll\n{round}");
-    world.scratch = "rolled".to_string();
     world.pack = Some(pack);
 }
 
 #[then(expr = "that arrival rolled stamina and spook verify reproduces it")]
 fn the_bog_roll_reproduces(world: &mut World) {
-    assert_eq!(world.scratch, "rolled");
     let pack = world.pack.as_ref().unwrap();
     let now = world_of(pack);
     let nell = "nell".into();

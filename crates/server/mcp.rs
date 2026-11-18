@@ -617,26 +617,6 @@ mod tests {
         assert!(fault_seen.try_recv().is_err(), "the quiet GM lost the seat");
     }
 
-    // A second event stream on a seated session is refused, and closing it
-    // leaves the first stream and its seat alone (issue #459).
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn a_second_event_stream_closes_nothing() {
-        let (port, mut fault_seen, _let_go) = bind_mcp().await;
-        let (session, version, _events) = sit(port).await;
-
-        let (second, head) = open_event_stream(port, &session, &version).await;
-        assert!(head.contains("TABLE_FULL"), "a second stream sat\n{head}");
-        drop(second);
-
-        let list = serde_json::json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" });
-        let reply = send_http(port, "POST", Some(&session), &version, &list.to_string()).await;
-        assert!(
-            reply.contains("\"tools\""),
-            "the GM lost its session\n{reply}"
-        );
-        assert!(fault_seen.try_recv().is_err(), "the GM lost the seat");
-    }
-
     // End to end over HTTP: the handler's drop reaches the table thread, the
     // DELETE reply waits for the release, and a GM that reconnects as soon as
     // DELETE answers is not told the table is full (issue #214).

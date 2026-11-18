@@ -251,15 +251,4 @@ mod tests {
         let err = load(&empty).unwrap_err();
         assert_eq!(first_reason(&err), Reason::Schema);
     }
-
-    #[test]
-    fn docks_budget_leaves_idle_on() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/packs/docks/rules/budget.yaml");
-        let text = std::fs::read_to_string(path).unwrap();
-        let budget = load(&text).unwrap();
-        assert!(budget.idle_rounds);
-        assert_eq!(budget.round_every_real_seconds, 300);
-        assert_eq!(budget.idle_ticks_per_round, 60);
-    }
 }

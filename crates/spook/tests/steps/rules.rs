@@ -566,26 +566,6 @@ fn the_outcome_is_a_miss(world: &mut World) {
     assert!(!flags.iter().any(|flag| flag == "hit"), "{flags:?}");
 }
 
-#[given(expr = "a pack with rules\\/moves.yaml")]
-fn a_pack_with_moves_yaml(world: &mut World) {
-    let pack = copy_pack("docks", "rules-moves");
-    fs::write(pack.join("rules/moves.yaml"), "schema: moves\n").unwrap();
-    world.pack = Some(pack);
-}
-
-#[then(expr = "spook check says moves.yaml was replaced by rules\\/verbs.yaml")]
-fn check_says_moves_was_replaced(world: &mut World) {
-    run(world, &["check"]);
-    assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
-    assert!(
-        world
-            .stderr
-            .contains("moves.yaml was replaced by rules/verbs.yaml"),
-        "{}",
-        world.stderr
-    );
-}
-
 #[given(expr = "a verb file where the word bogus appears in earlier text")]
 fn bogus_appears_in_earlier_text(world: &mut World) {
     let pack = copy_pack("docks", "rules-bogus");

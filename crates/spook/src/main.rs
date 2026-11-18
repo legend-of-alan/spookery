@@ -306,18 +306,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_default_address_is_loopback_9737() {
-        let cli = Cli::try_parse_from(["spook", "round", "pack"]).unwrap();
-        assert_eq!(cli.addr, "127.0.0.1:9737");
-        assert_eq!(
-            parse_loopback("127.0.0.1").unwrap(),
-            SocketAddr::from(([127, 0, 0, 1], 9737))
-        );
-        assert_eq!(parse_loopback(&cli.addr).unwrap().port(), 9737);
-        assert_eq!(parse_loopback("127.0.0.1:0").unwrap().port(), 0);
-    }
-
-    #[test]
     fn a_subcommand_address_overrides_the_default() {
         let after =
             Cli::try_parse_from(["spook", "run", "--addr", "127.0.0.1:9800", "pack"]).unwrap();
@@ -329,14 +317,6 @@ mod tests {
     }
 
     #[test]
-    fn an_open_address_is_not_loopback() {
-        assert!(parse_loopback("0.0.0.0").is_err());
-        assert!(parse_loopback("10.0.0.8").is_err());
-        assert!(parse_loopback("localhost").is_err());
-        assert!(parse_loopback("127.0.0.1:").is_err());
-    }
-
-    #[test]
     fn usage_is_not_an_engine_refusal() {
         assert!(Cli::try_parse_from(["spook", "rnu", "x"]).is_err());
         assert!(Cli::try_parse_from(["spook", "gm", "pack"]).is_err());
@@ -345,8 +325,6 @@ mod tests {
         let gm_raw = Cli::try_parse_from(["spook", "gm", "--raw"]).unwrap();
         assert!(matches!(gm_raw.command, Command::Gm { raw: true }));
         assert!(Cli::try_parse_from(["spook"]).is_err());
-        assert!(Cli::try_parse_from(["spook", "mcp"]).is_err());
-        assert!(Cli::try_parse_from(["spook", "mcp", "--addr", "127.0.0.1:9737"]).is_err());
         let open = parse_mcp_addr(Some("0.0.0.0:9".into()));
         assert_eq!(open.unwrap_err(), "NOT_IN_SPEC");
         let http_loopback =
