@@ -36,6 +36,7 @@ Feature: spook check explains a broken pack
       | check names no meter         | rules/checks.yaml          | SCHEMA            | names no meter                     |
       | pack_rev mismatch            | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                           |
       | an actor the cast lacks      | state/save.yaml            | SCHEMA            | is not a cast member               |
+      | a control type with two keys | state/save.yaml            | SCHEMA            | two keys where one belongs         |
       | exit to an unknown place     | world/places/docks_shop.md | SCHEMA            | not a place                        |
       | duplicate exit               | world/places/docks_shop.md | SCHEMA            | listed twice                       |
       | a target alias               | rules/verbs.yaml           | SCHEMA            | not a target kind                  |
