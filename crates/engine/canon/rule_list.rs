@@ -632,8 +632,7 @@ fn compile_one(
 /// The first `let:` read in `rule` that fails, as the problem and the hint: a name its `let:`
 /// does not hold, a name a `let:` number reads at or above the line that holds it, or `high` or
 /// `low` of a name whose number is not one dice group that keeps every face. The `let:` numbers
-/// come first in
-/// `Rule::exprs`, so the one at `index` reads only the names above it.
+/// come first in `Rule::exprs`, so the one at `index` reads only the names above it.
 fn find_let_read_problem(rule: &Rule) -> Option<(String, String)> {
     let lets = rule.lets.as_slice();
     for (index, expr) in rule.exprs().into_iter().enumerate() {
