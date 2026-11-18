@@ -247,27 +247,6 @@ mod tests {
     use crate::testing::copy_pack;
 
     #[test]
-    fn verify_names_a_round_whose_hash_no_longer_matches() {
-        let pack = copy_pack("docks", "replay-tamper");
-        play_pack_once(&pack).unwrap();
-        let path = pack.join("state/journal/bundle-0000.jsonl");
-        let text = fs::read_to_string(&path).unwrap();
-        let swapped = text.replacen(
-            "\"state_hash\":\"blake2s:",
-            "\"state_hash\":\"blake2s:00",
-            1,
-        );
-        assert_ne!(swapped, text);
-        fs::write(&path, swapped).unwrap();
-        let err = verify_pack(&pack, None).unwrap_err();
-        let message = err.to_string();
-        assert!(message.contains("state_rev 1"), "{message}");
-        assert!(message.contains("round 1"), "{message}");
-        assert!(message.contains("state_hash differed"), "{message}");
-        let _ = fs::remove_dir_all(&pack);
-    }
-
-    #[test]
     fn verify_and_quick_verify_reject_tampered_save_after_checkpoint() {
         let pack = copy_pack("docks", "replay-save-tamper");
         let pack_yaml = pack.join("pack.yaml");

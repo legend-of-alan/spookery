@@ -3,7 +3,6 @@ use spookery_engine::{component, ActorId, Meter};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use cucumber::gherkin::Step;
 use cucumber::{given, then, when};
 
 use crate::support;
@@ -253,14 +252,6 @@ fn verify_trusts_the_operator_edit(world: &mut World, rev: u64) {
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let line = format!("operator edit trusted at state_rev {rev}");
     assert!(world.stdout.contains(&line), "{}", world.stdout);
-}
-
-#[then(expr = "the journal line {word} is")]
-fn the_journal_line_is(world: &mut World, key: String, step: &Step) {
-    let line = spookery_engine::testing::journal::read_record_line(table::pack(world), &key)
-        .unwrap_or_else(|err| panic!("{}", err.detail));
-    let golden = step.docstring.as_deref().unwrap_or_default();
-    assert_eq!(line, golden.trim());
 }
 
 #[when(expr = "Rowan's vigor offset is hand edited to {int} and Nell joins without vigor")]

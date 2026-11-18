@@ -24,8 +24,6 @@ A place, item, cast member or story may have `name`, the name a player sees. Wit
 | `story/<id>.yaml` | Rules owned by a story, and the meters and flags only it carries. Tag `story`. |
 | `state/save.yaml` | The live world. It is the save, not canon. |
 
-Check rejects `rules/moves.yaml`. Write those rules in `rules/verbs.yaml` or in the owner's file.
-
 A rule's owner is the file it lives in. The full id is `verb:<id>`, `place:<place>/<id>`, `item:<item>/<id>`, `cast:<actor>/<id>`, or `story:<story>/<id>`. `spook check --rules <pack>` prints those ids when the pack has no problems.
 
 A verb uses the wielded item's rule for it, then the target item's rule, then the target actor's, then the rule on the current place, then `rules/verbs.yaml`. A cast member's verb rule is picked by naming them while they share the actor's place, and a bare verb never reaches it. A player's `help` lists a verb only where this order reaches a rule for it and that rule's `if` holds now. When no rule matches, the move is refused before the round with `NOT_IN_SPEC`, and the turn is not spent. A word is a verb only when some rule in the pack names it, so `use` is a verb only in a pack where some rule says `verb: use`. A habit runs only for the NPC whose cast file holds it.
