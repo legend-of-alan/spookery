@@ -10,7 +10,6 @@ on:
       - "**/*.png"
       - "**/*.svg"
   pull_request:
-    branches: [main]
     paths-ignore:
       - "docs/README.md"
       - "**/*.png"
