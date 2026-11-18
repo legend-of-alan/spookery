@@ -79,6 +79,7 @@ pub mod testing {
     pub fn lock_write(session: &crate::session::Session) -> Result<WriteGuard, crate::Reason> {
         crate::store::lock::take_write(session.root(), session.lock())
     }
+    pub use crate::store::lock::call_when_read_waits;
     pub use crate::store::RULES_REV;
 
     /// A second handle on the lock file, like the copy a spawned child holds until it execs.

@@ -1,11 +1,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
 
 use cucumber::{given, then, when};
 
-use spookery_engine::testing::{copy_pack, journal, lock_write};
+use spookery_engine::testing::{call_when_read_waits, copy_pack, journal, lock_write};
 use spookery_engine::{emit_save, lock_pack};
 
 use crate::{World, Writer};
@@ -42,22 +42,36 @@ fn peek_digest(pack: &Path) -> Result<String, String> {
     spookery_engine::Session::peek_digest(pack).map_err(|err| err.to_string())
 }
 
-/// Hold the write guard while the disk is `halfway`, start status, then `finish` and drop it.
-/// `scratch` gets the text status printed.
+/// What the status thread reports to the step, in the order it happens.
+enum StatusEvent {
+    /// Status found the write guard held and is waiting for it.
+    Waiting,
+    /// Status returned this text or error.
+    Done(Result<String, String>),
+}
+
+/// Hold the write guard while the disk is `halfway`, start status, then `finish` and drop it
+/// once status is waiting on the guard. `scratch` gets the text status printed.
 fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce()) {
     let pack = world.pack().to_path_buf();
     let write = lock_write(writer(world)).unwrap_or_else(|err| panic!("write guard: {err}"));
     halfway();
+    let (status_tx, status_rx) = mpsc::channel();
+    let waiting_tx = status_tx.clone();
+    call_when_read_waits(&pack, move || {
+        let _ = waiting_tx.send(StatusEvent::Waiting);
+    });
     let peeked = thread::scope(|scope| {
-        let status = scope.spawn(|| peek_digest(&pack));
-        thread::sleep(Duration::from_millis(200));
-        assert!(
-            !status.is_finished(),
-            "status read the pack while the write was halfway"
-        );
+        scope.spawn(|| status_tx.send(StatusEvent::Done(peek_digest(&pack))));
+        let Ok(StatusEvent::Waiting) = status_rx.recv() else {
+            panic!("status finished without waiting on the write guard, so it read the half-written pack");
+        };
         finish();
         drop(write);
-        status.join().expect("status panicked")
+        match status_rx.recv() {
+            Ok(StatusEvent::Done(peeked)) => peeked,
+            _ => panic!("status sent no result"),
+        }
     });
     world.scratch = peeked.unwrap_or_else(|err| panic!("status: {err}"));
 }
