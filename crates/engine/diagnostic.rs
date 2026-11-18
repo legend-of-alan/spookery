@@ -249,15 +249,14 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, line_base: u32) -> Diag
             format!("unknown '{variant}'"),
             format!("use one of {}", expected.join(", ")),
         ),
-        // A second key beside a condition or effect: in a list, or in an `if:` of one condition.
         YamlError::ExpectedMappingEndAfterEnumVariantValue { .. }
         | YamlError::Unexpected {
             expected: "mapping end",
             ..
         } => (
             None,
-            "two keys under one dash".to_string(),
-            "keep one condition or effect per dash; combine conditions with all:, any: or not:"
+            "two keys in one condition or effect".to_string(),
+            "give each condition or effect its own dash; combine conditions with all:, any: or not:"
                 .to_string(),
         ),
         YamlError::InvalidScalar { ty, .. } => (

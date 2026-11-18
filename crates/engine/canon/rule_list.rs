@@ -17,7 +17,7 @@ use crate::rules::expr::{stamp_spots, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
     self, ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner,
-    Phase, Rule, TargetKind, When,
+    Phase, Rule, Slot, TargetKind, When,
 };
 
 const MOVES_REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
@@ -144,7 +144,7 @@ impl<'de> Deserialize<'de> for IfYaml {
     }
 }
 
-/// One condition under a dash; its one key names the condition.
+/// One condition; its one key names the condition.
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)]
@@ -548,7 +548,10 @@ fn compile_one(
             Vec::new()
         }
     };
-    let check = match entry.check.as_ref().map(check_of).transpose() {
+    let check = match (entry.check.as_ref())
+        .map(|yaml| check_of(&yaml.total, &yaml.success_at, yaml.partial_at.as_ref()))
+        .transpose()
+    {
         Ok(check) => check,
         Err(fault) => {
             diags.push(source.fault("", fault));
@@ -586,10 +589,10 @@ fn compile_one(
                 "add success",
             ));
         }
-        let band = check
+        let band_problem = check
             .as_ref()
             .and_then(|check| find_partial_band_problem(check, &partial));
-        if let Some((problem, hint)) = band {
+        if let Some((problem, hint)) = band_problem {
             diags.push(schema_error(
                 file,
                 &format!("rule '{local}' {problem}"),
@@ -637,24 +640,10 @@ fn compile_one(
         When::Verb { target, .. } => *target,
         When::Habit | When::Change(_) => TargetKind::None,
     };
-    let mut locations = Vec::new();
-    rule.visit_templates(|effect| match effect {
-        EffectTemplate::Location {
-            to: LocationTo::Target,
-            ..
-        } => locations.push(("location to:", TargetKind::Place)),
-        EffectTemplate::Location {
-            to: LocationTo::Via(via),
-            ..
-        } if via == "target" => locations.push(("location via:", TargetKind::Exit)),
-        _ => {}
-    });
-    let (objects, item_ids) = (rule.objects(), rule.item_ids());
-    let misplaced = find_misplaced_target(targets, objects, item_ids, locations);
-    let misplaced = misplaced.map(|(slot, needs)| {
+    let misplaced = find_misplaced_target(targets, rule.slots()).map(|(key, needs)| {
         let (needs, targets) = (needs.as_str(), targets.as_str());
         (
-            format!("says target in {slot}, but its target is {targets}"),
+            format!("says target in {key}, but its target is {targets}"),
             format!("give the verb target: {needs}, or name the {needs} by its id"),
         )
     });
@@ -704,25 +693,17 @@ fn find_misread_name(rule: &Rule) -> Option<(String, String)> {
     None
 }
 
-/// The first use of the word `target` that a move targeting `targets` does not allow, as its
-/// slot and what it needs the move to target. An owner among `objects` needs an actor and an id
-/// among `item_ids` an item; each of `locations` says what it needs (`location: { to: target }`
-/// a place, `location: { via: target }` an exit). A habit, a change rule and an exit target
-/// nothing.
+/// The first of `slots` that says `target` where a move that targets `targets` does not allow
+/// it, as the slot's key and what it needs the move to target. A habit, a change rule and an
+/// exit target nothing.
 pub(super) fn find_misplaced_target(
     targets: TargetKind,
-    objects: Vec<(&'static str, grammar::Object)>,
-    item_ids: Vec<(&'static str, &str)>,
-    locations: Vec<(&'static str, TargetKind)>,
+    slots: Vec<(&'static str, Slot<'_>)>,
 ) -> Option<(&'static str, TargetKind)> {
-    let target = grammar::Object::Actor(grammar::Actor::Target);
-    let owners = (objects.into_iter())
-        .filter(|(_, of)| *of == target)
-        .map(|(slot, _)| (slot, TargetKind::Actor));
-    let items = (item_ids.into_iter())
-        .filter(|(_, id)| *id == "target")
-        .map(|(slot, _)| (slot, TargetKind::Item));
-    (owners.chain(items).chain(locations)).find(|(_, needs)| *needs != targets)
+    slots.into_iter().find_map(|(key, slot)| match slot {
+        Slot::Target(needs) if needs != targets => Some((key, needs)),
+        _ => None,
+    })
 }
 
 fn when_of(yaml: &WhenYaml) -> Result<When, String> {
@@ -849,7 +830,8 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
             fact: knows.fact.clone(),
         },
         CondYaml::Cycle(cycle) => {
-            let (from, to) = (refuse_dice(&cycle.from)?, refuse_dice(&cycle.to)?);
+            let from = refuse_dice(&cycle.from)?;
+            let to = refuse_dice(&cycle.to)?;
             if from.constant().is_some() && from.constant() == to.constant() {
                 return Err("cycle needs from and to that differ".into());
             }
@@ -888,11 +870,15 @@ fn counts_of(yaml: &Counts) -> Result<Vec<(String, Expr)>, Fault> {
         .collect()
 }
 
-fn check_of(yaml: &CheckYaml) -> Result<rule::Check, Fault> {
+fn check_of(
+    total: &Spanned<ExprYaml>,
+    success_at: &Spanned<ExprYaml>,
+    partial_at: Option<&Spanned<ExprYaml>>,
+) -> Result<rule::Check, Fault> {
     Ok(rule::Check {
-        total: expr_of(&yaml.total)?,
-        success_at: expr_of(&yaml.success_at)?,
-        partial_at: yaml.partial_at.as_ref().map(expr_of).transpose()?,
+        total: expr_of(total)?,
+        success_at: expr_of(success_at)?,
+        partial_at: partial_at.map(expr_of).transpose()?,
     })
 }
 
@@ -1022,11 +1008,11 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             subject: actor_of(&unwield.subject)?,
         },
         EffectYaml::Check(nested) => {
-            let check = rule::Check {
-                total: expr_of(&nested.total)?,
-                success_at: expr_of(&nested.success_at)?,
-                partial_at: nested.partial_at.as_ref().map(expr_of).transpose()?,
-            };
+            let check = check_of(
+                &nested.total,
+                &nested.success_at,
+                nested.partial_at.as_ref(),
+            )?;
             let list_of =
                 |list: &[EffectYaml]| list.iter().map(effect_of).collect::<Result<Vec<_>, _>>();
             let partial = list_of(&nested.partial)?;
@@ -1047,9 +1033,9 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     })
 }
 
-/// What is wrong with `check`'s partial band, given the `partial` list it picks, as the words
-/// after the check's name and the hint: a `partial_at` with no list, a list with no
-/// `partial_at`, or a constant `partial_at` at or above a constant `success_at`.
+/// What is wrong with `check`'s partial band, given `partial`, the list its partial outcome
+/// runs, as the words after the check's name and the hint: a `partial_at` with no list, a list
+/// with no `partial_at`, or a constant `partial_at` at or above a constant `success_at`.
 fn find_partial_band_problem(
     check: &rule::Check,
     partial: &[EffectTemplate],
@@ -1071,7 +1057,7 @@ fn find_partial_band_problem(
         .and_then(Expr::constant)
         .zip(check.success_at.constant());
     constants
-        .is_some_and(|(band, success_at)| band >= success_at)
+        .is_some_and(|(partial_at, success_at)| partial_at >= success_at)
         .then_some((
             "sets partial_at at or above success_at",
             "set partial_at strictly below success_at",

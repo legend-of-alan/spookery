@@ -74,14 +74,14 @@ Feature: Dice and arithmetic in rule numbers
 
   Scenario Outline: Dice in a condition or a cost fail spook check
     Given a docks table
-    When the pack's hit has "1d6" as <number>
+    When the pack's hit has "1d6" as <field>
     And the operator runs spook check
     Then the check exits 1
     And the report says "cannot roll dice"
     And the report names the line holding "1d6"
 
     Examples:
-      | number            |
+      | field             |
       | a condition value |
       | a cost amount     |
       | a cost item count |
@@ -95,6 +95,17 @@ Feature: Dice and arithmetic in rule numbers
     When rounds pass until tick 1090
     Then Rowan holds 4 chock
     And the fatigue has 5 ticks left
+
+  Scenario Outline: A number read out of range at play refuses the move OUT_OF_RANGE
+    Given a docks table with Rowan and Wren seated in the shop
+    And the pack has "<number>" as <field>
+    Then Rowan's "<move>" is refused OUT_OF_RANGE
+
+    Examples:
+      | field                       | number          | move                |
+      | the street exit's ticks     | self.rest - 4   | travel docks_street |
+      | the strain's modifier ticks | self.rest - 3   | strain              |
+      | the strain's cycle bound    | self.rest * 500 | strain              |
 
   Scenario: Overflow refuses the effect and changes nothing
     Given a docks table

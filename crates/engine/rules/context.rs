@@ -2,7 +2,7 @@
 
 use crate::canon::Canon;
 use crate::ecs::{self, Presence};
-use crate::intent::{Intent, Source, Target, Viewer};
+use crate::intent::Intent;
 use crate::rules::roll::LetValue;
 
 /// The canon, the save, who is seated, and the intent a rule's conditions, costs and effects read.
@@ -41,11 +41,4 @@ impl<'c, 'a> Context<'c, 'a> {
     pub(crate) fn bind<'b>(&'b self, lets: &'b [LetValue]) -> Context<'c, 'b> {
         Context { lets, ..*self }
     }
-}
-
-/// `viewer` doing `verb` to `target`, as an intent with no id: what `help`, exit locks, an NPC's
-/// habit list and an exit's ticks in a view read a rule against, having no intent of their own.
-pub(crate) fn probe(world: &ecs::World, viewer: &Viewer, verb: &str, target: Target) -> Intent {
-    let (round, actor) = (world.round_index, Some(viewer.clone()));
-    Intent::new(String::new(), round, actor, Source::Player, verb, target)
 }

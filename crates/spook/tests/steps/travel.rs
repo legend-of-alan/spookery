@@ -63,9 +63,19 @@ fn refused_no_exit_and_stays(world: &mut World) {
     );
 }
 
-#[given(expr = "the stairs exit needs brass_key and rowan has none")]
-fn stairs_need_a_key(world: &mut World) {
+#[given(
+    regex = r"^the stairs exit needs brass_key, rowan has none, and travel walks (at once|inside a nested check)$"
+)]
+fn stairs_need_a_key(world: &mut World, walk: String) {
     let pack = copy_pack("docks", "locked");
+    if walk == "inside a nested check" {
+        super::common::replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "    do:\n      - location:\n          via: target\n",
+            "    do:\n      - check:\n          total: 1\n          success_at: 1\n          success:\n            - location:\n                via: target\n",
+        );
+        support::stamp_pack_rev(&pack);
+    }
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
     world.pack = Some(pack);
@@ -504,12 +514,11 @@ fn the_lane_script_is_played_with_the_stub_gm(world: &mut World) {
 #[then(expr = "Harbormouse reaches the lane at the exit's cost in ticks and hears the ending")]
 fn harbormouse_reaches_the_lane_and_hears_the_ending(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    // The lane's ticks as Harbormouse's map shows them.
     let session = spookery_engine::Session::peek(&pack).unwrap();
     let map = session.map(&ActorId::from("harbormouse")).unwrap();
     let lane = (map.iter().flat_map(|place| &place.exits)).find(|exit| exit.exit_id == "mill_lane");
-    let cost = lane.unwrap().ticks;
-    assert!(cost > 0);
+    let lane_ticks = lane.unwrap().ticks;
+    assert!(lane_ticks > 0);
     let now = world_of(&pack);
     assert_eq!(place_of(&now, "harbormouse"), "mill_lane");
     let rounds: Vec<_> = (list_round_keys(&pack).iter())
@@ -521,7 +530,7 @@ fn harbormouse_reaches_the_lane_and_hears_the_ending(world: &mut World) {
     let arrived_at = arrival.unwrap_or_else(|| panic!("no arrival on mill lane"))["arrived_at"]
         .as_u64()
         .unwrap();
-    assert_eq!(arrived_at.saturating_sub(world.start_ticks), cost);
+    assert_eq!(arrived_at.saturating_sub(world.start_ticks), lane_ticks);
     assert!(
         rounds.iter().any(|round| round["fast_forward"] == true),
         "the journey did not fast-forward"

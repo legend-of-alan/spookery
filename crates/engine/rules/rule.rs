@@ -50,12 +50,12 @@ impl Rule {
         self.start.cost.iter().chain(&self.finish.cost)
     }
 
-    pub(crate) fn top_templates(&self) -> impl Iterator<Item = &EffectTemplate> {
-        self.do_
-            .iter()
-            .chain(&self.success)
-            .chain(&self.partial)
-            .chain(&self.miss)
+    /// Every effect the rule holds, in the order `visit_templates` walks them, with the effects
+    /// in its nested checks' lists.
+    pub(crate) fn templates(&self) -> Vec<&EffectTemplate> {
+        let mut templates = Vec::new();
+        self.visit_templates(|effect| templates.push(effect));
+        templates
     }
 
     pub(crate) fn visit_templates<'a>(&'a self, mut visit: impl FnMut(&'a EffectTemplate)) {
@@ -81,14 +81,13 @@ impl Rule {
         walk(&self.miss, &mut visit);
     }
 
-    /// Every number the rule holds: its `let:` numbers, its check's total and bands, its costs,
-    /// its conditions' numbers, and its effects' amounts, caps, ticks and nested checks.
+    /// Every number the rule holds: its `let:` numbers, its check's total, success_at and
+    /// partial_at, its costs, its conditions' numbers, and its effects' amounts, caps, ticks and
+    /// nested checks.
     pub(crate) fn exprs(&self) -> Vec<&Expr> {
         let mut exprs: Vec<&Expr> = self.lets.iter().map(|(_, expr)| expr).collect();
         exprs.extend(self.check.iter().flat_map(Check::exprs));
-        for cost in self.costs() {
-            exprs.extend(cost.exprs());
-        }
+        exprs.extend(self.costs().flat_map(Cost::exprs));
         exprs.extend(self.if_.iter().flat_map(Cond::exprs));
         self.visit_templates(|effect| match effect {
             EffectTemplate::Modifier { add, ticks, .. } => exprs.extend([add, ticks]),
@@ -100,93 +99,108 @@ impl Rule {
         exprs
     }
 
-    /// Every owner the rule names, with the slot it sits in: `of:`, `subject:`, `to:`, a
-    /// nested check's `by:`, or a number that reads one of its meters.
-    pub(crate) fn objects(&self) -> Vec<(&'static str, grammar::Object)> {
-        let mut objects = collect_objects(&self.if_, self.exprs());
+    /// Every slot the rule's lines fill, with its key as written: its conditions' and costs'
+    /// slots, the owners its numbers read, and on its effects `of:`, `subject:`, `to:`, a
+    /// nested check's `by:`, `id:`, and `location to:` or `location via:` when it says `target`.
+    pub(crate) fn slots(&self) -> Vec<(&'static str, Slot<'_>)> {
+        let mut slots = collect_slots(&self.if_, self.costs(), self.exprs());
         self.visit_templates(|effect| {
-            let (slot, object) = match effect {
+            match effect {
                 EffectTemplate::Meter { of, .. }
                 | EffectTemplate::Flag { of, .. }
-                | EffectTemplate::Item { of, .. } => ("of:", of.clone()),
+                | EffectTemplate::Item { of, .. } => slots.push(("of:", Slot::from_owner(of))),
                 EffectTemplate::Modifier { to, .. }
                 | EffectTemplate::Memory { to, .. }
-                | EffectTemplate::Reveal { to, .. } => ("to:", grammar::Object::Actor(to.clone())),
+                | EffectTemplate::Reveal { to, .. } => slots.push(("to:", Slot::from_actor(to))),
                 EffectTemplate::Wield { subject, .. } | EffectTemplate::Unwield { subject } => {
-                    ("subject:", grammar::Object::Actor(subject.clone()))
+                    slots.push(("subject:", Slot::from_actor(subject)));
                 }
-                EffectTemplate::Check { by, .. } => ("by:", grammar::Object::Actor(by.clone())),
-                EffectTemplate::Location { .. }
-                | EffectTemplate::Note { .. }
-                | EffectTemplate::Narrate { .. } => return,
-            };
-            objects.push((slot, object));
-        });
-        objects
-    }
-
-    /// Every item id the rule names, with its slot: `id:` on a condition, an item effect or a
-    /// `wield`, and a cost's `items:`.
-    pub(crate) fn item_ids(&self) -> Vec<(&'static str, &str)> {
-        let mut ids = collect_item_ids(&self.if_, self.costs());
-        self.visit_templates(|effect| {
+                EffectTemplate::Check { by, .. } => slots.push(("by:", Slot::from_actor(by))),
+                EffectTemplate::Location { to, .. } => match to {
+                    LocationTo::Target => {
+                        slots.push(("location to:", Slot::Target(TargetKind::Place)));
+                    }
+                    LocationTo::Via(via) if via == "target" => {
+                        slots.push(("location via:", Slot::Target(TargetKind::Exit)));
+                    }
+                    LocationTo::Via(_) | LocationTo::Place(_) => {}
+                },
+                EffectTemplate::Note { .. } | EffectTemplate::Narrate { .. } => {}
+            }
             if let EffectTemplate::Item { id, .. } | EffectTemplate::Wield { id, .. } = effect {
-                ids.push(("id:", id));
+                slots.push(("id:", Slot::from_item_id(id)));
             }
         });
-        ids
+        slots
     }
 }
 
-/// Every owner `conds` name in a `subject:` or `of:`, with that slot, and every owner `exprs`
-/// read, as `a number`.
-pub(crate) fn collect_objects<'a>(
-    conds: &[Cond],
-    exprs: impl IntoIterator<Item = &'a Expr>,
-) -> Vec<(&'static str, grammar::Object)> {
-    let mut objects = Vec::new();
+/// What one slot of a rule or exit line names. The word `target` stands for whatever the move
+/// targets, so it is kept apart from the owners and items it could name.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Slot<'a> {
+    /// An owner other than `target`.
+    Owner(grammar::Object),
+    /// An item id other than `target`.
+    Item(&'a str),
+    /// The word `target`, with what the move must target for it to name something.
+    Target(TargetKind),
+}
+
+impl<'a> Slot<'a> {
+    fn from_owner(of: &grammar::Object) -> Self {
+        match of {
+            grammar::Object::Actor(actor) => Slot::from_actor(actor),
+            of => Slot::Owner(of.clone()),
+        }
+    }
+
+    fn from_actor(actor: &grammar::Actor) -> Self {
+        match actor {
+            grammar::Actor::Target => Slot::Target(TargetKind::Actor),
+            actor => Slot::Owner(grammar::Object::Actor(actor.clone())),
+        }
+    }
+
+    fn from_item_id(id: &'a str) -> Self {
+        match id {
+            "target" => Slot::Target(TargetKind::Item),
+            id => Slot::Item(id),
+        }
+    }
+}
+
+/// Every slot `conds` and `costs` fill, and every owner `exprs` read, as `a number`, with each
+/// slot's key as written: `subject:`, `id:` and `of:` on a condition, and a cost's `items:`.
+pub(crate) fn collect_slots<'a>(
+    conds: &'a [Cond],
+    costs: impl IntoIterator<Item = &'a Cost>,
+    exprs: Vec<&Expr>,
+) -> Vec<(&'static str, Slot<'a>)> {
+    let mut slots = Vec::new();
     for cond in conds {
         cond.visit(|cond| match cond {
-            Cond::HasItem { subject, .. }
-            | Cond::At { subject, .. }
-            | Cond::Knows { subject, .. }
-            | Cond::Wielding { subject, .. } => {
-                objects.push(("subject:", grammar::Object::Actor(subject.clone())));
+            Cond::HasItem { subject, id, .. } | Cond::Wielding { subject, id } => {
+                slots.push(("subject:", Slot::from_actor(subject)));
+                slots.push(("id:", Slot::from_item_id(id)));
             }
-            Cond::Meter { of, .. } | Cond::Flag { of, .. } => objects.push(("of:", of.clone())),
+            Cond::At { subject, .. } | Cond::Knows { subject, .. } => {
+                slots.push(("subject:", Slot::from_actor(subject)));
+            }
+            Cond::Meter { of, .. } | Cond::Flag { of, .. } => {
+                slots.push(("of:", Slot::from_owner(of)));
+            }
             _ => {}
         });
     }
+    let items = costs.into_iter().flat_map(|cost| &cost.items);
+    slots.extend(items.map(|(id, _)| ("a cost's items:", Slot::from_item_id(id))));
     for read in exprs.into_iter().flat_map(Expr::reads) {
         if let Expr::Meter { of, .. } = read {
-            objects.push(("a number", of.clone()));
+            slots.push(("a number", Slot::from_owner(of)));
         }
     }
-    objects
-}
-
-/// Every item id `conds` and `costs` name, with its slot: `id:` on `has_item` and `wielding`,
-/// and a cost's `items:`.
-pub(crate) fn collect_item_ids<'a>(
-    conds: &'a [Cond],
-    costs: impl IntoIterator<Item = &'a Cost>,
-) -> Vec<(&'static str, &'a str)> {
-    let mut ids = Vec::new();
-    for cond in conds {
-        cond.visit(|cond| {
-            if let Cond::HasItem { id, .. } | Cond::Wielding { id, .. } = cond {
-                ids.push(("id:", id.as_str()));
-            }
-        });
-    }
-    for cost in costs {
-        ids.extend(
-            cost.items
-                .iter()
-                .map(|(id, _)| ("a cost's items:", id.as_str())),
-        );
-    }
-    ids
+    slots
 }
 
 /// What the start or the finish of an action costs, and whether it uses the actor's act.

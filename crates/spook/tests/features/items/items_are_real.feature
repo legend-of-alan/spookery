@@ -101,6 +101,7 @@ Feature: Items are real
 
   Scenario: A save is an outcome, not a refusal
     Given wren saves against the poison with a seeded Constitution roll of 15 vs 12
-    When harbormouse hits wren with poisoned_dagger
+    When harbormouse hits a seated wren with poisoned_dagger
     Then wren loses 3 hp, is not poisoned, sees "The poison burns, then fades.", and the round shows no refusal
+    And wren is told she saved
     And spook verify reproduces both rolls

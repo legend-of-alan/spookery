@@ -55,11 +55,11 @@ A place file is Markdown. The header between the `---` lines is the frontmatter.
 
 Only places own facts. A fact has `id`, `text`, and optional `hidden`, which defaults to false. A player in the place sees every fact that is not hidden. A hidden fact is seen only by an actor whose `known_facts` lists it.
 
-An exit has `to` and `id`. It may have `name`, `cost`, `if`, `locked_text`, and `hidden` together with `revealed_by`. `to` is a place id. Two exits on one place with the same id are rejected. `name` is what a player reads and types for the exit. Left out, it is the name of the place the exit goes to when the exit's id is that place's id, or else the exit's id. A hidden exit needs `revealed_by`, and that value is a fact id from this pack. A place no path reaches from the start, counting hidden and locked exits, is a warning. A player's `map` shows each place's exits as they last saw them: at the end of each round, every actor notes the exits they can see where they stand. A hidden exit revealed while they are elsewhere shows on the map only after they go back. Where an exit goes and whether it is locked are read when `map` prints.
+An exit has `to` and `id`. It may have `name`, `cost`, `if`, `locked_text`, and `hidden` together with `revealed_by`. `to` is a place id. Two exits on one place with the same id are rejected. `name` is what a player reads and types for the exit. Left out, it is the name of the place the exit goes to when the exit's id is that place's id, or else the exit's id. A hidden exit needs `revealed_by`, and that value is a fact id from this pack. A place no path reaches from the start, counting hidden and locked exits, is a warning. A player's `map` shows each place's exits as they last saw them: at the end of each round, every actor notes the exits they can see where they stand. A hidden exit revealed while they are elsewhere shows on the map only after they go back. Where an exit goes, its ticks and whether it is locked are read when `map` prints.
 
 `flags` lists the flags an effect may set on this place, and `meters` lists the meters only this place carries, in the shape of `rules/meters.yaml`. A rule names them with `of: place:<id>`, or `of: here` for the actor's own place. `world/places/loft.md` declares both.
 
-`cost.ticks` is the game time the cost takes, a whole number of ticks. Omitted means 0. An exit with an `if` is a door, and the `if`, in the same conditions as a rule, is what it takes to open it. A door starts locked: travel through it shows `locked_text` and changes nothing.
+`cost.ticks` is the game time the walk takes, read for the walker like a rule's `cost.ticks`. Omitted means 0. An exit with an `if` is a door, and the `if`, in the same conditions as a rule, is what it takes to open it. A door starts locked: travel through it shows `locked_text` and changes nothing.
 
 To start a door already open, list its exit id under that place in `places.open_exits` in the starting save. Meeting its `if` alone opens it only at the end of each round, after change rules, when any actor in its place meets that `if`, and it stays open for everyone, whoever holds the key after. The engine opens it with an `exit_open` effect it records in the journal.
 
@@ -465,7 +465,7 @@ Mira's restock in `tests/packs/docks/cast/mira.md`:
 
 reads as *while the day is from tick 480 to tick 960, add 4 lamp_oil of place:docks_shop.* A cycle window is `from` inclusive and `to` exclusive: tick 480 is inside it and tick 960 is not.
 
-In the `shrug` rule below, `check: { by: target, total: 2d6 + target.nerve, success_at: 4 }` reads as *the target saves: it rolls 2d6 plus its nerve, and succeeds at 4.* Its `success` list runs when the save succeeds and its `miss` list, the nerve loss of self, when it fails. `by` is the actor who makes the save; omitted, it is `self`. `self` inside it is still the rule's actor.
+In the `shrug` rule below, `check: { by: target, total: 2d6 + target.nerve, success_at: 4 }` reads as *the target saves: it rolls 2d6 plus its nerve, and succeeds at 4.* Its `success` list runs when the save succeeds, and its `miss` list, the nerve loss of self and the `shrugged` flag, when it fails. `by` is the actor who makes the save; omitted, it is `self`. `self` inside it is still the rule's actor.
 
 In the `give_oil` rule below, the nested check's `success_at: "self.nerve + 2"` reads as *nerve of self, plus 2*: in an [expression](spec.md) the owner comes first, then its meter.
 
@@ -504,7 +504,7 @@ Every move but `say` is an action that starts and finishes. `cost` is what the s
 
 `start.counts_as_act` says whether the start uses the actor's act this round. Omitted, it is `true`. An NPC that has used its act sits out its habits that round, so a drink with `counts_as_act: false` leaves the act for one. `finish` may have `cost`, in `meters` and `items`, paid when the action finishes, and `counts_as_act`, which is `false` when omitted. A finish cost with `ticks` is rejected. Every effect lands at the finish, a timed walk's arrival and a timed teleport among them. `cooldown` is the ticks the actor stays busy after the finish. Omitted, it is 0. `cancellable: true` lets a player send the built-in command `cancel` while the action is under way: the action is dropped, its start cost is not refunded, and it never finishes. Omitted, it is `false`, and `cancel` is refused `INELIGIBLE`. A walk is never cancelled, whatever its rule says. The `chant` rule below takes five ticks, then three more to recover, and may be cancelled.
 
-`check` names a `total` and a `success_at`. `partial_at` is an absolute total, strictly below `success_at` when both are integers, and it needs a `partial` list. Outcome lists need a `check`, and a `partial` or `miss` list needs a `success` list. `do` runs on every band. `success`, `partial`, and `miss` run on that band. A yield is `do: []` with no outcome lists.
+`check` has a `total` and a `success_at`. `partial_at` is an absolute total, strictly below `success_at` when both are integers, and it needs a `partial` list. Outcome lists need a `check`, and a `partial` or `miss` list needs a `success` list. `do` runs on every band. `success`, `partial`, and `miss` run on that band. A yield is `do: []` with no outcome lists.
 
 A number is an integer or an [expression](spec.md). A number in a condition or a cost cannot roll dice: check refuses it on its line.
 
@@ -638,7 +638,7 @@ rules:
           success:
             - narrate:
                 to: self
-                text: The hit glances off.
+                text: They hold their nerve.
                 fact_ids: []
           miss:
             - meter:

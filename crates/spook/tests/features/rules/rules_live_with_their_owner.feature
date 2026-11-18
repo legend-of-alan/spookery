@@ -29,11 +29,11 @@ Feature: Rules live with their owner
     Then spook check reports that key at its own line and column
 
   Scenario Outline: Two keys in one condition or effect are refused at the second key
-    Given a verb whose <list> holds two keys in one line
-    Then spook check reports two keys under one dash at the second key
+    Given a verb whose <field> holds two keys in one line
+    Then spook check reports two keys in one condition or effect at the second key
 
     Examples:
-      | list    |
+      | field   |
       | if list |
       | do list |
       | if map  |
@@ -54,8 +54,8 @@ Feature: Rules live with their owner
     Then the queued target is that item and the save is unchanged
 
   Scenario: A time cost is quiet at check
-    Given a verb with a time cost and a save
-    Then spook check is quiet about the time and the save
+    Given a verb with a time cost and a nested check
+    Then spook check is quiet about the time and the nested check
 
   Scenario: A cast member's rule is at hand while they share the room
     Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage, and Mira's door note is not due

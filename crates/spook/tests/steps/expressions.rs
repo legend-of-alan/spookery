@@ -47,15 +47,15 @@ fn one_round_plays(world: &mut World) {
 #[when(
     regex = r#"^the pack's hit has "(.+)" as (a condition value|a cost amount|a cost item count|its cost ticks)$"#
 )]
-fn the_packs_hit_has(world: &mut World, number: String, slot: String) {
-    append_hit_line(world, "", &number, &slot);
+fn the_packs_hit_has(world: &mut World, dice: String, field: String) {
+    append_hit_line(world, "", &dice, &field);
 }
 
 #[when(
     regex = r#"^the pack's hit stores "(.+)" and has "(.+)" as (its vigor add|a condition value|a cost amount)$"#
 )]
-fn the_packs_hit_stores_and_has(world: &mut World, lets: String, number: String, slot: String) {
-    append_hit_line(world, &format!("let: {{ {lets} }}\n    "), &number, &slot);
+fn the_packs_hit_stores_and_has(world: &mut World, lets: String, number: String, field: String) {
+    append_hit_line(world, &format!("let: {{ {lets} }}\n    "), &number, &field);
 }
 
 #[when(expr = "the pack's hit stores {string} and adds {string} to Rowan's and Mira's vigor")]
@@ -105,6 +105,36 @@ fn stock_reads_rest(world: &mut World) {
       - modifier: { to: self, id: fatigue, add: -1, ticks: "self.rest + 2" }
 "#,
     );
+    crate::support::stamp_pack_rev(&pack);
+}
+
+#[given(
+    regex = r#"^the pack has "(.+)" as (the street exit's ticks|the strain's modifier ticks|the strain's cycle bound)$"#
+)]
+fn the_pack_has(world: &mut World, number: String, field: String) {
+    let pack = world.pack.clone().unwrap();
+    let verbs = pack.join("rules/verbs.yaml");
+    let strain = "\n  - id: strain\n    when: { verb: strain }\n";
+    match field.as_str() {
+        "the street exit's ticks" => {
+            let path = pack.join("world/places/docks_shop.md");
+            let text = fs::read_to_string(&path).unwrap();
+            let cost = format!("    id: docks_street\n    cost: {{ ticks: \"{number}\" }}\n");
+            fs::write(&path, text.replace("    id: docks_street\n", &cost)).unwrap();
+        }
+        "the strain's modifier ticks" => {
+            super::modifiers::add_modifier(&pack, "fatigue", "vigor", "");
+            let modifier = format!("{{ to: self, id: fatigue, add: -1, ticks: \"{number}\" }}");
+            crate::support::append(&verbs, &format!("{strain}    do: [modifier: {modifier}]\n"));
+        }
+        _ => {
+            let cycle = format!("{{ id: day, from: \"{number}\", to: 0 }}");
+            crate::support::append(
+                &verbs,
+                &format!("{strain}    if: [cycle: {cycle}]\n    do: []\n"),
+            );
+        }
+    }
     crate::support::stamp_pack_rev(&pack);
 }
 
@@ -266,9 +296,9 @@ fn the_journal_rejects_the_hit_as_out_of_range(world: &mut World) {
     );
 }
 
-/// Append rule `hit`, its `lets` line, then `number` as `slot`.
-fn append_hit_line(world: &World, lets: &str, number: &str, slot: &str) {
-    let line = match slot {
+/// Append rule `hit`, its `lets` line, then `number` as `field`.
+fn append_hit_line(world: &World, lets: &str, number: &str, field: &str) {
+    let line = match field {
         "a condition value" => {
             format!("if: [meter: {{ of: self, id: vigor, op: \">=\", value: \"{number}\" }}]")
         }

@@ -164,7 +164,7 @@ Type `help` to see the GM commands. A line is a command the hello listed, then i
 
 Each call is one chat-completions POST. The body has the model name, `"stream": false`, the four tools and the turn's conversation so far.
 
-The conversation starts with one user message, a bounded JSON prompt. It holds the last 16 lines of speech this process has handled, the new player lines, the move menu, the queued intents, what started the turn (`cause`) and who is seated. Then come the model's tool calls and the table's reply to each: the views it perceived, the speech, the queue replies and refusals, and after `end_turn` the rolls with their dice faces. The conversation lasts one turn. The next turn starts again from a new prompt.
+The conversation starts with one user message, a bounded JSON prompt. It holds the last 16 lines of speech this process has handled, the new player lines, the move menu, the queued intents, what started the turn (`cause`) and who is seated. Then come the model's tool calls and the table's reply to each: the views it perceived, the speech, the queue replies and refusals, and after `end_turn` the rolls and their dice lines. The conversation lasts one turn. The next turn starts again from a new prompt.
 
 The views are trimmed on purpose. A player's view is only a room census: it drops known facts, notes and unknown mentions. An NPC's view keeps each fact's id and text and its notes. Fact bodies are always dropped.
 
