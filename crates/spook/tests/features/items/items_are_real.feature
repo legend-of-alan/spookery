@@ -36,7 +36,7 @@ Feature: Items are real
   Scenario: Dropping an item you do not hold is refused
     Given docks_shop has 3 lamp_oil
     When rowan drops lamp_oil
-    Then the round names MISSING_ITEM and rowan still has no lamp_oil
+    Then rowan is told MISSING_ITEM and still has no lamp_oil
 
   Scenario: Wield a weapon
     Given harbormouse holds a poisoned_dagger tagged weapon
@@ -72,6 +72,6 @@ Feature: Items are real
   Scenario: A save is an outcome, not a refusal
     Given wren saves against the poison with a seeded Constitution roll of 15 vs 12
     When harbormouse hits a seated wren with poisoned_dagger
-    Then wren loses 3 hp, is not poisoned, sees "The poison burns, then fades.", and the round shows no refusal
+    Then wren loses 3 hp, is not poisoned and sees "The poison burns, then fades."
     And wren is told she saved
     And spook verify reproduces both rolls

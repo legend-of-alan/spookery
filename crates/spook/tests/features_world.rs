@@ -19,9 +19,6 @@ mod table;
 #[path = "steps/common.rs"]
 mod common;
 
-#[path = "steps/record.rs"]
-mod record;
-
 #[path = "steps/rounds.rs"]
 mod rounds;
 

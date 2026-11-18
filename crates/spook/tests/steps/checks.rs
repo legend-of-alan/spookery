@@ -377,7 +377,7 @@ fn assert_roll(body: &Value, label: &str, vigor: i64, success_at: i64, outcome: 
 }
 
 /// What a dice line comes to: `2d6 → 5, 2 = 7 + 1` is 8.
-pub(crate) fn dice_line_total(line: &str) -> i64 {
+fn dice_line_total(line: &str) -> i64 {
     let (_, sum) = line.split_once(" = ").unwrap_or_else(|| panic!("{line}"));
     sum.split(" + ")
         .map(|part| part.parse::<i64>().unwrap_or_else(|_| panic!("{line}")))

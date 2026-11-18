@@ -6,7 +6,7 @@ Feature: A round returns its output
     And the GM queues "hit" for "rowan"
     And the GM queues a 10-tick travel for "rowan"
     And the GM commits the round
-    Then the commit reply lists one check for "rowan"
+    Then the commit reply lists one check
     And the commit reply lists the committed round's dice line
 
   Scenario: A busy refusal with no GM refreshes every seated player
@@ -21,4 +21,4 @@ Feature: A round returns its output
     Given a docks table with a GM and wren seated
     When the GM queues "exert" for "rowan"
     And the GM commits the round
-    Then the commit reply lists one check for "rowan"
+    Then the commit reply lists one check

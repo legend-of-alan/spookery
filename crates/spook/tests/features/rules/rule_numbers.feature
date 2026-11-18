@@ -66,7 +66,7 @@ Feature: Dice and arithmetic in rule numbers
   Scenario Outline: An NPC habit rolls its effect dice
     Given a docks table
     When Mira's habit <adds>
-    And one round plays
+    And the GM queues Aldric's wait and commits
     Then Mira's vigor rose by the 1d4 face
 
     Examples:

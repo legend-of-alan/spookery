@@ -3,11 +3,8 @@
 use spookery_engine::component;
 use spookery_engine::testing::world_of;
 use std::fs;
-use std::path::Path;
 
 use cucumber::{given, then, when};
-use serde_json::Value;
-use spookery_engine::testing::journal::list_round_keys;
 
 use super::table;
 use crate::World;
@@ -49,10 +46,13 @@ fn insert_miras_habit(world: &World, lets: &str, add: &str) {
     crate::support::stamp_pack_rev(&pack);
 }
 
-#[when(expr = "one round plays")]
-fn one_round_plays(world: &mut World) {
+#[when(expr = "the GM queues Aldric's wait and commits")]
+fn the_gm_queues_aldrics_wait_and_commits(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    spookery_engine::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    table::gm_tool_call(world, 6, "queue", r#"{"actor_id":"aldric","move":"wait"}"#);
+    world.stdout = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#);
 }
 
 #[when(
@@ -362,26 +362,11 @@ fn vigor_of(world: &World, actor: &str) -> i64 {
     live.base + live.offset
 }
 
-fn latest_round(world: &World) -> Value {
-    let pack = table::pack(world);
-    let keys = list_round_keys(pack);
-    read_round(pack, keys.last().unwrap_or_else(|| panic!("no round")))
-}
-
-/// The journal's round record `key` in `pack`.
-fn read_round(pack: &Path, key: &str) -> Value {
-    let text = spookery_engine::testing::journal::read_record_line(pack, key)
-        .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
-    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{key}: {err}"))
-}
-
+/// The first dice line in the GM's commit reply.
 fn dice_line(world: &World) -> String {
-    let round = latest_round(world);
-    round["dice"]
-        .as_array()
-        .and_then(|rows| rows.first())
-        .and_then(Value::as_str)
-        .unwrap_or_else(|| panic!("no dice line\n{round}"))
+    let reply = table::read_reply(&world.stdout);
+    let line = reply["dice"][0].as_str();
+    line.unwrap_or_else(|| panic!("no dice line\n{}", world.stdout))
         .to_string()
 }
 

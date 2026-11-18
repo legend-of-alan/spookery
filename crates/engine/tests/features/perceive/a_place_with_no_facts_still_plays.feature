@@ -9,7 +9,7 @@ Feature: A place with no facts still plays
   Scenario: Harbormouse waits in the Gate Yard
     Given a docks table
     When Harbormouse plays "wait"
-    Then the wait commits with nothing rejected
+    Then the wait lands with nothing refused
 
   Scenario: A docks NPC habit fires in a place with no facts
     Given Mira stands in a place with no facts

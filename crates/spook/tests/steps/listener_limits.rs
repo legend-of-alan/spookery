@@ -66,10 +66,8 @@ fn the_socket_was_closed_without_a_reply(world: &mut World) {
 fn a_second_player_can_sit_and_wait(world: &mut World) {
     table::release_probe_gm(world);
     let pack = table::pack(world).to_path_buf();
-    let before = list_round_keys(&pack).len();
     table::seat_actor(world, &pack, "harbormouse");
-    table::actor_write(world, "harbormouse", "wait");
-    table::wait_committed_wait(&pack, "harbormouse", before);
+    table::actor_send(world, "harbormouse", "wait", r#""kind":"round""#);
 }
 
 #[when(expr = "the GM releases the seat")]
@@ -194,10 +192,7 @@ fn the_player_is_refused_with(world: &mut World, code: String) {
 
 #[then(expr = "the player can wait")]
 fn the_player_can_wait(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    let before = list_round_keys(&pack).len();
-    table::player_write(world, "wait");
-    table::wait_committed_wait(&pack, "rowan", before);
+    table::player_send(world, "wait", r#""kind":"round""#);
 }
 
 #[when(expr = "a socket connects and sends nothing")]

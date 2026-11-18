@@ -4,8 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::{self as support, journal::list_round_keys};
-use spookery_engine::{GlobalId, Note, Presence};
+use spookery_engine::testing as support;
+use spookery_engine::{GlobalId, MoveReport, Note, Presence};
 
 use crate::{resolve_id, split_line, World};
 
@@ -22,25 +22,11 @@ fn is_in(world: &mut World, actor: String, place: String) {
     assert_eq!(support::place_of(&now, &actor), place);
 }
 
-#[then(expr = "the wait commits with nothing rejected")]
-fn the_wait_commits_with_nothing_rejected(world: &mut World) {
-    let pack = world.pack();
-    let mut found = false;
-    for key in list_round_keys(pack) {
-        let round = support::read_round(pack, &key);
-        let waited = round["intents"].as_array().is_some_and(|intents| {
-            intents
-                .iter()
-                .any(|intent| intent["move"] == "wait" && intent["actor"] == "player:harbormouse")
-        });
-        if !waited {
-            continue;
-        }
-        found = true;
-        let rejected = round["refused"].as_array().unwrap();
-        assert!(rejected.is_empty(), "{key}: {rejected:?}");
-    }
-    assert!(found, "Harbormouse's wait was not committed");
+#[then(expr = "the wait lands with nothing refused")]
+fn the_wait_lands_with_nothing_refused(world: &mut World) {
+    assert_eq!(world.scratch, "", "refused");
+    let now = support::world_of(world.pack());
+    assert_eq!(support::act_of(&now, "harbormouse").last_act_round, 1);
 }
 
 #[given(expr = "Mira stands in a place with no facts")]
@@ -102,9 +88,16 @@ fn play(world: &mut World, actor: &str, line: &str) {
     opened
         .queue_player_move(&seated, &actor.into(), verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.code.as_str()));
-    opened
+    let outputs = opened
         .commit_then_fast_forward(&seated, &wall)
         .unwrap_or_else(|err| panic!("{line}: {err}"));
+    let reports = outputs.iter().flat_map(|output| &output.reports);
+    world.scratch = (reports.filter_map(|report| match report {
+        MoveReport::Refused { refusal, .. } => Some(refusal.code.as_str()),
+        MoveReport::Rolled { .. } => None,
+    }))
+    .collect::<Vec<_>>()
+    .join(" ");
 }
 
 fn strip_room_facts(pack: &Path) {

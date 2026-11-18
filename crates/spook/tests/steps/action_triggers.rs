@@ -3,11 +3,11 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::{component, entity, Presence};
+use spookery_engine::{component, entity, MoveReport, Presence};
 
 use super::rules::open;
 use super::triggers::world_flags;
-use crate::support::{append, copy_pack, edit_save, read_round, stamp_pack_rev, world_of};
+use crate::support::{append, copy_pack, edit_save, stamp_pack_rev, world_of};
 use crate::World;
 
 const PCS: [&str; 3] = ["rowan", "wren", "harbormouse"];
@@ -19,8 +19,9 @@ fn seated() -> Presence {
     }
 }
 
-/// Queue each `(actor, verb)` in order, then play one round.
-fn play_in_one_round(world: &World, moves: &[(&str, &str)]) {
+/// Queue each `(actor, verb)` in order, then play one round. The scratch holds each refused
+/// player and code the round reported, one per line.
+fn play_in_one_round(world: &mut World, moves: &[(&str, &str)]) {
     let mut opened = open(world.pack.as_ref().unwrap());
     for (actor, verb) in moves {
         if let Err(refusal) = opened.queue_player_move(&seated(), &(*actor).into(), verb, None) {
@@ -28,9 +29,16 @@ fn play_in_one_round(world: &World, moves: &[(&str, &str)]) {
         }
     }
     let wall = opened.world().last_round_at.clone();
-    opened
+    let output = opened
         .play(&seated(), &wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
+    let refused = output.reports.iter().filter_map(|report| match report {
+        MoveReport::Refused { actor_id, refusal } => {
+            Some(format!("{actor_id} {}", refusal.code.as_str()))
+        }
+        MoveReport::Rolled { .. } => None,
+    });
+    world.scratch = refused.collect::<Vec<_>>().join("\n");
 }
 
 /// Add `verbs` to `rules/verbs.yaml` and `story/<id>.yaml` holding `rules`.
@@ -66,12 +74,6 @@ fn chain_rule(id: &str, watch: &str, then: &str, if_: &str) -> String {
     format!(
         "  - id: {id}\n    when:\n      change:\n        flag: {watch}\n        becomes: true\n{if_}    do:\n      - flag:\n          of: world\n          key: {then}\n          value: true\n"
     )
-}
-
-fn latest_round(world: &World) -> serde_json::Value {
-    let pack = world.pack.as_ref().unwrap();
-    let round = world_of(pack).round_index;
-    read_round(pack, &format!("round-{round:04}"))
 }
 
 #[given(expr = "a docks table with Rowan, Wren and Harbormouse seated in the shop")]
@@ -135,10 +137,7 @@ fn rowan_and_wren_play(world: &mut World, rowan: String, wren: String) {
 
 #[then(expr = "Wren is refused because the gate is locked")]
 fn wren_is_refused(world: &mut World) {
-    let round = latest_round(world);
-    let refused = round["refused"].as_array().unwrap();
-    assert_eq!(refused.len(), 1, "{round}");
-    assert_eq!(refused[0]["code"], "NOT_IN_SPEC", "{round}");
+    assert_eq!(world.scratch, "wren NOT_IN_SPEC");
     let now = world_of(world.pack.as_ref().unwrap());
     assert_eq!(crate::support::place_of(&now, "rowan"), "docks_street");
     let world_flags = now.entities();

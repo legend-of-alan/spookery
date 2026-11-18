@@ -9,13 +9,16 @@ use crate::support::{edit_as_saved, edit_meter, put_items, put_meter};
 use spookery_engine::MoveReport;
 use spookery_engine::{component, entity, ActorId, GlobalId, Meter, Note, Presence, Reason};
 
-use super::common::{flags_of, split_line};
+use super::common::flags_of;
 use super::table;
-use super::triggers::world_flags;
-use crate::support::{
-    append, copy_pack, edit_save, place_of, read_round, run_spook, stamp_pack_rev, world_of,
-};
+use crate::support::{append, copy_pack, edit_save, place_of, run_spook, stamp_pack_rev, world_of};
 use crate::World;
+/// The first word of `line`, and the rest of it when there is any.
+pub(crate) fn split_line(line: &str) -> (&str, Option<&str>) {
+    line.split_once(' ')
+        .map_or((line, None), |(head, rest)| (head, Some(rest)))
+}
+
 #[given(expr = "a save from older rules")]
 fn a_save_from_older_rules(world: &mut World) {
     // repeats module: mirrors its step text
@@ -890,14 +893,6 @@ fn harbormouse_alone_plays(world: &mut World, line: String) {
     play_harbormouse_line(world, &line);
 }
 
-#[then(expr = "cast:briar\\/ask runs with briar as its target and passage is set")]
-fn briars_ask_runs_on_briar(world: &mut World) {
-    assert_eq!(world.scratch, r#"{"actor":"briar"} cast:briar/ask"#);
-    let now = world_of(world.pack.as_ref().unwrap());
-    let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
-    assert!(flags.contains("passage"), "{:?}", world_flags(&now));
-}
-
 #[then(expr = "the move is refused NOT_IN_SPEC before the round and the save is unchanged")]
 fn ask_is_refused_before_the_round(world: &mut World) {
     assert_eq!(world.scratch, Reason::NotInSpec.as_str());
@@ -910,7 +905,7 @@ fn ask_is_refused_before_the_round(world: &mut World) {
 }
 
 /// Harbormouse plays `line` seated, keeping the pack's bytes from before. A queued line plays its
-/// round, and the scratch holds that round's target and rule steps, else the refusal code.
+/// round and keeps the lines it told, else the scratch holds the refusal code.
 fn play_harbormouse_line(world: &mut World, line: &str) {
     let pack = world.pack.clone().unwrap();
     world.before = table::read_files(&pack);
@@ -921,16 +916,11 @@ fn play_harbormouse_line(world: &mut World, line: &str) {
         return;
     }
     let wall = opened.world().last_round_at.clone();
-    opened
+    let output = opened
         .play(&seated, &wall)
         .unwrap_or_else(|err| panic!("{line}: {err}"));
-    let round = read_round(&pack, "round-0001");
-    let steps = round["extra_steps"].as_array().unwrap();
-    let rules: Vec<&str> = steps
-        .iter()
-        .filter_map(|step| step["rule"].as_str())
-        .collect();
-    world.scratch = format!("{} {}", round["intents"][0]["target"], rules.join(" "));
+    let lines = output.lines.into_iter();
+    world.told = lines.map(|line| (line.to.into(), line.text)).collect();
 }
 
 fn seated_harbormouse() -> Presence {

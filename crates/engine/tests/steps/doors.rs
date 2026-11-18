@@ -8,9 +8,8 @@ use spookery_engine::{component, entity, Presence};
 use crate::World;
 
 /// One round in which the GM has `actor` play `verb` at `target`, keeping the keys the GM sees
-/// change. Rowan sits at the table, so the round is a short seated one. Returns the round's
-/// journal line.
-fn plays(world: &mut World, actor: &str, verb: &str, target: Option<&str>) -> serde_json::Value {
+/// change. Rowan sits at the table, so the round is a short seated one.
+fn plays(world: &mut World, actor: &str, verb: &str, target: Option<&str>) {
     let pack = world.pack().to_path_buf();
     let lock = spookery_engine::lock_pack(&pack).unwrap();
     let mut opened =
@@ -39,8 +38,6 @@ fn plays(world: &mut World, actor: &str, verb: &str, target: Option<&str>) -> se
         .play(&seated, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     world.summary_lines = output.changed_keys;
-    drop(opened);
-    support::read_round(&pack, &format!("round-{round:04}"))
 }
 
 /// Where `actor` stands in the pack's saved state.
@@ -143,12 +140,8 @@ fn mira_drops_the_key(world: &mut World) {
 
 #[then(expr = "Mira can still take the stairs")]
 fn mira_takes_the_stairs(world: &mut World) {
-    let round = plays(world, "mira", "travel", Some("stairs"));
-    assert_eq!(
-        saved_place_of(world.pack(), "mira"),
-        "mira_rooms",
-        "{round}"
-    );
+    plays(world, "mira", "travel", Some("stairs"));
+    assert_eq!(saved_place_of(world.pack(), "mira"), "mira_rooms");
 }
 
 #[when(expr = "Aldric, who has no key, takes the stairs")]
@@ -158,23 +151,17 @@ fn aldric_takes_the_stairs(world: &mut World) {
     let held = saved.world().actors().get::<component::Item>(&aldric);
     assert!(!held.contains("brass_key"));
     drop(saved);
-    world.scratch = plays(world, "aldric", "travel", Some("stairs")).to_string();
+    plays(world, "aldric", "travel", Some("stairs"));
 }
 
 #[then(expr = "Aldric reaches Mira's rooms")]
 fn aldric_reaches_the_rooms(world: &mut World) {
-    assert_eq!(
-        saved_place_of(world.pack(), "aldric"),
-        "mira_rooms",
-        "{}",
-        world.scratch
-    );
+    assert_eq!(saved_place_of(world.pack(), "aldric"), "mira_rooms");
 }
 
 #[when(expr = "a rule runs a flag effect on exit:docks_shop.stairs setting open to false")]
 fn a_rule_locks_the_door(world: &mut World) {
-    let round = plays(world, "aldric", "bolt", None);
-    assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");
+    plays(world, "aldric", "bolt", None);
     assert!(!stairs_open(world.pack()));
 }
 

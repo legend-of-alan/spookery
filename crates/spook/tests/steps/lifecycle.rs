@@ -5,10 +5,10 @@ use std::fs;
 use cucumber::{given, then, when};
 use spookery_engine::{component, entity, MoveReport, Presence};
 
-use super::common::{give_key, split_line};
-use super::rules::open;
+use super::common::give_key;
+use super::rules::{open, split_line};
 use super::triggers::world_flags;
-use crate::support::{act_of, append, copy_pack, edit_save, read_round, stamp_pack_rev, world_of};
+use crate::support::{act_of, append, copy_pack, edit_save, stamp_pack_rev, world_of};
 use crate::World;
 
 fn seated() -> Presence {
@@ -103,12 +103,8 @@ fn a_cooldown(world: &mut World, verb: String, ticks: u64, cooldown: u64) {
 
 #[given(expr = "the rule {string} does not count its start as an act")]
 fn a_free_start(world: &mut World, verb: String) {
-    add_verb(
-        world,
-        &format!(
-            "\n  - id: {verb}\n    when:\n      verb: {verb}\n    start:\n      counts_as_act: false\n    do: []\n"
-        ),
-    );
+    let free = "    start:\n      counts_as_act: false\n";
+    add_verb(world, &timed_verb(&verb, 0, free));
 }
 
 /// A timed rule whose finish sets the world flag `<verb>_done`.
@@ -302,14 +298,7 @@ fn rowans_line_is_refused(world: &mut World, line: String, code: String) {
 fn rowans_line_lands(world: &mut World, line: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
     queue(&mut opened, &line);
-    let round = opened.world().round_index + 1;
-    play(&mut opened);
-    let record = read_round(world.pack.as_ref().unwrap(), &format!("round-{round:04}"));
-    assert_eq!(record["refused"], serde_json::json!([]), "{record}");
-}
-
-#[then(expr = "that round refused nothing")]
-fn that_round_refused_nothing(world: &mut World) {
-    let record = read_round(world.pack.as_ref().unwrap(), "round-0001");
-    assert_eq!(record["refused"], serde_json::json!([]), "{record}");
+    let reports = play(&mut opened).reports;
+    let refused = (reports.iter()).any(|report| matches!(report, MoveReport::Refused { .. }));
+    assert!(!refused, "{reports:?}");
 }
