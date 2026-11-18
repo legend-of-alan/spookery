@@ -6,7 +6,6 @@ use crate::entity;
 use crate::intent::Target;
 use crate::rules::context::Context;
 use crate::rules::grammar;
-use crate::rules::roll::LetValue;
 use crate::rules::rule::LineColumn;
 use crate::Reason;
 
@@ -40,7 +39,7 @@ pub(crate) fn eval_with_dice(
     expr: &Expr,
     dice: &mut dyn Dice,
 ) -> Result<i64, Reason> {
-    Ok(roll_line(context, expr, dice, "")?.value)
+    Ok(eval_with_label(context, expr, dice, "")?.value)
 }
 
 /// Roll a rule's `let:` in written order on `dice`, each number reading the names above it. A
@@ -52,7 +51,7 @@ pub(crate) fn roll_lets(
 ) -> Result<Vec<LetValue>, Reason> {
     let mut values = Vec::new();
     for (name, expr) in lets {
-        let step = roll_line(&context.bind(&values), expr, dice, &format!("{name}: "))?;
+        let step = eval_with_label(&context.bind(&values), expr, dice, &format!("{name}: "))?;
         values.push(LetValue {
             name: name.clone(),
             value: step.value,
@@ -62,8 +61,16 @@ pub(crate) fn roll_lets(
     Ok(values)
 }
 
+/// One `let:` name as the rule rolled it: its value, and its faces when its number is one dice
+/// group, for `high` and `low` to read.
+pub(crate) struct LetValue {
+    pub name: String,
+    pub value: i64,
+    pub faces: Vec<u32>,
+}
+
 /// Evaluate `expr` on a new roll seed, noting a line with `label` in front when any dice fall.
-fn roll_line(
+fn eval_with_label(
     context: &Context,
     expr: &Expr,
     dice: &mut dyn Dice,
@@ -522,17 +529,14 @@ impl<'a> Parser<'a> {
         self.skip_whitespace();
         if self.eat('(') {
             let inner = self.expr()?;
-            self.skip_whitespace();
-            if !self.eat(')') {
-                return Err(self.error());
-            }
+            self.eat_closing_parenthesis()?;
             return Ok(inner);
         }
         if self.peek().is_ascii_digit() {
             return self.number_or_dice();
         }
         if self.peek().is_ascii_alphabetic() || self.peek() == '_' {
-            return self.call_or_meter();
+            return self.call_or_read();
         }
         Err(self.error())
     }
@@ -577,7 +581,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn call_or_meter(&mut self) -> Result<Expr, String> {
+    fn call_or_read(&mut self) -> Result<Expr, String> {
         let start = self.pos;
         let word = self.ident()?;
         self.skip_whitespace();
@@ -589,10 +593,7 @@ impl<'a> Parser<'a> {
                 return Err(self.error());
             }
             let right = self.expr()?;
-            self.skip_whitespace();
-            if !self.eat(')') {
-                return Err(self.error());
-            }
+            self.eat_closing_parenthesis()?;
             return Ok(Expr::Call {
                 fun,
                 left: Box::new(left),
@@ -603,10 +604,7 @@ impl<'a> Parser<'a> {
             let keep = if word == "low" { Keep::Low } else { Keep::High };
             self.skip_whitespace();
             let name = self.ident()?;
-            self.skip_whitespace();
-            if !self.eat(')') {
-                return Err(self.error());
-            }
+            self.eat_closing_parenthesis()?;
             return Ok(Expr::Let {
                 name,
                 keep: Some(keep),
@@ -672,6 +670,16 @@ impl<'a> Parser<'a> {
         while self.peek().is_whitespace() {
             let ch = self.peek();
             self.pos += ch.len_utf8();
+        }
+    }
+
+    /// Skip whitespace and eat the `)` that closes a group or a call, or refuse the expression.
+    fn eat_closing_parenthesis(&mut self) -> Result<(), String> {
+        self.skip_whitespace();
+        if self.eat(')') {
+            Ok(())
+        } else {
+            Err(self.error())
         }
     }
 

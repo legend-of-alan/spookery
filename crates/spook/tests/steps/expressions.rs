@@ -23,13 +23,23 @@ fn the_packs_hit_raises_the_vigor_of(world: &mut World, of: String) {
 
 #[when(expr = "Mira's habit adds {string} to vigor")]
 fn miras_habit_adds(world: &mut World, add: String) {
+    insert_miras_habit(world, "", &add);
+}
+
+#[when(expr = "Mira's habit stores {string} and adds {string} to vigor")]
+fn miras_habit_stores_and_adds(world: &mut World, lets: String, add: String) {
+    insert_miras_habit(world, &format!("    let: {{ {lets} }}\n"), &add);
+}
+
+/// Insert Mira's habit `toss`, with its `lets` line, adding `add` to her vigor.
+fn insert_miras_habit(world: &World, lets: &str, add: &str) {
     let pack = table::pack(world).to_path_buf();
     let path = pack.join("cast/mira.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
     let next = text.replacen(
         "rules:\n  - id: leave_door_note\n",
         &format!(
-            "rules:\n  - id: toss\n    when: habit\n    do:\n      - meter:\n          of: self\n          key: vigor\n          add: \"{add}\"\n  - id: leave_door_note\n"
+            "rules:\n  - id: toss\n    when: habit\n{lets}    do:\n      - meter:\n          of: self\n          key: vigor\n          add: \"{add}\"\n  - id: leave_door_note\n"
         ),
         1,
     );
@@ -298,21 +308,16 @@ fn the_journal_rejects_the_hit_as_out_of_range(world: &mut World) {
 
 /// Append rule `hit`, its `lets` line, then `number` as `field`.
 fn append_hit_line(world: &World, lets: &str, number: &str, field: &str) {
-    let line = match field {
-        "a condition value" => {
-            format!("if: [meter: {{ of: self, id: vigor, op: \">=\", value: \"{number}\" }}]")
-        }
-        "a cost amount" => format!("cost: {{ meters: {{ vigor: \"{number}\" }} }}"),
-        "a cost item count" => format!("cost: {{ items: {{ chock: \"{number}\" }} }}"),
-        "its cost ticks" => format!("cost: {{ ticks: \"{number}\" }}"),
+    let lines = match field {
+        "a condition value" => format!(
+            "if: [meter: {{ of: self, id: vigor, op: \">=\", value: \"{number}\" }}]\n    do: []"
+        ),
+        "a cost amount" => format!("cost: {{ meters: {{ vigor: \"{number}\" }} }}\n    do: []"),
+        "a cost item count" => format!("cost: {{ items: {{ chock: \"{number}\" }} }}\n    do: []"),
+        "its cost ticks" => format!("cost: {{ ticks: \"{number}\" }}\n    do: []"),
         _ => format!("do: [meter: {{ of: self, key: vigor, add: \"{number}\" }}]"),
     };
-    let rest = if line.starts_with("do:") {
-        ""
-    } else {
-        "\n    do: []"
-    };
-    let rule = format!("\n  - id: hit\n    when: {{ verb: hit }}\n    {lets}{line}{rest}\n");
+    let rule = format!("\n  - id: hit\n    when: {{ verb: hit }}\n    {lets}{lines}\n");
     append_rule(world, &rule);
 }
 
@@ -324,14 +329,12 @@ fn append_rule(world: &World, rule: &str) {
 }
 
 fn append_hit(world: &World, of: &str, add: &str) {
-    let pack = table::pack(world).to_path_buf();
-    let path = pack.join("rules/verbs.yaml");
-    let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
-    text.push_str(&format!(
-        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          of: {of}\n          key: vigor\n          add: {add}\n"
-    ));
-    fs::write(&path, &text).unwrap_or_else(|err| panic!("write verbs: {err}"));
-    crate::support::stamp_pack_rev(&pack);
+    append_rule(
+        world,
+        &format!(
+            "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          of: {of}\n          key: vigor\n          add: {add}\n"
+        ),
+    );
 }
 
 fn rowans_vigor(world: &World) -> i64 {

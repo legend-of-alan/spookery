@@ -34,16 +34,16 @@ Feature: A rule stores a roll in let
 
   Scenario Outline: A let name read where it is not held fails spook check at its line
     Given a docks table
-    When the pack's hit stores "<let>" and has "<number>" as <slot>
+    When the pack's hit stores "<let>" and has "<number>" as <field>
     And the operator runs spook check
     Then the check exits 1
     And the report says "<phrase>"
     And the report names the line holding "<line>"
 
     Examples:
-      | let                   | number       | slot              | phrase                                                              | line    |
+      | let                   | number       | field             | phrase                                                              | line    |
       | dmg: 2d8              | dmgg         | its vigor add     | rule 'hit' reads 'dmgg', which its let: does not hold               | id: hit |
-      | late: soon, soon: 2d6 | late         | its vigor add     | rule 'hit' reads 'soon' in let: at or above the line that holds it  | id: hit |
+      | soon: late, late: 2d6 | soon         | its vigor add     | rule 'hit' reads 'late' in let: at or above the line that holds it  | id: hit |
       | attack: 1d20 + 2      | high(attack) | its vigor add     | rule 'hit' reads high or low of 'attack', which is not one dice group | id: hit |
       | dmg: 2d8              | dmg          | a condition value | a condition or a cost cannot roll dice                              | op:     |
       | dmg: 2d8              | dmg          | a cost amount     | a condition or a cost cannot roll dice                              | meters: |

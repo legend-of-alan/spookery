@@ -58,10 +58,16 @@ const CONTESTED_MARK_ROW: &str = "
     check:
       total: attack
       success_at: dodge
+      partial_at: dodge - 4
     success:
       - flag:
           of: target
           key: marked
+          value: true
+    partial:
+      - flag:
+          of: target
+          key: grazed
           value: true
     miss:
       - flag:
@@ -147,7 +153,7 @@ fn a_docks_table_where_miras_vigor_contests_a_mark(world: &mut World) {
     let pack = copy_pack("docks", "contested-mark");
     world.pack = Some(pack.clone());
     append_verbs(&pack, CONTESTED_MARK_ROW);
-    insert_mira_flags(&pack, "    - marked\n    - missed\n");
+    insert_mira_flags(&pack, "    - marked\n    - grazed\n    - missed\n");
     set_vigor(&pack, "mira", MIRA_VIGOR);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()

@@ -24,14 +24,6 @@ pub(crate) fn classify(total: i64, success_at: i64, partial_at: Option<i64>) -> 
 /// the journal keeps only the round's dice lines.
 pub use spookery_protocol::Roll;
 
-/// One `let:` name as the rule rolled it: its value, and its faces when its number is one dice
-/// group, for `high` and `low` to read.
-pub(crate) struct LetValue {
-    pub name: String,
-    pub value: i64,
-    pub faces: Vec<u32>,
-}
-
 /// What the round did with a move: the roll, or a refusal and its reason. Returned from the
 /// engine's round to the host table, which turns it into check frames. Neither the save nor
 /// the journal stores it.

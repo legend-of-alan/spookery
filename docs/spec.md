@@ -33,7 +33,7 @@ A number in a condition or a cost cannot roll dice; dice there fail `spook check
 | `min(a, b)`, `max(a, b)` | The lower or higher value. |
 | `(a + b) * c` | Parentheses. |
 
-A bare word is a `let:` name, so it never names a meter or an owner. A `let:` number reads only the names written above it. A name the rule's `let:` does not hold, a name read at or above its own line, and `high` or `low` of a number that is not one dice group fail `spook check` at the rule's line.
+A bare word is a `let:` name, so it never names a meter or an owner. A `let:` number reads only the names written above it. A name the rule's `let:` does not hold, a name a `let:` number reads at or above the line that holds it, and `high` or `low` of a number that is not one dice group fail `spook check` at the rule's line.
 
 Because `/` rounds toward negative infinity, halving a loss rounds the loss up: `-(1d8 + self.might) / 2` turns 7 into −4. `-((1d8 + self.might) / 2)` turns it into −3.
 

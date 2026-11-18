@@ -81,9 +81,9 @@ impl Rule {
         walk(&self.miss, &mut visit);
     }
 
-    /// Every number the rule holds: its `let:` numbers, its check's total, success_at and
-    /// partial_at, its costs, its conditions' numbers, and its effects' amounts, caps, ticks and
-    /// nested checks.
+    /// Every number the rule holds: its `let:` numbers first, in the order written, then its
+    /// check's total, success_at and partial_at, its costs, its conditions' numbers, and its
+    /// effects' amounts, caps, ticks and nested checks.
     pub(crate) fn exprs(&self) -> Vec<&Expr> {
         let mut exprs: Vec<&Expr> = self.lets.iter().map(|(_, expr)| expr).collect();
         exprs.extend(self.check.iter().flat_map(Check::exprs));

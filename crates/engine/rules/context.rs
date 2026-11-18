@@ -3,7 +3,7 @@
 use crate::canon::Canon;
 use crate::ecs::{self, Presence};
 use crate::intent::Intent;
-use crate::rules::roll::LetValue;
+use crate::rules::expr::LetValue;
 
 /// The canon, the save, who is seated, and the intent a rule's conditions, costs and effects read.
 /// The canon has a lifetime of its own, so a rule found through it can outlive the borrow of the

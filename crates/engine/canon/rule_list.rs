@@ -57,8 +57,10 @@ pub struct RuleYaml {
     /// Whether the actor may cancel the action while it is under way.
     #[serde(default)]
     pub cancellable: bool,
+    /// `let:`: each name and its number. A map keeps no order, so `compile_one` sorts the
+    /// numbers by where they are written; a name written twice is the YAML's duplicate key.
     #[serde(rename = "let", default)]
-    pub lets: LetYaml,
+    pub lets: std::collections::BTreeMap<String, Spanned<ExprYaml>>,
     pub check: Option<CheckYaml>,
     #[serde(rename = "do", default)]
     pub do_: Vec<EffectYaml>,
@@ -261,41 +263,6 @@ pub struct CheckYaml {
     pub total: Spanned<ExprYaml>,
     pub success_at: Spanned<ExprYaml>,
     pub partial_at: Option<Spanned<ExprYaml>>,
-}
-
-/// A rule's `let:`: each name and its number, in the order written. A name written twice is
-/// the YAML's duplicate key, refused on its line.
-#[derive(Default)]
-pub struct LetYaml(pub Vec<(String, Spanned<ExprYaml>)>);
-
-impl<'de> Deserialize<'de> for LetYaml {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct LetVisitor;
-
-        impl<'de> Visitor<'de> for LetVisitor {
-            type Value = LetYaml;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a map of names to numbers")
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<LetYaml, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                let mut lets = Vec::new();
-                while let Some(entry) = map.next_entry()? {
-                    lets.push(entry);
-                }
-                Ok(LetYaml(lets))
-            }
-        }
-
-        deserializer.deserialize_map(LetVisitor)
-    }
 }
 
 #[derive(Deserialize)]
@@ -538,7 +505,9 @@ fn compile_one(
             None
         }
     };
-    let lets = (entry.lets.0.iter())
+    let mut lets: Vec<_> = entry.lets.iter().collect();
+    lets.sort_by_key(|(_, number)| (number.referenced.line(), number.referenced.column()));
+    let lets = (lets.into_iter())
         .map(|(name, number)| Ok((name.clone(), expr_of(number)?)))
         .collect::<Result<Vec<_>, Fault>>();
     let lets = match lets {
@@ -647,7 +616,7 @@ fn compile_one(
             format!("give the verb target: {needs}, or name the {needs} by its id"),
         )
     });
-    if let Some((problem, hint)) = misplaced.or_else(|| find_misread_name(&rule)) {
+    if let Some((problem, hint)) = misplaced.or_else(|| find_let_read_problem(&rule)) {
         return Err(vec![Problem {
             source: &source,
             path: &format!("rules[{index}].id"),
@@ -660,14 +629,14 @@ fn compile_one(
     Ok(rule)
 }
 
-/// The first `let:` name `rule` reads wrongly, as the problem and the hint: a name its `let:`
-/// does not hold, a name a `let:` number reads at or above its own line, or `high` or `low` of
-/// a name whose number is not one dice group.
-fn find_misread_name(rule: &Rule) -> Option<(String, String)> {
+/// The first `let:` read in `rule` that fails, as the problem and the hint: a name its `let:`
+/// does not hold, a name a `let:` number reads at or above the line that holds it, or `high` or
+/// `low` of a name whose number is not one dice group. The `let:` numbers come first in
+/// `Rule::exprs`, so the one at `index` reads only the names above it.
+fn find_let_read_problem(rule: &Rule) -> Option<(String, String)> {
     let lets = rule.lets.as_slice();
-    let in_lets = (lets.iter().enumerate()).map(|(index, (_, expr))| (expr, &lets[..index]));
-    let everywhere = rule.exprs().into_iter().map(|expr| (expr, lets));
-    for (expr, readable) in in_lets.chain(everywhere) {
+    for (index, expr) in rule.exprs().into_iter().enumerate() {
+        let readable = lets.get(..index).unwrap_or(lets);
         for read in expr.reads() {
             let Expr::Let { name, keep } = read else {
                 continue;
