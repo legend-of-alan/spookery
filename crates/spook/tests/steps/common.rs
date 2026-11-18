@@ -291,6 +291,11 @@ fn break_pack(pack: &Path, fault: &str) {
             "      verb: wait\n    do: []\n",
             "      verb: wait\n    do:\n      - item: { of: self, id: target, add: 1 }\n",
         ),
+        "target on an exit" => replace_in_file(
+            &pack.join("world/places/gate_yard.md"),
+            "          of: world\n          key: passage\n",
+            "          of: target\n          key: passage\n",
+        ),
         other => panic!("unknown fault {other}"),
     }
 }
