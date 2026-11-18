@@ -13,6 +13,7 @@ Feature: The journal verifies
     And the operator runs verify
     Then the command exits 0
     And stdout says the save was verified
+    And each journal record parses back to the bytes that were written
     And stderr is empty
 
   Scenario: A seated session with presence changes verifies

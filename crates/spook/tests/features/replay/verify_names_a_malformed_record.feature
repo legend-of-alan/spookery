@@ -23,8 +23,3 @@ Feature: Verify names a malformed journal record
     And the operator runs verify
     Then the command exits 1
     And stderr names that record and says UNKNOWN_EFFECT
-
-  Scenario: Written records round-trip
-    Given a docks table
-    When the operator plays 3 rounds
-    Then each journal record parses back to the bytes that were written
