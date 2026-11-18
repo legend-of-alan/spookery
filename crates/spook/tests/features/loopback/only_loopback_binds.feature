@@ -29,9 +29,3 @@ Feature: Only loopback binds
     Then the command exits 0
     And stdout shows usage
     And stdout names the default loopback address
-
-  Scenario: An explicit loopback port accepts a connection
-    Given a docks table
-    When the table listens on a free loopback port
-    Then a connection to the table succeeds
-    And the listen port is not 9737

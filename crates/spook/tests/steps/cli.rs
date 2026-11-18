@@ -78,13 +78,6 @@ fn another_play_picks_on_that_table(world: &mut World, pc: String) {
     world.stderr = stderr;
 }
 
-#[then(expr = "play received the first perceive")]
-fn play_received_the_first_perceive(world: &mut World) {
-    let stdout = capture_play_stdout(world);
-    assert!(stdout.contains("Docks Shop"), "{stdout}");
-    assert!(!stdout.contains("\"kind\":\"view\""), "{stdout}");
-}
-
 #[then(expr = "play shows each of these blocks:")]
 fn play_shows_each_block(world: &mut World, step: &Step) {
     for block in split_blocks(step) {

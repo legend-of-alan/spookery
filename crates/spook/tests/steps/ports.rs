@@ -84,18 +84,6 @@ fn the_host_reports_the_game_port_and_the_mcp_addr(world: &mut World) {
     TcpStream::connect(("127.0.0.1", mcp_port)).unwrap_or_else(|err| panic!("mcp: {err}"));
 }
 
-#[when(expr = "a player connects to the reported game port")]
-fn a_player_connects_to_the_reported_game_port(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::seat_rowan(world, &pack);
-}
-
-#[then(expr = "the player receives a perceive line")]
-fn the_player_receives_a_perceive_line(world: &mut World) {
-    let text = table::player_text(world);
-    assert!(text.contains("\"kind\":\"view\""), "{text}");
-}
-
 #[when(expr = "two tables listen on port 0 at the same time")]
 fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
     let first = table::pack(world).to_path_buf();

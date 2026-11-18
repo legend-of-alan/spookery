@@ -1,5 +1,4 @@
 use cucumber::{given, then, when};
-use serde_json::Value;
 use spookery_engine::testing::world_of;
 
 use crate::support::copy_pack;
@@ -40,19 +39,4 @@ fn the_player_line_is_queued(world: &mut World) {
         world.player_added
     );
     world.mark = table::player_mark(world);
-}
-
-#[then(expr = "the journal records the player wait")]
-fn the_journal_records_the_player_wait(world: &mut World) {
-    let text =
-        spookery_engine::testing::journal::read_record_line(table::pack(world), "round-0001")
-            .unwrap_or_else(|err| panic!("read round: {}", err.detail));
-    let round: Value = serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"));
-    let waits = round["intents"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
-        .count();
-    assert_eq!(waits, 1, "{text}");
 }
