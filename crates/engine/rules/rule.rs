@@ -14,6 +14,9 @@ pub struct Rule {
     pub owner: Owner,
     pub when: When,
     pub if_: Vec<Cond>,
+    /// `let:`: each name and the number it stores, in the order written. They roll first, and
+    /// the rule's check, effects and later names read them by name.
+    pub lets: Vec<(String, Expr)>,
     pub check: Option<Check>,
     /// Paid when the action starts. Its `cost` is the rule's `cost`, whose ticks are how long
     /// the action takes.
@@ -78,10 +81,10 @@ impl Rule {
         walk(&self.miss, &mut visit);
     }
 
-    /// Every number the rule holds: its check's total and bands, its costs, its conditions'
-    /// numbers, and its effects' amounts, caps, ticks and nested checks.
+    /// Every number the rule holds: its `let:` numbers, its check's total and bands, its costs,
+    /// its conditions' numbers, and its effects' amounts, caps, ticks and nested checks.
     pub(crate) fn exprs(&self) -> Vec<&Expr> {
-        let mut exprs = Vec::new();
+        let mut exprs: Vec<&Expr> = self.lets.iter().map(|(_, expr)| expr).collect();
         exprs.extend(self.check.iter().flat_map(Check::exprs));
         for cost in self.costs() {
             exprs.extend(cost.exprs());
@@ -154,9 +157,10 @@ pub(crate) fn collect_objects<'a>(
             _ => {}
         });
     }
-    for expr in exprs {
-        let reads = expr.meter_reads().into_iter();
-        objects.extend(reads.map(|(of, _, _)| ("a number", of.clone())));
+    for read in exprs.into_iter().flat_map(Expr::reads) {
+        if let Expr::Meter { of, .. } = read {
+            objects.push(("a number", of.clone()));
+        }
     }
     objects
 }

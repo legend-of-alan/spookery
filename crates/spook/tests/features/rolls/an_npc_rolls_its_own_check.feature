@@ -27,15 +27,14 @@ Feature: An NPC rolls its own check
     And the journal records the check's dice
     And replaying the round reproduces the save
 
-  Scenario: A success_at that reads the target's vigor defends the target
+  Scenario: A dodge stored in let that reads the target's vigor defends the target
     Given a docks table where Mira's vigor contests a mark
     When the player marks Mira
     Then the player line is queued
     When the GM commits the round
     Then the mark missed Mira
     And the player sees only their own check
-    And the GM sees one roll and a dice line for its total and for its success_at
-    And the journal records the check's dice
+    And the GM and the journal see one roll read from the attack and dodge dice lines
     And replaying the round reproduces the save
 
   Scenario: A command line with a player prefix is refused

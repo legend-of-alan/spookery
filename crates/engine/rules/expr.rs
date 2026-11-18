@@ -6,6 +6,7 @@ use crate::entity;
 use crate::intent::Target;
 use crate::rules::context::Context;
 use crate::rules::grammar;
+use crate::rules::roll::LetValue;
 use crate::rules::rule::LineColumn;
 use crate::Reason;
 
@@ -39,27 +40,66 @@ pub(crate) fn eval_with_dice(
     expr: &Expr,
     dice: &mut dyn Dice,
 ) -> Result<i64, Reason> {
+    Ok(roll_line(context, expr, dice, "")?.value)
+}
+
+/// Roll a rule's `let:` in written order on `dice`, each number reading the names above it. A
+/// name whose number rolls writes its dice line with the name in front.
+pub(crate) fn roll_lets(
+    context: &Context,
+    lets: &[(String, Expr)],
+    dice: &mut dyn Dice,
+) -> Result<Vec<LetValue>, Reason> {
+    let mut values = Vec::new();
+    for (name, expr) in lets {
+        let step = roll_line(&context.bind(&values), expr, dice, &format!("{name}: "))?;
+        values.push(LetValue {
+            name: name.clone(),
+            value: step.value,
+            faces: step.faces,
+        });
+    }
+    Ok(values)
+}
+
+/// Evaluate `expr` on a new roll seed, noting a line with `label` in front when any dice fall.
+fn roll_line(
+    context: &Context,
+    expr: &Expr,
+    dice: &mut dyn Dice,
+    label: &str,
+) -> Result<EvalStep, Reason> {
     dice.begin();
     let step = eval_node(context, expr, dice)?;
     if !step.dice.is_empty() {
-        dice.push_line(format!("{} = {}", step.dice.join("; "), step.text));
+        dice.push_line(format!("{label}{} = {}", step.dice.join("; "), step.text));
     }
-    Ok(step.value)
+    Ok(step)
 }
 
 struct EvalStep {
     value: i64,
     text: String,
     dice: Vec<String>,
+    /// The faces, when the number is one dice group: what `high` and `low` of a `let:` read.
+    faces: Vec<u32>,
+}
+
+impl From<i64> for EvalStep {
+    /// A value that rolled no dice.
+    fn from(value: i64) -> Self {
+        EvalStep {
+            value,
+            text: value.to_string(),
+            dice: Vec::new(),
+            faces: Vec::new(),
+        }
+    }
 }
 
 fn eval_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<EvalStep, Reason> {
     match expr {
-        Expr::Num(n) => Ok(EvalStep {
-            value: *n,
-            text: n.to_string(),
-            dice: Vec::new(),
-        }),
+        Expr::Num(n) => Ok(EvalStep::from(*n)),
         Expr::Dice {
             count: n,
             sides,
@@ -76,15 +116,18 @@ fn eval_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Eval
                 value,
                 text: value.to_string(),
                 dice: vec![format!("{} → {listed}", name_dice(*n, *sides, *keep))],
+                faces,
             })
         }
-        Expr::Meter { of, key, .. } => {
-            let value = read_meter(context, of, key)?;
-            Ok(EvalStep {
-                value,
-                text: value.to_string(),
-                dice: Vec::new(),
-            })
+        Expr::Meter { of, key, .. } => Ok(EvalStep::from(read_meter(context, of, key)?)),
+        Expr::Let { name, keep } => {
+            let stored = (context.lets.iter())
+                .find(|stored| stored.name == *name)
+                .ok_or(Reason::Schema)?;
+            Ok(EvalStep::from(match keep {
+                Some(_) => keep_faces(&stored.faces, *keep)?,
+                None => stored.value,
+            }))
         }
         Expr::Neg(inner) => {
             let inner = eval_node(context, inner, dice)?;
@@ -93,6 +136,7 @@ fn eval_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Eval
                 value,
                 text: negate_body(&inner.text),
                 dice: inner.dice,
+                faces: Vec::new(),
             })
         }
         Expr::Binary { op, left, right } => {
@@ -105,6 +149,7 @@ fn eval_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Eval
                 value,
                 text: format!("{} {} {}", left.text, name_op(*op), right.text),
                 dice: rolled,
+                faces: Vec::new(),
             })
         }
         Expr::Call { fun, left, right } => {
@@ -124,6 +169,7 @@ fn eval_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Eval
                 value,
                 text: format!("{function}({}, {})", left.text, right.text),
                 dice: rolled,
+                faces: Vec::new(),
             })
         }
     }
@@ -273,6 +319,12 @@ pub enum Expr {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    /// A read of a rule's `let:` name: its value, or with `keep`, the highest or lowest face of
+    /// its one dice group.
+    Let {
+        name: String,
+        keep: Option<Keep>,
+    },
 }
 
 impl BinOp {
@@ -305,7 +357,7 @@ impl Expr {
     pub(crate) fn constant(&self) -> Option<i64> {
         match self {
             Expr::Num(n) => Some(*n),
-            Expr::Dice { .. } | Expr::Meter { .. } => None,
+            Expr::Dice { .. } | Expr::Meter { .. } | Expr::Let { .. } => None,
             Expr::Neg(inner) => inner.constant().and_then(|n| n.checked_neg()),
             Expr::Binary { op, left, right } => {
                 let left = left.constant()?;
@@ -323,9 +375,10 @@ impl Expr {
         }
     }
 
+    /// Whether the number rolls dice. A `let:` read counts, since its value was rolled.
     pub(crate) fn needs_dice(&self) -> bool {
         match self {
-            Expr::Dice { .. } => true,
+            Expr::Dice { .. } | Expr::Let { .. } => true,
             Expr::Neg(inner) => inner.needs_dice(),
             Expr::Binary { left, right, .. } | Expr::Call { left, right, .. } => {
                 left.needs_dice() || right.needs_dice()
@@ -334,13 +387,14 @@ impl Expr {
         }
     }
 
-    pub(crate) fn meter_reads(&self) -> Vec<(&grammar::Object, &str, Option<LineColumn>)> {
+    /// Every meter read and `let:` read in the number, left to right.
+    pub(crate) fn reads(&self) -> Vec<&Expr> {
         match self {
-            Expr::Meter { of, key, spot } => vec![(of, key, *spot)],
-            Expr::Neg(inner) => inner.meter_reads(),
+            Expr::Meter { .. } | Expr::Let { .. } => vec![self],
+            Expr::Neg(inner) => inner.reads(),
             Expr::Binary { left, right, .. } | Expr::Call { left, right, .. } => {
-                let mut reads = left.meter_reads();
-                reads.extend(right.meter_reads());
+                let mut reads = left.reads();
+                reads.extend(right.reads());
                 reads
             }
             Expr::Num(_) | Expr::Dice { .. } => Vec::new(),
@@ -387,7 +441,7 @@ fn stamp_at(expr: &mut Expr, spot: LineColumn) {
             stamp_at(left, spot);
             stamp_at(right, spot);
         }
-        Expr::Num(_) | Expr::Dice { .. } => {}
+        Expr::Num(_) | Expr::Dice { .. } | Expr::Let { .. } => {}
     }
 }
 
@@ -545,12 +599,32 @@ impl<'a> Parser<'a> {
                 right: Box::new(right),
             });
         }
-        // A meter read is `<owner>.<key>`, and an owner may hold `:` and `.` itself.
+        if (word == "high" || word == "low") && self.eat('(') {
+            let keep = if word == "low" { Keep::Low } else { Keep::High };
+            self.skip_whitespace();
+            let name = self.ident()?;
+            self.skip_whitespace();
+            if !self.eat(')') {
+                return Err(self.error());
+            }
+            return Ok(Expr::Let {
+                name,
+                keep: Some(keep),
+            });
+        }
+        // A bare word reads a `let:` name. A meter read is `<owner>.<key>`, and an owner may
+        // hold `:` and `.` itself.
         self.pos = start;
         while self.peek().is_ascii_alphanumeric() || matches!(self.peek(), '_' | ':' | '.') {
             self.pos += 1;
         }
         let read = &self.src[start..self.pos];
+        if read == word {
+            return Ok(Expr::Let {
+                name: word,
+                keep: None,
+            });
+        }
         let Some((owner, key)) = read.rsplit_once('.') else {
             return Err(self.error());
         };

@@ -475,11 +475,11 @@ A check's `total`, `success_at` and `partial_at` are each a number, and each may
 - `partial_at <= total < success_at` is a partial, only when the check sets `partial_at`.
 - Any lower total is a miss. A check without `partial_at` is a success or a miss.
 
-The check rolls when the move lands, after the gate admits it and its start cost is paid: `total`, then `success_at`, then `partial_at`, each writing its own dice line. A contested defense is a number in the rule that reads the target's stats, not a nested check: a `success_at` such as `"2d6 + target.vigor"` rolls its own dice and reads the target's meters. A nested check is a save with its own outcome: it rolls when the effects reach it, on the rule's own dice, and may have a partial band.
+The check rolls when the move lands, after the gate admits it, its start cost is paid and its `let` has rolled: `total`, then `success_at`, then `partial_at`, each writing its own dice line. A contested defense is a `let` value that reads the target's stats, used as `success_at`, not a nested check (see `lunge` below). A nested check is a save with its own outcome: it rolls when the effects reach it, on the rule's own dice, and may have a partial band.
 
 ### Rule fields
 
-A rule has `id`, `when`, and `do`. It may have `if`, `cost`, `start`, `finish`, `cooldown`, `cancellable`, `check`, `success`, `partial`, and `miss`.
+A rule has `id`, `when`, and `do`. It may have `if`, `cost`, `start`, `finish`, `cooldown`, `cancellable`, `let`, `check`, `success`, `partial`, and `miss`.
 
 `when` is `habit`, a map with `verb` and `target`, or a map with `change`. `target` is `none`, `actor`, `place`, `exit`, or `item`. An omitted `target` means `none`. `say` is speech, so that id is not a rule. A built-in player command, such as `say` or `look`, cannot be a verb. `when` has one of `verb` or `change`, not both.
 
@@ -507,6 +507,8 @@ Every move but `say` is an action that starts and finishes. `cost` is what the s
 `check` names a `total` and a `success_at`. `partial_at` is an absolute total, strictly below `success_at` when both are integers, and it needs a `partial` list. Outcome lists need a `check`, and a `partial` or `miss` list needs a `success` list. `do` runs on every band. `success`, `partial`, and `miss` run on that band. A yield is `do: []` with no outcome lists.
 
 A number is an integer or an [expression](spec.md). A number in a condition or a cost cannot roll dice: check refuses it on its line.
+
+`let` is a map of names to numbers that the rule rolls once and reads by name. It runs first, after the gate: once the move is admitted and its start cost is paid, each name rolls in the order written, then the check, then the effects. A number reads a name as a bare word, `total: attack`, and a `let` number reads only the names written above it. A roll used in more than one place goes in `let`. Dice written inline roll where they are written, so each list rolls its own inline dice, and a list that does not run rolls nothing. Each name that rolls writes one dice line with its name in front, `attack: 2d6 → 5, 2 = 7 + 1`. `high(dmg)` and `low(dmg)` read the higher and lower face of a name whose number is one dice group, such as `dmg: 2d4`. A contested defense is a `let` value that reads the target's stats, used as `success_at` and for `partial_at`, as in `lunge` below. A condition or a cost cannot read a name, since the gate reads them before `let` rolls: check refuses the read as dice. Check also refuses, at the rule's line, a name the rule's `let` does not hold, a `let` number that reads a name at or below its own line, and `high` or `low` of a number that is not one dice group. A number with a comma, such as `"-max(1, high(dmg) - 1)"`, needs quotes.
 
 The flag key `busy` is rejected. An actor is busy from the start of a timed action until it finishes, and then through its cooldown. A move from a busy actor is refused `BUSY`, except `cancel`.
 
@@ -647,6 +649,29 @@ rules:
                 of: self
                 key: shrugged
                 value: true
+
+  - id: lunge
+    when:
+      verb: lunge
+      target: actor
+    let:
+      attack: 2d6 + self.nerve
+      dodge: 2d6 + target.nerve
+      dmg: 2d4
+    check:
+      total: attack
+      success_at: dodge
+      partial_at: dodge - 2
+    success:
+      - meter:
+          of: target
+          key: nerve
+          add: "-max(1, high(dmg) - 1)"
+    partial:
+      - meter:
+          of: target
+          key: nerve
+          add: -low(dmg)
 
   - id: leave_note
     when:
@@ -838,7 +863,7 @@ max_trigger_depth: 4
 
 One effect under each dash. The rules in `rules/verbs.yaml` are the examples. `step_through` on the yard is the `location.to` example.
 
-`check` under a dash is a nested check: a save with its own outcome. It has `total`, `success_at`, an optional `partial_at`, and `success`, `partial` and `miss` lists, any of which may be left out. Its outcome runs one list, which may hold further nested checks. `by` is the actor who makes the save and is told its outcome; omitted, it is `self`, and check refuses `by: target` unless the rule targets an actor. `self` inside it is still the rule's actor, and its dice are the rule's own, taken in order. `partial_at` and a `partial` list need each other, and a constant `partial_at` is below a constant `success_at`, as on a rule's check. A contested defense is not a nested check: it is a `success_at` that reads the target's stats.
+`check` under a dash is a nested check: a save with its own outcome. It has `total`, `success_at`, an optional `partial_at`, and `success`, `partial` and `miss` lists, any of which may be left out. Its outcome runs one list, which may hold further nested checks. `by` is the actor who makes the save and is told its outcome; omitted, it is `self`, and check refuses `by: target` unless the rule targets an actor. `self` inside it is still the rule's actor, and its dice are the rule's own, taken in order. `partial_at` and a `partial` list need each other, and a constant `partial_at` is below a constant `success_at`, as on a rule's check. A contested defense is not a nested check: it is a `let` value that reads the target's stats, used as `success_at`.
 
 `location.via` names an exit from the actor's current place. `travel` uses `via: target`, which needs a rule that targets an exit. `location.to` names a place, or `target`, which needs a rule that targets a place. Playing `to` without `teleport: true` is refused. `teleport: true` in `rules/verbs.yaml` is a warning.
 

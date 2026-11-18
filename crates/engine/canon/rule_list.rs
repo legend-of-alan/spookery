@@ -57,6 +57,8 @@ pub struct RuleYaml {
     /// Whether the actor may cancel the action while it is under way.
     #[serde(default)]
     pub cancellable: bool,
+    #[serde(rename = "let", default)]
+    pub lets: LetYaml,
     pub check: Option<CheckYaml>,
     #[serde(rename = "do", default)]
     pub do_: Vec<EffectYaml>,
@@ -259,6 +261,41 @@ pub struct CheckYaml {
     pub total: Spanned<ExprYaml>,
     pub success_at: Spanned<ExprYaml>,
     pub partial_at: Option<Spanned<ExprYaml>>,
+}
+
+/// A rule's `let:`: each name and its number, in the order written. A name written twice is
+/// the YAML's duplicate key, refused on its line.
+#[derive(Default)]
+pub struct LetYaml(pub Vec<(String, Spanned<ExprYaml>)>);
+
+impl<'de> Deserialize<'de> for LetYaml {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct LetVisitor;
+
+        impl<'de> Visitor<'de> for LetVisitor {
+            type Value = LetYaml;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a map of names to numbers")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<LetYaml, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut lets = Vec::new();
+                while let Some(entry) = map.next_entry()? {
+                    lets.push(entry);
+                }
+                Ok(LetYaml(lets))
+            }
+        }
+
+        deserializer.deserialize_map(LetVisitor)
+    }
 }
 
 #[derive(Deserialize)]
@@ -501,6 +538,16 @@ fn compile_one(
             None
         }
     };
+    let lets = (entry.lets.0.iter())
+        .map(|(name, number)| Ok((name.clone(), expr_of(number)?)))
+        .collect::<Result<Vec<_>, Fault>>();
+    let lets = match lets {
+        Ok(lets) => lets,
+        Err(fault) => {
+            diags.push(source.fault("", fault));
+            Vec::new()
+        }
+    };
     let check = match entry.check.as_ref().map(check_of).transpose() {
         Ok(check) => check,
         Err(fault) => {
@@ -560,6 +607,7 @@ fn compile_one(
         owner: owner.clone(),
         when,
         if_,
+        lets,
         check,
         start: Phase {
             cost,
@@ -602,22 +650,58 @@ fn compile_one(
         _ => {}
     });
     let (objects, item_ids) = (rule.objects(), rule.item_ids());
-    if let Some((slot, needs)) = find_misplaced_target(targets, objects, item_ids, locations) {
-        let needs = needs.as_str();
+    let misplaced = find_misplaced_target(targets, objects, item_ids, locations);
+    let misplaced = misplaced.map(|(slot, needs)| {
+        let (needs, targets) = (needs.as_str(), targets.as_str());
+        (
+            format!("says target in {slot}, but its target is {targets}"),
+            format!("give the verb target: {needs}, or name the {needs} by its id"),
+        )
+    });
+    if let Some((problem, hint)) = misplaced.or_else(|| find_misread_name(&rule)) {
         return Err(vec![Problem {
             source: &source,
             path: &format!("rules[{index}].id"),
             at: Locator::Spot(spot_of(&entry.id)),
-            message: format!(
-                "rule '{}' says target in {slot}, but its target is {}",
-                rule.local_id,
-                targets.as_str()
-            ),
-            hint: &format!("give the verb target: {needs}, or name the {needs} by its id"),
+            message: format!("rule '{}' {problem}", rule.local_id),
+            hint: &hint,
         }
         .into_diagnostic()]);
     }
     Ok(rule)
+}
+
+/// The first `let:` name `rule` reads wrongly, as the problem and the hint: a name its `let:`
+/// does not hold, a name a `let:` number reads at or above its own line, or `high` or `low` of
+/// a name whose number is not one dice group.
+fn find_misread_name(rule: &Rule) -> Option<(String, String)> {
+    let lets = rule.lets.as_slice();
+    let in_lets = (lets.iter().enumerate()).map(|(index, (_, expr))| (expr, &lets[..index]));
+    let everywhere = rule.exprs().into_iter().map(|expr| (expr, lets));
+    for (expr, readable) in in_lets.chain(everywhere) {
+        for read in expr.reads() {
+            let Expr::Let { name, keep } = read else {
+                continue;
+            };
+            let (problem, hint) = match (readable.iter().find(|(held, _)| held == name), keep) {
+                (Some((_, Expr::Dice { .. })), _) | (Some(_), None) => continue,
+                (Some(_), Some(_)) => (
+                    format!("reads high or low of '{name}', which is not one dice group"),
+                    "read high or low only of a name whose number is dice such as 2d8",
+                ),
+                (None, _) if lets.iter().any(|(held, _)| held == name) => (
+                    format!("reads '{name}' in let: at or above the line that holds it"),
+                    "a let: number reads only the names written above it",
+                ),
+                (None, _) => (
+                    format!("reads '{name}', which its let: does not hold"),
+                    "add the name to let:, or read a name that is there",
+                ),
+            };
+            return Some((problem, hint.to_string()));
+        }
+    }
+    None
 }
 
 /// The first use of the word `target` that a move targeting `targets` does not allow, as its

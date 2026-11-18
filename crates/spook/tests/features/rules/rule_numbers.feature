@@ -29,7 +29,7 @@ Feature: Dice and arithmetic in rule numbers
     Given a docks table
     When the pack's hit adds "<dice>" to vigor
     And the player hits and the GM commits
-    Then Rowan's vigor rose by the <kept> d20
+    Then Rowan's vigor rose by the <kept> face of 2d20k
     And the journal records both d20 faces
 
     Examples:

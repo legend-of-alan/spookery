@@ -54,9 +54,12 @@ const CONTESTED_MARK_ROW: &str = "
     when:
       verb: mark
       target: actor
+    let:
+      attack: 2d6 + self.vigor
+      dodge: 2d6 + target.vigor
     check:
-      total: 2d6 + self.vigor
-      success_at: \"2d6 + target.vigor\"
+      total: attack
+      success_at: dodge
     success:
       - flag:
           of: target
@@ -228,15 +231,34 @@ fn the_player_sees_only_their_own_check(world: &mut World) {
     assert!(!added.contains("\"success\":"), "{added}");
 }
 
-#[then(expr = "the GM sees one roll and a dice line for its total and for its success_at")]
-fn the_gm_sees_one_roll_and_its_two_dice_lines(world: &mut World) {
+#[then(expr = "the GM and the journal see one roll read from the attack and dodge dice lines")]
+fn the_gm_and_the_journal_see_one_roll_from_attack_and_dodge(world: &mut World) {
     let body = table::read_reply(&world.stdout);
-    let dice = body["dice"].as_array().unwrap_or_else(|| panic!("{body}"));
-    assert_eq!(dice.len(), 2, "{body}");
+    assert_eq!(
+        body["dice"],
+        common::read_first_round(world)["dice"],
+        "{body}"
+    );
+    let line = |index: usize| {
+        body["dice"][index]
+            .as_str()
+            .unwrap_or_else(|| panic!("{body}"))
+    };
+    assert!(line(0).starts_with("attack: 2d6 → "), "{body}");
+    assert!(line(1).starts_with("dodge: 2d6 → "), "{body}");
+    assert!(body["dice"][2].is_null(), "{body}");
     // 2d6 plus Mira's vigor of 100.
-    let success_at = dice_line_total(dice[1].as_str().unwrap_or_else(|| panic!("{body}")));
+    let success_at = dice_line_total(line(1));
     assert!((102..=112).contains(&success_at), "{body}");
-    assert_roll(&body, 1, success_at, "miss");
+    let rolls = body["rolls"].as_array().unwrap_or_else(|| panic!("{body}"));
+    assert_eq!(rolls.len(), 1, "{body}");
+    assert_eq!(
+        rolls[0]["total"].as_i64(),
+        Some(dice_line_total(line(0))),
+        "{body}"
+    );
+    assert_eq!(rolls[0]["success_at"].as_i64(), Some(success_at), "{body}");
+    assert_eq!(rolls[0]["outcome"], "miss", "{body}");
 }
 
 #[then(expr = "the journal records Mira's engine brace")]

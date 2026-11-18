@@ -343,8 +343,11 @@ impl EntityScope<'_> {
         diags: &mut Vec<Diagnostic>,
     ) {
         for expr in exprs {
-            for (of, key, spot) in expr.meter_reads() {
-                let at = Locator::Spot(spot);
+            for read in expr.reads() {
+                let Expr::Meter { of, key, spot } = read else {
+                    continue;
+                };
+                let at = Locator::Spot(*spot);
                 let refuse = |problem, hint| {
                     Problem {
                         source,

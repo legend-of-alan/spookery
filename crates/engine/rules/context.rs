@@ -3,6 +3,7 @@
 use crate::canon::Canon;
 use crate::ecs::{self, Presence};
 use crate::intent::{Intent, Source, Target, Viewer};
+use crate::rules::roll::LetValue;
 
 /// The canon, the save, who is seated, and the intent a rule's conditions, costs and effects read.
 /// The canon has a lifetime of its own, so a rule found through it can outlive the borrow of the
@@ -16,6 +17,8 @@ pub(crate) struct Context<'c, 'a> {
     /// Who is seated, for the `players:` condition and NPC habits.
     pub presence: &'a Presence,
     pub intent: &'a Intent,
+    /// The rule's `let:` values rolled so far, which its numbers read by name.
+    pub lets: &'a [LetValue],
 }
 
 impl<'c, 'a> Context<'c, 'a> {
@@ -30,7 +33,13 @@ impl<'c, 'a> Context<'c, 'a> {
             world,
             presence,
             intent,
+            lets: &[],
         }
+    }
+
+    /// This context with `lets` as the `let:` values its numbers read.
+    pub(crate) fn bind<'b>(&'b self, lets: &'b [LetValue]) -> Context<'c, 'b> {
+        Context { lets, ..*self }
     }
 }
 
