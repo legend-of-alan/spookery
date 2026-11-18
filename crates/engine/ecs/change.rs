@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-pub use spookery_protocol::ChangeValue;
+pub(crate) use spookery_protocol::ChangeValue;
 
 use crate::ecs::component::Meter;
 use crate::ecs::entity;
@@ -13,7 +13,7 @@ use crate::Reason;
 /// commit diff summary is this type's `Display`, sorted as text. It is not a path inside
 /// `save.yaml`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Key {
+pub(crate) struct Key {
     /// The component's `ID` or, for an actor's action state, the part of it that moved.
     pub component_id: &'static str,
     pub entity_id: entity::Id,
@@ -63,7 +63,7 @@ impl Key {
 /// A key that changed, with the value before the change and the value after it: `None` when
 /// the key was absent.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Change {
+pub(crate) struct Change {
     pub key: Key,
     pub before: Option<ChangeValue>,
     pub after: Option<ChangeValue>,

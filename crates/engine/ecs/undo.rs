@@ -59,7 +59,7 @@ impl<K: Ord + Clone + Debug, V: PartialEq + Debug> Entries for BTreeMap<K, V> {
 }
 
 /// A store's history of inverses, as a rollback and an accept work through it.
-pub trait History {
+pub(crate) trait History {
     /// A rollback: undo every change numbered `change_no` or later, newest first.
     fn undo_to(&mut self, change_no: u64);
     /// An accept: drop every inverse, so nothing rolls the value back past here.

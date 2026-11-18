@@ -469,7 +469,7 @@ fn post_initialize_with_version(port: u16, version: &str) -> String {
     buf
 }
 
-pub fn post_initialize(port: u16, host: &str, origin: Option<&str>) -> String {
+pub(crate) fn post_initialize(port: u16, host: &str, origin: Option<&str>) -> String {
     let version = ProtocolVersion::LATEST.as_str();
     let body = format!(
         "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"protocolVersion\":\"{version}\",\"capabilities\":{{}},\"clientInfo\":{{\"name\":\"probe\",\"version\":\"0\"}}}}}}"

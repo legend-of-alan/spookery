@@ -163,7 +163,7 @@ pub(crate) fn find_stale_modifiers(world: &ecs::World) -> Vec<(&ActorId, &str, &
 /// meter off its entity, then stamp the record's `pack_rev_after` and `state_rev_after`. A meter
 /// an entity holds keeps its value. Live migrate and replay both call this. It does not touch the
 /// disk, and it reads no hash or chain from the record.
-pub fn migrate(mut world: ecs::World, record: &MigrateRecord) -> Result<ecs::World, Reason> {
+pub(crate) fn migrate(mut world: ecs::World, record: &MigrateRecord) -> Result<ecs::World, Reason> {
     for meter in &record.meters {
         let start = Meter {
             base: meter.start,
@@ -195,7 +195,7 @@ pub fn migrate(mut world: ecs::World, record: &MigrateRecord) -> Result<ecs::Wor
 /// actor in a place or on an exit the pack lacks, every meter, item and wielded slot the pack does
 /// not define, every meter the pack gives an entity that the entity lacks, every meter outside its
 /// rules, every modifier the pack no longer gives that meter, and every empty id or zero count.
-pub fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
+pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
     let canon = world.canon();
     let mut diags = Vec::new();
     let actors = world.actors();

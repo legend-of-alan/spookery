@@ -4,11 +4,16 @@ use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
-pub use spookery_engine::testing::*;
+pub(crate) use spookery_engine::testing::*;
 use spookery_engine::{component, ecs, entity, ActorId, Meter};
 
 /// Change `actor`'s meter `key` as `edit` says, through the writer.
-pub fn edit_meter(now: &mut ecs::World, actor: &str, key: &str, edit: impl FnOnce(&mut Meter)) {
+pub(crate) fn edit_meter(
+    now: &mut ecs::World,
+    actor: &str,
+    key: &str,
+    edit: impl FnOnce(&mut Meter),
+) {
     let actor = ActorId::from(actor);
     let held = now.actors().get::<Meter>(&actor).get(key);
     let mut meter = held
@@ -23,7 +28,7 @@ pub fn edit_meter(now: &mut ecs::World, actor: &str, key: &str, edit: impl FnOnc
 }
 
 /// Give `id` meter `key` at `base`, with no offset, through the writer.
-pub fn put_meter(now: &mut ecs::World, id: &entity::Id, key: &str, base: i64) {
+pub(crate) fn put_meter(now: &mut ecs::World, id: &entity::Id, key: &str, base: i64) {
     let meter = Meter { base, offset: 0 };
     now.entities_mut()
         .get_mut::<component::Meter>(id)
@@ -33,14 +38,14 @@ pub fn put_meter(now: &mut ecs::World, id: &entity::Id, key: &str, base: i64) {
 
 /// Edit the save as its file holds it, for a fixture no writer makes: a count set outright, a
 /// fact forgotten.
-pub fn edit_as_saved(now: &mut ecs::World, edit: impl FnOnce(&mut serde_json::Value)) {
+pub(crate) fn edit_as_saved(now: &mut ecs::World, edit: impl FnOnce(&mut serde_json::Value)) {
     let mut save = serde_json::to_value(&**now).unwrap();
     edit(&mut save);
     **now = serde_json::from_value(save).unwrap_or_else(|err| panic!("edited save: {err}"));
 }
 
 /// Leave `id`, an actor or a place, holding `count` of `item`, through the writer.
-pub fn put_items(now: &mut ecs::World, id: &entity::Id, item: &str, count: u32) {
+pub(crate) fn put_items(now: &mut ecs::World, id: &entity::Id, item: &str, count: u32) {
     let to_count = |held: Option<&u32>| i64::from(count) - i64::from(held.copied().unwrap_or(0));
     let put = match id {
         entity::Id::Actor(actor) => {
@@ -57,7 +62,7 @@ pub fn put_items(now: &mut ecs::World, id: &entity::Id, item: &str, count: u32) 
 }
 
 /// Run async work from a sync step on the test runtime.
-pub fn block_on<T: Send>(work: impl std::future::Future<Output = T> + Send) -> T {
+pub(crate) fn block_on<T: Send>(work: impl std::future::Future<Output = T> + Send) -> T {
     tokio::task::block_in_place(|| {
         tokio::runtime::Handle::current().block_on(async move {
             tokio::time::timeout(std::time::Duration::from_secs(20), work)
@@ -67,7 +72,7 @@ pub fn block_on<T: Send>(work: impl std::future::Future<Output = T> + Send) -> T
     })
 }
 
-pub fn run_spook(args: &[&str]) -> std::process::Output {
+pub(crate) fn run_spook(args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_spook"))
         .args(args)
         .current_dir(env!("CARGO_TARGET_TMPDIR"))
@@ -76,7 +81,7 @@ pub fn run_spook(args: &[&str]) -> std::process::Output {
 }
 
 #[derive(Debug)]
-pub struct Process {
+pub(crate) struct Process {
     pub child: Child,
     pub stdin: Option<ChildStdin>,
     pub stdout: Arc<Mutex<String>>,
@@ -88,7 +93,7 @@ pub struct Process {
 impl Process {
     /// Waits for the child to exit and both pipes to reach EOF, then returns its status,
     /// stdout and stderr. Stdin stays open, so the child decides when it is done.
-    pub fn wait_with_output(&mut self) -> (ExitStatus, String, String) {
+    pub(crate) fn wait_with_output(&mut self) -> (ExitStatus, String, String) {
         let status = self
             .child
             .wait()
@@ -109,7 +114,7 @@ impl Drop for Process {
     }
 }
 
-pub fn spawn(args: &[&str]) -> Process {
+pub(crate) fn spawn(args: &[&str]) -> Process {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.args(args);
     command
@@ -139,7 +144,10 @@ pub fn spawn(args: &[&str]) -> Process {
 }
 
 /// Copies everything `reader` yields into `slot` on its own thread, until EOF.
-pub fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) -> JoinHandle<()> {
+pub(crate) fn drain(
+    reader: impl Read + Send + 'static,
+    slot: Arc<Mutex<String>>,
+) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut buf = [0u8; 256];
@@ -165,11 +173,11 @@ pub fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) -> Jo
     })
 }
 
-pub fn text_of(slot: &Arc<Mutex<String>>) -> String {
+pub(crate) fn text_of(slot: &Arc<Mutex<String>>) -> String {
     slot.lock().unwrap().clone()
 }
 
-pub fn pack_arg(pack: &Path) -> String {
+pub(crate) fn pack_arg(pack: &Path) -> String {
     pack.to_str()
         .unwrap_or_else(|| panic!("pack path is not utf-8"))
         .to_string()

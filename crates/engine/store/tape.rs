@@ -45,7 +45,7 @@ pub fn emit_tape_record(record: &TapeRecord) -> String {
 /// `seq` is set one past the last complete line. Drops a trailing partial line and opens no
 /// round. When the line would pass `MAX_BYTES`, the oldest whole lines go first, keeping the
 /// newest half.
-pub fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeRecord, Reason> {
+pub(crate) fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeRecord, Reason> {
     let state = root.join("state");
     fs::create_dir_all(&state).map_err(refuse_io)?;
     let path = state.join("tape.jsonl");
@@ -100,7 +100,7 @@ pub fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeRecord, 
 
 /// The newest `SCROLLBACK_LINES` records whose recipients include `player`, oldest first.
 /// The filter runs before the limit.
-pub fn read_scrollback(root: &Path, player: &str) -> Result<Vec<TapeRecord>, Reason> {
+pub(crate) fn read_scrollback(root: &Path, player: &str) -> Result<Vec<TapeRecord>, Reason> {
     let mut matched = Vec::new();
     for record in read_records(root)? {
         if record.recipient_ids.iter().any(|id| id == player) {
@@ -113,7 +113,7 @@ pub fn read_scrollback(root: &Path, player: &str) -> Result<Vec<TapeRecord>, Rea
 
 /// Every complete record, oldest first. A missing file is empty. A trailing partial line is
 /// not a record. A complete line that does not parse is `SCHEMA`. Past 1 MiB is `OUT_OF_RANGE`.
-pub fn read_records(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
+pub(crate) fn read_records(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
     let path = root.join("state/tape.jsonl");
     if !path.is_file() {
         return Ok(Vec::new());

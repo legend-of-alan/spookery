@@ -47,7 +47,7 @@ impl ClientHandler for EventSender {
     }
 }
 
-pub struct GmClient {
+pub(crate) struct GmClient {
     service: RunningService<RoleClient, EventSender>,
     /// Finishes when the host closes the MCP endpoint.
     watch: tokio::task::JoinHandle<()>,
@@ -58,7 +58,7 @@ pub struct GmClient {
 impl GmClient {
     /// Dial `http://<mcp_addr>/mcp`, finish the handshake, and wait for the event stream to
     /// take the seat: its hello. A refused seat is the refusal's sentence.
-    pub async fn connect(mcp_addr: SocketAddr) -> Result<Self, String> {
+    pub(crate) async fn connect(mcp_addr: SocketAddr) -> Result<Self, String> {
         let url = format!("http://{mcp_addr}/mcp");
         let (tx, rx) = mpsc::unbounded_channel();
         // A closed loopback seat ends the stream. The default client retries
@@ -115,7 +115,7 @@ impl GmClient {
     }
 
     /// The tools the seat lists.
-    pub async fn list_tools(&self) -> Result<Vec<Tool>, String> {
+    pub(crate) async fn list_tools(&self) -> Result<Vec<Tool>, String> {
         self.service
             .list_all_tools()
             .await
@@ -124,7 +124,7 @@ impl GmClient {
 
     /// Send the command `command` as a tool call. The result is every message it sent this seat,
     /// its reply last.
-    pub async fn call(
+    pub(crate) async fn call(
         &mut self,
         command: &str,
         args: &Value,
@@ -148,7 +148,7 @@ impl GmClient {
     }
 
     /// Events read while waiting for the latest tool result, in arrival order.
-    pub fn drain_events(&mut self) -> Vec<ServerMessage> {
+    pub(crate) fn drain_events(&mut self) -> Vec<ServerMessage> {
         let mut out = Vec::new();
         while matches!(self.buffered.front(), Some(Some(Ok(_)))) {
             if let Some(Some(Ok(event))) = self.buffered.pop_front() {
@@ -159,7 +159,7 @@ impl GmClient {
     }
 
     /// The next event, or the line for one that could not be read. `None` when the seat ends.
-    pub async fn recv(&mut self) -> EventItem {
+    pub(crate) async fn recv(&mut self) -> EventItem {
         if let Some(item) = self.buffered.pop_front() {
             return item;
         }
@@ -168,7 +168,7 @@ impl GmClient {
 
     /// Buffered events, then any the reader has already queued. An end of the seat among
     /// them is dropped.
-    pub fn drain(&mut self) -> Vec<Result<ServerMessage, String>> {
+    pub(crate) fn drain(&mut self) -> Vec<Result<ServerMessage, String>> {
         let mut out: Vec<Result<ServerMessage, String>> =
             self.buffered.drain(..).flatten().collect();
         while let Ok(item) = self.rx.try_recv() {
@@ -178,7 +178,7 @@ impl GmClient {
     }
 
     /// Give the seat back. The host has freed it when this returns.
-    pub async fn close(self) {
+    pub(crate) async fn close(self) {
         // A closed seat has nothing to end. Cancel would send the session
         // DELETE to the dead port, and Windows takes about 2s to refuse it.
         if !self.watch.is_finished() {
@@ -229,7 +229,7 @@ fn parse_event(params: Option<Value>) -> Result<ServerMessage, String> {
 }
 
 /// One `spook/event` notification as its JSON-RPC line.
-pub fn event_line(event: &ServerMessage) -> String {
+pub(crate) fn event_line(event: &ServerMessage) -> String {
     notification_line(&serde_json::json!(event))
 }
 
@@ -239,7 +239,7 @@ fn notification_line(params: &Value) -> String {
 
 /// One MCP session over plain HTTP, for what the rmcp client hides: the raw replies, and
 /// event streams opened by hand.
-pub struct RawSession {
+pub(crate) struct RawSession {
     port: u16,
     id: String,
     version: String,
@@ -251,7 +251,7 @@ pub struct RawSession {
 
 impl RawSession {
     /// `initialize`, then `notifications/initialized`. That opens a session and takes no seat.
-    pub fn open(port: u16) -> Self {
+    pub(crate) fn open(port: u16) -> Self {
         let initialize = serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -302,7 +302,7 @@ impl RawSession {
 
     /// Opens an event stream, which takes the GM seat, and keeps it open. Returns what the
     /// stream sent through its first event.
-    pub fn open_event_stream(&mut self) -> String {
+    pub(crate) fn open_event_stream(&mut self) -> String {
         use std::io::{Read, Write};
 
         let (port, id, version) = (self.port, &self.id, &self.version);
@@ -333,7 +333,7 @@ impl RawSession {
     }
 
     /// Calls the tool `command` with no arguments. Returns the raw reply.
-    pub fn call(&self, command: &str) -> String {
+    pub(crate) fn call(&self, command: &str) -> String {
         let call = serde_json::json!({
             "jsonrpc": "2.0",
             "id": 2,
@@ -349,7 +349,7 @@ impl RawSession {
 }
 
 /// The first `spook/event` notification in a raw event stream.
-pub fn read_event(raw: &str) -> Value {
+pub(crate) fn read_event(raw: &str) -> Value {
     raw.lines()
         .filter_map(|line| line.strip_prefix("data:"))
         .filter_map(|data| serde_json::from_str::<Value>(data.trim()).ok())

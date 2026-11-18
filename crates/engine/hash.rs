@@ -13,6 +13,7 @@ pub(crate) fn blake2s_hex(bytes: &[u8]) -> String {
     format!("{:x}", Blake2s256::digest(bytes))
 }
 
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn blake2s_tagged(bytes: &[u8]) -> String {
     format!("blake2s:{}", blake2s_hex(bytes))
 }

@@ -459,7 +459,7 @@ fn finish_http_turn(world: &mut World, gm: AiGm, pack: PathBuf, seen: Arc<Mutex<
 }
 
 /// A pack copy with Rowan seated and travel queued while a GM held the seat, then let go.
-pub fn queued_travel(world: &mut World, label: &str) -> (PathBuf, u64) {
+pub(crate) fn queued_travel(world: &mut World, label: &str) -> (PathBuf, u64) {
     let pack = copy_pack("docks", label);
     table::listen(world, &pack);
     table::seat_gm(world);

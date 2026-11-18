@@ -12,11 +12,12 @@ use std::fmt::{self, Debug};
 
 use serde::{Deserialize, Serialize};
 
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub use actors::Actors;
-pub use globals::Globals;
-pub use places::Places;
+pub(crate) use globals::Globals;
+pub(crate) use places::Places;
 pub use query::{Query, QueryData, QueryFilter, With, Without};
-pub use stories::Stories;
+pub(crate) use stories::Stories;
 
 use crate::canon::Canon;
 use crate::ecs::id::{self, ActorId, PlaceId, StoryId};
@@ -50,7 +51,7 @@ mod storage {
     }
 
     /// The store of a component an entity holds many of, one under each entry id.
-    pub type MapStore<E, C> = undo::Store<Map<<E as Collection>::Id, C>>;
+    pub(super) type MapStore<E, C> = undo::Store<Map<<E as Collection>::Id, C>>;
 }
 use storage::{Has, MapStore};
 

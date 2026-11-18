@@ -27,22 +27,22 @@ pub struct Outcome {
 
 /// Seal one played round, append it, finish a due checkpoint, and clear the queue. `world` is
 /// the round's working copy of the save, published only once the round is on disk.
-pub fn commit(
+pub(crate) fn commit(
     session: &mut session::Session,
     mut world: ecs::World,
     record: RoundRecord,
 ) -> Result<Outcome, Reason> {
     let started = std::time::Instant::now();
-    let write = lock::take_write(&session.root, &session.lock)?;
+    let write = lock::take_write(session.root(), session.lock())?;
     settle_checkpoint(session, &write)?;
     bump_state_rev(&mut world)?;
     let now_bytes = save::emit(&world)?.into_bytes();
     let line = seal_round(
         record,
-        session.world.state_rev,
+        session.world().state_rev,
         &mut world,
         &now_bytes,
-        &session.root,
+        session.root(),
     )?;
     let due = is_checkpoint_due(session.canon().checkpoint_every, world.round_index);
     let (payload, chain) = if due {
@@ -51,10 +51,8 @@ pub fn commit(
     } else {
         (line, None)
     };
-    let mut journal_path = append_to_bundle(&session.root, &payload, &write)?;
-    world.accept();
-    session.world = world;
-    session.queue.clear();
+    let mut journal_path = append_to_bundle(session.root(), &payload, &write)?;
+    session.replace_world(world);
     if let Some(chain) = chain {
         if warn_if_left_open(finish_checkpoint(session, &now_bytes, &chain, &write))
             && !journal_path.ends_with(".gz")
@@ -62,30 +60,30 @@ pub fn commit(
             journal_path.push_str(".gz");
         }
     }
+    let world = session.world();
     tracing::info!(
-        round_index = session.world.round_index,
-        world_time = session.world.world_time,
-        state_rev = session.world.state_rev,
+        round_index = world.round_index,
+        world_time = world.world_time,
+        state_rev = world.state_rev,
         checkpoint_sealed = due,
         elapsed_ms = started.elapsed().as_millis(),
         "round committed"
     );
     Ok(Outcome {
-        state_rev: session.world.state_rev,
+        state_rev: world.state_rev,
         journal_path,
-        round_index: session.world.round_index,
-        world_time: session.world.world_time,
+        round_index: world.round_index,
+        world_time: world.world_time,
     })
 }
 
 /// The journal already has this round. Keep the new state in memory.
-pub fn keep_in_memory(
+pub(crate) fn keep_in_memory(
     session: &mut session::Session<()>,
     mut world: ecs::World,
 ) -> Result<(), Reason> {
     bump_state_rev(&mut world)?;
-    world.accept();
-    session.world = world;
+    session.replace_world(world);
     Ok(())
 }
 
@@ -98,7 +96,7 @@ fn bump_state_rev(world: &mut ecs::World) -> Result<(), Reason> {
 /// `edited` means `world` is a hand edit of the checkpoint head. The journal does not hold
 /// that edit, so a checkpoint of the migrated save follows the record and replay restarts
 /// from it. The caller holds the pack lock.
-pub fn seal_migrate(
+pub(crate) fn seal_migrate(
     root: &Path,
     world: ecs::World,
     edited: bool,
@@ -269,9 +267,9 @@ fn finish_checkpoint(
     chain: &str,
     write: &WriteGuard,
 ) -> Result<(), Reason> {
-    let (rev, round) = (session.world.state_rev, session.world.round_index);
-    store_checkpoint(&session.root, now_bytes, rev, round, chain, write)?;
-    close_finished(&session.root, write)
+    let (rev, round) = (session.world().state_rev, session.world().round_index);
+    store_checkpoint(session.root(), now_bytes, rev, round, chain, write)?;
+    close_finished(session.root(), write)
 }
 
 /// A finished bundle that could not be closed stays open, and the next commit closes it.
@@ -289,7 +287,7 @@ pub(crate) fn settle_checkpoint<Lock>(
     session: &session::Session<Lock>,
     write: &WriteGuard,
 ) -> Result<(), Reason> {
-    let Some(path) = journal::find_live_bundle(&session.root) else {
+    let Some(path) = journal::find_live_bundle(session.root()) else {
         return Ok(());
     };
     let Some(mark) = journal::trailing_checkpoint(&path) else {
@@ -299,13 +297,13 @@ pub(crate) fn settle_checkpoint<Lock>(
     if blake2s_tagged(&now_bytes) != mark.state_hash {
         return Ok(());
     }
-    let save = journal::save_path(&session.root);
-    let snap = journal::checkpoint_path(&session.root, mark.state_rev);
+    let save = journal::save_path(session.root());
+    let snap = journal::checkpoint_path(session.root(), mark.state_rev);
     let save_ok = journal::hashes_to(&save, &mark.state_hash);
     let snap_ok = journal::hashes_to(&snap, &mark.state_hash);
     if !save_ok || !snap_ok {
         store_checkpoint(
-            &session.root,
+            session.root(),
             &now_bytes,
             mark.state_rev,
             mark.round_index,
@@ -313,7 +311,7 @@ pub(crate) fn settle_checkpoint<Lock>(
             write,
         )?;
     }
-    warn_if_left_open(close_finished(&session.root, write));
+    warn_if_left_open(close_finished(session.root(), write));
     Ok(())
 }
 

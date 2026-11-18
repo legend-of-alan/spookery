@@ -13,7 +13,7 @@ pub(crate) fn refuse_io(error: std::io::Error) -> Reason {
 }
 
 /// Write `bytes` to a temp file, flush it, and rename it over `target`.
-pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
+pub(crate) fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(refuse_io)?;
     }
