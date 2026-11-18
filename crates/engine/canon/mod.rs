@@ -30,10 +30,9 @@ mod rule_list;
 mod source;
 mod story;
 
-use budget::load_budget;
 pub(crate) use budget::Budget;
 use fact::Facts;
-use item::add_item;
+
 use lint::{
     broken_exits, reveal_problems, unknown_carriers, unknown_modifiers, unknown_reads,
     unknown_rule_items, EntityScope,
@@ -331,7 +330,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
             continue;
         };
         let rules = if page.file.starts_with("world/items/") {
-            add_item(page, &mut items, &mut diags)
+            item::add(page, &mut items, &mut diags)
         } else if page.file.starts_with("world/places/") {
             place::add(page, &mut facts, &mut places, &mut place_meters, &mut diags)
         } else {
@@ -398,7 +397,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     }
     let rules = rule::Table::new(loaded);
     // 9. Budget.
-    let budget = budget.and_then(|(rel, text)| diags.keep(load_budget(rel, &text)));
+    let budget = budget.and_then(|(rel, text)| diags.keep(budget::load(rel, &text)));
     // 10. Lints across files.
     if let (Some(meters), Some(world_meters)) = (&meters, &world_meters) {
         let scope = EntityScope {

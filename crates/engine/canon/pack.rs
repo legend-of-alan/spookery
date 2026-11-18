@@ -31,6 +31,7 @@ impl PackDoc {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct PackDoc {
+    // repeats module: every file shape in canon ends in Doc
     #[serde(rename = "schema")]
     _schema: String,
     pub(super) id: String,

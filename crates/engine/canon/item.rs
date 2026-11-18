@@ -11,7 +11,7 @@ use crate::rules::rule::{Owner, Rule};
 
 /// One item page into `items`, and its rules. The item is kept even when its rules do not
 /// compile, so a later item with the same id is still refused.
-pub(super) fn add_item(
+pub(super) fn add(
     page: Page,
     items: &mut BTreeMap<String, ItemDef>,
     diags: &mut Diags,
@@ -43,6 +43,7 @@ pub(super) fn add_item(
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ItemDoc {
+    // repeats module: every file shape in canon ends in Doc
     #[serde(rename = "schema")]
     _schema: String,
     id: String,
