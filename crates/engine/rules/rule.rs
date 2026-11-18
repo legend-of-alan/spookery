@@ -1,8 +1,11 @@
 //! One rule shape. The id is namespaced by the file that owns it.
 
 use crate::ecs::id::{ActorId, PlaceId};
-use crate::rules::expr::Expr;
+use crate::rules::context::Context;
+use crate::rules::expr::{self, Expr};
 use crate::rules::grammar;
+use crate::rules::roll::{classify, Roll};
+use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rule {
@@ -44,59 +47,44 @@ impl Rule {
         self.start.cost.iter().chain(&self.finish.cost)
     }
 
-    pub(crate) fn top_templates(&self) -> impl Iterator<Item = &EffectTemplate> {
-        self.do_
-            .iter()
-            .chain(&self.success)
-            .chain(&self.partial)
-            .chain(&self.miss)
+    /// Every effect the rule holds, in the order `visit_templates` walks them, with the effects
+    /// in its nested checks' lists.
+    pub(crate) fn templates(&self) -> Vec<&EffectTemplate> {
+        let mut templates = Vec::new();
+        self.visit_templates(|effect| templates.push(effect));
+        templates
     }
 
     pub(crate) fn visit_templates<'a>(&'a self, mut visit: impl FnMut(&'a EffectTemplate)) {
-        fn walk<'a>(effects: &'a [EffectTemplate], visit: &mut impl FnMut(&'a EffectTemplate)) {
-            for effect in effects {
-                visit(effect);
-                if let Some(ResistSpec::Roll { resisted, .. }) = effect.resist() {
-                    walk(resisted, visit);
-                }
-            }
+        let lists = [&self.do_, &self.success, &self.partial, &self.miss];
+        for effect in lists.into_iter().flatten() {
+            effect.visit(&mut visit);
         }
-        walk(&self.do_, &mut visit);
-        walk(&self.success, &mut visit);
-        walk(&self.partial, &mut visit);
-        walk(&self.miss, &mut visit);
     }
 
     /// Every number the rule holds: its check's total, success_at and partial_at, its costs, its
-    /// conditions' numbers, and its effects' amounts, caps, ticks and resist checks.
+    /// conditions' numbers, and its effects' amounts, caps, ticks and nested checks.
     pub(crate) fn exprs(&self) -> Vec<&Expr> {
         let mut exprs = Vec::new();
         exprs.extend(self.check.iter().flat_map(Check::exprs));
         exprs.extend(self.costs().flat_map(Cost::exprs));
         exprs.extend(self.if_.iter().flat_map(Cond::exprs));
-        self.visit_templates(|effect| {
-            match effect {
-                EffectTemplate::Modifier { add, ticks, .. } => exprs.extend([add, ticks]),
-                EffectTemplate::Meter { add, set, .. } => exprs.extend(add.iter().chain(set)),
-                EffectTemplate::Item { add, max, .. } => exprs.extend([add].into_iter().chain(max)),
-                _ => {}
-            }
-            if let Some(ResistSpec::Roll { check, .. }) = effect.resist() {
-                exprs.extend(check.exprs());
-            }
+        self.visit_templates(|effect| match effect {
+            EffectTemplate::Modifier { add, ticks, .. } => exprs.extend([add, ticks]),
+            EffectTemplate::Meter { add, set, .. } => exprs.extend(add.iter().chain(set)),
+            EffectTemplate::Item { add, max, .. } => exprs.extend([add].into_iter().chain(max)),
+            EffectTemplate::Check { check, .. } => exprs.extend(check.exprs()),
+            _ => {}
         });
         exprs
     }
 
     /// Every slot the rule's lines fill, with its key as written: its conditions' and costs'
     /// slots, the owners its numbers read, and on its effects `of:`, `subject:`, `to:`, a
-    /// resist's `subject:`, `id:`, and `location to:` or `location via:` when it says `target`.
+    /// nested check's `by:`, `id:`, and `location to:` or `location via:` when it says `target`.
     pub(crate) fn slots(&self) -> Vec<(&'static str, Slot<'_>)> {
         let mut slots = collect_slots(&self.if_, self.costs(), self.exprs());
         self.visit_templates(|effect| {
-            if let Some(ResistSpec::Roll { subject, .. }) = effect.resist() {
-                slots.push(("a resist's subject:", Slot::from_actor(subject)));
-            }
             match effect {
                 EffectTemplate::Meter { of, .. }
                 | EffectTemplate::Flag { of, .. }
@@ -107,6 +95,7 @@ impl Rule {
                 EffectTemplate::Wield { subject, .. } | EffectTemplate::Unwield { subject } => {
                     slots.push(("subject:", Slot::from_actor(subject)));
                 }
+                EffectTemplate::Check { by, .. } => slots.push(("by:", Slot::from_actor(by))),
                 EffectTemplate::Location { to, .. } => match to {
                     LocationTo::Target => {
                         slots.push(("location to:", Slot::Target(TargetKind::Place)));
@@ -286,7 +275,8 @@ pub enum ChangeWatch {
     },
 }
 
-/// A rule's `check:`: `total` against `success_at`, with an optional lower `partial_at` band.
+/// A `check:`, a rule's or a nested one: `total` against `success_at`, with an optional lower
+/// `partial_at` band.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Check {
     pub total: Expr,
@@ -300,6 +290,25 @@ impl Check {
         [&self.total, &self.success_at]
             .into_iter()
             .chain(&self.partial_at)
+    }
+
+    /// Evaluate `total`, then `success_at`, then `partial_at` on `dice`, each writing its own
+    /// dice line, and classify the total.
+    pub(crate) fn roll(
+        &self,
+        context: &Context,
+        dice: &mut dyn expr::Dice,
+    ) -> Result<Roll, Reason> {
+        let total = expr::eval_with_dice(context, &self.total, dice)?;
+        let success_at = expr::eval_with_dice(context, &self.success_at, dice)?;
+        let partial_at = (self.partial_at.as_ref())
+            .map(|expr| expr::eval_with_dice(context, expr, dice))
+            .transpose()?;
+        Ok(Roll {
+            total,
+            success_at,
+            outcome: classify(total, success_at, partial_at),
+        })
     }
 }
 
@@ -442,13 +451,11 @@ pub enum EffectTemplate {
         key: String,
         add: Option<Expr>,
         set: Option<Expr>,
-        resist: Option<ResistSpec>,
     },
     Flag {
         of: grammar::Object,
         key: String,
         value: bool,
-        resist: Option<ResistSpec>,
     },
     /// One application of modifier `id` to an actor, with magnitude `add`, lasting `ticks`.
     Modifier {
@@ -472,7 +479,6 @@ pub enum EffectTemplate {
         to: NarrateTo,
         text: String,
         fact_ids: Vec<String>,
-        resist: Option<ResistSpec>,
     },
     Memory {
         to: grammar::Actor,
@@ -484,7 +490,6 @@ pub enum EffectTemplate {
         id: String,
         add: Expr,
         max: Option<Expr>,
-        resist: Option<ResistSpec>,
     },
     Reveal {
         to: grammar::Actor,
@@ -497,17 +502,36 @@ pub enum EffectTemplate {
     Unwield {
         subject: grammar::Actor,
     },
+    /// A save with its own outcome: `check` rolls on the rule's dice and is told to `by`, and
+    /// its outcome picks the one list whose effects run. `self` is still the rule's actor.
+    Check {
+        by: grammar::Actor,
+        check: Check,
+        success: Vec<EffectTemplate>,
+        partial: Vec<EffectTemplate>,
+        miss: Vec<EffectTemplate>,
+    },
 }
 
 impl EffectTemplate {
-    pub(crate) fn resist(&self) -> Option<&ResistSpec> {
-        match self {
-            EffectTemplate::Meter { resist, .. }
-            | EffectTemplate::Flag { resist, .. }
-            | EffectTemplate::Narrate { resist, .. }
-            | EffectTemplate::Item { resist, .. } => resist.as_ref(),
-            _ => None,
+    /// Calls `visit` on this effect, then on every effect in a nested check's lists, walking
+    /// into the nested checks they hold.
+    pub(crate) fn visit<'a>(&'a self, mut visit: impl FnMut(&'a EffectTemplate)) {
+        fn walk<'a>(effect: &'a EffectTemplate, visit: &mut impl FnMut(&'a EffectTemplate)) {
+            visit(effect);
+            if let EffectTemplate::Check {
+                success,
+                partial,
+                miss,
+                ..
+            } = effect
+            {
+                for inner in success.iter().chain(partial).chain(miss) {
+                    walk(inner, visit);
+                }
+            }
         }
+        walk(self, &mut visit);
     }
 }
 
@@ -525,18 +549,6 @@ pub enum NarrateTo {
     Actors(Vec<ActorId>),
     /// No `to`: every seated player.
     Present,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ResistSpec {
-    Same,
-    /// `subject` rolls `check`; a success applies `resisted` in place of the effect. The check
-    /// has no partial band.
-    Roll {
-        subject: grammar::Actor,
-        check: Box<Check>,
-        resisted: Vec<EffectTemplate>,
-    },
 }
 
 #[derive(Clone, Debug)]

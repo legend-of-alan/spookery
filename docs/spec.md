@@ -4,10 +4,9 @@ A rule number is an expression. The pack loads it once. Play evaluates that tree
 
 Every number in a rule line is an expression:
 
-- a check's `total`, `success_at` and `partial_at`
+- a check's `total`, `success_at` and `partial_at`, on a rule or nested under a dash
 - a meter effect's `add` and `set`, and an item effect's `add` and `max`
 - a modifier effect's `add` and `ticks`
-- a resist roll's `total` and `success_at`
 - a condition's numbers: `has_item.count`, `meter.value`, `players.value`, and `cycle.from` and `cycle.to`
 - a cost's `ticks`, meter amounts and item counts, on a rule or an exit
 

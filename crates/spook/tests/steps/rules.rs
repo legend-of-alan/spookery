@@ -852,8 +852,8 @@ fn the_queued_target_is_that_item(world: &mut World) {
     assert_eq!(now.round_index, 0);
 }
 
-#[given(expr = "a verb with a time cost and a resist roll")]
-fn a_verb_with_time_and_resist(world: &mut World) {
+#[given(expr = "a verb with a time cost and a nested check")]
+fn a_verb_with_time_and_a_nested_check(world: &mut World) {
     let pack = copy_pack("docks", "rules-unused");
     append(
         &pack.join("rules/verbs.yaml"),
@@ -864,100 +864,28 @@ fn a_verb_with_time_and_resist(world: &mut World) {
     cost:
       ticks: 10
     do:
-      - meter:
-          of: self
-          key: vigor
-          add: 1
-          resist:
-            subject: self
-            total: 2d6 + self.vigor
-            success_at: 2
+      - check:
+          total: 2d6 + self.vigor
+          success_at: 2
+          success:
+            - meter:
+                of: self
+                key: vigor
+                add: 1
 "#,
     );
     edit_save(&pack, |_| {});
     world.pack = Some(pack);
 }
 
-#[then(expr = "spook check is quiet about the time and the resist")]
-fn check_is_quiet_about_time_and_resist(world: &mut World) {
+#[then(expr = "spook check is quiet about the time and the nested check")]
+fn check_is_quiet_about_time_and_the_nested_check(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     open(&pack);
     run(world, &["check"]);
     assert_eq!(world.code, Some(0), "{}\n{}", world.stdout, world.stderr);
     assert!(!world.stderr.contains("cost time"), "{}", world.stderr);
-    assert!(!world.stderr.contains("resist"), "{}", world.stderr);
-}
-
-const BARE_SAME: &str = "
-  - id: shrug
-    when:
-      verb: shrug
-    do:
-      - meter:
-          of: self
-          key: vigor
-          add: 1
-          resist: same
-";
-
-const SAME_AFTER_ROLL: &str = "
-  - id: shrug
-    when:
-      verb: shrug
-    do:
-      - meter:
-          of: self
-          key: vigor
-          add: -1
-          resist:
-            subject: self
-            total: 2d6 + self.vigor
-            success_at: 2
-            resisted: []
-      - meter:
-          of: self
-          key: vigor
-          add: 1
-          resist: same
-";
-
-#[given(expr = "a verb whose only resist is same")]
-fn a_verb_whose_only_resist_is_same(world: &mut World) {
-    let pack = copy_pack("docks", "rules-bare-same");
-    append(&pack.join("rules/verbs.yaml"), BARE_SAME);
-    stamp_pack_rev(&pack);
-    world.pack = Some(pack);
-}
-
-#[then(expr = "spook check reports resist: same with no earlier roll")]
-fn check_reports_bare_resist_same(world: &mut World) {
-    run(world, &["check"]);
-    assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
-    assert!(
-        world.stderr.contains("resist: same before any resist roll"),
-        "{}",
-        world.stderr
-    );
-    assert!(world.stderr.contains("SCHEMA"), "{}", world.stderr);
-}
-
-#[given(expr = "a verb whose resist same follows a roll")]
-fn a_verb_whose_resist_same_follows_a_roll(world: &mut World) {
-    let pack = copy_pack("docks", "rules-same-after");
-    append(&pack.join("rules/verbs.yaml"), SAME_AFTER_ROLL);
-    edit_save(&pack, |_| {});
-    world.pack = Some(pack);
-}
-
-#[then(expr = "spook check does not report a bare resist same")]
-fn check_accepts_resist_same_after_a_roll(world: &mut World) {
-    run(world, &["check"]);
-    assert_eq!(world.code, Some(0), "{}\n{}", world.stdout, world.stderr);
-    assert!(
-        !world.stderr.contains("resist: same before any resist roll"),
-        "{}",
-        world.stderr
-    );
+    assert!(!world.stderr.contains("nested check"), "{}", world.stderr);
 }
 
 #[given(

@@ -1,7 +1,7 @@
 schema: save
 world_id: starter
 pack_rev: blake2s:7da4554d5cd959b0e02f35155894940080e3a5f90cb5b4ced816d598273f385e
-rules_rev: 29
+rules_rev: 30
 state_rev: 0
 round_index: 0
 world_time: 0

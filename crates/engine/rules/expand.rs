@@ -3,7 +3,6 @@
 use crate::canon::OPEN;
 use crate::ecs::component;
 use crate::ecs::component::meter;
-use crate::ecs::id::ActorId;
 use crate::entity;
 use crate::intent::Target;
 use crate::round::dice::Roller;
@@ -13,7 +12,7 @@ use crate::rules::expr::{self, Dice, Expr};
 use crate::rules::grammar;
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{MoveReport, Roll};
-use crate::rules::rule::{self, EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule};
+use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, Rule};
 use crate::Reason;
 
 /// Why a rule's effects are expanded and landed, which decides what the landing journals.
@@ -27,18 +26,17 @@ pub(crate) enum Cause {
     Trigger,
 }
 
-/// What a rule's effects came to: the effects, the roll that picked them, the resist rolls
-/// made on the way, and why.
+/// What a rule's effects came to: the effects, the roll that picked them, the nested checks'
+/// rolls made on the way, each told to its `by` actor, and why.
 pub(crate) struct Expansion {
     pub effects: Vec<Effect>,
     pub rolled: Option<Roll>,
-    pub resisted: Vec<MoveReport>,
+    pub reports: Vec<MoveReport>,
     pub cause: Cause,
 }
 
-/// Roll the rule's `check:`, the one place a check rolls, then expand the lists its band
-/// picks, with the resist rolls `roller` makes on the way. More effects than
-/// `max_effects_per_intent` is `BUDGET`.
+/// Roll the rule's `check:`, then expand the lists its band picks, rolling each nested check
+/// on the way, all on `roller`. More effects than `max_effects_per_intent` is `BUDGET`.
 pub(crate) fn expand(
     context: &Context,
     rule: &Rule,
@@ -46,92 +44,73 @@ pub(crate) fn expand(
     mut roller: Roller,
 ) -> Result<Expansion, Reason> {
     let rolled = match &rule.check {
-        Some(check) => Some(roller.roll_check(context, check)?),
+        Some(check) => Some(check.roll(context, &mut roller)?),
         None => None,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
-    let effects = build_effects(context, rule, outcome, &mut roller)?;
+    let mut reports = Vec::new();
+    let effects = build_effects(context, rule, outcome, &mut roller, &mut reports)?;
     if effects.len() > context.canon.budget.max_effects_per_intent as usize {
         return Err(Reason::Budget);
     }
     Ok(Expansion {
         effects,
         rolled,
-        resisted: roller.into_reports(),
+        reports,
         cause,
     })
 }
 
-/// The effects the rule's `do` list makes, with faces of 1 and no resist: their shapes are
-/// what the pick stage and habits read before the round rolls.
+/// The effects the rule's `do` list makes, with faces of 1 and its nested checks rolled on
+/// them, told to nobody: their shapes are what the pick stage and habits read before the round
+/// rolls.
 pub(crate) fn preview(context: &Context, rule: &Rule) -> Result<Vec<Effect>, Reason> {
-    build_effects(context, rule, None, &mut PreviewDice)
+    build_effects(context, rule, None, &mut PreviewDice, &mut Vec::new())
 }
 
 /// `do`, then the list `outcome` picks: `success`, `partial` or `miss`. `None` means the
-/// rule did not roll. `dice.resist` returns the subject's band; success shrugs the effect off.
+/// rule did not roll. Each nested check's roll goes on `reports`.
 fn build_effects(
     context: &Context,
     rule: &Rule,
     outcome: Option<Outcome>,
     dice: &mut dyn Dice,
+    reports: &mut Vec<MoveReport>,
 ) -> Result<Vec<Effect>, Reason> {
-    let mut selected = Vec::new();
-    selected.extend(rule.do_.iter());
-    match outcome {
-        Some(Outcome::Success) => selected.extend(rule.success.iter()),
-        Some(Outcome::Partial) => selected.extend(rule.partial.iter()),
-        Some(Outcome::Miss) => selected.extend(rule.miss.iter()),
-        None => {}
-    }
-    let mut effects = Vec::with_capacity(selected.len());
-    let mut last_resist = None;
-    for template in selected {
-        push_effects(context, template, &mut effects, &mut last_resist, dice)?;
+    let picked =
+        outcome.map(|outcome| select_list(outcome, &rule.success, &rule.partial, &rule.miss));
+    let mut effects = Vec::new();
+    for template in rule.do_.iter().chain(picked.into_iter().flatten()) {
+        push_effects(context, template, &mut effects, reports, dice)?;
     }
     Ok(effects)
+}
+
+/// The list `outcome` picks.
+fn select_list<'c>(
+    outcome: Outcome,
+    success: &'c [EffectTemplate],
+    partial: &'c [EffectTemplate],
+    miss: &'c [EffectTemplate],
+) -> &'c [EffectTemplate] {
+    match outcome {
+        Outcome::Success => success,
+        Outcome::Partial => partial,
+        Outcome::Miss => miss,
+    }
 }
 
 fn push_effects(
     context: &Context,
     template: &EffectTemplate,
     effects: &mut Vec<Effect>,
-    last_resist: &mut Option<Outcome>,
+    reports: &mut Vec<MoveReport>,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let (world, intent) = (context.world, context.intent);
     let viewer = intent.actor.as_ref();
-    if let Some(spec) = template.resist() {
-        let shrugged = match spec {
-            ResistSpec::Same => match last_resist {
-                Some(Outcome::Success) => true,
-                Some(_) => false,
-                // No earlier resist roll: the loader refuses this (`resist_same_without_roll`).
-                None => return Err(Reason::Schema),
-            },
-            ResistSpec::Roll {
-                subject,
-                check,
-                resisted,
-            } => {
-                let actor = expr::resolve_actor(context, subject)?;
-                let band = dice.resist(context, actor, check)?;
-                *last_resist = Some(band);
-                if band == Outcome::Success {
-                    for alt in resisted {
-                        push_effects(context, alt, effects, last_resist, dice)?;
-                    }
-                    return Ok(());
-                }
-                false
-            }
-        };
-        if shrugged {
-            return Ok(());
-        }
-    }
     match template {
-        EffectTemplate::Flag { of, key, value, .. } => {
+        EffectTemplate::Flag { of, key, value } => {
             let kind = match of {
                 grammar::Object::Exit(exit) if key == OPEN => EffectKind::ExitOpen {
                     exit: exit.clone(),
@@ -174,9 +153,7 @@ fn push_effects(
             };
             effects.push(location_effect(context, &place)?);
         }
-        EffectTemplate::Meter {
-            of, key, add, set, ..
-        } => {
+        EffectTemplate::Meter { of, key, add, set } => {
             let entity = expr::resolve_entity(context, of)?;
             let write = meter_offset(context, &entity, key, add.as_ref(), set.as_ref(), dice)?;
             effects.push(Effect::new(
@@ -189,9 +166,7 @@ fn push_effects(
                 },
             ));
         }
-        EffectTemplate::Item {
-            of, id, add, max, ..
-        } => {
+        EffectTemplate::Item { of, id, add, max } => {
             let item_id = expr::resolve_item_id(context, id)?;
             let (actor_id, place) = match expr::resolve_entity(context, of)? {
                 entity::Id::Actor(id) => (Some(id), None),
@@ -250,9 +225,7 @@ fn push_effects(
                 },
             ));
         }
-        EffectTemplate::Narrate {
-            to, text, fact_ids, ..
-        } => {
+        EffectTemplate::Narrate { to, text, fact_ids } => {
             let to = match to {
                 NarrateTo::Here => world.actors_at(expr::resolve_here(context)?),
                 NarrateTo::Self_ => {
@@ -294,6 +267,21 @@ fn push_effects(
                     fact: fact.clone(),
                 },
             ));
+        }
+        EffectTemplate::Check {
+            by,
+            check,
+            success,
+            partial,
+            miss,
+        } => {
+            let actor_id = expr::resolve_actor(context, by)?.clone();
+            let roll = check.roll(context, dice)?;
+            let picked = select_list(roll.outcome, success, partial, miss);
+            reports.push(MoveReport::Rolled { actor_id, roll });
+            for template in picked {
+                push_effects(context, template, effects, reports, dice)?;
+            }
         }
     }
     Ok(())
@@ -352,9 +340,4 @@ impl Dice for PreviewDice {
     }
 
     fn push_line(&mut self, _text: String) {}
-
-    /// A resist roll that does not shrug the effect off.
-    fn resist(&mut self, _: &Context, _: &ActorId, _: &rule::Check) -> Result<Outcome, Reason> {
-        Ok(Outcome::Miss)
-    }
 }

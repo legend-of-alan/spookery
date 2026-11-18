@@ -270,6 +270,11 @@ fn break_pack(pack: &Path, fault: &str) {
             "      verb: wait\n    do: []\n",
             "      verb: wait\n    do:\n      - item: { of: self, id: target, add: 1 }\n",
         ),
+        "a save by target with none" => replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "      verb: wait\n    do: []\n",
+            "      verb: wait\n    do:\n      - check: { by: target, total: 1d20, success_at: 12 }\n",
+        ),
         "target on an exit" => replace_in_file(
             &pack.join("world/places/gate_yard.md"),
             "          of: world\n          key: passage\n",

@@ -13,8 +13,7 @@ use crate::rules::cond;
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
 use crate::rules::rule::{
-    self, ChangeWatch, Cond, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule, Slot,
-    When,
+    self, ChangeWatch, Cond, EffectTemplate, LocationTo, NarrateTo, Owner, Rule, Slot, When,
 };
 use crate::Reason;
 
@@ -142,48 +141,6 @@ pub(crate) fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
         &format!("add world/items/{id}.md"),
     )
     .at_path(path)
-}
-
-pub(super) fn resist_same_without_roll(rules: &rule::Table) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    for rule in rules.iter() {
-        let after_do = scan_resist(&rule.do_, false, rule, &mut diags);
-        scan_resist(&rule.success, after_do, rule, &mut diags);
-        scan_resist(&rule.partial, after_do, rule, &mut diags);
-        scan_resist(&rule.miss, after_do, rule, &mut diags);
-    }
-    diags
-}
-
-fn scan_resist(
-    effects: &[EffectTemplate],
-    mut seen: bool,
-    rule: &Rule,
-    diags: &mut Vec<Diagnostic>,
-) -> bool {
-    for effect in effects {
-        match effect.resist() {
-            Some(ResistSpec::Same) if !seen => {
-                diags.push(
-                    schema_error(
-                        &rule.file,
-                        &format!(
-                            "rule '{}' uses resist: same before any resist roll",
-                            rule.local_id
-                        ),
-                        "put a resist roll before it, or name the check on this effect",
-                    )
-                    .at_path(format!("rules[{}]", rule.index)),
-                );
-            }
-            Some(ResistSpec::Roll { resisted, .. }) => {
-                seen = true;
-                scan_resist(resisted, true, rule, diags);
-            }
-            _ => {}
-        }
-    }
-    seen
 }
 
 pub(super) fn reveal_problems(
@@ -541,7 +498,8 @@ fn check_teleport_verbs(canon: &Canon) -> Vec<Diagnostic> {
         .filter(|rule| {
             rule.owner == Owner::Verb
                 && rule
-                    .top_templates()
+                    .templates()
+                    .into_iter()
                     .any(|effect| matches!(effect, EffectTemplate::Location { teleport: true, .. }))
         })
         .map(|rule| {
@@ -853,7 +811,7 @@ fn narrates_to_present(rule: &Rule) -> bool {
 }
 
 /// Whether `rule` needs a subject: `self` or `here` named as `of`, `subject` or `to`, a
-/// resist's `subject`, a narrate's `to`, a location effect, which moves the subject, or a
+/// nested check's `by`, a narrate's `to`, a location effect, which moves the subject, or a
 /// check, which is the subject's.
 fn names_subject(rule: &Rule) -> bool {
     let mut needs = rule.check.is_some();

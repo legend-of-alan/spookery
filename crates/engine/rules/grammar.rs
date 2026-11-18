@@ -11,9 +11,8 @@ pub enum Subject {
     Id(String),
 }
 
-/// The actor a slot that needs one names: `subject:`, and `to:` on a modifier, a memory or a
-/// reveal. A resist's `subject:` is the actor who rolls to resist, not the subject of the outer
-/// line.
+/// The actor a slot that needs one names: `subject:`, `to:` on a modifier, a memory or a
+/// reveal, and a nested check's `by:`, the actor told that check's outcome.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Actor {
     Self_,

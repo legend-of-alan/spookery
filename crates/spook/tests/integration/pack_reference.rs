@@ -18,7 +18,7 @@ const EFFECT_KEYS: &[&str] = &[
     "- reveal:",
     "- wield:",
     "- unwield:",
-    "resist: same",
+    "- check:",
     "add:",
     "set:",
 ];

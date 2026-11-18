@@ -505,16 +505,16 @@ fn the_slot_clears_in_the_round(world: &mut World) {
     );
 }
 
-#[given(expr = "wren resists the poison with a seeded Constitution roll of 15 vs 12")]
-fn wren_resists_on_a_seeded_roll(world: &mut World) {
-    let pack = support::copy_pack("docks", "resist");
+#[given(expr = "wren saves against the poison with a seeded Constitution roll of 15 vs 12")]
+fn wren_rolls_a_nested_check_on_a_seeded_roll(world: &mut World) {
+    let pack = support::copy_pack("docks", "nested-check");
     let face = roll::faces(
         &roll::Key {
             seed: "docks-001".to_string(),
             round_index: 1,
             rule_id: "item:poisoned_dagger/attack".to_string(),
-            subject_id: Some("wren".into()),
-            index: 0,
+            subject_id: Some("harbormouse".into()),
+            index: 1,
         },
         0,
         1,
@@ -556,23 +556,23 @@ fn wren_resists_on_a_seeded_roll(world: &mut World) {
           of: target
           key: hp
           add: -3
-      - meter:
-          of: target
-          key: hp
-          add: -2
-          resist:
-            subject: target
-            total: 1d20 + target.constitution
-            success_at: 12
-            resisted:
-              - narrate:
-                  to: here
-                  text: The poison burns, then fades.
-      - flag:
-          of: target
-          key: poisoned
-          value: true
-          resist: same
+      - check:
+          by: target
+          total: 1d20 + target.constitution
+          success_at: 12
+          success:
+            - narrate:
+                to: here
+                text: The poison burns, then fades.
+          miss:
+            - meter:
+                of: target
+                key: hp
+                add: -2
+            - flag:
+                of: target
+                key: poisoned
+                value: true
 ",
     );
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
@@ -589,24 +589,29 @@ fn wren_resists_on_a_seeded_roll(world: &mut World) {
     world.scratch = stat.to_string();
 }
 
-#[when(expr = "harbormouse hits wren with poisoned_dagger")]
-fn harbormouse_hits_wren_with_the_dagger(world: &mut World) {
+#[when(expr = "harbormouse hits a seated wren with poisoned_dagger")]
+fn harbormouse_hits_a_seated_wren_with_the_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let outputs = handle_move(&pack, "harbormouse", "attack wren")
-        .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
-    let output = &outputs[0];
-    let wren = output.reports.iter().find_map(|report| match report {
-        spookery_engine::MoveReport::Rolled { actor_id, roll } if actor_id == "wren" => {
-            Some(roll.clone())
-        }
-        _ => None,
-    });
-    let Some(wren) = wren else {
-        panic!("wren did not roll: {:?}", output.reports);
-    };
-    assert_eq!(wren.total, 15, "stat {}", world.scratch);
-    assert_eq!(wren.success_at, 12);
-    assert_eq!(output.reports.len(), 2, "{:?}", output.reports);
+    table::serve_in_process(world, &pack);
+    table::seat_actor(world, &pack, "harbormouse");
+    table::seat_actor(world, &pack, "wren");
+    world.wren_mark = table::player_client(world, "wren").seat.mark();
+    let _ = table::actor_send(world, "harbormouse", "attack wren", "\"kind\":\"check\"");
+    let round: Value = serde_json::from_str(read_first_round_line(&pack).trim()).unwrap();
+    let dice = round["dice"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{round}"));
+    assert_eq!(dice.len(), 2, "{round}");
+    let line = dice[1].as_str().unwrap_or_else(|| panic!("{round}"));
+    let total = super::checks::dice_line_total(line);
+    assert_eq!(total, 15, "stat {}: {line}", world.scratch);
+}
+
+#[then(expr = "wren is told she saved")]
+fn wren_is_told_her_nested_check_succeeded(world: &mut World) {
+    let needle = r#"{"kind":"check","outcome":"success"}"#;
+    let added = table::wait_actor_from(world, "wren", world.wren_mark, needle);
+    assert_eq!(added.matches(r#""kind":"check""#).count(), 1, "{added}");
 }
 
 #[then(expr = "wren loses 3 hp, is not poisoned, sees {string}, and the round shows no refusal")]
