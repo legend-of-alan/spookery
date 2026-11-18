@@ -621,7 +621,8 @@ fn compile_one(
         When::Verb { target, .. } => *target,
         When::Habit | When::Change(_) => TargetKind::None,
     };
-    let misplaced = rule::find_misplaced_target(targets, rule.slots()).map(|(key, needs)| {
+    let misplaced_target = rule.mentions().find_misplaced_target(targets);
+    let misplaced = misplaced_target.map(|(key, needs)| {
         let (needs, targets) = (needs.as_str(), targets.as_str());
         (
             format!("says target in {key}, but its target is {targets}"),

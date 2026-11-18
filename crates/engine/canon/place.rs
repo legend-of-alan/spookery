@@ -14,7 +14,7 @@ use crate::ecs::component::meter;
 use crate::ecs::id::PlaceId;
 use crate::entity;
 use crate::rules::expr::Expr;
-use crate::rules::rule::{self, Cost, Owner, Rule, TargetKind};
+use crate::rules::rule::{Cost, Owner, Rule, TargetKind};
 
 /// The meters one place file declares, by that file, for `load_canon` to add once the meters
 /// every actor carries have loaded.
@@ -161,8 +161,8 @@ fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>
             file: file.to_string(),
             index,
         };
-        let slots = compiled_exit.slots();
-        if let Some((key, _)) = rule::find_misplaced_target(TargetKind::None, slots) {
+        let mentions = compiled_exit.mentions();
+        if let Some((key, _)) = mentions.find_misplaced_target(TargetKind::None) {
             let problem = format!(
                 "exit '{}' says target in {key}, but an exit has no target",
                 exit.id

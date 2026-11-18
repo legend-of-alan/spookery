@@ -13,7 +13,7 @@ use crate::rules::cond;
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
 use crate::rules::rule::{
-    self, ChangeWatch, Cond, EffectTemplate, LocationTo, NarrateTo, Owner, Rule, Slot, When,
+    self, ChangeWatch, Cond, EffectTemplate, LocationTo, NarrateTo, Owner, Rule, When,
 };
 use crate::Reason;
 
@@ -61,7 +61,7 @@ pub(super) fn broken_exits(
                     );
                 }
             }
-            for id in collect_item_ids(exit.slots()) {
+            for id in exit.mentions().item_ids {
                 if !items.contains_key(id) {
                     diags.push(
                         schema_error(
@@ -84,7 +84,7 @@ pub(super) fn unknown_rule_items(
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
-        for id in collect_item_ids(rule.slots()) {
+        for id in rule.mentions().item_ids {
             if items.contains_key(id) {
                 continue;
             }
@@ -96,15 +96,6 @@ pub(super) fn unknown_rule_items(
         }
     }
     diags
-}
-
-/// The item ids `slots` name, each once and in order.
-fn collect_item_ids<'l>(slots: Vec<(&'static str, Slot<'l>)>) -> BTreeSet<&'l str> {
-    let ids = slots.into_iter().filter_map(|(_, slot)| match slot {
-        Slot::Item(id) => Some(id),
-        Slot::Owner(_) | Slot::Target(_) => None,
-    });
-    ids.collect()
 }
 
 /// Modifier effects naming a modifier `rules/modifiers.yaml` does not define.
@@ -825,10 +816,12 @@ fn names_subject(rule: &Rule) -> bool {
         EffectTemplate::Location { .. } => needs = true,
         _ => {}
     });
-    let self_slot = Slot::Owner(grammar::Object::Actor(grammar::Actor::Self_));
-    let here = Slot::Owner(grammar::Object::Here);
-    let names_self_or_here = |(_, slot): &(&str, Slot)| *slot == self_slot || *slot == here;
-    needs || rule.slots().iter().any(names_self_or_here)
+    let self_or_here = [
+        grammar::Object::Actor(grammar::Actor::Self_),
+        grammar::Object::Here,
+    ];
+    let owners = rule.mentions().owners;
+    needs || self_or_here.iter().any(|of| owners.contains(of))
 }
 
 fn mark_cycles(next: &[Vec<usize>], hit: &mut [bool]) {
