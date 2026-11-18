@@ -75,7 +75,7 @@ record reads back as the bytes that were written. Verify leaves the pack
 unchanged. Each roll keeps its own dice. An
 unrelated roll in the same round does not move them, and verify reproduces
 them. Two moves that target each other in one round each roll once, against
-their own rule's threshold. A number in a rule can roll dice, including an NPC habit's effect. Those faces derive from the world's
+their own rule's `success_at`. A number in a rule can roll dice, a check's `total` and an NPC habit's effect among them. Those faces derive from the world's
 seed and the round, are written on the journal line, and are shown to the GM. A
 save with no seed gets a fresh one the first time the world opens for play, so
 each copy of a shipped pack rolls its own dice; writing `seed:` into
@@ -103,8 +103,8 @@ Tested in `features/replay/the_journal_verifies.feature`,
 
 A player sees a hidden fact only when that character knows it. Stripping prose
 does not reveal a hidden sentence. Saying a hidden fact does not
-teach it. Roll faces
-go to the GM. Expression dice do too. The player hears success, partial, or miss, and does not see those faces. An NPC's roll sends
+teach it. Dice faces,
+a check's among them, go to the GM. The player hears success, partial, or miss, and does not see those faces. An NPC's roll sends
 the player no roll line. Host status shows the host-only trace. The player's
 resume leaves that trace out. The resume digest shows only notes the view shows. A place lists only its own stock.
 
@@ -122,8 +122,8 @@ refused effect rolls the whole rule back. A rule over the effect cap is refused
 whole, not cut short, and the journal records the refusal. That holds for a change
 rule too. A move's check rolls when the move lands, after the gate admits it
 and its start cost is paid, so a move the gate refuses then rolls no dice, and a
-roll whose effects are refused is not reported as a success. A roll threshold
-that fails to evaluate refuses that move with its error, and the rest of the
+roll whose effects are refused is not reported as a success. A check's
+`success_at` that fails to evaluate refuses that move with its error, and the rest of the
 round lands and commits. A move pays the cost of the rule resolve picked for it,
 even when an earlier move that round changed which rule its verb would pick. A place's verb rule beats the shared rule. A cast
 member's verb rule is picked by naming them while they share the actor's place,
@@ -141,7 +141,7 @@ a rule that goes over the state-key limit.
 
 Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/round/an_intent_the_round_has_no_room_for_is_refused_budget.feature`,
-`features/round/a_broken_roll_threshold_refuses_one_move.feature`,
+`features/round/a_broken_success_at_refuses_one_move.feature`,
 `features/round/apply_pays_the_rule_resolve_picked.feature`,
 `features/seats/a_round_refusal_names_the_gap.feature`,
 `features/rules/rules_live_with_their_owner.feature`,

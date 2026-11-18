@@ -16,8 +16,8 @@ use crate::ecs::id::{ActorId, PlaceId};
 use crate::rules::expr::{stamp_spots, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
-    ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner, Phase,
-    ResistSpec, RollSpec, Rule, TargetKind, When,
+    self, ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner,
+    Phase, ResistSpec, Rule, TargetKind, When,
 };
 
 const MOVES_REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
@@ -57,7 +57,7 @@ pub struct RuleYaml {
     /// Whether the actor may cancel the action while it is under way.
     #[serde(default)]
     pub cancellable: bool,
-    pub roll: Option<RollYaml>,
+    pub check: Option<CheckYaml>,
     #[serde(rename = "do", default)]
     pub do_: Vec<EffectYaml>,
     #[serde(default)]
@@ -255,9 +255,9 @@ pub struct FinishYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RollYaml {
-    pub check: String,
-    pub threshold: Spanned<ExprYaml>,
+pub struct CheckYaml {
+    pub total: Spanned<ExprYaml>,
+    pub success_at: Spanned<ExprYaml>,
     pub partial_at: Option<Spanned<ExprYaml>>,
 }
 
@@ -396,8 +396,8 @@ pub enum ResistYaml {
 #[serde(deny_unknown_fields)]
 pub struct ResistRollYaml {
     pub subject: Option<Spanned<String>>,
-    pub check: String,
-    pub threshold: Spanned<ExprYaml>,
+    pub total: Spanned<ExprYaml>,
+    pub success_at: Spanned<ExprYaml>,
     #[serde(default)]
     pub resisted: Vec<EffectYaml>,
 }
@@ -504,8 +504,8 @@ fn compile_one(
             None
         }
     };
-    let roll = match entry.roll.as_ref().map(roll_of).transpose() {
-        Ok(roll) => roll,
+    let check = match entry.check.as_ref().map(check_of).transpose() {
+        Ok(check) => check,
         Err(fault) => {
             diags.push(source.fault("", fault));
             None
@@ -528,21 +528,21 @@ fn compile_one(
                 "remove them; a change is a consequence, not an action",
             ));
         }
-        if roll.is_none() && (!success.is_empty() || !partial.is_empty() || !miss.is_empty()) {
+        if check.is_none() && (!success.is_empty() || !partial.is_empty() || !miss.is_empty()) {
             diags.push(schema_error(
                 file,
-                &format!("rule '{local}' lists an outcome without a roll"),
-                "add roll or move those effects to do",
+                &format!("rule '{local}' lists an outcome without a check"),
+                "add check or move those effects to do",
             ));
         }
-        if roll.is_some() && success.is_empty() && (!partial.is_empty() || !miss.is_empty()) {
+        if check.is_some() && success.is_empty() && (!partial.is_empty() || !miss.is_empty()) {
             diags.push(schema_error(
                 file,
-                &format!("rule '{local}' rolls without a success list"),
+                &format!("rule '{local}' has a check without a success list"),
                 "add success",
             ));
         }
-        match &roll {
+        match &check {
             Some(spec) if spec.partial_at.is_some() && partial.is_empty() => {
                 diags.push(schema_error(
                     file,
@@ -554,20 +554,20 @@ fn compile_one(
                 diags.push(schema_error(
                     file,
                     &format!("rule '{local}' lists partial without partial_at"),
-                    "set partial_at under roll",
+                    "set partial_at under check",
                 ))
             }
             Some(spec)
                 if spec.partial_at.as_ref().is_some_and(|band| {
                     band.constant()
-                        .zip(spec.threshold.constant())
-                        .is_some_and(|(band, threshold)| band >= threshold)
+                        .zip(spec.success_at.constant())
+                        .is_some_and(|(band, success_at)| band >= success_at)
                 }) =>
             {
                 diags.push(schema_error(
                     file,
-                    &format!("rule '{local}' sets partial_at at or above the threshold"),
-                    "set partial_at strictly below the threshold",
+                    &format!("rule '{local}' sets partial_at at or above success_at"),
+                    "set partial_at strictly below success_at",
                 ));
             }
             _ => {}
@@ -583,7 +583,7 @@ fn compile_one(
         owner: owner.clone(),
         when,
         if_,
-        roll,
+        check,
         start: Phase {
             cost,
             counts_as_act: entry
@@ -827,13 +827,10 @@ fn counts_of(yaml: &Counts) -> Result<Vec<(String, Expr)>, Fault> {
         .collect()
 }
 
-fn roll_of(yaml: &RollYaml) -> Result<RollSpec, Fault> {
-    if yaml.check.is_empty() {
-        return Err("roll.check is empty".into());
-    }
-    Ok(RollSpec {
-        check: yaml.check.clone(),
-        threshold: expr_of(&yaml.threshold)?,
+fn check_of(yaml: &CheckYaml) -> Result<rule::Check, Fault> {
+    Ok(rule::Check {
+        total: expr_of(&yaml.total)?,
+        success_at: expr_of(&yaml.success_at)?,
         partial_at: yaml.partial_at.as_ref().map(expr_of).transpose()?,
     })
 }
@@ -982,8 +979,11 @@ fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {
                 Some(subject) => actor_of(subject)?,
                 None => grammar::Actor::Target,
             },
-            check: roll.check.clone(),
-            threshold: expr_of(&roll.threshold)?,
+            check: Box::new(rule::Check {
+                total: expr_of(&roll.total)?,
+                success_at: expr_of(&roll.success_at)?,
+                partial_at: None,
+            }),
             resisted: roll
                 .resisted
                 .iter()

@@ -28,19 +28,7 @@ meters:
 
 `min` is the floor, `base_cap` is the trained cap, and `max` is as high as current can go. `base` is the base a new actor stores. Current is base plus offset, and it is not a field in the save.
 
-`rules/checks.yaml` rolls that meter:
-
-```yaml
-schema: checks
-checks:
-  - id: nerve
-    dice:
-      count: 2
-      sides: 6
-    meter: nerve
-```
-
-`rules/verbs.yaml` has `wait`, `travel`, and `steady`. `wait` is a yield: `do: []` and no success, partial, or miss list. `travel` follows an exit of the current place: `travel lane` uses the exit `lane`. `steady` names the `nerve` check. `tend_the_yard` is a habit rule on `cast/keeper.md`, with `when: habit`.
+`rules/verbs.yaml` has `wait`, `travel`, and `steady`. `wait` is a yield: `do: []` and no success, partial, or miss list. `travel` follows an exit of the current place: `travel lane` uses the exit `lane`. `steady` checks `2d6 + self.nerve`: two six-sided dice plus the nerve meter of the actor who steadies. `tend_the_yard` is a habit rule on `cast/keeper.md`, with `when: habit`.
 
 `rules/budget.yaml` uses the same counters as the docks pack and sets `idle: on`, so an empty table still wakes.
 
@@ -89,15 +77,15 @@ Append a yield to `rules/verbs.yaml`. A yield commits a round and changes no num
 
 ## Add a check with partial_at
 
-`partial_at` is an absolute total, strictly below the roll `threshold`. The rule needs `check` and a `partial` list. A total at or above the threshold takes `success`. A total at or above `partial_at` and below the threshold takes `partial`. A lower total is a miss. This rule reuses the `nerve` check. The threshold is 8 and `partial_at` is 4, so a 2d6 plus the nerve meter can land in either band.
+`partial_at` is an absolute total, strictly below `success_at`. The rule needs `check` and a `partial` list. A total at or above `success_at` takes `success`. A total at or above `partial_at` and below `success_at` takes `partial`. A lower total is a miss. This rule rolls the same `2d6 + self.nerve` as `steady`. `success_at` is 8 and `partial_at` is 4, so the total can land in either band.
 
 ```yaml path=rules/verbs.yaml mode=append
   - id: press
     when:
       verb: press
-    roll:
-      check: nerve
-      threshold: 8
+    check:
+      total: 2d6 + self.nerve
+      success_at: 8
       partial_at: 4
     success:
       - note:

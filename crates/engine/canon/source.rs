@@ -17,7 +17,6 @@ pub(super) const MODIFIERS_SCHEMA: &str = "modifiers";
 pub(super) const VERBS_SCHEMA: &str = "verbs";
 pub(super) const ITEM_SCHEMA: &str = "item";
 pub(super) const STORY_SCHEMA: &str = "story";
-pub(super) const CHECKS_SCHEMA: &str = "checks";
 pub(super) const BUDGET_SCHEMA: &str = "budget";
 
 /// One pack file as the loader sees it: its pack-relative name, its YAML text,

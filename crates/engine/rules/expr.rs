@@ -1,14 +1,13 @@
 //! Dice and arithmetic inside a rule number.
 
-use crate::canon::Canon;
+use crate::ecs::component;
 use crate::ecs::id::ActorId;
-use crate::ecs::{self, component};
 use crate::entity;
 use crate::intent::Target;
 use crate::rules::context::Context;
 use crate::rules::grammar;
 use crate::rules::roll::Outcome;
-use crate::rules::rule::LineColumn;
+use crate::rules::rule::{self, LineColumn};
 use crate::Reason;
 
 /// Faces for one expression. `begin` starts a new roll seed. `push_line` records the shown line.
@@ -16,14 +15,12 @@ pub(crate) trait Dice {
     fn begin(&mut self);
     fn draw(&mut self, count: u32, sides: u32) -> Result<Vec<u32>, Reason>;
     fn push_line(&mut self, text: String);
-    /// The band of `actor_id`'s resist roll against `threshold`.
+    /// The band of `actor_id`'s resist roll of `check`.
     fn resist(
         &mut self,
-        canon: &Canon,
-        world: &ecs::World,
+        context: &Context,
         actor_id: &ActorId,
-        check_id: &str,
-        threshold: i64,
+        check: &rule::Check,
     ) -> Result<Outcome, Reason>;
 }
 
@@ -39,14 +36,7 @@ impl Dice for NoDice {
 
     fn push_line(&mut self, _text: String) {}
 
-    fn resist(
-        &mut self,
-        _: &Canon,
-        _: &ecs::World,
-        _: &ActorId,
-        _: &str,
-        _: i64,
-    ) -> Result<Outcome, Reason> {
+    fn resist(&mut self, _: &Context, _: &ActorId, _: &rule::Check) -> Result<Outcome, Reason> {
         Err(Reason::Schema)
     }
 }

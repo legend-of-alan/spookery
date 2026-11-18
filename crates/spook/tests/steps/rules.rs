@@ -476,9 +476,9 @@ fn attack_targets_defense(world: &mut World) {
     when:
       verb: attack
       target: actor
-    roll:
-      check: strike
-      threshold: "target.defense + 10"
+    check:
+      total: 1d20 + self.might
+      success_at: "target.defense + 10"
     success:
       - flag:
           of: target
@@ -548,7 +548,7 @@ fn harbormouse_attacks(world: &mut World) {
     });
     let rolled = rolled.unwrap_or_else(|| panic!("Harbormouse did not roll"));
     assert_eq!(rolled.total, 21, "{rolled:?}");
-    assert_eq!(rolled.target, 22, "{rolled:?}");
+    assert_eq!(rolled.success_at, 22, "{rolled:?}");
     world.scratch = match rolled.outcome {
         spookery::protocol::Outcome::Success => "success",
         spookery::protocol::Outcome::Partial => "partial",
@@ -870,8 +870,8 @@ fn a_verb_with_time_and_resist(world: &mut World) {
           add: 1
           resist:
             subject: self
-            check: exert
-            threshold: 2
+            total: 2d6 + self.vigor
+            success_at: 2
 "#,
     );
     edit_save(&pack, |_| {});
@@ -911,8 +911,8 @@ const SAME_AFTER_ROLL: &str = "
           add: -1
           resist:
             subject: self
-            check: exert
-            threshold: 2
+            total: 2d6 + self.vigor
+            success_at: 2
             resisted: []
       - meter:
           of: self

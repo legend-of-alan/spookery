@@ -2,16 +2,14 @@
 
 use std::collections::BTreeMap;
 
-use crate::canon::Canon;
-use crate::ecs;
 use crate::ecs::id::ActorId;
 use crate::hash::blake2s_256;
 use crate::round::Ledger;
 use crate::rules::context::Context;
 use crate::rules::expr::{self, eval_with_dice};
 use crate::rules::roll::Outcome;
-use crate::rules::roll::{self, faces, MoveReport, Roll};
-use crate::rules::rule::RollSpec;
+use crate::rules::roll::{self, classify, faces, MoveReport, Roll};
+use crate::rules::rule;
 use crate::Reason;
 
 pub(crate) fn shuffle_key(seed: &str, round_index: u64, actor_id: &ActorId) -> [u8; 32] {
@@ -51,25 +49,6 @@ impl Dice {
         }
     }
 
-    /// The one `rules::roll` call.
-    fn roll_check(
-        &mut self,
-        canon: &Canon,
-        world: &ecs::World,
-        key: roll::Key,
-        check_id: &str,
-        threshold: i64,
-        partial_at: Option<i64>,
-    ) -> Result<Roll, Reason> {
-        let actor_id = key
-            .subject_id
-            .as_ref()
-            .filter(|id| world.actors().contains(id))
-            .ok_or(Reason::UnknownId)?;
-        let check = canon.checks.get(check_id).ok_or(Reason::UnknownId)?;
-        roll::check(check, world, actor_id, &key, threshold, partial_at)
-    }
-
     pub(crate) fn roller<'a>(
         &'a mut self,
         ledger: &'a mut Ledger,
@@ -101,22 +80,23 @@ pub(crate) struct Roller<'a> {
 }
 
 impl Roller<'_> {
-    /// Evaluate a rule's `roll:` spec, threshold then partial_at, then roll its check.
-    pub(crate) fn roll_spec(&mut self, context: &Context, spec: &RollSpec) -> Result<Roll, Reason> {
-        let threshold = eval_with_dice(context, &spec.threshold, self)?;
-        let partial_at = match &spec.partial_at {
-            Some(expr) => Some(eval_with_dice(context, expr, self)?),
-            None => None,
-        };
-        let key = self.dice.next_key(self.rule, self.subject);
-        self.dice.roll_check(
-            context.canon,
-            context.world,
-            key,
-            &spec.check,
-            threshold,
-            partial_at,
-        )
+    /// Evaluate `check`'s `total`, then `success_at`, then `partial_at`, each writing its own
+    /// dice line, and classify the total.
+    pub(crate) fn roll_check(
+        &mut self,
+        context: &Context,
+        check: &rule::Check,
+    ) -> Result<Roll, Reason> {
+        let total = eval_with_dice(context, &check.total, self)?;
+        let success_at = eval_with_dice(context, &check.success_at, self)?;
+        let partial_at = (check.partial_at.as_ref())
+            .map(|expr| eval_with_dice(context, expr, self))
+            .transpose()?;
+        Ok(Roll {
+            total,
+            success_at,
+            outcome: classify(total, success_at, partial_at),
+        })
     }
 
     /// The resist rolls this roller made, in order.
@@ -144,22 +124,19 @@ impl expr::Dice for Roller<'_> {
         self.ledger.dice.push(text);
     }
 
+    /// Rolls `check` on `actor_id`'s own keys for this rule.
     fn resist(
         &mut self,
-        canon: &Canon,
-        world: &ecs::World,
+        context: &Context,
         actor_id: &ActorId,
-        check_id: &str,
-        threshold: i64,
+        check: &rule::Check,
     ) -> Result<Outcome, Reason> {
-        let key = self.dice.next_key(self.rule, Some(actor_id));
-        let out = self
-            .dice
-            .roll_check(canon, world, key, check_id, threshold, None)?;
+        let roll = (self.dice.roller(self.ledger, self.rule, Some(actor_id)))
+            .roll_check(context, check)?;
         self.reports.push(MoveReport::Rolled {
             actor_id: actor_id.clone(),
-            roll: out.clone(),
+            roll: roll.clone(),
         });
-        Ok(out.outcome)
+        Ok(roll.outcome)
     }
 }

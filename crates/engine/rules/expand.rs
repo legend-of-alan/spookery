@@ -1,9 +1,9 @@
 //! Turn a rule template into effects for one intent.
 
-use crate::canon::{Canon, OPEN};
+use crate::canon::OPEN;
+use crate::ecs::component;
 use crate::ecs::component::meter;
 use crate::ecs::id::ActorId;
-use crate::ecs::{self, component};
 use crate::entity;
 use crate::intent::Target;
 use crate::round::dice::Roller;
@@ -13,7 +13,7 @@ use crate::rules::expr::{self, Dice, Expr};
 use crate::rules::grammar;
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{MoveReport, Roll};
-use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule};
+use crate::rules::rule::{self, EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule};
 use crate::Reason;
 
 /// Why a rule's effects are expanded and landed, which decides what the landing journals.
@@ -36,7 +36,7 @@ pub(crate) struct Expansion {
     pub cause: Cause,
 }
 
-/// Roll the rule's `roll:` spec, the one place a check rolls, then expand the lists its band
+/// Roll the rule's `check:`, the one place a check rolls, then expand the lists its band
 /// picks, with the resist rolls `roller` makes on the way. More effects than
 /// `max_effects_per_intent` is `BUDGET`.
 pub(crate) fn expand(
@@ -45,8 +45,8 @@ pub(crate) fn expand(
     cause: Cause,
     mut roller: Roller,
 ) -> Result<Expansion, Reason> {
-    let rolled = match &rule.roll {
-        Some(spec) => Some(roller.roll_spec(context, spec)?),
+    let rolled = match &rule.check {
+        Some(check) => Some(roller.roll_check(context, check)?),
         None => None,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
@@ -99,7 +99,7 @@ fn push_effects(
     last_resist: &mut Option<Outcome>,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
-    let (canon, world, intent) = (context.canon, context.world, context.intent);
+    let (world, intent) = (context.world, context.intent);
     let viewer = intent.actor.as_ref();
     if let Some(spec) = template.resist() {
         let shrugged = match spec {
@@ -112,12 +112,10 @@ fn push_effects(
             ResistSpec::Roll {
                 subject,
                 check,
-                threshold,
                 resisted,
             } => {
                 let actor = expr::resolve_actor(context, subject)?;
-                let number = expr::eval_with_dice(context, threshold, dice)?;
-                let band = dice.resist(canon, world, actor, check, number)?;
+                let band = dice.resist(context, actor, check)?;
                 *last_resist = Some(band);
                 if band == Outcome::Success {
                     for alt in resisted {
@@ -356,14 +354,7 @@ impl Dice for PreviewDice {
     fn push_line(&mut self, _text: String) {}
 
     /// A resist roll that does not shrug the effect off.
-    fn resist(
-        &mut self,
-        _: &Canon,
-        _: &ecs::World,
-        _: &ActorId,
-        _: &str,
-        _: i64,
-    ) -> Result<Outcome, Reason> {
+    fn resist(&mut self, _: &Context, _: &ActorId, _: &rule::Check) -> Result<Outcome, Reason> {
         Ok(Outcome::Miss)
     }
 }

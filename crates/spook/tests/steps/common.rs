@@ -106,11 +106,6 @@ fn break_pack(pack: &Path, fault: &str) {
             "  - id: exert\n    when:\n",
             "  - id: exert\n    audiance: player\n    when:\n",
         ),
-        "unknown check" => replace_in_file(
-            &pack.join("rules/verbs.yaml"),
-            "    check: exert\n",
-            "    check: courage\n",
-        ),
         "duplicate move" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "  - id: wait\n",
@@ -147,27 +142,6 @@ fn break_pack(pack: &Path, fault: &str) {
             "    base: 3
 ",
             "    base: 9
-",
-        ),
-        "check rolls zero dice" => replace_in_file(
-            &pack.join("rules/checks.yaml"),
-            "      count: 2
-",
-            "      count: 0
-",
-        ),
-        "a die with zero sides" => replace_in_file(
-            &pack.join("rules/checks.yaml"),
-            "      sides: 6
-",
-            "      sides: 0
-",
-        ),
-        "check names no meter" => replace_in_file(
-            &pack.join("rules/checks.yaml"),
-            "    meter: vigor
-",
-            "    meter: \"\"
 ",
         ),
         "pack_rev mismatch" => {

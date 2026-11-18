@@ -28,10 +28,6 @@ const FILES: &[(&str, &str)] = &[
         include_str!("../templates/starter/rules/verbs.yaml"),
     ),
     (
-        "rules/checks.yaml",
-        include_str!("../templates/starter/rules/checks.yaml"),
-    ),
-    (
         "rules/meters.yaml",
         include_str!("../templates/starter/rules/meters.yaml"),
     ),

@@ -116,8 +116,8 @@ fn pc_count(session: &session::Session) -> usize {
 fn add_exert_success(pack: &Path) -> Result<(), String> {
     let path = pack.join("rules/verbs.yaml");
     let text = fs::read_to_string(&path).map_err(|err| err.to_string())?;
-    let needle = "      threshold: 0\n    do: []\n";
-    let replacement = "      threshold: 0\n    do: []\n    success:\n      - item:\n          of: self\n          id: lamp_oil\n          add: 1\n";
+    let needle = "      success_at: 0\n    do: []\n";
+    let replacement = "      success_at: 0\n    do: []\n    success:\n      - item:\n          of: self\n          id: lamp_oil\n          add: 1\n";
     if !text.contains(needle) {
         return Err("the exert check was not where the property expected".to_string());
     }

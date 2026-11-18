@@ -371,9 +371,9 @@ rules:
       change:
         arrive: here
         subject: pc
-    roll:
-      check: stamina
-      threshold: 100
+    check:
+      total: 1d6 + self.vigor
+      success_at: 100
     success:
       - meter:
           of: self
@@ -389,11 +389,6 @@ The ground gives.
 ",
     )
     .unwrap();
-    replace_in_file(
-        &pack.join("rules/checks.yaml"),
-        "    meter: vigor\n",
-        "    meter: vigor\n  - id: stamina\n    dice:\n      count: 1\n      sides: 6\n    meter: vigor\n",
-    );
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");

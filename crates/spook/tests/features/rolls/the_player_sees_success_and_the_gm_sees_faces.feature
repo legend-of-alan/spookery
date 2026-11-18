@@ -4,7 +4,7 @@ Feature: The player sees success and the GM sees faces
     Given a docks table with a seated player
     When the player rolls exert
     Then the player sees a check success
-    And the journal records the check without faces
+    And the journal records the check's dice
     And world_time is 1085
 
   Scenario: A held exert shows faces only to the GM
@@ -16,4 +16,4 @@ Feature: The player sees success and the GM sees faces
     When the GM commits the round
     Then the GM sees the exert faces
     And the player sees a check result without faces
-    And the journal records the check without faces
+    And the journal records the check's dice

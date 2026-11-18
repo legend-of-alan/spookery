@@ -16,9 +16,9 @@ const NOTICE_ROWS: &str = "
   - id: notice_sure
     when:
       verb: notice_sure
-    roll:
-      check: exert
-      threshold: 3
+    check:
+      total: 2d6 + self.vigor
+      success_at: 3
     success:
       - flag:
           of: self
@@ -32,9 +32,9 @@ const NOTICE_ROWS: &str = "
   - id: notice_hard
     when:
       verb: notice_hard
-    roll:
-      check: exert
-      threshold: 14
+    check:
+      total: 2d6 + self.vigor
+      success_at: 14
     success:
       - flag:
           of: self
@@ -47,16 +47,16 @@ const NOTICE_ROWS: &str = "
           value: true
 ";
 
-// The mark's threshold rolls its own dice and reads the target's vigor: a defense written in
+// The mark's success_at rolls its own dice and reads the target's vigor: a defense written in
 // the pack.
 const CONTESTED_MARK_ROW: &str = "
   - id: mark
     when:
       verb: mark
       target: actor
-    roll:
-      check: exert
-      threshold: \"2d6 + target.vigor\"
+    check:
+      total: 2d6 + self.vigor
+      success_at: \"2d6 + target.vigor\"
     success:
       - flag:
           of: target
@@ -95,32 +95,23 @@ fn the_player_sees_a_check_success(world: &mut World) {
     );
 }
 
-#[then(expr = "the journal records the check without faces")]
-fn the_journal_records_the_check_without_faces(world: &mut World) {
-    let text =
-        spookery_engine::testing::journal::read_record_line(table::pack(world), "round-0001")
-            .unwrap_or_else(|err| panic!("read round: {}", err.detail));
-    assert!(!text.contains("faces"), "{text}");
+#[then(expr = "the journal records the check's dice")]
+fn the_journal_records_the_checks_dice(world: &mut World) {
+    let round = common::read_first_round(world);
+    let dice = round["dice"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{round}"));
+    let line = dice.first().and_then(Value::as_str);
+    assert!(
+        line.is_some_and(|line| line.starts_with("2d6 → ")),
+        "{round}"
+    );
 }
 
 #[then(expr = "the GM sees the exert faces")]
 fn the_gm_sees_the_exert_faces(world: &mut World) {
     let text = table::wait_gm(world, "\"rolls\"");
-    let roll = read_committed_rolls(&text)
-        .into_iter()
-        .next()
-        .unwrap_or_else(|| panic!("{text}"));
-    assert!(roll["faces"].is_array(), "{roll}");
-    assert_eq!(roll["stat"], 1, "{roll}");
-    assert_eq!(roll["target"], 0, "{roll}");
-    let result = text
-        .lines()
-        .find(|line| line.contains("\"rolls\"") && line.contains("\"faces\""))
-        .unwrap_or_else(|| panic!("tool result has no rolls\n{text}"));
-    assert!(result.contains("\"faces\":["), "{result}");
-    assert!(result.contains("\"stat\":"), "{result}");
-    assert!(result.contains("\"outcome\":"), "{result}");
-    assert!(!result.contains("\"success\":"), "{result}");
+    assert_roll(&read_committed(&text), 1, 0, "success");
 }
 
 #[then(expr = "the player sees a check result without faces")]
@@ -237,23 +228,15 @@ fn the_player_sees_only_their_own_check(world: &mut World) {
     assert!(!added.contains("\"success\":"), "{added}");
 }
 
-#[then(expr = "the GM sees one roll and the threshold's dice line")]
-fn the_gm_sees_one_roll_and_the_thresholds_dice_line(world: &mut World) {
+#[then(expr = "the GM sees one roll and a dice line for its total and for its success_at")]
+fn the_gm_sees_one_roll_and_its_two_dice_lines(world: &mut World) {
     let body = table::read_reply(&world.stdout);
-    let rolls = body["rolls"].as_array().unwrap_or_else(|| panic!("{body}"));
-    assert_eq!(rolls.len(), 1, "{body}");
-    // 2d6 plus Mira's vigor of 100.
-    let target = rolls[0]["target"]
-        .as_i64()
-        .unwrap_or_else(|| panic!("{body}"));
-    assert!((102..=112).contains(&target), "{body}");
-    assert_roll(&rolls[0], 1, target, "miss");
     let dice = body["dice"].as_array().unwrap_or_else(|| panic!("{body}"));
-    assert_eq!(dice.len(), 1, "{body}");
-    assert!(
-        dice[0].as_str().is_some_and(|line| line.contains("2d6 →")),
-        "{body}"
-    );
+    assert_eq!(dice.len(), 2, "{body}");
+    // 2d6 plus Mira's vigor of 100.
+    let success_at = dice_line_total(dice[1].as_str().unwrap_or_else(|| panic!("{body}")));
+    assert!((102..=112).contains(&success_at), "{body}");
+    assert_roll(&body, 1, success_at, "miss");
 }
 
 #[then(expr = "the journal records Mira's engine brace")]
@@ -363,7 +346,7 @@ fn insert_brace_habit(pack: &Path) {
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
     let next = text.replacen(
         "rules:\n  - id: leave_door_note\n",
-        "rules:\n  - id: brace\n    when: habit\n    roll:\n      check: exert\n      threshold: 14\n    success:\n      - flag:\n          of: self\n          key: braced\n          value: true\n    miss:\n      - flag:\n          of: self\n          key: slipped\n          value: true\n  - id: leave_door_note\n",
+        "rules:\n  - id: brace\n    when: habit\n    check:\n      total: 2d6 + self.vigor\n      success_at: 14\n    success:\n      - flag:\n          of: self\n          key: braced\n          value: true\n    miss:\n      - flag:\n          of: self\n          key: slipped\n          value: true\n  - id: leave_door_note\n",
         1,
     );
     assert_ne!(next, text, "mira habit was not inserted");
@@ -391,48 +374,60 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
     flags.iter().map(|(flag, ())| flag.to_string()).collect()
 }
 
-fn assert_one_roll(world: &mut World, stat: i64, target: i64, outcome: &str) {
+fn assert_one_roll(world: &mut World, stat: i64, success_at: i64, outcome: &str) {
     let text = table::wait_gm(world, "\"rolls\"");
-    let rolls = read_committed_rolls(&text);
-    assert_eq!(rolls.len(), 1, "{text}");
-    assert_roll(&rolls[0], stat, target, outcome);
+    assert_roll(&read_committed(&text), stat, success_at, outcome);
 }
 
-fn assert_roll(roll: &Value, stat: i64, target: i64, outcome: &str) {
-    let faces = roll["faces"].as_array().unwrap_or_else(|| panic!("{roll}"));
-    assert_eq!(faces.len(), 2, "{roll}");
-    let face_sum: i64 = faces
-        .iter()
-        .map(|face| face.as_i64().unwrap_or_else(|| panic!("{roll}")))
-        .sum();
-    assert_eq!(roll["stat"].as_i64(), Some(stat), "{roll}");
-    assert_eq!(roll["total"].as_i64(), Some(face_sum + stat), "{roll}");
-    assert_eq!(roll["target"].as_i64(), Some(target), "{roll}");
-    assert_eq!(roll["outcome"].as_str(), Some(outcome), "{roll}");
-    assert!(roll.get("success").is_none(), "{roll}");
+/// `body` holds one 2d6 roll: its first dice line reads `2d6 → a, b = a+b + stat`, and the roll
+/// totals that line against `success_at`.
+fn assert_roll(body: &Value, stat: i64, success_at: i64, outcome: &str) {
+    let rolls = body["rolls"].as_array().unwrap_or_else(|| panic!("{body}"));
+    assert_eq!(rolls.len(), 1, "{body}");
+    let line = body["dice"][0].as_str().unwrap_or_else(|| panic!("{body}"));
+    assert!(
+        line.starts_with("2d6 → ") && line.ends_with(&format!(" + {stat}")),
+        "{body}"
+    );
+    assert_eq!(
+        rolls[0]["total"].as_i64(),
+        Some(dice_line_total(line)),
+        "{body}"
+    );
+    assert_eq!(rolls[0]["success_at"].as_i64(), Some(success_at), "{body}");
+    assert_eq!(rolls[0]["outcome"].as_str(), Some(outcome), "{body}");
+    assert!(rolls[0].get("success").is_none(), "{body}");
 }
 
-fn read_committed_rolls(text: &str) -> Vec<Value> {
+/// What a dice line comes to: `2d6 → 5, 2 = 7 + 1` is 8.
+fn dice_line_total(line: &str) -> i64 {
+    let (_, sum) = line.split_once(" = ").unwrap_or_else(|| panic!("{line}"));
+    sum.split(" + ")
+        .map(|part| part.parse::<i64>().unwrap_or_else(|_| panic!("{line}")))
+        .sum()
+}
+
+/// The `committed` body in a GM tool result: the first object whose `rolls` is not empty.
+fn read_committed(text: &str) -> Value {
     for line in text.lines() {
         let Ok(value) = serde_json::from_str::<Value>(line) else {
             continue;
         };
-        if let Some(rolls) = find_rolls(&value) {
-            return rolls;
+        if let Some(body) = find_committed(&value) {
+            return body;
         }
     }
     panic!("tool result has no rolls\n{text}");
 }
 
-fn find_rolls(value: &Value) -> Option<Vec<Value>> {
-    if let Some(rolls) = value.get("rolls").and_then(Value::as_array) {
-        if rolls.iter().any(|roll| roll.get("faces").is_some()) {
-            return Some(rolls.clone());
-        }
+fn find_committed(value: &Value) -> Option<Value> {
+    let rolls = value.get("rolls").and_then(Value::as_array);
+    if rolls.is_some_and(|rolls| !rolls.is_empty()) {
+        return Some(value.clone());
     }
     match value {
-        Value::Object(map) => map.values().find_map(find_rolls),
-        Value::Array(items) => items.iter().find_map(find_rolls),
+        Value::Object(map) => map.values().find_map(find_committed),
+        Value::Array(items) => items.iter().find_map(find_committed),
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => None,
     }
 }
@@ -442,9 +437,9 @@ const PRESS_ROW: &str = "
     when:
       verb: press
       target: actor
-    roll:
-      check: band
-      threshold: 10
+    check:
+      total: 1d1 + self.vigor
+      success_at: 10
       partial_at: 7
     do:
       - flag:
@@ -472,9 +467,9 @@ const NOTICE_PARTIAL_ROW: &str = "
   - id: notice_partial
     when:
       verb: notice_partial
-    roll:
-      check: band
-      threshold: 10
+    check:
+      total: 1d1 + self.vigor
+      success_at: 10
       partial_at: 7
     do:
       - flag:
@@ -498,14 +493,6 @@ const NOTICE_PARTIAL_ROW: &str = "
           value: true
 ";
 
-const BAND_CHECK: &str = "
-  - id: band
-    dice:
-      count: 1
-      sides: 1
-    meter: vigor
-";
-
 const PRESS_FLAGS: &str = "    - touched\n    - clean\n    - halfway\n    - missed\n";
 
 #[given(expr = "a docks table where press vigor base is {int}")]
@@ -523,7 +510,6 @@ fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
     let pack = copy_pack("docks", "press-notice");
     world.pack = Some(pack.clone());
     append_verbs(&pack, NOTICE_PARTIAL_ROW);
-    append_check(&pack, BAND_CHECK);
     insert_mira_flags(&pack, PRESS_FLAGS);
     set_vigor(&pack, "mira", 6);
     support::stamp_pack_rev(&pack);
@@ -548,15 +534,15 @@ fn the_gm_queues_miras_partial_notice(world: &mut World) {
 fn the_verbs_file_gains(world: &mut World, fault: String) {
     let row = match fault.as_str() {
         "partial_at without partial" => {
-            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: exert\n      threshold: 10\n      partial_at: 7\n    do:\n      - flag:\n          of: self\n          key: touched\n          value: true\n"
+            "\n  - id: press\n    when:\n      verb: press\n    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n      partial_at: 7\n    do:\n      - flag:\n          of: self\n          key: touched\n          value: true\n"
         }
         "partial without partial_at" => {
-            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: exert\n      threshold: 10\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
+            "\n  - id: press\n    when:\n      verb: press\n    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
         }
-        "partial_at above difficulty" => {
-            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: exert\n      threshold: 10\n      partial_at: 10\n    success:\n      - flag:\n          of: self\n          key: touched\n          value: true\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
+        "partial_at above success_at" => {
+            "\n  - id: press\n    when:\n      verb: press\n    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n      partial_at: 10\n    success:\n      - flag:\n          of: self\n          key: touched\n          value: true\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
         }
-        "partial_at without a check" => {
+        "partial without a check" => {
             "\n  - id: press\n    when:\n      verb: press\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
         }
         other => panic!("unknown partial fault {other}"),
@@ -616,9 +602,7 @@ fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String) {
 #[then(expr = "the GM sees outcome {string} and the faces")]
 fn the_gm_sees_outcome_and_the_faces(world: &mut World, outcome: String) {
     let text = table::wait_gm(world, "\"rolls\"");
-    let rolls = read_committed_rolls(&text);
-    assert_eq!(rolls.len(), 1, "{text}");
-    assert_outcome_faces(&rolls[0], &outcome);
+    assert_outcome_dice(&read_committed(&text), &outcome);
 }
 
 #[then(expr = "the check outcome is not {string}")]
@@ -637,7 +621,6 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     let pack = copy_pack("docks", "press");
     world.pack = Some(pack.clone());
     append_verbs(&pack, PRESS_ROW);
-    append_check(&pack, BAND_CHECK);
     insert_mira_flags(&pack, PRESS_FLAGS);
     set_vigor(&pack, "rowan", base);
     super::common::edit_save(&pack, |now| {
@@ -652,31 +635,21 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     }
 }
 
-fn append_check(pack: &Path, extra: &str) {
-    let path = pack.join("rules/checks.yaml");
-    let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read checks: {err}"));
-    text.push_str(extra);
-    fs::write(&path, text).unwrap_or_else(|err| panic!("write checks: {err}"));
-}
-
-fn assert_outcome_faces(roll: &Value, outcome: &str) {
-    let faces = roll["faces"].as_array().unwrap_or_else(|| panic!("{roll}"));
-    assert!(!faces.is_empty(), "{roll}");
-    assert_eq!(roll["outcome"].as_str(), Some(outcome), "{roll}");
-    assert!(roll.get("stat").and_then(Value::as_i64).is_some(), "{roll}");
-    assert!(
-        roll.get("total").and_then(Value::as_i64).is_some(),
-        "{roll}"
+/// `body` holds one roll with `outcome`, totalling its first dice line. A press rolls
+/// `1d1 + self.vigor` against 10.
+fn assert_outcome_dice(body: &Value, outcome: &str) {
+    let rolls = body["rolls"].as_array().unwrap_or_else(|| panic!("{body}"));
+    assert_eq!(rolls.len(), 1, "{body}");
+    let roll = &rolls[0];
+    assert_eq!(roll["outcome"].as_str(), Some(outcome), "{body}");
+    assert!(roll.get("success").is_none(), "{body}");
+    let line = body["dice"][0].as_str().unwrap_or_else(|| panic!("{body}"));
+    assert_eq!(
+        roll["total"].as_i64(),
+        Some(dice_line_total(line)),
+        "{body}"
     );
-    assert!(
-        roll.get("target").and_then(Value::as_i64).is_some(),
-        "{roll}"
-    );
-    assert!(roll.get("success").is_none(), "{roll}");
-    if faces.len() == 1 {
-        assert_eq!(faces[0].as_i64(), Some(1), "{roll}");
-        let stat = roll["stat"].as_i64().unwrap_or_else(|| panic!("{roll}"));
-        assert_eq!(roll["total"].as_i64(), Some(stat + 1), "{roll}");
-        assert_eq!(roll["target"].as_i64(), Some(10), "{roll}");
+    if line.starts_with("1d1 → ") {
+        assert_eq!(roll["success_at"].as_i64(), Some(10), "{body}");
     }
 }
