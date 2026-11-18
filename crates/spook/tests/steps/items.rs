@@ -160,7 +160,6 @@ fn harbormouse_holds_a_tonic(world: &mut World) {
     world.pack = Some(pack);
 }
 
-// A capital first letter keeps `play types {string}`, which types into the play client, apart.
 #[when(regex = r#"^(?P<actor>[A-Z]\S*) types "(?P<text>.*)"$"#)]
 fn actor_types(world: &mut World, actor: String, line: String) {
     let pack = world.pack.clone().unwrap();

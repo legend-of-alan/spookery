@@ -50,8 +50,6 @@ fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce())
     halfway();
     let peeked = thread::scope(|scope| {
         let status = scope.spawn(|| peek_digest(&pack));
-        // A status that skips the lock ends at once on the half-written files.
-        // One that waits is still blocked, so a slow machine can only pass this by mistake.
         thread::sleep(Duration::from_millis(200));
         assert!(
             !status.is_finished(),
@@ -110,7 +108,6 @@ fn status_peeks_mid_checkpoint(world: &mut World) {
         writer(world).world().state_rev
     ));
     let after = fs::read(&save).unwrap();
-    // The head is published and the save and snapshot are not yet.
     peek_during(
         world,
         || {

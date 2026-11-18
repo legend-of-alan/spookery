@@ -84,7 +84,6 @@ impl Connection {
                     | WsError::AlreadyClosed
                     | WsError::Protocol(ProtocolError::ResetWithoutClosingHandshake),
                 ) => return None,
-                // Windows reports a host that died as a reset, where Linux reads an end.
                 Err(WsError::Io(err))
                     if matches!(
                         err.kind(),

@@ -177,8 +177,6 @@ fn run_stages(
     );
     let end = clock.world_time_after;
     finish::run(canon, &mut world, presence, end, &mut dice, &mut ledger)?;
-    // A door that opens is a flag change, so change rules see it before the map refresh. This
-    // pass also takes the clock's changes in a round where no action ran.
     travel::open_doors(canon, &mut world, presence, &mut ledger);
     triggers::run(canon, &mut world, presence, &mut dice, &mut ledger);
     travel::note_exits(canon, &mut world)?;

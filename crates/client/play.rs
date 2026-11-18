@@ -30,7 +30,6 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
         } => (commands, open, taken, pc_names),
         _ => Default::default(),
     };
-    // The choice may take longer than the first-message timeout, so dial again after.
     drop(seat);
     print_text(&list_pcs(&open, &taken, &pc_names));
     let Some(chosen) = input.recv().await else {
@@ -40,7 +39,6 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
     let mut seat = Connection::open(addr, "player").await?.0;
     let (mut here, mut token) =
         take_claim(&mut seat, json!({ "actor": actor }), &mut printer).await?;
-    // Made once, so every Ctrl+C is seen, even one that lands mid-print.
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
     loop {
@@ -48,7 +46,6 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
             message = seat.recv() => {
                 let message = match message {
                     Some(Ok(message)) => message,
-                    // The table dropped this connection, or `spook run` stopped.
                     Some(Err(Error::Io(_))) | None => {
                         let Some(back) = reconnect(addr, &token, &mut printer).await? else {
                             return Ok(());
@@ -77,7 +74,6 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
                 let Some((command, args)) = parse_command(&line, &here) else {
                     continue;
                 };
-                // A command the hello did not list points at help, and is not sent.
                 if !commands.iter().any(|known| known == command) {
                     let refusal = Refusal::from(Reason::NotInSpec);
                     eprintln!("{}", text::render_refusal(&refusal, raw));
@@ -85,7 +81,6 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
                 }
                 match seat.send(command, args.clone()).await {
                     Ok(_) => {}
-                    // The table dropped this connection: take the PC back, then send again.
                     Err(Error::Io(_)) => {
                         let Some(back) = reconnect(addr, &token, &mut printer).await? else {
                             return Ok(());

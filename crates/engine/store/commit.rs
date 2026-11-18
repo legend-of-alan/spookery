@@ -95,7 +95,8 @@ fn bump_state_rev(world: &mut ecs::World) -> Result<(), Reason> {
 /// Seal a migrate record for `world`, which is already the journal tip or the on-disk save.
 /// `edited` means `world` is a hand edit of the checkpoint head. The journal does not hold
 /// that edit, so a checkpoint of the migrated save follows the record and replay restarts
-/// from it. The caller holds the pack lock.
+/// from it. Its snapshot is on disk before the record, so a crash after the append still
+/// replays. The caller holds the pack lock.
 pub(crate) fn seal_migrate(
     root: &Path,
     world: ecs::World,
@@ -131,7 +132,6 @@ pub(crate) fn seal_migrate(
     let prev = journal::read_chain_tip(root).map_err(|fault| fault.reason)?;
     let line = journal::seal(&entry, &prev);
     if edited {
-        // The snapshot lands before the record, so a crash after the append still replays.
         write_atomic(&journal::checkpoint_path(root, world.state_rev), &emitted)?;
         let (payload, chain) = seal_checkpoint(line, &world, &emitted)?;
         append_to_bundle(root, &payload, &write)?;
@@ -143,7 +143,6 @@ pub(crate) fn seal_migrate(
             &chain,
             &write,
         )?;
-        // The migrate is committed.
         warn_if_left_open(close_finished(root, &write));
     } else {
         append_to_bundle(root, &line, &write)?;
@@ -195,7 +194,6 @@ fn is_checkpoint_due(every: u64, round_index: u64) -> bool {
 }
 
 fn append_to_bundle(root: &Path, payload: &str, write: &WriteGuard) -> Result<String, Reason> {
-    // A failed close must not refuse this round or append into the closed bundle.
     warn_if_left_open(close_finished(root, write));
     let path = journal::next_bundle_path(root);
     let created = !path.is_file();
@@ -216,7 +214,6 @@ fn append_to_bundle(root: &Path, payload: &str, write: &WriteGuard) -> Result<St
             fsync_dir(parent)?;
         }
     }
-    // The bundle path is built under `root`.
     Ok(path
         .strip_prefix(root)
         .unwrap_or(&path)

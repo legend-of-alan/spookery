@@ -104,7 +104,6 @@ fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
     if [Modifier::ID, Act::BUSY].contains(&key.component_id) {
         return None;
     }
-    // A name the pack lacks stays empty, and the wire leaves it out.
     let entity_name = match &key.entity_id {
         entity::Id::Actor(id) => canon.name(id.as_str()).map(str::to_string),
         entity::Id::Place(id) => crate::rules::lines::find_place_name(canon, id.as_str()),
@@ -193,7 +192,6 @@ fn can_see(canon: &Canon, world: &ecs::World, viewer: &ActorId, change: &Change)
         (Act::BUSY | Item::ID | WieldedItem::ID, entity::Id::Actor(actor)) => {
             viewer == actor || same_place(world, viewer, actor)
         }
-        // Flags, doors and act counts are rules bookkeeping: the GM narrates what one means.
         _ => false,
     }
 }

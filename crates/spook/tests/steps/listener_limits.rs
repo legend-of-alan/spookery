@@ -17,7 +17,6 @@ use super::table;
 const MIB: usize = 1024 * 1024;
 const SAY_TEXT_BYTES: usize = 4 * 1024;
 
-// The limits `docs/seat-protocol.md` states.
 /// A message past 8 KiB is `LINE_TOO_LONG`.
 const MESSAGE_CAP: usize = 8 * 1024;
 /// A connection that sends nothing for 10 seconds closes.
@@ -200,7 +199,6 @@ fn a_socket_connects_and_sends_nothing(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::serve_in_process(world, &pack);
     let seat = table::Seat::open(table::live_mut(world).game_port, "player");
-    // The game port sets the first-message deadline before the table sends the hello.
     table::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"");
     table::advance(world, FIRST_MESSAGE_TIMEOUT);
     seat.wait_closed();
@@ -214,7 +212,6 @@ fn the_socket_is_closed_before_the_hello(world: &mut World) {
 
 #[when(expr = "one player sends 200 lines as fast as it can")]
 fn one_player_sends_200_lines(world: &mut World) {
-    // The flood's pace is paused time, so serve this table in process.
     let pack = table::pack(world).to_path_buf();
     table::serve_in_process(world, &pack);
     table::seat_actor(world, &pack, "rowan");
@@ -226,14 +223,11 @@ fn one_player_sends_200_lines(world: &mut World) {
             player.seat.send("wait", json!({}));
         }
     }
-    // The other player's wait is its own round. Its place among the new rounds
-    // shows whether it waited behind the flood.
     let other_waits = |key: &String| {
         table::list_player_waits(&pack, key)
             .iter()
             .any(|id| id == "harbormouse")
     };
-    // Paused time refills nothing: the flood's burst and the other line commit.
     let keys = table::wait_rounds_until(&pack, "the burst and the other player's wait", |keys| {
         let added = keys.get(before..).unwrap_or_default();
         added.len() >= BURST && added.iter().any(other_waits)
@@ -245,12 +239,9 @@ fn one_player_sends_200_lines(world: &mut World) {
         .position(other_waits)
         .unwrap_or_else(|| panic!("no other player round"))
         + 1;
-    // A GM would queue the next line instead of committing it, so the status
-    // probe leaves before time moves.
     let _ = table::read_presence(world);
     table::release_probe_gm(world);
     let paced = list_round_keys(&pack).len() - before;
-    // One refill is one more line. A dropped line would stop the count here.
     table::advance(world, REFILL);
     let _ = table::wait_round_count(&pack, before + paced + 1);
     let _ = table::read_presence(world);
@@ -262,8 +253,6 @@ fn one_player_sends_200_lines(world: &mut World) {
 
 #[then(expr = "the committed rounds stay within the rate allowance")]
 fn rounds_stay_within_the_allowance(world: &mut World) {
-    // What the claim left of the burst and the other player's line, then one line per
-    // refill. The round after the refill is a line past the burst that was kept.
     assert_eq!(
         [world.flood_paced, world.flood_refilled],
         [BURST, BURST + 1]
@@ -272,8 +261,6 @@ fn rounds_stay_within_the_allowance(world: &mut World) {
 
 #[then(expr = "the other player's line commits before the flood's burst is spent")]
 fn the_other_player_commits_inside_the_burst(world: &mut World) {
-    // Each session sends one line at a time, so the other line waits behind at
-    // most the flood's burst and commits before any refill.
     assert!(world.flood_other_at <= BURST, "{}", world.flood_other_at);
 }
 
@@ -310,8 +297,6 @@ fn one_player_stops_reading(world: &mut World) {
     }
     .to_text()
     .len();
-    // Granted kernel windows, then the userspace queue, then one extra
-    // buffer so a getsockopt that under-reports still reaches the drop.
     let queue = BYTE_CAP.min(FRAME_CAP.saturating_mul(frame));
     let margin = recv.max(send).max(frame);
     let budget = recv
@@ -321,7 +306,6 @@ fn one_player_stops_reading(world: &mut World) {
     let start = Instant::now();
     let mut sent = 0usize;
     let args = format!(r#"{{"to":"table","text":"{say}"}}"#);
-    // A write fails once the table has closed the connection. The claim stays held.
     while is_open(table::player_client(world, "rowan")) {
         if start.elapsed() > Duration::from_secs(60) || sent > budget {
             let stderr = table::live_mut(world)

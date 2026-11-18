@@ -151,7 +151,6 @@ pub(crate) fn drain(
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut buf = [0u8; 256];
-        // Bytes of a character split across reads wait for the rest of it.
         let mut pending = Vec::new();
         loop {
             match reader.read(&mut buf) {

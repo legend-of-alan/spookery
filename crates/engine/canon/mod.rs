@@ -311,7 +311,11 @@ pub fn pack_rev(root: &Path) -> Result<String, Reason> {
     Ok(blake2s_tagged(&preimage))
 }
 
-/// Loads a pack in the numbered order below, which is also the order of its diagnostics.
+/// Loads a pack and reports its diagnostics in load order: `pack.yaml`; the items and places
+/// under `world/` and the optional `world/meters.yaml`; `rules/meters.yaml`, then each cast and
+/// place file's own meters; the optional `rules/modifiers.yaml`; a missing `rules/verbs.yaml` or
+/// `rules/budget.yaml`; verbs; `story/` and each story's own meters; rule ids across files;
+/// the budget; lints across files; and `checkpoint_every`.
 pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     // repeats module: re-exported at the crate root
     let mut diags = Diags::default();
@@ -321,9 +325,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let mut items = BTreeMap::new();
     let mut place_meters = Vec::new();
     let mut loaded = Vec::new();
-    // 1. pack.yaml: missing, unreadable, tag, shape, empty id.
     let pack = diags.keep(read_text(root, "pack.yaml").and_then(|text| load_pack_yaml(&text)));
-    // 2. One walk of world/: items and places by path prefix; other files are skipped.
     for page in collect_markdown_files(root, "world") {
         let Some(page) = diags.keep(page) else {
             continue;
@@ -338,7 +340,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         loaded.extend(rules.unwrap_or_default());
     }
     name_exits(&mut places);
-    // world/meters.yaml is optional.
     let world_meters = if root.join("world/meters.yaml").is_file() {
         let rel = "world/meters.yaml";
         diags.keep(
@@ -348,8 +349,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     } else {
         Some(BTreeMap::new())
     };
-    // 3. rules/meters.yaml, then one walk of cast/, which adds each cast file's own meters,
-    // then each place file's own meters.
     let rel = "rules/meters.yaml";
     let mut meters =
         diags.keep(read_text(root, rel).and_then(|text| meters::load(rel, &text, None)));
@@ -365,24 +364,19 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
             meters::add_own(meters, own, None, &FileText::named(&file), &mut diags);
         }
     }
-    // rules/modifiers.yaml is optional. Its modifiers name the actor meters above.
     let modifiers = match &meters {
         Some(meters) if root.join(MODIFIERS_FILE).is_file() => diags
             .keep(read_text(root, MODIFIERS_FILE).and_then(|text| modifiers::load(&text, meters))),
         _ => Some(BTreeMap::new()),
     };
-    // 4. The other two rule files are read in this order; a missing one is reported here.
     let [verbs, budget] = ["rules/verbs.yaml", "rules/budget.yaml"]
         .map(|rel| diags.keep(read_text(root, rel)).map(|text| (rel, text)));
-    // 5. Verbs.
     if let Some((rel, text)) = &verbs {
         loaded.extend(diags.keep(load_verbs(rel, text)).unwrap_or_default());
     }
-    // 6. story/, which adds each story file's own meters.
     let (story_rules, stories) =
         load_stories(root, meters.as_mut(), world_meters.as_ref(), &mut diags);
     loaded.extend(story_rules);
-    // 7. Rule ids across files.
     let mut seen_ids = BTreeSet::new();
     for rule in &loaded {
         let twice = ("rule", "is already defined", "keep one rule with this id");
@@ -391,9 +385,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.extend(taken.then(|| source.refuse_duplicate(&rule.id, "", Locator::Nowhere, twice)));
     }
     let rules = rule::Table::new(loaded);
-    // 8. Budget.
     let budget = budget.and_then(|(rel, text)| diags.keep(budget::load(rel, &text)));
-    // 9. Lints across files.
     if let (Some(meters), Some(world_meters)) = (&meters, &world_meters) {
         let scope = EntityScope {
             meters,
@@ -411,7 +403,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     diags.extend(unknown_rule_items(&rules, &items));
     diags.extend(reveal_problems(&rules, &facts.0));
     diags.extend(broken_exits(&places, &facts.0, &items));
-    // 10. checkpoint_every.
     let checkpoint_every = pack
         .as_ref()
         .and_then(|pack| diags.keep(pack.checkpoint_every()));

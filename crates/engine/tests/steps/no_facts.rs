@@ -35,7 +35,6 @@ fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
     let pack = support::copy_pack("docks", "no-facts");
     strip_room_facts(&pack);
     support::edit_save(&pack, |ecs_world| {
-        // No writer forgets a fact, so Mira's come off the save as the file holds it.
         let mut save = serde_json::to_value(&**ecs_world).unwrap();
         if let Some(known) = save["actors"]["known_facts"].as_object_mut() {
             known.remove("mira");

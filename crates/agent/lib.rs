@@ -371,7 +371,6 @@ mod tests {
         assert!(results[0].1.contains("\"viewer\":\"pc\""), "{results:?}");
         let refused = r#"{"kind":"refused","code":"SCHEMA"}"#;
         assert_eq!([results[1].1, results[2].1], [refused, refused]);
-        // Nothing was queued, so end_turn sends no command.
         assert!(results[3].1.contains("nothing is queued"), "{results:?}");
         assert_eq!(connection.commands(), ["status", "perceive"]);
     }
@@ -384,7 +383,6 @@ mod tests {
             answer("say", &[QUEUED, ROUND, GM_SAY]),
         ]);
         assert_eq!(play(&model, &connection).await, Ok(()));
-        // Someone else's round played that move, so no turn waits for it.
         assert_eq!(model.calls().len(), 2);
         assert_eq!(connection.commands(), ["status", "say"]);
     }
@@ -401,7 +399,6 @@ mod tests {
             let command = "perceive".to_string();
             let result = play(&model, &connection).await;
             assert_eq!(result, Err(Error::Unanswered { command }), "{lost}");
-            // No retry, no commit and no further commands.
             assert_eq!(connection.commands(), ["status", "perceive"], "{lost}");
         }
     }

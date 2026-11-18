@@ -30,12 +30,12 @@ pub(crate) fn emit_options() -> SerializerOptions {
     }
 }
 
+/// Reads a save. A save from older rules, even one with a field these rules dropped, such as
+/// `presence`, is refused as `RULES_REV_MISMATCH`.
 pub fn parse(text: &str) -> Result<Save, Vec<Diagnostic>> {
     if let Some(diag) = check_tag(text, crate::diagnostic::SAVE_SCHEMA, FILE) {
         return Err(vec![diag]);
     }
-    // Check the rules version before the full shape, so a save from older rules
-    // (for example one that still carries `presence`) is refused as RULES_REV_MISMATCH.
     #[derive(Deserialize)]
     struct RulesProbe {
         #[serde(default)]
@@ -224,7 +224,6 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
         }
     }
     for (id, place) in actors.query::<(ActorId, &component::Place)>().iter() {
-        // A walker stands on an exit, which must be one of the pack's.
         let known = match crate::ecs::exit_parts(place) {
             Some(_) => crate::rules::travel::exit_stood_on(canon, place).is_some(),
             None => canon.places.contains_key(place.as_str()),
@@ -377,7 +376,6 @@ mod tests {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/packs/docks/state/save.yaml");
         let original = fs::read_to_string(&path).unwrap();
-        // The same save with globals that hold meters and flags, which key on `GlobalId`.
         let empty = "globals:
   meters: {}
   flags: []

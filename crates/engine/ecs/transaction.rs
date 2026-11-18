@@ -154,9 +154,7 @@ impl ecs::World {
     pub(crate) fn take_changes(&mut self) -> Vec<Change> {
         let transaction = &self.transaction;
         let mut net = BTreeMap::new();
-        // Each meter's stored value and modifier sum before the first write to each since the
-        // last take.
-        let mut meters: BTreeMap<_, (Option<Option<&Meter>>, Option<_>)> = BTreeMap::new();
+        let mut meters_before: BTreeMap<_, (Option<Option<&Meter>>, Option<_>)> = BTreeMap::new();
         for report in &transaction.changes[transaction.taken..] {
             match report {
                 change::Report::Change(change) => match net.entry(change.key.clone()) {
@@ -166,14 +164,14 @@ impl ecs::World {
                     Entry::Occupied(mut entry) => entry.get_mut().after = change.after.clone(),
                 },
                 change::Report::Meter(key, held) => {
-                    (meters.entry(key).or_default().0).get_or_insert(held.as_ref());
+                    (meters_before.entry(key).or_default().0).get_or_insert(held.as_ref());
                 }
                 change::Report::Modifiers(key, sum) => {
-                    (meters.entry(key).or_default().1).get_or_insert(*sum);
+                    (meters_before.entry(key).or_default().1).get_or_insert(*sum);
                 }
             }
         }
-        for (key, (held, sum)) in meters {
+        for (key, (held, sum)) in meters_before {
             net.insert(key.clone(), self.read_meter_change(key, held, sum));
         }
         self.transaction.taken = self.transaction.changes.len();
@@ -283,7 +281,6 @@ mod tests {
             session::Session::from_parts(opened.root(), ecs::World::new(save, Arc::new(canon)));
         let mut world = session.begin_round();
         let mira = ActorId::from("mira");
-        // A: down one, B: back up one, in one take window.
         for delta in [-1, 1] {
             let shifted = world
                 .actors_mut()
@@ -298,7 +295,6 @@ mod tests {
             "the key that came back is dropped"
         );
         assert_eq!(world.keys_counted(), 1, "and still counted");
-        // The same with a modifier that lowers rest, put on and taken off.
         let lowers = Modifier {
             meter: "rest".to_string(),
             until: 99,

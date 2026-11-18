@@ -59,7 +59,6 @@ fn spook_run_is_stopped_while_the_gm_is_seated(world: &mut World) {
 
 #[then(expr = "spook run exits 0")]
 fn spook_run_exits_0(world: &mut World) {
-    // On Windows the stop kills the child, so there is no exit to check.
     if cfg!(unix) {
         assert_eq!(world.code, Some(0), "spook run exited\n{}", world.stderr);
     }
@@ -67,7 +66,6 @@ fn spook_run_exits_0(world: &mut World) {
 
 #[then(expr = "the pack can be opened again")]
 fn the_pack_can_be_opened_again(world: &mut World) {
-    // `lock_pack` then `Session::resume`, as `spook run` opens the pack.
     drop(support::resume(table::pack(world)));
 }
 

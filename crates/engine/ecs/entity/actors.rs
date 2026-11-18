@@ -70,7 +70,6 @@ impl Reader<'_, Actors> {
     /// Each store's key, as the save writes it, with each actor it carries something for. The
     /// control type is left out: an actor exists when it has one.
     pub(crate) fn carriers_by_store(&self) -> BTreeSet<(&'static str, &ActorId)> {
-        // Every store, with no `..`: a store added later must be listed here to compile.
         let Actors {
             control_type: _,
             place,
@@ -99,7 +98,6 @@ impl Reader<'_, Actors> {
 impl Actors {
     /// Every store, as the history a rollback undoes and an accept clears.
     pub(in crate::ecs) fn history_mut(&mut self) -> [&mut dyn undo::History; 10] {
-        // Every store, with no `..`: a store added later must be listed here to compile.
         let Actors {
             control_type,
             place,

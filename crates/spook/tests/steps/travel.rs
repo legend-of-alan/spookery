@@ -305,8 +305,6 @@ fn rowan_visited_both_rooms(world: &mut World) {
     let pack = copy_pack("docks", "map");
     add_trapdoor(&pack);
     edit_save(&pack, |now| {
-        // No writer forgets a visit, so Rowan's visits are replaced in the save as the file
-        // holds it.
         support::edit_as_saved(now, |save| {
             save["actors"]["visited"]["rowan"] = serde_json::json!({
                 "docks_shop": ["docks_street", "stairs"],
@@ -328,13 +326,11 @@ fn play_joins_again(world: &mut World) {
 fn plays_map_lists_both_rooms(world: &mut World) {
     let mark = capture_play_stdout(world).len();
     write_play(world, "map");
-    // Mira's Rooms is printed last, with one exit, so its finished exit line ends the map.
     wait_play_until(
         world,
         |stdout| stdout[mark..].contains("Mira's Rooms\n  ") && stdout.ends_with('\n'),
         "the map",
     );
-    // The join's view can still be landing after the mark, so the map starts at its first line.
     let after = &capture_play_stdout(world)[mark..];
     let map = &after[after.find("Docks Shop\n  ").unwrap_or_default()..];
     assert!(map.starts_with("Docks Shop\n  "), "{map}");
@@ -377,7 +373,6 @@ fn harbormouse_reaches_the_lane_and_hears_the_ending(world: &mut World) {
     assert!(lane_ticks > 0);
     let now = world_of(&pack);
     assert_eq!(place_of(&now, "harbormouse"), "mill_lane");
-    // One commit walked the whole lane, so it fast-forwarded past the 5-tick round.
     assert_eq!(now.world_time - world.start_ticks, lane_ticks);
     let flags = now
         .entities()

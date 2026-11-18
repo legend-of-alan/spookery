@@ -19,8 +19,6 @@ pub fn parse_args<T: DeserializeOwned>(
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct PerceiveArgs {
-    // An `Option` so the table can refuse a missing `as` with its own code; a missing
-    // field reads as `None` without `default`, and the schema says it is required.
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(rename = "as", skip_serializing_if = "Option::is_none")]
     pub viewer_id: Option<String>,
@@ -42,7 +40,6 @@ pub struct CommitArgs {
 /// it is `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-// Inline, so the schema of a command's `args` stands alone as a model tool's parameters.
 #[cfg_attr(feature = "schema", schemars(inline))]
 #[serde(rename_all = "lowercase")]
 pub enum Audience {
@@ -75,8 +72,6 @@ pub struct QueueArgs {
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub round_index: Option<u64>,
-    // `Option`s so the table can refuse a missing actor or move as `SCHEMA` itself; a
-    // missing field reads as `None` without `default`, and the schema says both are required.
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actor_id: Option<String>,

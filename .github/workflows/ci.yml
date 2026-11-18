@@ -128,6 +128,11 @@ jobs:
           cargo tree -e normal -p spookery-server --locked | (! grep -E 'reqwest|tracing-subscriber')
           # Only the `spook play` and `spook gm` terminals print. Library code hands output to a writer.
           (! grep -rnE '\b(e?print(ln)?!|io::std(out|err)\(\))' crates/{engine,protocol,agent,server,client} --include='*.rs' | grep -vE '^crates/client/(play|gm)\.rs:')
+          # Rust source has no plain comments: only ///, //! and the rule-8 marker on an item's line or
+          # the next one (CONTRIBUTING.md No plain comments).
+          git ls-files -z '*.rs' | xargs -0 awk 'FNR == 1 { item = 0 } { after_item = item; item = $0 ~ /^(pub(\([^)]*\))? )?((const|async|unsafe) )*(struct|enum|trait|type|union|fn) / }
+            /(^|[[:space:]])(\/\/(\/\/+|[^\/!]|$)|\/\*)/ && !((item || after_item) && /\/\/ repeats module: ./) { print FILENAME ":" FNR ": " $0; bad = 1 }
+            END { exit bad }'
           cargo tree -e normal -p spook --no-default-features --features server --locked | (! grep -E 'reqwest')
           cargo build -p spook --no-default-features --features server --locked
           cargo build -p spook --no-default-features --features client --locked
