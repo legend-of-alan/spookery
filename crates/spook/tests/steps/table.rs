@@ -72,8 +72,6 @@ impl Seat {
                 next_id: AtomicU64::new(1),
             };
         }
-        // The handshake's socket reads, so a message sent with the upgrade is kept. A second
-        // socket on the same stream only writes.
         std::thread::spawn(move || {
             loop {
                 match read.read() {
@@ -214,7 +212,6 @@ impl Drop for InProcess {
 /// Opens the pack the way `spook run` does and serves it in this process.
 pub(crate) fn serve_in_process(world: &mut World, pack: &Path) {
     drop(world.live.take());
-    // `lock_pack` then `Session::resume`, as `spook run` opens it.
     let opened = support::resume(pack);
     let (mut out, out_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let stderr = Arc::new(Mutex::new(String::new()));
@@ -848,7 +845,6 @@ pub(crate) fn stop_host(world: &mut World) {
     live.ws_gm.take();
     live.gm.take();
     live.closed_gm.take();
-    // An in-process host stops when its shutdown future resolves.
     live.in_process.take();
     if let Some((status, stderr)) = interrupt_host(world) {
         assert!(status.success(), "host exited {status:?}\n{stderr}");

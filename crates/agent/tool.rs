@@ -73,8 +73,6 @@ pub(crate) async fn call<M: Model, Conn: Connection>(
             Some(body) => body,
             None => return Ok("nothing is queued, so there is no round to play".into()),
         },
-        // Arguments that are not a JSON object, or a tool the GM does not have: the table
-        // refuses a GM command it cannot read the same way.
         _ => ServerBody::Refused(Reason::Schema.into()),
     };
     Ok(render_result(&agent.state().pack, body))

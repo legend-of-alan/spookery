@@ -73,17 +73,12 @@ fn reads_under_the_gms_seq(world: &mut World, actor: String, line: String) {
         .as_array()
         .and_then(|messages| messages.last())
         .unwrap_or_else(|| panic!("no reply\n{result}"));
-    let speech = wait_for_speech(world, &actor, 0, &line);
+    let speech = wait_for_line(world, &actor, 0, &line);
     assert_eq!(speech.seq, reply["seq"].as_u64(), "{reply}");
 }
 
 /// The first speech after `mark` that `actor`'s client writes as `line`.
-pub(super) fn wait_for_speech(
-    world: &World,
-    actor: &str,
-    mark: usize,
-    line: &str,
-) -> ServerMessage {
+pub(super) fn wait_for_line(world: &World, actor: &str, mark: usize, line: &str) -> ServerMessage {
     let seen = table::player_client(world, actor).text();
     table::poll_until(line, || {
         let added = support::text_of(seen)
@@ -211,7 +206,7 @@ fn a_docks_table_with_two_seated(world: &mut World, first: String, second: Strin
 
 #[given(expr = "the GM has said {int} numbered lines to {string}")]
 fn the_gm_has_said_numbered_lines(world: &mut World, count: usize, actor: String) {
-    speech_lines(world, &actor, count);
+    say_lines(world, &actor, count);
 }
 
 #[given(expr = "the GM has said {int} lines to {string} and then {int} lines to {string}")]
@@ -222,8 +217,8 @@ fn the_gm_has_said_lines_then_more(
     second_count: usize,
     second: String,
 ) {
-    speech_lines(world, &first, first_count);
-    let lines = speech_lines(world, &second, second_count);
+    say_lines(world, &first, first_count);
+    let lines = say_lines(world, &second, second_count);
     world.scratch = lines.join("\n");
 }
 
@@ -254,7 +249,6 @@ fn the_replayed_lines_ride_in_the_claims_reply(world: &mut World) {
     let actor = latest_actor(world);
     let claimed = last_claimed(world, &actor);
     assert!(claimed.get("reply_to").is_some(), "{claimed}");
-    // Live speech comes after; none was said since the claim.
     let live_speech = table::actor_text(world, &actor)
         .lines()
         .filter(|line| line.contains("\"kind\":\"say\""))
@@ -275,7 +269,7 @@ fn gets_exactly_those_lines(world: &mut World, actor: String, count: usize) {
     assert_eq!(replay_texts(world, &actor), expected);
 }
 
-fn speech_lines(world: &mut World, actor: &str, count: usize) -> Vec<String> {
+fn say_lines(world: &mut World, actor: &str, count: usize) -> Vec<String> {
     if table::live_mut(world).gm.is_none() {
         table::seat_gm(world);
     }
@@ -304,7 +298,7 @@ fn latest_actor(world: &mut World) -> String {
 }
 
 fn replay_texts(world: &World, actor: &str) -> Vec<String> {
-    replay_speech(world, actor)
+    scrollback(world, actor)
         .iter()
         .map(|speech| {
             speech
@@ -317,7 +311,7 @@ fn replay_texts(world: &World, actor: &str) -> Vec<String> {
 }
 
 /// The speech the actor's last claim replayed.
-fn replay_speech(world: &World, actor: &str) -> Vec<Value> {
+fn scrollback(world: &World, actor: &str) -> Vec<Value> {
     let claimed = last_claimed(world, actor);
     claimed["body"]["scrollback"]
         .as_array()

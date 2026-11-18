@@ -30,6 +30,8 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Listen for the player seat and the GM seat.
+    ///
+    /// A second Ctrl+C exits at once when shutdown hangs.
     #[cfg(feature = "server")]
     Run {
         /// Pack directory.
@@ -131,16 +133,13 @@ async fn wait_for_interrupt() -> std::io::Result<()> {
 }
 
 async fn dispatch(cli: Cli) -> Result<(), String> {
-    // `--addr` is global: every command refuses an open host before any pack opens.
     let addr = parse_loopback(&cli.addr)?;
-    // Only `spook run` prints its log file's path.
     #[cfg_attr(not(feature = "server"), allow(unused_variables))]
     let log_path = start_logging(&cli.command)?;
     match cli.command {
         #[cfg(feature = "server")]
         Command::Run { pack, mcp_addr } => {
             let mcp_addr = parse_mcp_addr(mcp_addr)?;
-            // Lock before resume: taking the lock repairs a crashed pack, which is a write.
             let lock = spookery_engine::lock_pack(&pack).map_err(|e| e.to_string())?;
             let session =
                 spookery_engine::Session::resume(&pack, lock).map_err(|e| e.to_string())?;
@@ -174,7 +173,6 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
         Command::AiGm => {
-            // A missing model setting is reported before the dial.
             let model = spookery::http_model::Settings::from_env()
                 .and_then(spookery::http_model::HttpModel::new)
                 .map_err(|err| err.to_string())?;
@@ -188,7 +186,6 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "server")]
         Command::Status { pack } => {
-            // Status holds a read guard, not the pack lock, and writes nothing but that lock file.
             let text = spookery_engine::Session::peek_digest(&pack).map_err(|e| e.to_string())?;
             print!("{text}");
             Ok(())
@@ -260,7 +257,8 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
 }
 
 /// Installs the one log subscriber. `spook run` and `spook ai-gm` log to a new file under
-/// `logs/`, whose path this returns. Every other command logs to stderr.
+/// `logs/`, whose path this returns. Every other command logs to stderr. A `RUST_LOG` whose
+/// directives are all invalid logs warnings.
 fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
     let (command_id, default_directives) = match command {
         #[cfg(feature = "server")]
@@ -272,7 +270,6 @@ fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
     let directives = std::env::var("RUST_LOG")
         .ok()
         .filter(|text| !text.is_empty());
-    // A RUST_LOG whose directives are all invalid falls back to warnings, not to nothing.
     let filter = tracing_subscriber::EnvFilter::builder()
         .with_default_directive(tracing_subscriber::filter::LevelFilter::WARN.into())
         .parse_lossy(directives.as_deref().unwrap_or(default_directives));
@@ -395,7 +392,6 @@ mod tests {
 
     fn split_spook_line(line: &str) -> Option<Vec<&str>> {
         let args: Vec<&str> = line.split_whitespace().collect();
-        // Play commands use `./spook` so a release archive runs without PATH.
         ["spook", "./spook"].contains(args.first()?).then_some(args)
     }
 }

@@ -65,7 +65,6 @@ pub(crate) fn load(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
     let source = FileText { file: rel, text };
     let mut diags = Vec::new();
     let mut budget = Budget::default();
-    // Each row is a counter key and the least value it allows, in report order.
     macro_rules! set_numbers {
         ($($key:ident >= $least:literal),* $(,)?) => {$(
             set_number(&source, stringify!($key), doc.$key, &mut budget.$key, $least, &mut diags);

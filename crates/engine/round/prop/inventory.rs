@@ -90,7 +90,6 @@ fn apply_changes(
                 step.delta, step.id
             ));
         }
-        // A negative max is not a ceiling. Only a positive add is capped.
         if step.delta > 0 {
             if let Some(cap) = step.max.filter(|cap| *cap >= 0) {
                 if i64::from(got) > cap {

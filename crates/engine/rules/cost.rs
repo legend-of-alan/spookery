@@ -52,7 +52,8 @@ pub(crate) fn read_ticks(context: &Context, cost: &Cost) -> Result<u64, Reason> 
     u64::try_from(expr::eval(context, &cost.ticks)?).map_err(|_| Reason::OutOfRange)
 }
 
-/// Meters and items are paid at the start. Time is a duration for later completion.
+/// Meters and items are paid at the start. Time is a duration for later completion. A meter
+/// cost of 0 leaves the meter as it was and still counts against the key budget.
 pub(crate) fn pay(
     canon: &Canon,
     world: &mut ecs::World,
@@ -69,7 +70,6 @@ pub(crate) fn pay(
         }
         (world.actors_mut().get_mut::<Meter>(actor_id)).shift(key, -amount)?;
         if amount == 0 {
-            // A cost of 0 leaves the meter as it was and still takes a key of the budget.
             world.count_key(&change::Key::new(
                 Meter::ID,
                 entity::IdRef::Actor(actor_id),
@@ -80,7 +80,6 @@ pub(crate) fn pay(
     for (id, expr) in &cost.items {
         let context = Context::new(canon, world, presence, intent);
         let count = item_count(expr::eval(&context, expr)?)?;
-        // The key budget keeps its own code; any other refusal of the take is a shortfall.
         let taken = -i64::from(count);
         match (world.actors_mut().get_mut::<component::Item>(actor_id)).shift(id, taken, None) {
             Err(Reason::Budget) => return Err(Reason::Budget),

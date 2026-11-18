@@ -28,7 +28,6 @@ fn named_code_exists() {
                 .iter()
                 .map(|part| part.to_string_lossy().trim_end_matches(".rs").to_string()),
         );
-        // A Cargo.toml's `name = "spookery-engine"` declares the crate `spookery_engine`.
         let keywords = if path.ends_with("Cargo.toml") {
             &["name"][..]
         } else {

@@ -59,9 +59,6 @@ enum Step {
 #[test]
 fn nested_rollbacks_put_the_save_back_exactly() {
     let pack = TempPack(copy_pack("docks", "rollback"));
-    // The street holds nothing yet, so lighting it puts its first component on it, which a
-    // rollback takes off whole. Mira holds one brass key, so a take under a savepoint can take
-    // her last one out, and she can wield it.
     let path = pack.0.join("state/save.yaml");
     let text = std::fs::read_to_string(&path).expect("the docks save");
     assert!(
@@ -77,14 +74,11 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     std::fs::write(&path, edited).expect("write the save");
     let opened = session::Session::open(&pack.0).expect("docks pack opens");
     let mut canon = opened.canon().clone();
-    // Room for every key the steps can touch: a refusal past the budget is
-    // an_intent_the_round_has_no_room_for_is_refused_budget.feature's.
     canon.budget.max_state_keys_mutated = 1000;
     let street = canon.places.get_mut("docks_street").expect("the street");
     street.flags.extend(["lit".to_string(), "busy".to_string()]);
     let mira = canon.cast.get_mut("mira").expect("Mira");
     mira.flags.push("wary".to_string());
-    // The brass key is a weapon here, so Mira can wield the key she holds.
     let key = canon.items.get_mut("brass_key").expect("the brass key");
     key.tags.push("weapon".to_string());
     let tale = StoryDef {
@@ -98,8 +92,6 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         hidden: false,
     };
     canon.modifiers.insert("fatigue".to_string(), fatigue);
-    // The street, the tale and the world each carry a meter, put on the save at its start as
-    // migrate puts on a meter the pack adds, so every store takes writes.
     let carried = [
         (entity::Id::Place("docks_street".into()), "glow"),
         (entity::Id::Story("tale".into()), "tension"),
@@ -160,7 +152,6 @@ fn play_steps(session: &session::Session<()>, steps: &[Step]) -> Result<(), Test
     let mut open = vec![open_at(&world)];
     let mut taken = world.clone();
     for (index, step) in steps.iter().enumerate() {
-        // A refused write is left for a savepoint to undo, as in a round.
         match step {
             Step::Savepoint => open.push(open_at(&world)),
             Step::Rollback if open.len() > 1 => {
@@ -168,7 +159,6 @@ fn play_steps(session: &session::Session<()>, steps: &[Step]) -> Result<(), Test
                 roll_back(&mut world, at)?;
             }
             Step::Rollback => {}
-            // A round takes changes only between actions, outside any savepoint but the first.
             Step::Take if open.len() == 1 => {
                 let changes = world.take_changes();
                 every_moved_meter_is_reported(&taken, &world, &changes)?;
@@ -202,7 +192,6 @@ fn play_steps(session: &session::Session<()>, steps: &[Step]) -> Result<(), Test
             Step::NoteExits => {
                 let _ = crate::rules::travel::note_exits(canon, &mut world);
             }
-            // Mira's memory of the shop's exits, written over with another list.
             Step::SeeExits(both) => {
                 let exits = ["docks_street", "stairs"][..if *both { 2 } else { 1 }].iter();
                 let exits = exits.map(|exit| exit.to_string()).collect();
@@ -370,7 +359,6 @@ fn pick_step() -> impl Strategy<Value = Step> {
         entity::Id::Actor("bram".into()),
         entity::Id::Place("docks_shop".into()),
     ]);
-    // A meter and a flag in each collection that carries one.
     let meters = vec![
         (entity::Id::Actor("mira".into()), "vigor"),
         (entity::Id::Actor("bram".into()), "vigor"),

@@ -144,7 +144,6 @@ fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>
         }
         let compiled_exit = Exit {
             id: exit.id.clone(),
-            // `name_exits` names an exit the pack leaves unnamed once every place has loaded.
             name: exit.name.clone().unwrap_or_default(),
             from: from.into(),
             to: exit.to.clone(),

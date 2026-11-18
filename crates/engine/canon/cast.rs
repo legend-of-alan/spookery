@@ -26,7 +26,6 @@ pub(super) fn add(
         file: &page.file,
         text: &page.text,
     };
-    // `load` validates `file.control_type` is `"npc"` or `"pc_template"`.
     let control_type = if file.control_type == "npc" {
         canon::ControlType::Npc
     } else {
@@ -70,7 +69,6 @@ fn load(file: &str, yaml: &str) -> Result<CastDoc, Vec<Diagnostic>> {
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short cast id");
     diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));
-    // `of: world` names the world, so no cast member can take that id.
     if parsed.id == "world" {
         diags.push(
             Problem {

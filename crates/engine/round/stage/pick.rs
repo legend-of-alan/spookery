@@ -146,8 +146,8 @@ enum SeatedRank {
     Unclaimed,
 }
 
+/// Player lines that share a priority keep the queue order. NPC ties shuffle.
 fn priority(canon: &Canon, world: &ecs::World, presence: &Presence, intent: &Intent) -> Priority {
-    // Player lines that share a priority keep the queue order. NPC ties still shuffle.
     let (actor, shuffle) = match &intent.actor {
         Some(Viewer::Player(_)) => (ActorRank::Player, [0u8; 32]),
         Some(Viewer::Npc(id)) => (

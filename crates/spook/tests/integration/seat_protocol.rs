@@ -129,7 +129,6 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(&mut out, "player-said", next_kind(&player, "say"));
     insert_json(&mut out, "gm-heard", next_kind(&gm, "say"));
 
-    // The save's stamp is the pack's own until a round commits, so status comes first.
     send(&mut gm, "status", json!({}));
     insert_json(&mut out, "gm-status", next_kind(&gm, "status"));
     let queue = send(
@@ -155,10 +154,8 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(&mut out, "player-check", next_kind(&player, "check"));
     next_kind(&player, "resume");
     next_kind(&player, "view");
-    // The round left Mira's note at the shop, a change the player may know.
     next_kind(&player, "changes");
 
-    // A second round moves an item the player can see, so the player gets a `changes`.
     send(&mut player, "take", json!({"target": "lamp_oil"}));
     next_kind(&player, "queued");
     next_kind(&gm, "queued");
@@ -173,7 +170,6 @@ fn capture() -> BTreeMap<String, Example> {
     send(&mut player, "travel", json!({"target": "stairs"}));
     insert_json(&mut out, "player-no-exit", next_kind(&player, "refused"));
 
-    // Rowan's connection drops without a release. The claim holds, and keeps the say.
     let last_seq = out_json(&out, "player-no-exit")["seq"].clone();
     player
         .write

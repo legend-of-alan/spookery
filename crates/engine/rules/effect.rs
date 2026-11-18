@@ -237,7 +237,6 @@ impl Effect {
                 }
                 (world.entities_mut().get_mut::<component::Flag>(&entity)).set(&key, value)
             }
-            // An exit with no `if` has no door.
             EffectKind::ExitOpen { exit, open } => {
                 canon
                     .has_door(&exit)
@@ -354,13 +353,10 @@ fn move_actor(
     if presence.players == 0 && actors.get::<component::ControlType>(actor_id).is_pc() {
         return Err(Reason::TableEmpty);
     }
-    // The place is read to compare with `from`; an actor the save lacks has none, and is refused
-    // here, before the canon's checks, as the place's write would refuse it.
     let place = actors.get::<component::Place>(actor_id).get();
     if place.ok_or(Reason::UnknownId)? != from {
         return Err(Reason::OutOfRange);
     }
-    // A walker stands on the exit until they arrive. The exit is no place of its own.
     let on_exit = crate::rules::travel::exit_stood_on(canon, to).is_some();
     if !canon.places.contains_key(to) && !on_exit {
         return Err(Reason::NoExit);

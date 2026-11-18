@@ -262,7 +262,6 @@ fn choose_seed(path: &Path, lock: &PackGuard) -> Result<(), Reason> {
 /// The journal tip in memory. Writes nothing.
 pub(crate) fn peek_at_tip(path: &Path) -> Result<session::Session<()>, Reason> {
     let mut session = session::Session::open(path)?;
-    // Open checked a save with nothing past it. A replayed tip is checked here.
     if apply_tail(&mut session)? {
         save::check(session.world()).map_err(|diags| first_reason(&diags))?;
     }
@@ -358,7 +357,6 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
             if blake2s_tagged(&bytes) == mark.state_hash {
                 return Ok(());
             }
-            // A hand edit is left for open to refuse. Only a save the head has passed is rebuilt.
             if let Ok(text) = std::str::from_utf8(&bytes) {
                 if let Ok(save) = save::parse(text) {
                     if save.state_rev == mark.state_rev
@@ -373,7 +371,6 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
                 }
             }
         }
-        // A missing save is rebuilt below.
         Err(Reason::NotInSpec) => {}
         Err(reason) => return Err(Error::Reason(reason)),
     }
@@ -393,7 +390,6 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
 
 impl From<crate::store::journal::Error> for Error {
     fn from(fault: crate::store::journal::Error) -> Self {
-        // A stale rules rev or an unreadable file is not a record that failed to replay.
         if fault.reason != Reason::JournalDiverged {
             return Error::Reason(fault.reason);
         }
@@ -588,7 +584,6 @@ fn apply_migrate(session: &mut session::Session<()>, record: &MigrateRecord) -> 
         return Err(diverged("pack_rev differed").into());
     }
     if record.edited {
-        // A migrate of a hand edit restarts from the checkpoint written with it.
         let path = journal::checkpoint_path(session.root(), record.state_rev_after);
         let bytes = fs::read(path).map_err(|_| diverged("missing snapshot"))?;
         if blake2s_tagged(&bytes) != record.state_hash {

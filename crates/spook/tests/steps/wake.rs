@@ -101,7 +101,6 @@ fn a_committed_wait_wakes_early(world: &mut World) {
     table::close_actor(world, "rowan");
     table::wait_players(world, 0);
     table::release_probe_gm(world);
-    // The timer fires a full interval later, but the save's stamp is seconds old.
     advance_and_settle(world, INTERVAL);
     let now = world_of(&pack);
     assert_eq!(now.world_time, committed.world_time);
@@ -122,9 +121,7 @@ fn a_queued_wait_is_due(world: &mut World) {
     let now = world_of(&pack);
     assert_eq!(now.round_index, 12);
     assert_eq!(now.world_time, 1800);
-    // The wait is Rowan's one act, in the first catch-up round.
     assert_eq!(act_of(&now, "rowan").last_act_round, 1);
-    // The catch-up stamped the save, so the next wake is not due.
     table::release_probe_gm(world);
     advance_and_settle(world, INTERVAL);
     assert_eq!(world_of(&pack).round_index, 12);
@@ -152,7 +149,6 @@ fn idle_is_off_and_a_player_waits(world: &mut World) {
     assert_eq!(now.round_index, 1);
     table::run(world, &["round", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
-    // `spook round` plays at an empty table: one idle round of 60 ticks.
     let now = world_of(&pack);
     assert_eq!(now.round_index, 2);
     assert_eq!(now.world_time, 1145);

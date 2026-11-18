@@ -60,7 +60,6 @@ fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
         fs::read(journal::save_path(played))
     }
     .map_err(|err| TestCaseError::fail(err.to_string()))?;
-    // Same rules as the played copy, including the exert success effect, at the snapshot.
     let pack = TempPack(fresh_dir("prop-rerun-again"));
     copy_dir(played, &pack.0);
     fs::write(journal::save_path(&pack.0), snapshot)

@@ -126,8 +126,6 @@ fn apply_scene(
             fact.hidden = *hidden;
         }
     }
-    // No writer forgets a fact or takes a note back, so the scene starts from the save as the
-    // file holds it with neither.
     let mut save = serde_json::to_value(&**world).expect("the save serializes");
     save["actors"]["known_facts"] = serde_json::json!({});
     save["globals"]["notes"] = serde_json::json!({});

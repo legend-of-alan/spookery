@@ -64,7 +64,6 @@ fn spook_run_exits_0(world: &mut World) {
 
 #[then(expr = "the pack can be opened again")]
 fn the_pack_can_be_opened_again(world: &mut World) {
-    // `lock_pack` then `Session::resume`, as `spook run` opens the pack.
     drop(support::resume(table::pack(world)));
 }
 

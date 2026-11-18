@@ -95,8 +95,6 @@ fn the_gm_queues_exert_and_commits(world: &mut World) {
     let before = count_gm_matches(world, "Queue:");
     write_gm(world, "queue wren exert");
     write_gm(world, "commit");
-    // The status result follows every check event of that commit on the
-    // socket, so its Queue line means the client has read them all.
     write_gm(world, "status");
     wait_gm_count(world, "Queue:", before + 1);
 }
@@ -130,7 +128,6 @@ fn another_gm_joins(world: &mut World) {
 
 #[when(expr = "the GM is killed")]
 fn the_gm_is_killed(world: &mut World) {
-    // Dropping the process kills it, so it never sends DELETE.
     let mark = table::host_stdout(world).len();
     world.gm.take();
     table::wait_host_until(world, "the GM seat freed", |text| {

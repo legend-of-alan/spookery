@@ -139,8 +139,6 @@ impl Attempt {
 
 impl HttpModel {
     pub fn new(settings: Settings) -> Result<Self, Error> {
-        // No reqwest total timeout: `attempt` holds the limit, and dropping
-        // the request closes the socket.
         let client = reqwest::Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
             .build()
@@ -184,7 +182,6 @@ impl HttpModel {
     }
 
     async fn attempt(&self, messages: &[model::Message]) -> Attempt {
-        // A timed-out attempt is dropped before this returns, which closes its socket.
         match tokio::time::timeout(MODEL_CALL_TIMEOUT, self.post_chat_completion(messages)).await {
             Ok(attempt) => attempt,
             Err(_) => Attempt::from_failure(TransportFailure::Timeout, ""),

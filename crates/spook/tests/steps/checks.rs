@@ -11,7 +11,7 @@ use crate::World;
 
 use super::{common, table};
 
-// Docks exert is 2d6 plus a vigor of 1, so the total is 3..=13.
+/// Docks exert is 2d6 plus a vigor of 1, so the total is 3..=13.
 const NOTICE_ROWS: &str = "
   - id: notice_sure
     when:

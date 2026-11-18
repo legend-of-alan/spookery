@@ -151,7 +151,6 @@ fn two_chains_at_depth_one(world: &mut World) {
         &world.pack.as_ref().unwrap().join("rules/budget.yaml"),
         "max_trigger_depth: 1\n",
     );
-    // `echo` comes first, so a pass that saw both pulls at once would read `rang` unset.
     let verbs = flag_verb("pull", "pulled", true, "") + &flag_verb("push", "pushed", true, "");
     let rules = chain_rule("echo", "pushed", "echoed", &world_flag_is("rang", true))
         + &chain_rule("ring", "pulled", "rang", "");
