@@ -79,7 +79,6 @@ Feature: Trigger delivery
     And the report says "rename this cast member"
     And the report says "actor id world is reserved"
     And the report says "not a fact"
-    And the report says "reveals to the world"
 
   Scenario: Verify passes after rounds that fired change rules
     Then spook verify passes after rounds that fired triggers

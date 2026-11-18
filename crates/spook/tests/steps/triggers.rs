@@ -941,7 +941,7 @@ Reserved.
     .unwrap();
     add_verb(
         &pack,
-        "\n  - id: bad\n    when:\n      verb: bad\n    do:\n      - reveal:\n          to: world\n          fact: missing_fact\n      - reveal:\n          to: self\n          fact: missing_fact\n",
+        "\n  - id: bad\n    when:\n      verb: bad\n    do:\n      - reveal:\n          to: self\n          fact: missing_fact\n",
     );
     stamp_pack_rev(&pack);
     world.pack = Some(pack);

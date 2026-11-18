@@ -220,31 +220,26 @@ pub(crate) fn resolve_entity(
         grammar::Object::Exit(_) => Err(Reason::UnknownId),
         grammar::Object::Place(id) => Ok(entity::Id::Place(id.clone())),
         grammar::Object::Here => Ok(entity::Id::Place(resolve_here(context)?.into())),
-        grammar::Object::Self_ | grammar::Object::Target | grammar::Object::Actor(_) => {
-            Ok(entity::Id::Actor(resolve_actor(context, of)?.clone()))
+        grammar::Object::Actor(actor) => {
+            Ok(entity::Id::Actor(resolve_actor(context, actor)?.clone()))
         }
     }
 }
 
-/// The actor `of` names: the one acting, the move's target, or an actor by id. A target that
-/// is a place, an exit or an item names no actor, so it is `UNKNOWN_ID`.
+/// The actor `actor` names: the one acting, the move's target, or an actor by id. A target
+/// that is a place, an exit or an item names no actor, so it is `UNKNOWN_ID`.
 pub(crate) fn resolve_actor<'a>(
     context: &Context<'_, 'a>,
-    of: &'a grammar::Object,
+    actor: &'a grammar::Actor,
 ) -> Result<&'a ActorId, Reason> {
-    match of {
-        grammar::Object::Self_ => context.intent.actor_id().ok_or(Reason::Schema),
-        grammar::Object::Target => match &context.intent.target {
+    match actor {
+        grammar::Actor::Self_ => context.intent.actor_id().ok_or(Reason::Schema),
+        grammar::Actor::Target => match &context.intent.target {
             Target::Actor(id) => Ok(id),
             Target::Empty => Err(Reason::Schema),
             Target::Place(_) | Target::Exit(_) | Target::Item(_) => Err(Reason::UnknownId),
         },
-        grammar::Object::Actor(id) => Ok(id),
-        grammar::Object::Here
-        | grammar::Object::Global
-        | grammar::Object::Place(_)
-        | grammar::Object::Story(_)
-        | grammar::Object::Exit(..) => Err(Reason::Schema),
+        grammar::Actor::Id(id) => Ok(id),
     }
 }
 

@@ -188,7 +188,7 @@ fn matches_subject(world: &ecs::World, subject: &grammar::Subject, actor: &Actor
         grammar::Subject::Any => true,
         grammar::Subject::Pc => control_type == component::ControlType::Pc,
         grammar::Subject::Npc => control_type == component::ControlType::Npc,
-        grammar::Subject::Actor(expected) => expected == actor.as_str(),
+        grammar::Subject::Id(expected) => expected == actor.as_str(),
     }
 }
 

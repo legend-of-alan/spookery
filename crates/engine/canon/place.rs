@@ -13,7 +13,7 @@ use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::PlaceId;
 use crate::entity;
-use crate::rules::rule::{Cost, Owner, Rule};
+use crate::rules::rule::{self, Cost, Owner, Rule, TargetKind};
 
 /// The meters one place file declares, by that file, for `load_canon` to add once the meters
 /// every actor carries have loaded.
@@ -146,7 +146,7 @@ fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>
         if bad {
             continue;
         }
-        compiled.push(Exit {
+        let compiled_exit = Exit {
             id: exit.id.clone(),
             // `name_exits` names an exit the pack leaves unnamed once every place has loaded.
             name: exit.name.clone().unwrap_or_default(),
@@ -159,7 +159,28 @@ fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>
             revealed_by: exit.revealed_by.clone(),
             file: file.to_string(),
             index,
-        });
+        };
+        let objects = rule::collect_objects(&compiled_exit.if_, compiled_exit.exprs());
+        let item_ids = compiled_exit.item_ids();
+        let none = TargetKind::None;
+        if let Some((slot, _)) =
+            rule_list::find_misplaced_target(none, objects, item_ids, Vec::new())
+        {
+            let problem = format!(
+                "exit '{}' says target in {slot}, but an exit has no target",
+                exit.id
+            );
+            diags.push(
+                schema_error(
+                    file,
+                    &problem,
+                    "an exit is walked, not targeted; name self or an id",
+                )
+                .at_path(format!("exits[{index}]")),
+            );
+            continue;
+        }
+        compiled.push(compiled_exit);
     }
     diags.into_result(compiled)
 }

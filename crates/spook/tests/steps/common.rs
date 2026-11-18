@@ -271,6 +271,26 @@ fn break_pack(pack: &Path, fault: &str) {
             "          id: day\n",
             "          id: tide\n",
         ),
+        "world as an actor" => replace_in_file(
+            &pack.join("world/places/gate_yard.md"),
+            "      - has_item:\n          subject: self\n          id: chock\n",
+            "      - at:\n          subject: world\n          place: gate_yard\n",
+        ),
+        "target on a move with none" => replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "      verb: wait\n    do: []\n",
+            "      verb: wait\n    do:\n      - meter: { of: target, key: hp, add: -1 }\n",
+        ),
+        "owner target on an item move" => replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "      verb: drop\n      target: item\n    do:\n",
+            "      verb: drop\n      target: item\n    do:\n      - meter: { of: target, key: hp, add: -1 }\n",
+        ),
+        "id: target with no target" => replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "      verb: wait\n    do: []\n",
+            "      verb: wait\n    do:\n      - item: { of: self, id: target, add: 1 }\n",
+        ),
         other => panic!("unknown fault {other}"),
     }
 }

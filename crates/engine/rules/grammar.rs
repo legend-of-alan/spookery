@@ -8,24 +8,44 @@ pub enum Subject {
     Any,
     Pc,
     Npc,
-    Actor(String),
+    Id(String),
+}
+
+/// The actor a slot that needs one names: `subject:`, and `to:` on a modifier, a memory or a
+/// reveal. A resist's `subject:` is the actor who rolls to resist, not the subject of the outer
+/// line.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Actor {
+    Self_,
+    Target,
+    Id(ActorId),
+}
+
+impl Actor {
+    /// Reads an actor word: `self`, `target` or a cast id. An owner that is not an actor, such
+    /// as `world` or `here`, is refused.
+    pub(crate) fn parse(word: &str) -> Result<Actor, String> {
+        match Object::parse(word)? {
+            Object::Actor(actor) => Ok(actor),
+            _ => Err(format!(
+                "'{word}' is not an actor; name self, target or a cast id"
+            )),
+        }
+    }
 }
 
 /// A grammatical object a pack line names, including but not limited to a direct object, an
-/// indirect object or the object of a preposition. A resist's `subject:` (the actor who rolls
-/// to resist, not the subject of the outer line) reuses this value set until pack lines have a
-/// parse tree. The pack writes `world` for `Object::Global`.
+/// indirect object or the object of a preposition. The pack writes `world` for
+/// `Object::Global`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Object {
-    Self_,
-    Target,
+    Actor(Actor),
     Here,
     Global,
     Place(PlaceId),
     Story(StoryId),
     /// An exit, by its place and its exit id: `exit:<place>.<exit>`.
     Exit(ExitId),
-    Actor(ActorId),
 }
 
 impl Object {
@@ -54,8 +74,8 @@ impl Object {
             };
         }
         match word {
-            "self" => Ok(Object::Self_),
-            "target" => Ok(Object::Target),
+            "self" => Ok(Object::Actor(Actor::Self_)),
+            "target" => Ok(Object::Actor(Actor::Target)),
             "here" => Ok(Object::Here),
             "world" => Ok(Object::Global),
             "subject" => Err(
@@ -66,7 +86,7 @@ impl Object {
             | "first_known" | "first_listener" | "keep" | "first_due_note" | "first_owned" => {
                 Err(format!("'{word}' is not an owner"))
             }
-            actor_id => Ok(Object::Actor(actor_id.into())),
+            actor_id => Ok(Object::Actor(Actor::Id(actor_id.into()))),
         }
     }
 }

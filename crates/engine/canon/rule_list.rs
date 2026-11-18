@@ -604,7 +604,7 @@ fn compile_one(
         return Err(diags);
     }
     let when = when.expect("when checked");
-    Ok(Rule {
+    let rule = Rule {
         id: owner.rule_id(&local),
         local_id: local,
         owner: owner.clone(),
@@ -634,7 +634,61 @@ fn compile_one(
         miss,
         file: file.to_string(),
         index,
-    })
+    };
+    let targets = match &rule.when {
+        When::Verb { target, .. } => *target,
+        When::Habit | When::Change(_) => TargetKind::None,
+    };
+    let mut locations = Vec::new();
+    rule.visit_templates(|effect| match effect {
+        EffectTemplate::Location {
+            to: LocationTo::Target,
+            ..
+        } => locations.push(("location to:", TargetKind::Place)),
+        EffectTemplate::Location {
+            to: LocationTo::Via(via),
+            ..
+        } if via == "target" => locations.push(("location via:", TargetKind::Exit)),
+        _ => {}
+    });
+    let (objects, item_ids) = (rule.objects(), rule.item_ids());
+    if let Some((slot, needs)) = find_misplaced_target(targets, objects, item_ids, locations) {
+        let needs = needs.as_str();
+        return Err(vec![Problem {
+            source: &source,
+            path: &format!("rules[{index}].id"),
+            at: Locator::Spot(spot_of(&entry.id)),
+            message: format!(
+                "rule '{}' says target in {slot}, but its target is {}",
+                rule.local_id,
+                targets.as_str()
+            ),
+            hint: &format!("give the verb target: {needs}, or name the {needs} by its id"),
+        }
+        .into_diagnostic()]);
+    }
+    Ok(rule)
+}
+
+/// The first use of the word `target` that a move targeting `targets` does not allow, as its
+/// slot and what it needs the move to target. An owner among `objects` needs an actor and an id
+/// among `item_ids` an item; each of `locations` says what it needs (`location: { to: target }`
+/// a place, `location: { via: target }` an exit). A habit, a change rule and an exit target
+/// nothing.
+pub(super) fn find_misplaced_target(
+    targets: TargetKind,
+    objects: Vec<(&'static str, grammar::Object)>,
+    item_ids: Vec<(&'static str, &str)>,
+    locations: Vec<(&'static str, TargetKind)>,
+) -> Option<(&'static str, TargetKind)> {
+    let target = grammar::Object::Actor(grammar::Actor::Target);
+    let owners = (objects.into_iter())
+        .filter(|(_, of)| *of == target)
+        .map(|(slot, _)| (slot, TargetKind::Actor));
+    let items = (item_ids.into_iter())
+        .filter(|(_, id)| *id == "target")
+        .map(|(slot, _)| (slot, TargetKind::Item));
+    (owners.chain(items).chain(locations)).find(|(_, needs)| *needs != targets)
 }
 
 fn when_of(yaml: &WhenYaml) -> Result<When, String> {
@@ -675,7 +729,7 @@ fn change_of(yaml: &ChangeYaml) -> Result<When, String> {
         None | Some("any") => grammar::Subject::Any,
         Some("pc") => grammar::Subject::Pc,
         Some("npc") => grammar::Subject::Npc,
-        Some(actor) => grammar::Subject::Actor(actor.to_string()),
+        Some(actor) => grammar::Subject::Id(actor.to_string()),
     };
     if let Some(place) = &yaml.arrive {
         return Ok(When::Change(ChangeWatch::Arrive {
@@ -737,7 +791,7 @@ fn if_of(yaml: &IfYaml) -> Result<Vec<Cond>, Fault> {
 pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     Ok(match yaml {
         CondYaml::HasItem(item) => Cond::HasItem {
-            subject: object_of(&item.subject)?,
+            subject: actor_of(&item.subject)?,
             id: item.id.clone(),
             count: item.count,
         },
@@ -753,11 +807,11 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
             is: flag.is_,
         },
         CondYaml::At(at) => Cond::At {
-            subject: object_of(&at.subject)?,
+            subject: actor_of(&at.subject)?,
             place: at.place.clone(),
         },
         CondYaml::Knows(knows) => Cond::Knows {
-            subject: object_of(&knows.subject)?,
+            subject: actor_of(&knows.subject)?,
             fact: knows.fact.clone(),
         },
         CondYaml::Cycle(cycle) if cycle.from == cycle.to => {
@@ -774,7 +828,7 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
         },
         CondYaml::NoteExists(id) => Cond::NoteExists(id.clone()),
         CondYaml::Wielding(wielding) => Cond::Wielding {
-            subject: object_of(&wielding.subject)?,
+            subject: actor_of(&wielding.subject)?,
             id: wielding.id.clone(),
         },
         CondYaml::All(all) => Cond::All(all.iter().map(cond_of).collect::<Result<_, _>>()?),
@@ -891,7 +945,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             return Err("a modifier effect has ticks below 1, so set ticks to 1 or more".into());
         }
         EffectYaml::Modifier(modifier) => EffectTemplate::Modifier {
-            to: object_of(&modifier.to)?,
+            to: actor_of(&modifier.to)?,
             id: modifier.id.clone(),
             add: expr_of(&modifier.add)?,
             ticks: modifier.ticks,
@@ -929,7 +983,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             resist: resist_of(narrate.resist.as_ref())?,
         },
         EffectYaml::Memory(memory) => EffectTemplate::Memory {
-            to: object_of(&memory.to)?,
+            to: actor_of(&memory.to)?,
             fact_ids: memory.fact_ids.clone(),
             text: memory.text.clone(),
         },
@@ -941,15 +995,15 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             resist: resist_of(item.resist.as_ref())?,
         },
         EffectYaml::Reveal(reveal) => EffectTemplate::Reveal {
-            to: object_of(&reveal.to)?,
+            to: actor_of(&reveal.to)?,
             fact: reveal.fact.clone(),
         },
         EffectYaml::Wield(wield) => EffectTemplate::Wield {
-            subject: object_of(&wield.subject)?,
+            subject: actor_of(&wield.subject)?,
             id: wield.id.clone(),
         },
         EffectYaml::Unwield(unwield) => EffectTemplate::Unwield {
-            subject: object_of(&unwield.subject)?,
+            subject: actor_of(&unwield.subject)?,
         },
     })
 }
@@ -963,8 +1017,8 @@ fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {
         ResistYaml::Word(word) => Err(format!("resist '{word}' is not same").into()),
         ResistYaml::Roll(roll) => Ok(Some(ResistSpec::Roll {
             subject: match &roll.subject {
-                Some(subject) => object_of(subject)?,
-                None => grammar::Object::Target,
+                Some(subject) => actor_of(subject)?,
+                None => grammar::Actor::Target,
             },
             check: roll.check.clone(),
             threshold: expr_of(&roll.threshold)?,
@@ -979,6 +1033,14 @@ fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {
 
 fn object_of(yaml: &Spanned<String>) -> Result<grammar::Object, Fault> {
     grammar::Object::parse(&yaml.value).map_err(|message| Fault {
+        message,
+        spot: spot_of(yaml),
+    })
+}
+
+/// The actor a slot that needs one names, refused on the word's line when it is another owner.
+fn actor_of(yaml: &Spanned<String>) -> Result<grammar::Actor, Fault> {
+    grammar::Actor::parse(&yaml.value).map_err(|message| Fault {
         message,
         spot: spot_of(yaml),
     })

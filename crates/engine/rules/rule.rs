@@ -66,6 +66,121 @@ impl Rule {
         walk(&self.partial, &mut visit);
         walk(&self.miss, &mut visit);
     }
+
+    /// Every number the rule holds: its roll's threshold and band, its costs, its conditions'
+    /// values, and its effects' amounts and resist thresholds.
+    pub(crate) fn exprs(&self) -> Vec<&Expr> {
+        let mut exprs = Vec::new();
+        if let Some(roll) = &self.roll {
+            exprs.push(&roll.threshold);
+            exprs.extend(&roll.partial_at);
+        }
+        for cost in self.costs() {
+            exprs.extend(cost.exprs());
+        }
+        exprs.extend(self.if_.iter().flat_map(Cond::exprs));
+        self.visit_templates(|effect| {
+            match effect {
+                EffectTemplate::Modifier { add, .. } => exprs.push(add),
+                EffectTemplate::Meter { add, set, .. } => exprs.extend(add.iter().chain(set)),
+                _ => {}
+            }
+            if let Some(ResistSpec::Roll { threshold, .. }) = effect.resist() {
+                exprs.push(threshold);
+            }
+        });
+        exprs
+    }
+
+    /// Every owner the rule names, with the slot it sits in: `of:`, `subject:`, `to:`, a
+    /// resist's `subject:`, or a number that reads one of its meters.
+    pub(crate) fn objects(&self) -> Vec<(&'static str, grammar::Object)> {
+        let mut objects = collect_objects(&self.if_, self.exprs());
+        self.visit_templates(|effect| {
+            if let Some(ResistSpec::Roll { subject, .. }) = effect.resist() {
+                let subject = grammar::Object::Actor(subject.clone());
+                objects.push(("a resist's subject:", subject));
+            }
+            let (slot, object) = match effect {
+                EffectTemplate::Meter { of, .. }
+                | EffectTemplate::Flag { of, .. }
+                | EffectTemplate::Item { of, .. } => ("of:", of.clone()),
+                EffectTemplate::Modifier { to, .. }
+                | EffectTemplate::Memory { to, .. }
+                | EffectTemplate::Reveal { to, .. } => ("to:", grammar::Object::Actor(to.clone())),
+                EffectTemplate::Wield { subject, .. } | EffectTemplate::Unwield { subject } => {
+                    ("subject:", grammar::Object::Actor(subject.clone()))
+                }
+                EffectTemplate::Location { .. }
+                | EffectTemplate::Note { .. }
+                | EffectTemplate::Narrate { .. } => return,
+            };
+            objects.push((slot, object));
+        });
+        objects
+    }
+
+    /// Every item id the rule names, with its slot: `id:` on a condition, an item effect or a
+    /// `wield`, and a cost's `items:`.
+    pub(crate) fn item_ids(&self) -> Vec<(&'static str, &str)> {
+        let mut ids = collect_item_ids(&self.if_, self.costs());
+        self.visit_templates(|effect| {
+            if let EffectTemplate::Item { id, .. } | EffectTemplate::Wield { id, .. } = effect {
+                ids.push(("id:", id));
+            }
+        });
+        ids
+    }
+}
+
+/// Every owner `conds` name in a `subject:` or `of:`, with that slot, and every owner `exprs`
+/// read, as `a number`.
+pub(crate) fn collect_objects<'a>(
+    conds: &[Cond],
+    exprs: impl IntoIterator<Item = &'a Expr>,
+) -> Vec<(&'static str, grammar::Object)> {
+    let mut objects = Vec::new();
+    for cond in conds {
+        cond.visit(|cond| match cond {
+            Cond::HasItem { subject, .. }
+            | Cond::At { subject, .. }
+            | Cond::Knows { subject, .. }
+            | Cond::Wielding { subject, .. } => {
+                objects.push(("subject:", grammar::Object::Actor(subject.clone())));
+            }
+            Cond::Meter { of, .. } | Cond::Flag { of, .. } => objects.push(("of:", of.clone())),
+            _ => {}
+        });
+    }
+    for expr in exprs {
+        let reads = expr.meter_reads().into_iter();
+        objects.extend(reads.map(|(of, _, _)| ("a number", of.clone())));
+    }
+    objects
+}
+
+/// Every item id `conds` and `costs` name, with its slot: `id:` on `has_item` and `wielding`,
+/// and a cost's `items:`.
+pub(crate) fn collect_item_ids<'a>(
+    conds: &'a [Cond],
+    costs: impl IntoIterator<Item = &'a Cost>,
+) -> Vec<(&'static str, &'a str)> {
+    let mut ids = Vec::new();
+    for cond in conds {
+        cond.visit(|cond| {
+            if let Cond::HasItem { id, .. } | Cond::Wielding { id, .. } = cond {
+                ids.push(("id:", id.as_str()));
+            }
+        });
+    }
+    for cost in costs {
+        ids.extend(
+            cost.items
+                .iter()
+                .map(|(id, _)| ("a cost's items:", id.as_str())),
+        );
+    }
+    ids
 }
 
 /// What the start or the finish of an action costs, and whether it uses the actor's act.
@@ -183,10 +298,17 @@ pub struct Cost {
     pub items: Vec<(String, Expr)>,
 }
 
+impl Cost {
+    /// The meter amounts, then the item counts.
+    pub(crate) fn exprs(&self) -> impl Iterator<Item = &Expr> {
+        self.meters.iter().chain(&self.items).map(|(_, expr)| expr)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Cond {
     HasItem {
-        subject: grammar::Object,
+        subject: grammar::Actor,
         id: String,
         count: u32,
     },
@@ -202,11 +324,11 @@ pub enum Cond {
         is: bool,
     },
     At {
-        subject: grammar::Object,
+        subject: grammar::Actor,
         place: String,
     },
     Knows {
-        subject: grammar::Object,
+        subject: grammar::Actor,
         fact: String,
     },
     /// A tick of cycle `id` in `from..to`, wrapping past the cycle's end when `from > to`.
@@ -221,7 +343,7 @@ pub enum Cond {
     },
     NoteExists(String),
     Wielding {
-        subject: grammar::Object,
+        subject: grammar::Actor,
         id: String,
     },
     All(Vec<Cond>),
@@ -244,6 +366,17 @@ impl Cond {
             }
         }
         walk(self, &mut visit);
+    }
+
+    /// The value each meter leaf compares against, walking into `all`, `any` and `not`.
+    pub(crate) fn exprs(&self) -> Vec<&Expr> {
+        let mut exprs = Vec::new();
+        self.visit(|cond| {
+            if let Cond::Meter { value, .. } = cond {
+                exprs.push(value);
+            }
+        });
+        exprs
     }
 }
 
@@ -296,7 +429,7 @@ pub enum EffectTemplate {
     },
     /// One application of modifier `id` to an actor, with magnitude `add`, lasting `ticks`.
     Modifier {
-        to: grammar::Object,
+        to: grammar::Actor,
         id: String,
         add: Expr,
         ticks: u64,
@@ -319,7 +452,7 @@ pub enum EffectTemplate {
         resist: Option<ResistSpec>,
     },
     Memory {
-        to: grammar::Object,
+        to: grammar::Actor,
         fact_ids: Vec<String>,
         text: Option<String>,
     },
@@ -331,15 +464,15 @@ pub enum EffectTemplate {
         resist: Option<ResistSpec>,
     },
     Reveal {
-        to: grammar::Object,
+        to: grammar::Actor,
         fact: String,
     },
     Wield {
-        subject: grammar::Object,
+        subject: grammar::Actor,
         id: String,
     },
     Unwield {
-        subject: grammar::Object,
+        subject: grammar::Actor,
     },
 }
 
@@ -375,7 +508,7 @@ pub enum NarrateTo {
 pub enum ResistSpec {
     Same,
     Roll {
-        subject: grammar::Object,
+        subject: grammar::Actor,
         check: String,
         threshold: Expr,
         resisted: Vec<EffectTemplate>,
