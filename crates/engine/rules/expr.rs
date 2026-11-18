@@ -68,12 +68,12 @@ pub(crate) fn is_let_name(word: &str) -> bool {
         name: word.to_string(),
         keep: None,
     };
-    let owner_word = !matches!(
+    let cast_id = matches!(
         grammar::Object::parse(word),
         Ok(grammar::Object::Actor(grammar::Actor::Id(_)))
     );
     let call = ["min", "max", "high", "low"].contains(&word);
-    Expr::parse(word) == Ok(read) && !owner_word && !call
+    Expr::parse(word) == Ok(read) && cast_id && !call
 }
 
 /// One `let:` name as the rule rolled it: its value, and its faces when its number is one dice

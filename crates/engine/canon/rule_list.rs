@@ -643,8 +643,8 @@ fn compile_one(
 
 /// The first `let:` read in `rule` that fails, as the problem and the hint: a name its `let:`
 /// does not hold, a name a `let:` number reads at or above the line that holds it, or `high` or
-/// `low` of a name whose number is not one dice group that keeps every face. The `let:` numbers
-/// come first in `Rule::exprs`, so the one at `index` reads only the names above it.
+/// `low` of a name whose number is not one dice group with no keep. The `let:` numbers come
+/// first in `Rule::exprs`, so the one at `index` reads only the names above it.
 fn find_let_read_problem(rule: &Rule) -> Option<(String, String)> {
     let lets = rule.lets.as_slice();
     for (index, expr) in rule.exprs().into_iter().enumerate() {
@@ -656,8 +656,8 @@ fn find_let_read_problem(rule: &Rule) -> Option<(String, String)> {
             let (problem, hint) = match (readable.iter().find(|(held, _)| held == name), keep) {
                 (Some((_, Expr::Dice { keep: None, .. })), _) | (Some(_), None) => continue,
                 (Some(_), Some(_)) => (
-                    format!("reads high or low of '{name}', which is not one dice group that keeps every face"),
-                    "read high or low only of a name whose number is dice such as 2d8, with no kh1 or kl1",
+                    format!("reads high or low of '{name}', which is not one dice group with no keep"),
+                    "read high or low only of a name whose number is dice such as 2d8, with no keep such as kh1",
                 ),
                 (None, _) if lets.iter().any(|(held, _)| held == name) => (
                     format!("reads '{name}' in let: at or above the line that holds it"),
