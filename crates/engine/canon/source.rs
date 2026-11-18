@@ -28,12 +28,12 @@ pub(super) struct FileText<'a> {
 
 impl<'a> FileText<'a> {
     /// A file or directory whose text the caller does not hold, such as a lint's.
-    pub fn named(file: &'a str) -> Self {
+    pub(super) fn named(file: &'a str) -> Self {
         Self { file, text: "" }
     }
 
     /// The refusal at `path` when `id` is empty.
-    pub fn refuse_empty(
+    pub(super) fn refuse_empty(
         &self,
         id: &str,
         path: &str,
@@ -46,7 +46,7 @@ impl<'a> FileText<'a> {
     }
 
     /// The refusal at `path` for an `id` the caller found a second time.
-    pub fn refuse_duplicate(
+    pub(super) fn refuse_duplicate(
         &self,
         id: &str,
         path: &str,
@@ -60,7 +60,7 @@ impl<'a> FileText<'a> {
     /// The refusals for the `row`th item of the top-level `{noun}s:` list, whose id is
     /// `id`: an empty id, then each rule the row breaks, then, when nothing else is wrong
     /// and `taken` says an earlier row has this id, the repeat.
-    pub fn refuse_row(
+    pub(super) fn refuse_row(
         &self,
         noun: &str,
         row: usize,
@@ -97,7 +97,7 @@ impl<'a> FileText<'a> {
     }
 
     /// A converter's `fault` at the spot it recorded, refused as a schema error.
-    pub fn fault(&self, path: &str, fault: Fault) -> Diagnostic {
+    pub(super) fn fault(&self, path: &str, fault: Fault) -> Diagnostic {
         self.refusal(path, Locator::Spot(fault.spot), fault.message, "")
     }
 
@@ -151,7 +151,7 @@ pub(super) struct Problem<'a> {
 }
 
 impl Problem<'_> {
-    pub fn into_diagnostic(self) -> Diagnostic {
+    pub(super) fn into_diagnostic(self) -> Diagnostic {
         let source = self.source;
         let code = Code::Error(Reason::Schema);
         let mut diag = Diagnostic::new(source.file, code, &self.message, self.hint);
@@ -199,16 +199,16 @@ pub(super) struct Diags(Vec<Diagnostic>);
 
 impl Diags {
     /// The value, or `None` once the result's diagnostics are kept.
-    pub fn keep<T>(&mut self, result: Result<T, Vec<Diagnostic>>) -> Option<T> {
+    pub(super) fn keep<T>(&mut self, result: Result<T, Vec<Diagnostic>>) -> Option<T> {
         result.map_err(|more| self.0.extend(more)).ok()
     }
 
-    pub fn push(&mut self, diag: Diagnostic) {
+    pub(super) fn push(&mut self, diag: Diagnostic) {
         self.0.push(diag);
     }
 
     /// `value` when nothing was found, else every diagnostic.
-    pub fn into_result<T>(self, value: T) -> Result<T, Vec<Diagnostic>> {
+    pub(super) fn into_result<T>(self, value: T) -> Result<T, Vec<Diagnostic>> {
         if self.0.is_empty() {
             Ok(value)
         } else {

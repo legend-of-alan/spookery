@@ -15,7 +15,7 @@ pub(super) struct Facts(pub(super) BTreeMap<String, FactDef>);
 impl Facts {
     /// One place file's facts, or the refusals. `source` is the whole file, so a
     /// refusal's line counts from its first line.
-    pub fn add(
+    pub(super) fn add(
         &mut self,
         source: &FileText,
         facts: Vec<FactYaml>,

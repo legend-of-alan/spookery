@@ -9,6 +9,9 @@ rust-version = "1.99"
 publish = false
 license = "AGPL-3.0-or-later"
 
+[workspace.lints.rust]
+unreachable_pub = "warn"
+
 # Small binaries for release downloads: `cargo build --profile dist`.
 # Plain `release` stays fast for local builds.
 [profile.dist]

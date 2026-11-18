@@ -24,9 +24,11 @@ pub struct World {
     pub flood_other_at: usize,
     pub now_bytes: Vec<u8>,
     pub state_files: Vec<(PathBuf, Vec<u8>)>,
-    pub play: Option<support::Process>,
-    pub plays: Vec<support::Process>,
-    pub gm: Option<support::Process>,
+    pub(crate) play: Option<support::Process>,
+    #[allow(dead_code, reason = "a drop guard; only features_host spawns these plays")]
+    pub(crate) plays: Vec<support::Process>,
+    #[allow(dead_code, reason = "only features_host runs the gm terminal")]
+    pub(crate) gm: Option<support::Process>,
     pub summary: Vec<String>,
     pub seen: Vec<(String, Vec<String>)>,
     pub told: Vec<(String, String)>,
@@ -34,9 +36,9 @@ pub struct World {
     pub children: Vec<Child>,
     pub listeners: Vec<TcpListener>,
     pub seated: Vec<(PathBuf, spookery_engine::Presence)>,
-    pub http_gm: Option<mcp_client::GmClient>,
+    pub(crate) http_gm: Option<mcp_client::GmClient>,
     /// An MCP session opened over plain HTTP, and its event streams.
-    pub mcp_session: Option<mcp_client::RawSession>,
+    pub(crate) mcp_session: Option<mcp_client::RawSession>,
     /// The table the WebSocket GM sits at, beside `live`, and the pack copy it runs.
     pub ws_table: Option<(table::Process, PathBuf)>,
     /// A recorded session's lines, each one message a seat sent or got.

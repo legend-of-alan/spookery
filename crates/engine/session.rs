@@ -30,10 +30,10 @@ const MAX_SAY_CHARS: usize = 4 * 1024;
 /// An open pack: its root, the ECS world its save reads into, the queued intents and the pack
 /// lock `Lock`, which is `()` for a session that only reads.
 pub struct Session<Lock = crate::PackGuard> {
-    pub(crate) root: PathBuf,
-    pub(crate) world: ecs::World,
-    pub(crate) queue: Vec<Intent>,
-    pub(crate) lock: Lock,
+    root: PathBuf,
+    world: ecs::World,
+    queue: Vec<Intent>,
+    lock: Lock,
 }
 
 impl Session {
@@ -59,6 +59,11 @@ impl Session {
             queue,
             lock,
         })
+    }
+
+    /// The pack lock this session holds, which every write to `state/` needs.
+    pub(crate) fn lock(&self) -> &crate::PackGuard {
+        &self.lock
     }
 
     /// Play the queue with `presence` seated.
@@ -246,9 +251,12 @@ impl<Lock> Session<Lock> {
         &self.world
     }
 
-    /// Replace the ECS world after a replay. This does not write `save.yaml`.
-    pub(crate) fn set_world(&mut self, world: ecs::World) {
+    /// Accept `world`'s changes, swap it in and clear the queue, whose intents were aimed at
+    /// the old world. The one place a session's world changes. This does not write `save.yaml`.
+    pub(crate) fn replace_world(&mut self, mut world: ecs::World) {
+        world.accept();
         self.world = world;
+        self.queue.clear();
     }
 
     /// Gate a player's line with `presence` seated, then queue it. The line is an intent

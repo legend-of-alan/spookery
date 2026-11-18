@@ -9,7 +9,7 @@ use crate::store::lock::WriteGuard;
 use crate::Reason;
 
 /// Run by `lock_pack` before the writer reads a pack that a crash may have left mid-commit.
-pub fn recover(root: &Path, write: &WriteGuard) -> Result<(), Reason> {
+pub(crate) fn recover(root: &Path, write: &WriteGuard) -> Result<(), Reason> {
     let state = root.join("state");
     cut_torn_tail(root)?;
     close_finished(root, write)?;

@@ -41,7 +41,7 @@ const FILES: &[(&str, &str)] = &[
     ),
 ];
 
-pub enum Error {
+pub(crate) enum Error {
     Message(String),
     Io(io::Error),
 }
@@ -59,7 +59,7 @@ impl std::fmt::Display for Error {
 /// An existing non-empty directory is refused and left untouched.
 /// A missing parent is refused and left uncreated.
 /// A failed write removes whatever this call created.
-pub fn write(dir: &Path) -> Result<String, Error> {
+pub(crate) fn write(dir: &Path) -> Result<String, Error> {
     let created = if dir.exists() {
         if !dir.is_dir() {
             return Err(Error::Message(format!(

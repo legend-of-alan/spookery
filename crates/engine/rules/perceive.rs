@@ -14,7 +14,7 @@ use crate::rules::visibility::can_see_fact;
 use crate::session;
 use crate::Reason;
 use spookery_protocol::{ExitView, NoteView, PERCEIVE_BODY_CHARS};
-pub use spookery_protocol::{ItemStack, KnownFact, MeterView};
+pub(crate) use spookery_protocol::{ItemStack, KnownFact, MeterView};
 
 /// What one viewer is shown. Returned from the engine to the host table, which renders it as
 /// a player or GM view.

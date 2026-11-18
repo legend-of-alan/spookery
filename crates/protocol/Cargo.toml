@@ -16,3 +16,6 @@ schema = ["dep:schemars"]
 schemars = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+
+[lints]
+workspace = true

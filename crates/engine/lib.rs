@@ -77,13 +77,13 @@ pub mod testing {
 
     /// The write guard of the pack `session` holds the lock on.
     pub fn lock_write(session: &crate::session::Session) -> Result<WriteGuard, crate::Reason> {
-        crate::store::lock::take_write(session.root(), &session.lock)
+        crate::store::lock::take_write(session.root(), session.lock())
     }
     pub use crate::store::RULES_REV;
 
     /// A second handle on the lock file, like the copy a spawned child holds until it execs.
     pub fn clone_lock_file(session: &crate::session::Session) -> std::fs::File {
-        session.lock.file().try_clone().unwrap()
+        session.lock().file().try_clone().unwrap()
     }
 
     pub mod journal {

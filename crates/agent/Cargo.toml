@@ -16,3 +16,6 @@ spookery-protocol = { path = "../protocol" }
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "test-util"] }
+
+[lints]
+workspace = true

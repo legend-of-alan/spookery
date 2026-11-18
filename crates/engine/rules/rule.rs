@@ -10,7 +10,7 @@ use crate::rules::roll::{classify, Roll};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Rule {
+pub(crate) struct Rule {
     pub id: String,
     pub local_id: String,
     pub owner: Owner,
@@ -206,13 +206,13 @@ impl<'l> Mentions<'l> {
 
 /// What the start or the finish of an action costs, and whether it uses the actor's act.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Phase {
+pub(crate) struct Phase {
     pub cost: Option<Cost>,
     pub counts_as_act: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Owner {
+pub(crate) enum Owner {
     Verb,
     Place(String),
     Item(String),
@@ -243,7 +243,7 @@ impl Owner {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum When {
+pub(crate) enum When {
     Verb { verb_id: String, target: TargetKind },
     Habit,
     Change(ChangeWatch),
@@ -271,7 +271,7 @@ impl TargetKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ChangeWatch {
+pub(crate) enum ChangeWatch {
     Arrive {
         place: String,
         subject: grammar::Subject,
@@ -301,7 +301,7 @@ pub enum ChangeWatch {
 /// A `check:`, a rule's or a nested one: `total` against `success_at`, with an optional lower
 /// `partial_at` band.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Check {
+pub(crate) struct Check {
     pub total: Expr,
     pub success_at: Expr,
     pub partial_at: Option<Expr>,
@@ -468,7 +468,7 @@ impl Op {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EffectTemplate {
+pub(crate) enum EffectTemplate {
     Meter {
         of: grammar::Object,
         key: String,
@@ -559,14 +559,14 @@ impl EffectTemplate {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LocationTo {
+pub(crate) enum LocationTo {
     Target,
     Place(String),
     Via(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum NarrateTo {
+pub(crate) enum NarrateTo {
     Here,
     Self_,
     Actors(Vec<ActorId>),

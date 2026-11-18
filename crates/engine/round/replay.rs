@@ -21,6 +21,7 @@ use crate::Reason;
 use crate::round::play::replay_round;
 
 #[derive(Debug)]
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub struct Report {
     pub state_rev: u64,
     pub applied: u64,
@@ -162,6 +163,7 @@ pub(crate) fn checkpoint_diverged(
 /// Replay the journal's `records`. `from` is a directory whose `state/save.yaml` replaces
 /// the base. `until` ignores records with a later `state_rev`, so a live server cannot race
 /// a verify.
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn apply_journal(
     pack: &Path,
     records: &[Record],
@@ -233,7 +235,7 @@ pub(crate) fn open_at_tip(path: &Path, lock: &PackGuard) -> Result<session::Sess
     choose_seed(path, lock)?;
     rebuild_save(path, lock).map_err(Error::into_reason)?;
     let session = peek_at_tip(path)?;
-    crate::store::commit::settle_checkpoint(&session, &lock::take_write(&session.root, lock)?)?;
+    crate::store::commit::settle_checkpoint(&session, &lock::take_write(session.root(), lock)?)?;
     Ok(session)
 }
 
@@ -307,7 +309,7 @@ fn load_tip_unchecked(path: &Path, lock: &PackGuard) -> Result<session::Session<
     let save = journal::read_save(&journal::save_path(path))?;
     let mut session = open_at(path, &save).map_err(Error::into_reason)?;
     apply_tail(&mut session)?;
-    crate::store::commit::settle_checkpoint(&session, &lock::take_write(&session.root, lock)?)?;
+    crate::store::commit::settle_checkpoint(&session, &lock::take_write(session.root(), lock)?)?;
     Ok(session)
 }
 
@@ -593,7 +595,7 @@ fn apply_migrate(session: &mut session::Session<()>, record: &MigrateRecord) -> 
             return Err(diverged("state_hash differed").replayed(bytes).into());
         }
         let canon = Arc::clone(session.world().canon());
-        session.set_world(ecs::World::new(load_save_bytes(&bytes)?, canon));
+        session.replace_world(ecs::World::new(load_save_bytes(&bytes)?, canon));
         return Ok(());
     }
     let next = save::migrate(session.world().clone(), record).map_err(Error::Reason)?;
@@ -601,7 +603,7 @@ fn apply_migrate(session: &mut session::Session<()>, record: &MigrateRecord) -> 
     if blake2s_tagged(&bytes) != record.state_hash {
         return Err(diverged("state_hash differed").replayed(bytes).into());
     }
-    session.set_world(next);
+    session.replace_world(next);
     Ok(())
 }
 

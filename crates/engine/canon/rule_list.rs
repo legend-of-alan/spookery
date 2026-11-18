@@ -22,7 +22,7 @@ use crate::rules::rule::{
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct VerbsDoc {
+pub(super) struct VerbsDoc {
     #[serde(rename = "schema")]
     pub _schema: String,
     #[serde(default)]
@@ -31,7 +31,7 @@ pub struct VerbsDoc {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RuleYaml {
+pub(super) struct RuleYaml {
     pub id: Spanned<String>,
     pub when: Spanned<WhenYaml>,
     #[serde(rename = "if")]
@@ -62,14 +62,14 @@ pub struct RuleYaml {
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-pub enum WhenYaml {
+pub(super) enum WhenYaml {
     Word(String),
     Map(Box<WhenMap>),
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct WhenMap {
+pub(super) struct WhenMap {
     pub verb: Option<String>,
     pub target: Option<String>,
     pub change: Option<ChangeYaml>,
@@ -77,7 +77,7 @@ pub struct WhenMap {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ChangeYaml {
+pub(super) struct ChangeYaml {
     pub arrive: Option<String>,
     pub leave: Option<String>,
     pub subject: Option<String>,
@@ -91,7 +91,7 @@ pub struct ChangeYaml {
     pub knows: Option<String>,
 }
 
-pub enum IfYaml {
+pub(super) enum IfYaml {
     List(Vec<CondYaml>),
     One(Box<CondYaml>),
 }
@@ -138,7 +138,7 @@ impl<'de> Deserialize<'de> for IfYaml {
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)]
-pub enum CondYaml {
+pub(super) enum CondYaml {
     HasItem(HasItemYaml),
     Meter(MeterCondYaml),
     Flag(FlagCondYaml),
@@ -155,7 +155,7 @@ pub enum CondYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct HasItemYaml {
+pub(super) struct HasItemYaml {
     pub subject: Spanned<String>,
     pub id: String,
     /// How many the subject holds at least; 1 when left out.
@@ -164,14 +164,14 @@ pub struct HasItemYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct WieldingYaml {
+pub(super) struct WieldingYaml {
     pub subject: Spanned<String>,
     pub id: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MeterCondYaml {
+pub(super) struct MeterCondYaml {
     pub of: Spanned<String>,
     pub id: String,
     pub op: String,
@@ -180,7 +180,7 @@ pub struct MeterCondYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct FlagCondYaml {
+pub(super) struct FlagCondYaml {
     pub of: Spanned<String>,
     pub key: String,
     #[serde(rename = "is")]
@@ -189,21 +189,21 @@ pub struct FlagCondYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct AtYaml {
+pub(super) struct AtYaml {
     pub subject: Spanned<String>,
     pub place: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct KnowsYaml {
+pub(super) struct KnowsYaml {
     pub subject: Spanned<String>,
     pub fact: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CycleYaml {
+pub(super) struct CycleYaml {
     pub id: String,
     pub from: Spanned<ExprYaml>,
     pub to: Spanned<ExprYaml>,
@@ -211,14 +211,14 @@ pub struct CycleYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PlayersYaml {
+pub(super) struct PlayersYaml {
     pub op: String,
     pub value: Spanned<ExprYaml>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CostYaml {
+pub(super) struct CostYaml {
     pub ticks: Option<Spanned<ExprYaml>>,
     #[serde(default)]
     pub meters: Counts,
@@ -227,19 +227,19 @@ pub struct CostYaml {
 }
 
 /// Counts by key under a cost. A plain map, so each count keeps its line.
-pub type Counts = std::collections::BTreeMap<String, Spanned<ExprYaml>>;
+pub(super) type Counts = std::collections::BTreeMap<String, Spanned<ExprYaml>>;
 
 /// The start of an action. Its cost is the rule's `cost`.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct StartYaml {
+pub(super) struct StartYaml {
     #[serde(default)]
     pub counts_as_act: Option<bool>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct FinishYaml {
+pub(super) struct FinishYaml {
     pub cost: Option<CostYaml>,
     #[serde(default)]
     pub counts_as_act: bool,
@@ -247,7 +247,7 @@ pub struct FinishYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CheckYaml {
+pub(super) struct CheckYaml {
     pub total: Spanned<ExprYaml>,
     pub success_at: Spanned<ExprYaml>,
     pub partial_at: Option<Spanned<ExprYaml>>,
@@ -255,7 +255,7 @@ pub struct CheckYaml {
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-pub enum ExprYaml {
+pub(super) enum ExprYaml {
     Literal(i64),
     Text(String),
 }
@@ -264,7 +264,7 @@ pub enum ExprYaml {
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)]
-pub enum EffectYaml {
+pub(super) enum EffectYaml {
     Meter(MeterEffectYaml),
     Flag(FlagEffectYaml),
     Modifier(ModifierEffectYaml),
@@ -281,7 +281,7 @@ pub enum EffectYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MeterEffectYaml {
+pub(super) struct MeterEffectYaml {
     pub of: Spanned<String>,
     pub key: String,
     pub add: Option<Spanned<ExprYaml>>,
@@ -290,7 +290,7 @@ pub struct MeterEffectYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct FlagEffectYaml {
+pub(super) struct FlagEffectYaml {
     pub of: Spanned<String>,
     pub key: String,
     pub value: bool,
@@ -298,7 +298,7 @@ pub struct FlagEffectYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ModifierEffectYaml {
+pub(super) struct ModifierEffectYaml {
     pub to: Spanned<String>,
     pub id: String,
     pub add: Spanned<ExprYaml>,
@@ -308,7 +308,7 @@ pub struct ModifierEffectYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct LocationYaml {
+pub(super) struct LocationYaml {
     pub to: Option<String>,
     pub via: Option<String>,
     #[serde(default)]
@@ -317,7 +317,7 @@ pub struct LocationYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct NoteYaml {
+pub(super) struct NoteYaml {
     pub id: String,
     #[serde(default)]
     pub to_ids: Vec<ActorId>,
@@ -329,7 +329,7 @@ pub struct NoteYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct NarrateYaml {
+pub(super) struct NarrateYaml {
     pub to: Option<String>,
     pub text: String,
     #[serde(default)]
@@ -338,7 +338,7 @@ pub struct NarrateYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MemoryYaml {
+pub(super) struct MemoryYaml {
     pub to: Spanned<String>,
     #[serde(default)]
     pub fact_ids: Vec<String>,
@@ -347,7 +347,7 @@ pub struct MemoryYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ItemEffectYaml {
+pub(super) struct ItemEffectYaml {
     pub of: Spanned<String>,
     pub id: String,
     pub add: Spanned<ExprYaml>,
@@ -356,21 +356,21 @@ pub struct ItemEffectYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RevealYaml {
+pub(super) struct RevealYaml {
     pub to: Spanned<String>,
     pub fact: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct WieldYaml {
+pub(super) struct WieldYaml {
     pub subject: Spanned<String>,
     pub id: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct UnwieldYaml {
+pub(super) struct UnwieldYaml {
     pub subject: Spanned<String>,
 }
 
@@ -378,7 +378,7 @@ pub struct UnwieldYaml {
 /// outcome picks one of the lists, any of which may be left out.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CheckEffectYaml {
+pub(super) struct CheckEffectYaml {
     pub by: Option<Spanned<String>>,
     pub total: Spanned<ExprYaml>,
     pub success_at: Spanned<ExprYaml>,

@@ -4,7 +4,7 @@ use crate::ecs::id::{ActorId, ExitId, PlaceId, StoryId};
 
 /// The actor an arrive or leave watch names with `subject:`. Omitted, it is `any`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Subject {
+pub(crate) enum Subject {
     Any,
     Pc,
     Npc,

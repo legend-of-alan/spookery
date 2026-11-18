@@ -5,7 +5,7 @@ use crate::hash::blake2s_256;
 use crate::rules::gate;
 use crate::Reason;
 
-pub use spookery_protocol::Outcome;
+pub(crate) use spookery_protocol::Outcome;
 
 /// `total` against `success_at`, with an optional lower band.
 /// `total >= success_at` is success. `partial_at <= total < success_at` is partial.
@@ -22,7 +22,7 @@ pub(crate) fn classify(total: i64, success_at: i64, partial_at: Option<i64>) -> 
 
 /// One check's total, the bar it met or missed, and its band. The save does not store it, and
 /// the journal keeps only the round's dice lines.
-pub use spookery_protocol::Roll;
+pub(crate) use spookery_protocol::Roll;
 
 /// What the round did with a move: the roll, or a refusal and its reason. Returned from the
 /// engine's round to the host table, which turns it into check frames. Neither the save nor
@@ -41,6 +41,7 @@ pub enum MoveReport {
 
 /// Identifies one roll: the rule, the actor it runs for, and the roll's index in that sequence.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub struct Key {
     /// The save's dice seed.
     pub seed: String,
@@ -63,6 +64,7 @@ impl Key {
 
 /// The faces this key rolls from die `start` of its seed, without a stat or a band. A later
 /// group in the same expression continues where the last one stopped.
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn faces(key: &Key, start: usize, count: u32, sides: u32) -> Result<Vec<u32>, Reason> {
     let seed = blake2s_256(key.preimage().as_bytes());
     let mut faces = Vec::with_capacity(count as usize);

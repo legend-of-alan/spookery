@@ -15,7 +15,7 @@ use crate::hash::blake2s_tagged;
 use crate::rules::expr::Expr;
 use crate::rules::rule::{self, Cond, Cost, Owner, TargetKind, When};
 use crate::Reason;
-pub use spookery_protocol::{ControlType, MenuRow, PackSummary};
+pub(crate) use spookery_protocol::{ControlType, MenuRow, PackSummary};
 
 mod budget;
 mod cast;

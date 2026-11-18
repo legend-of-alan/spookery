@@ -52,12 +52,12 @@ pub enum Write {
 
 /// `base` is inside `[min, base_cap]`, and `base + offset` fits in `i64`.
 /// A sum outside `[min, max]` still returns true. `value` clamps that.
-pub fn is_storable(desc: &Descriptor, base: i64, offset: i64) -> bool {
+pub(crate) fn is_storable(desc: &Descriptor, base: i64, offset: i64) -> bool {
     (desc.min..=desc.base_cap).contains(&base) && base.checked_add(offset).is_some()
 }
 
 /// `base + offset`, plus what the entity's modifiers add to this meter, clamped to the bounds.
-pub fn value(desc: &Descriptor, live: &Meter, modifiers: i64) -> Result<i64, Reason> {
+pub(crate) fn value(desc: &Descriptor, live: &Meter, modifiers: i64) -> Result<i64, Reason> {
     let sum = live
         .base
         .checked_add(live.offset)

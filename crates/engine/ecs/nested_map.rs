@@ -13,7 +13,7 @@ fn key_of<Id: Clone>(owner: &Id, id: &str) -> (Id, String) {
 }
 
 /// The entry `id` that `owner` holds in a map keyed by `(owner, id)`.
-pub fn get<'a, Id: Ord + Clone, V>(
+pub(crate) fn get<'a, Id: Ord + Clone, V>(
     map: &'a BTreeMap<(Id, String), V>,
     owner: &Id,
     id: &str,
@@ -22,7 +22,7 @@ pub fn get<'a, Id: Ord + Clone, V>(
 }
 
 /// The entries `owner` holds in a map keyed by `(owner, id)`, in id order.
-pub fn entries_of<'a, Id: Ord + Clone, V>(
+pub(crate) fn entries_of<'a, Id: Ord + Clone, V>(
     map: &'a BTreeMap<(Id, String), V>,
     owner: &'a Id,
 ) -> impl Iterator<Item = (&'a str, &'a V)> {
@@ -31,7 +31,7 @@ pub fn entries_of<'a, Id: Ord + Clone, V>(
         .map(|((_, id), value)| (id.as_str(), value))
 }
 
-pub fn serialize<S, Id, V>(
+pub(crate) fn serialize<S, Id, V>(
     map: &BTreeMap<(Id, String), V>,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
@@ -48,7 +48,7 @@ where
 }
 
 /// The map a nested map in the file reads as, or the store that holds it.
-pub fn deserialize<'de, D, Id, V, T>(deserializer: D) -> Result<T, D::Error>
+pub(crate) fn deserialize<'de, D, Id, V, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
     Id: Deserialize<'de> + Ord + Clone,
@@ -66,10 +66,10 @@ where
 
 /// The ids set on each owner in a map of `(owner, id)` to `()`, such as the flags set on each
 /// actor, written as each owner's list of ids: `mira: [calm, wary]`.
-pub mod lists {
+pub(crate) mod lists {
     use super::*;
 
-    pub fn serialize<S, Id>(
+    pub(crate) fn serialize<S, Id>(
         set: &BTreeMap<(Id, String), ()>,
         serializer: S,
     ) -> Result<S::Ok, S::Error>
@@ -84,7 +84,7 @@ pub mod lists {
         grouped.serialize(serializer)
     }
 
-    pub fn deserialize<'de, D, Id, T>(deserializer: D) -> Result<T, D::Error>
+    pub(crate) fn deserialize<'de, D, Id, T>(deserializer: D) -> Result<T, D::Error>
     where
         D: Deserializer<'de>,
         Id: Deserialize<'de> + Ord + Clone,
@@ -100,10 +100,10 @@ pub mod lists {
 
 /// A pair-keyed map whose one owner the save leaves out, such as the world's meters:
 /// `{(world, tide): meter}` is `tide: meter`.
-pub mod flat {
+pub(crate) mod flat {
     use super::*;
 
-    pub fn serialize<S, Id, V>(
+    pub(crate) fn serialize<S, Id, V>(
         map: &BTreeMap<(Id, String), V>,
         serializer: S,
     ) -> Result<S::Ok, S::Error>
@@ -114,7 +114,7 @@ pub mod flat {
         serializer.collect_map(map.iter().map(|((_, id), value)| (id, value)))
     }
 
-    pub fn deserialize<'de, D, Id, V, T>(deserializer: D) -> Result<T, D::Error>
+    pub(crate) fn deserialize<'de, D, Id, V, T>(deserializer: D) -> Result<T, D::Error>
     where
         D: Deserializer<'de>,
         Id: Default + Ord,
@@ -129,10 +129,10 @@ pub mod flat {
     }
 
     /// The ids set on that one owner, written as a list: `[calm, wary]`.
-    pub mod lists {
+    pub(crate) mod lists {
         use super::*;
 
-        pub fn serialize<S, Id>(
+        pub(crate) fn serialize<S, Id>(
             set: &BTreeMap<(Id, String), ()>,
             serializer: S,
         ) -> Result<S::Ok, S::Error>
@@ -142,7 +142,7 @@ pub mod flat {
             serializer.collect_seq(set.keys().map(|(_, id)| id))
         }
 
-        pub fn deserialize<'de, D, Id, T>(deserializer: D) -> Result<T, D::Error>
+        pub(crate) fn deserialize<'de, D, Id, T>(deserializer: D) -> Result<T, D::Error>
         where
             D: Deserializer<'de>,
             Id: Default + Ord,

@@ -17,7 +17,7 @@ use crate::World;
 use super::table;
 
 /// How long a held model call waits on the AI GM's paused clock.
-pub const HOLD: Duration = Duration::from_secs(1);
+pub(crate) const HOLD: Duration = Duration::from_secs(1);
 
 /// A model that answers each call with the next scripted tool calls, read through
 /// `chat_completions::parse_reply` the way `HttpModel` reads a reply. With no script left it answers with
@@ -107,7 +107,7 @@ impl Model for ScriptedModel {
 }
 
 /// A chat-completions reply that makes `calls`, each a tool id and its arguments.
-pub fn render_completion(calls: &[(&str, &str)]) -> String {
+pub(crate) fn render_completion(calls: &[(&str, &str)]) -> String {
     let calls: Vec<Value> = calls
         .iter()
         .enumerate()
@@ -131,7 +131,7 @@ pub fn render_completion(calls: &[(&str, &str)]) -> String {
 }
 
 /// The tool results a model call carried, in order.
-pub fn read_tool_results(messages: &[model::Message]) -> Vec<String> {
+pub(crate) fn read_tool_results(messages: &[model::Message]) -> Vec<String> {
     messages
         .iter()
         .filter_map(|message| match message {
@@ -172,7 +172,7 @@ impl AiGm {
 }
 
 /// Starts the AI GM with `model` and returns once it has written `listening`.
-pub fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
+pub(crate) fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
     let addr: SocketAddr = table::game_addr(world).parse().unwrap();
     let (read, mut write) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let err = Arc::new(Mutex::new(String::new()));
@@ -219,7 +219,7 @@ pub fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
 }
 
 /// Stops the host, which closes the AI GM's connection, and waits for the AI GM to end.
-pub fn stop_ai_gm(world: &mut World, gm: AiGm) {
+pub(crate) fn stop_ai_gm(world: &mut World, gm: AiGm) {
     table::live_mut(world).host.take();
     let _ = gm.thread.join();
 }

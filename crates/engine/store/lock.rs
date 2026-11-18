@@ -71,12 +71,13 @@ impl PackGuard {
 
 /// Held while the writer publishes, so no reader sees a write halfway done.
 /// The inner write helpers take `&WriteGuard`, so a write without one does not compile.
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub struct WriteGuard {
     _file: LockedFile,
 }
 
 /// Held while a reader builds a session from the files on disk.
-pub struct ReadGuard {
+pub(crate) struct ReadGuard {
     _file: LockedFile,
 }
 
@@ -95,7 +96,7 @@ pub fn lock_pack(root: &Path) -> Result<PackGuard, Reason> {
 
 /// Wait for readers to finish, then keep new ones out until the guard drops.
 /// Only the pack's writer takes it, and never inside another write guard.
-pub fn take_write(root: &Path, _lock: &PackGuard) -> Result<WriteGuard, Reason> {
+pub(crate) fn take_write(root: &Path, _lock: &PackGuard) -> Result<WriteGuard, Reason> {
     Ok(WriteGuard {
         _file: LockedFile::lock(open_file(root, RW_LOCK)?)?,
     })
@@ -103,7 +104,7 @@ pub fn take_write(root: &Path, _lock: &PackGuard) -> Result<WriteGuard, Reason> 
 
 /// Wait out a write in progress, then hold the next one off until the guard drops.
 /// An existing lock file opens read-only, so a reader needs no write access to `state/`.
-pub fn take_read(root: &Path) -> Result<ReadGuard, Reason> {
+pub(crate) fn take_read(root: &Path) -> Result<ReadGuard, Reason> {
     let file = match File::open(root.join(RW_LOCK)) {
         Ok(file) => file,
         Err(_) => open_file(root, RW_LOCK)?,

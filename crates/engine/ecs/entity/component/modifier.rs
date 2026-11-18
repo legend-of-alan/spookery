@@ -53,7 +53,7 @@ fn stacks_value(live: &Modifier) -> ChangeValue {
 /// Below `max_stacks` it is one more stack. At the cap it replaces the first weakest
 /// stack when its absolute value is larger. Stacks past a `max_stacks` the pack lowered
 /// go first, weakest first.
-pub fn stack(desc: &Descriptor, live: &mut Modifier, add: i64, ticks: u64, now: u64) {
+pub(crate) fn stack(desc: &Descriptor, live: &mut Modifier, add: i64, ticks: u64, now: u64) {
     live.max_ticks = live.max_ticks.max(ticks);
     let left = live.until.saturating_sub(now).saturating_add(ticks);
     live.until = now.saturating_add(left.min(live.max_ticks));
@@ -83,12 +83,12 @@ fn weakest(stacks: &[i64]) -> Option<usize> {
 }
 
 /// Whether `descs` still define modifier `id` on the meter `live` was applied to.
-pub fn is_defined(descs: &BTreeMap<String, Descriptor>, id: &str, live: &Modifier) -> bool {
+pub(crate) fn is_defined(descs: &BTreeMap<String, Descriptor>, id: &str, live: &Modifier) -> bool {
     descs.get(id).is_some_and(|desc| desc.meter == live.meter)
 }
 
 /// What the modifiers in `held` add to meter `key`: the sum of their stacks.
-pub fn sum<'a>(held: impl Iterator<Item = &'a Modifier>, key: &str) -> Result<i64, Reason> {
+pub(crate) fn sum<'a>(held: impl Iterator<Item = &'a Modifier>, key: &str) -> Result<i64, Reason> {
     held.filter(|live| live.meter == key)
         .flat_map(|live| &live.stacks)
         .try_fold(0i64, |total, add| total.checked_add(*add))
@@ -105,7 +105,7 @@ impl Ref<'_, entity::Actors, Modifier> {
 /// Meter `key` on `actor` as rolls, costs, conditions and views read it: the stored meter plus
 /// what the actor's modifiers add, inside the pack's bounds. `UNKNOWN_ID` when the actor does not
 /// carry the meter.
-pub fn value(
+pub(crate) fn value(
     actors: Reader<'_, entity::Actors>,
     actor: &ActorId,
     key: &str,

@@ -16,6 +16,7 @@ pub use tape::{emit_tape_record, TapeRecord};
 
 /// Rules version stamped on every save and every round.
 /// A different version is refused.
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub const RULES_REV: u64 = 30;
 
 pub(crate) fn require_rules_rev(rev: u64) -> Result<(), Reason> {

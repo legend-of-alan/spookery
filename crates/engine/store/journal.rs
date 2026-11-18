@@ -105,11 +105,13 @@ impl Error {
 }
 
 /// Parse every complete record. A torn last line is left unread. The chain is not checked.
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn read_records(pack: &Path) -> Result<Vec<Record>, Error> {
     Ok(flatten_bundles(&read_bundle_records(pack)?))
 }
 
 /// Read the bundles and check that each record's chain matches the one before it.
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn read_verified(pack: &Path) -> Result<Vec<Record>, Error> {
     let bundles = read_bundle_records(pack)?;
     check_chain(pack, &bundles)?;
@@ -171,7 +173,7 @@ pub(crate) fn sealed_chain(line: &str) -> Result<String, Error> {
 }
 
 /// `prev` is the chain to continue. The returned line ends with a newline.
-pub fn seal(entry: &Record, prev: &str) -> String {
+pub(crate) fn seal(entry: &Record, prev: &str) -> String {
     let mut sealed = entry.clone();
     sealed.set_prev(prev.to_string());
     sealed.set_chain(String::new());
@@ -219,6 +221,7 @@ fn base_hash(pack: &Path) -> Result<String, Error> {
     Ok(blake2s_tagged(&bytes))
 }
 
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn latest_checkpoint(entries: &[Record]) -> Option<&CheckpointRecord> {
     entries.iter().rev().find_map(|entry| match entry {
         Record::Checkpoint(record) => Some(record),
@@ -237,6 +240,7 @@ pub(crate) fn read_bundle_records(pack: &Path) -> Result<Vec<(String, Vec<Record
 }
 
 /// Plain live bundle, if one is open.
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn find_live_bundle(pack: &Path) -> Option<PathBuf> {
     let files = list_bundles(pack).ok()?;
     let (bundle, path) = files.last()?;
@@ -283,6 +287,7 @@ pub(crate) fn next_bundle_path(pack: &Path) -> PathBuf {
         .join(format!("bundle-{index:04}.jsonl"))
 }
 
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn emit_record(entry: &Record) -> String {
     let json = serde_json::to_string(entry).expect("record");
     format!("{json}\n")
@@ -325,6 +330,7 @@ fn name_the_field(bundle: &str, line: &str, value: &serde_json::Value) -> Option
 }
 
 /// The bundles under `state/journal`, in index order, a closed `.gz` over a plain one.
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn list_bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
     let dir = pack.join("state/journal");
     if !dir.is_dir() {
@@ -439,12 +445,14 @@ fn read_bundle(bundle: &str, path: &Path) -> Result<String, Error> {
 }
 
 /// Gzip `plain` into memory. The commit path writes and flushes the bytes.
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn gzip_bytes(plain: &[u8]) -> std::io::Result<Vec<u8>> {
     let mut enc = GzEncoder::new(Vec::new(), Compression::default());
     enc.write_all(plain)?;
     enc.finish()
 }
 
+#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, Reason> {
     let mut out = Vec::new();
     GzDecoder::new(bytes)
