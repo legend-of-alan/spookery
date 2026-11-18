@@ -13,7 +13,7 @@ use crate::rules::expr::Expr;
 use crate::rules::grammar;
 use crate::rules::roll::Check;
 use crate::rules::rule::{
-    self, ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
+    self, ChangeWatch, Cond, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule, Slot,
     When,
 };
 use crate::Reason;
@@ -62,22 +62,8 @@ pub(super) fn broken_exits(
                     );
                 }
             }
-            let mut named = Vec::new();
-            for (id, _) in &exit.cost.items {
-                if id != "target" {
-                    named.push(id.clone());
-                }
-            }
-            for cond in &exit.if_ {
-                cond.visit(|cond| match cond {
-                    Cond::HasItem { id, .. } if id != "target" => named.push(id.clone()),
-                    _ => {}
-                });
-            }
-            named.sort();
-            named.dedup();
-            for id in named {
-                if !items.contains_key(&id) {
+            for id in collect_item_ids(exit.slots()) {
+                if !items.contains_key(id) {
                     diags.push(
                         schema_error(
                             &exit.file,
@@ -99,44 +85,27 @@ pub(super) fn unknown_rule_items(
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
-        let mut ids = Vec::new();
-        for cond in &rule.if_ {
-            cond.visit(|cond| match cond {
-                Cond::HasItem { id, .. } | Cond::Wielding { id, .. } if id != "target" => {
-                    ids.push(id.clone());
-                }
-                _ => {}
-            });
-        }
-        for cost in rule.costs() {
-            for (id, _) in &cost.items {
-                if id != "target" {
-                    ids.push(id.clone());
-                }
-            }
-        }
-        rule.visit_templates(|effect| match effect {
-            EffectTemplate::Item { id, .. } | EffectTemplate::Wield { id, .. }
-                if id != "target" =>
-            {
-                ids.push(id.clone());
-            }
-            _ => {}
-        });
-        ids.sort();
-        ids.dedup();
-        for id in ids {
-            if items.contains_key(&id) {
+        for id in collect_item_ids(rule.slots()) {
+            if items.contains_key(id) {
                 continue;
             }
             diags.push(unknown_item(
                 &rule.file,
-                &id,
+                id,
                 &format!("rules[{}]", rule.index),
             ));
         }
     }
     diags
+}
+
+/// The item ids `slots` name, each once and in order.
+fn collect_item_ids<'l>(slots: Vec<(&'static str, Slot<'l>)>) -> BTreeSet<&'l str> {
+    let ids = slots.into_iter().filter_map(|(_, slot)| match slot {
+        Slot::Item(id) => Some(id),
+        Slot::Owner(_) | Slot::Target(_) => None,
+    });
+    ids.collect()
 }
 
 /// Modifier effects naming a modifier `rules/modifiers.yaml` does not define.
@@ -224,19 +193,9 @@ pub(super) fn reveal_problems(
     let mut diags = Vec::new();
     for rule in rules.iter() {
         rule.visit_templates(|effect| {
-            let EffectTemplate::Reveal { to, fact } = effect else {
+            let EffectTemplate::Reveal { fact, .. } = effect else {
                 return;
             };
-            if matches!(to, grammar::Object::Global) {
-                diags.push(
-                    schema_error(
-                        &rule.file,
-                        &format!("rule '{}' reveals to the world", rule.local_id),
-                        "name the actor who learns the fact",
-                    )
-                    .at_path(format!("rules[{}]", rule.index)),
-                );
-            }
             if !facts.contains_key(fact) {
                 diags.push(
                     schema_error(
@@ -283,23 +242,14 @@ pub(super) fn unknown_checks(
 pub(super) fn unknown_reads(scope: &EntityScope, rules: &rule::Table) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
-        let mut exprs = Vec::new();
-        push_rule_exprs(rule, &mut exprs);
+        let exprs = rule.exprs();
         let path = format!("rules[{}]", rule.index);
         let source = FileText::named(&rule.file);
         scope.push_unknown_reads(&source, &path, fixed_self(rule), &exprs, &mut diags);
     }
     for place in scope.places.values() {
         for exit in &place.exits {
-            let mut exprs = Vec::new();
-            push_cost(&exit.cost, &mut exprs);
-            for cond in &exit.if_ {
-                cond.visit(|cond| {
-                    if let Cond::Meter { value, .. } = cond {
-                        exprs.push(value);
-                    }
-                });
-            }
+            let exprs = exit.exprs();
             let path = format!("exits[{}]", exit.index);
             let source = FileText::named(&exit.file);
             scope.push_unknown_reads(&source, &path, None, &exprs, &mut diags);
@@ -373,10 +323,12 @@ impl EntityScope<'_> {
             grammar::Object::Global => Some(entity::Id::Global),
             grammar::Object::Place(id) => Some(entity::Id::Place(id.clone())),
             grammar::Object::Story(id) => Some(entity::Id::Story(id.clone())),
-            grammar::Object::Actor(id) if self.cast.contains_key(id) => {
+            grammar::Object::Actor(grammar::Actor::Id(id)) if self.cast.contains_key(id) => {
                 Some(entity::Id::Actor(id.clone()))
             }
-            grammar::Object::Self_ => fixed_self.map(|id| entity::Id::Actor(id.into())),
+            grammar::Object::Actor(grammar::Actor::Self_) => {
+                fixed_self.map(|id| entity::Id::Actor(id.into()))
+            }
             _ => None,
         }
     }
@@ -434,8 +386,7 @@ impl EntityScope<'_> {
     /// The id `of` gives when no place, story or cast member has it.
     fn unknown_object(&self, of: &grammar::Object) -> Option<String> {
         match of {
-            grammar::Object::Self_
-            | grammar::Object::Target
+            grammar::Object::Actor(grammar::Actor::Self_ | grammar::Actor::Target)
             | grammar::Object::Here
             | grammar::Object::Global => None,
             grammar::Object::Place(id) if self.places.contains_key(id) => None,
@@ -447,8 +398,8 @@ impl EntityScope<'_> {
                 let known = exits.is_some_and(|exits| exits.iter().any(|at| at.id == exit.exit));
                 (!known).then(|| exit.to_string())
             }
-            grammar::Object::Actor(id) if self.cast.contains_key(id) => None,
-            grammar::Object::Actor(id) => Some(id.to_string()),
+            grammar::Object::Actor(grammar::Actor::Id(id)) if self.cast.contains_key(id) => None,
+            grammar::Object::Actor(grammar::Actor::Id(id)) => Some(id.to_string()),
         }
     }
 
@@ -488,47 +439,6 @@ impl EntityScope<'_> {
                 }
             }
         }
-    }
-}
-
-fn push_rule_exprs<'a>(rule: &'a Rule, exprs: &mut Vec<&'a Expr>) {
-    if let Some(roll) = &rule.roll {
-        exprs.push(&roll.threshold);
-        if let Some(band) = &roll.partial_at {
-            exprs.push(band);
-        }
-    }
-    for cost in rule.costs() {
-        push_cost(cost, exprs);
-    }
-    for cond in &rule.if_ {
-        cond.visit(|cond| {
-            if let Cond::Meter { value, .. } = cond {
-                exprs.push(value);
-            }
-        });
-    }
-    rule.visit_templates(|effect| {
-        if let EffectTemplate::Modifier { add, .. } = effect {
-            exprs.push(add);
-        }
-        if let EffectTemplate::Meter { add, set, .. } = effect {
-            if let Some(expr) = add {
-                exprs.push(expr);
-            }
-            if let Some(expr) = set {
-                exprs.push(expr);
-            }
-        }
-        if let Some(ResistSpec::Roll { threshold, .. }) = effect.resist() {
-            exprs.push(threshold);
-        }
-    });
-}
-
-fn push_cost<'a>(cost: &'a Cost, exprs: &mut Vec<&'a Expr>) {
-    for (_, expr) in cost.meters.iter().chain(cost.items.iter()) {
-        exprs.push(expr);
     }
 }
 
@@ -1000,48 +910,18 @@ fn narrates_to_present(rule: &Rule) -> bool {
 /// resist's `subject`, a narrate's `to`, a location effect, which moves the subject, or a
 /// roll, which is the subject's.
 fn names_subject(rule: &Rule) -> bool {
-    let mut objects = Vec::new();
-    for cond in &rule.if_ {
-        cond.visit(|cond| match cond {
-            Cond::HasItem { subject, .. }
-            | Cond::At { subject, .. }
-            | Cond::Knows { subject, .. }
-            | Cond::Wielding { subject, .. } => objects.push(subject),
-            Cond::Meter { of, .. } | Cond::Flag { of, .. } => objects.push(of),
-            _ => {}
-        });
-    }
-    let mut exprs = Vec::new();
-    push_rule_exprs(rule, &mut exprs);
-    for expr in exprs {
-        objects.extend(expr.meter_reads().into_iter().map(|(of, _, _)| of));
-    }
     let mut needs = rule.roll.is_some();
-    rule.visit_templates(|effect| {
-        match effect {
-            EffectTemplate::Meter { of, .. }
-            | EffectTemplate::Flag { of, .. }
-            | EffectTemplate::Item { of, .. } => objects.push(of),
-            EffectTemplate::Modifier { to, .. }
-            | EffectTemplate::Memory { to, .. }
-            | EffectTemplate::Reveal { to, .. } => objects.push(to),
-            EffectTemplate::Wield { subject, .. } | EffectTemplate::Unwield { subject } => {
-                objects.push(subject)
-            }
-            EffectTemplate::Narrate { to, .. } => {
-                needs |= matches!(to, NarrateTo::Self_ | NarrateTo::Here);
-            }
-            EffectTemplate::Location { .. } => needs = true,
-            EffectTemplate::Note { .. } => {}
+    rule.visit_templates(|effect| match effect {
+        EffectTemplate::Narrate { to, .. } => {
+            needs |= matches!(to, NarrateTo::Self_ | NarrateTo::Here);
         }
-        if let Some(ResistSpec::Roll { subject, .. }) = effect.resist() {
-            objects.push(subject);
-        }
+        EffectTemplate::Location { .. } => needs = true,
+        _ => {}
     });
-    needs
-        || objects
-            .iter()
-            .any(|of| matches!(of, grammar::Object::Self_ | grammar::Object::Here))
+    let self_slot = Slot::Owner(grammar::Object::Actor(grammar::Actor::Self_));
+    let here = Slot::Owner(grammar::Object::Here);
+    let names_self_or_here = |(_, slot): &(&str, Slot)| *slot == self_slot || *slot == here;
+    needs || rule.slots().iter().any(names_self_or_here)
 }
 
 fn mark_cycles(next: &[Vec<usize>], hit: &mut [bool]) {

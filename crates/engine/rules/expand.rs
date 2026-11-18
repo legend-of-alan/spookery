@@ -255,7 +255,7 @@ fn push_effects(
             let to = match to {
                 NarrateTo::Here => world.actors_at(expr::resolve_here(context)?),
                 NarrateTo::Self_ => {
-                    vec![expr::resolve_actor(context, &grammar::Object::Self_)?.clone()]
+                    vec![expr::resolve_actor(context, &grammar::Actor::Self_)?.clone()]
                 }
                 NarrateTo::Actors(ids) => ids.clone(),
                 NarrateTo::Present => context.presence.actors_present.clone(),
@@ -320,7 +320,7 @@ fn meter_offset(
 
 fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
     let intent = context.intent;
-    let actor_id = expr::resolve_actor(context, &grammar::Object::Self_)?.clone();
+    let actor_id = expr::resolve_actor(context, &grammar::Actor::Self_)?.clone();
     let from = context
         .world
         .actors()

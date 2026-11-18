@@ -51,6 +51,11 @@ Feature: spook check explains a broken pack
       | a zero-tick cycle            | rules/budget.yaml          | SCHEMA            | cycle day is 0                     |
       | a cycle past its length      | cast/mira.md               | SCHEMA            | cycle bound is not below cycle day |
       | an unknown cycle             | cast/mira.md               | SCHEMA            | no cycle tide                      |
+      | world as an actor            | world/places/gate_yard.md  | SCHEMA            | 'world' is not an actor            |
+      | target on a move with none   | rules/verbs.yaml           | SCHEMA            | in of:, but its target is none     |
+      | owner target on an item move | rules/verbs.yaml           | SCHEMA            | in of:, but its target is item     |
+      | id: target with no target    | rules/verbs.yaml           | SCHEMA            | in id:, but its target is none     |
+      | target on an exit            | world/places/gate_yard.md  | SCHEMA            | but an exit has no target          |
 
   Scenario: Two problems in two files are both reported
     Given a docks table

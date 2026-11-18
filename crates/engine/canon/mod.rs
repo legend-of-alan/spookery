@@ -12,6 +12,7 @@ use crate::ecs::component::modifier;
 use crate::ecs::id::{ActorId, ExitId, PlaceId, StoryId};
 use crate::entity;
 use crate::hash::blake2s_tagged;
+use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
 use crate::rules::rule::{self, Cond, Cost, Owner, TargetKind, When};
 use crate::Reason;
@@ -120,6 +121,18 @@ impl Exit {
             place: self.from.clone(),
             exit: self.id.clone(),
         }
+    }
+
+    /// Every number the exit holds: its cost's, then its conditions' values.
+    pub(crate) fn exprs(&self) -> Vec<&Expr> {
+        let values = self.if_.iter().flat_map(Cond::exprs);
+        self.cost.exprs().chain(values).collect()
+    }
+
+    /// Every slot the exit's conditions and cost fill, and every owner its numbers read, with
+    /// each slot's key as written.
+    pub(crate) fn slots(&self) -> Vec<(&'static str, rule::Slot<'_>)> {
+        rule::collect_slots(&self.if_, [&self.cost], self.exprs())
     }
 }
 
