@@ -158,7 +158,6 @@ impl Mut<'_, entity::Actors, Modifier> {
         if stacks_move {
             self.writer.transaction.count_key(&watched)?;
         }
-        // The meter must read with `next` in place of what is held when it goes on.
         let others = (actors.get::<Modifier>(actor).iter()).filter(|(held, _)| *held != id);
         let with_next = sum(others.map(|(_, held)| held).chain(&next), &meter);
         if next.is_some() {

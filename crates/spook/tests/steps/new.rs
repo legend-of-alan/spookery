@@ -140,7 +140,6 @@ fn play_joins_that_pack_on_a_free_loopback_address(world: &mut World) {
 
 #[then(expr = "the travel committed a round")]
 fn the_travel_committed_a_round(world: &mut World) {
-    // The view after the round shows the lane.
     wait_play(world, "You are in Lane.");
     let pack = table::pack(world);
     let now = world_of(pack);

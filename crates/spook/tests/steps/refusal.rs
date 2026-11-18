@@ -23,7 +23,6 @@ fn play_error_shows_once(world: &mut World, text: String) {
             count => panic!("saw {text} {count} times\n{stderr}"),
         }
     });
-    // The world loop answers this look after every frame it sent before, and play prints in order.
     let mark = capture_play_stdout(world).len();
     write_play(world, "look");
     wait_play_until(world, |stdout| stdout[mark..].contains("Exits:"), "look");

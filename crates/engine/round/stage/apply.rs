@@ -37,7 +37,6 @@ pub(crate) fn run(
 ) {
     let max_npcs = canon.budget.max_npcs_acting;
     let mut slots = 0u64;
-    // Set once a landing goes over the key budget: every later intent is refused `BUDGET`.
     let mut keys_spent = false;
     for Candidate { intent, resolution } in candidates {
         let intent = &intent;
@@ -50,7 +49,6 @@ pub(crate) fn run(
         let point = world.savepoint();
         let landing = match resolution {
             Resolution::Ready { rule } => {
-                // The world may have changed since the queue, so the gate checks the rule again.
                 let context = Context::new(canon, world, presence, intent);
                 if let Err(refusal) = gate::admit(&context, rule, None) {
                     refuse(ledger, intent, refusal);
@@ -68,7 +66,6 @@ pub(crate) fn run(
         match landing {
             Landing::Landed if spends_slot => slots += 1,
             Landing::Landed => {}
-            // The costs go back with the effects.
             Landing::Refused => world.rollback(point),
             Landing::OverBudget => {
                 world.rollback(point);

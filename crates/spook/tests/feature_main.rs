@@ -122,7 +122,6 @@ fn tear_down(world: &mut World) {
     world.http_gm.take();
     world.mcp_session.take();
     drop(world.live.take());
-    // The host is gone, so the AI GM's seat has closed and its run ends.
     world.ai_gm.take();
     if let Some((table, pack)) = world.ws_table.take() {
         drop(table);
@@ -140,8 +139,6 @@ fn tear_down(world: &mut World) {
 }
 
 async fn run_dir(dir: &Path) -> bool {
-    // Folders run together, one scenario at a time inside each folder. A step
-    // blocks its runtime, so extra scenarios in a folder only pile up servers.
     let writer = World::cucumber()
         .max_concurrent_scenarios(1)
         .fail_on_skipped()

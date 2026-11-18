@@ -315,7 +315,6 @@ fn a_rule_leaves_a_note_in_the_attic(world: &mut World) {
 ",
         ladder,
     );
-    // Mira leaves the note before anyone has stood in the attic; then Rowan climbs to it.
     migrate_and_play(world, vec![intent("scrawl", "mira", "scrawl", None)]);
     let climb = intent("climb", "rowan", "travel", Some("ladder"));
     migrate_and_play(world, vec![climb]);

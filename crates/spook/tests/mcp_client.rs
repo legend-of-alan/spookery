@@ -57,12 +57,11 @@ pub(crate) struct GmClient {
 
 impl GmClient {
     /// Dial `http://<mcp_addr>/mcp`, finish the handshake, and wait for the event stream to
-    /// take the seat: its hello. A refused seat is the refusal's sentence.
+    /// take the seat: its hello. A refused seat is the refusal's sentence. A `spook run` that
+    /// stops or is killed ends the events, and the client never redials it.
     pub(crate) async fn connect(mcp_addr: SocketAddr) -> Result<Self, String> {
         let url = format!("http://{mcp_addr}/mcp");
         let (tx, rx) = mpsc::unbounded_channel();
-        // A closed loopback seat ends the stream. The default client retries
-        // that stream forever, so a dropped `spook run` never looks closed.
         let mut config = StreamableHttpClientTransportConfig::with_uri(url);
         config.retry_config = Arc::new(NeverRetry::default());
         config.reinit_on_expired_session = false;
@@ -76,9 +75,6 @@ impl GmClient {
             .serve(transport)
             .await
             .map_err(|err| err.to_string())?;
-        // rmcp keeps no read on the MCP port once a tool call's stream
-        // ends, so a killed `spook run` never looks closed. A plain connection
-        // with a pending read sees that close.
         let watch = tokio::spawn(async move {
             if let Ok(mut socket) = tokio::net::TcpStream::connect(mcp_addr).await {
                 let mut buf = [0u8; 1];
@@ -177,10 +173,9 @@ impl GmClient {
         out
     }
 
-    /// Give the seat back. The host has freed it when this returns.
+    /// Give the seat back. The host has freed it when this returns, and it returns at once when
+    /// the host is gone.
     pub(crate) async fn close(self) {
-        // A closed seat has nothing to end. Cancel would send the session
-        // DELETE to the dead port, and Windows takes about 2s to refuse it.
         if !self.watch.is_finished() {
             let _ = self.service.cancel().await;
         }

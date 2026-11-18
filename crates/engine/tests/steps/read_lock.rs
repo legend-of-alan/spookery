@@ -122,7 +122,6 @@ fn status_peeks_mid_checkpoint(world: &mut World) {
         writer(world).world().state_rev
     ));
     let after = fs::read(&save).unwrap();
-    // The head is published and the save and snapshot are not yet.
     peek_during(
         world,
         || {

@@ -132,7 +132,6 @@ fn undo_write(dir: &Path, created: bool) {
         let _ = fs::remove_file(dir.join(rel));
     }
     let mut dirs = parent_dirs();
-    // Deepest first, so an empty child goes before its parent.
     dirs.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
     for rel in dirs {
         let _ = fs::remove_dir(dir.join(rel));

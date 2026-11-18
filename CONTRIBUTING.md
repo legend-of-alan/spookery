@@ -31,6 +31,7 @@ Every issue gets a priority label from `P0` (most urgent) to `P3` (least urgent)
 - **No side doors.** Tests should use the same code path as the real program. If a test needs a shortcut, fix the test or the design.
 - **Use the words people already know.** Good code reads the way people expect, so it needs no tutorial, like WASD in a game. Names follow [Naming](#naming) below.
 - **Fix the cause.** When something fails, find out why. Don't paper over it with sleeps, retries or longer timeouts.
+- **No plain comments.** Rust source has no `//` or `/* */` comments, except the `// repeats module: <reason>` marker from Naming rule 8. Doc comments (`///` and `//!`) say what an item does and what it guarantees its callers, never why a workaround exists or why odd behavior is fine. If code needs explaining, fix the code.
 - **Scenario first.** Write the BDD scenario that describes what a player, GM or pack author sees, then the code. Scenarios test behavior, not how the code does it, so a refactor shouldn't break them.
 - **Test it once.** Each behavior gets one test, at the layer where a player, GM or pack author sees it. [Testing](#testing) lists what that rules out.
 - **Libraries are for others too.** `protocol` and `agent` exist so other clients and GMs can be written. That a crate has one consumer in this repository today is not a reason to fold it into that consumer.

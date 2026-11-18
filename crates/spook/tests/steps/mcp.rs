@@ -276,7 +276,6 @@ fn the_http_gm_leaves(world: &mut World) {
 
 #[then(expr = "a GM can sit over HTTP")]
 fn a_gm_can_sit_over_http(world: &mut World) {
-    // One attempt: the DELETE reply waits for the seat release (issue #214).
     if let Err(err) = try_sit_gm(port(world)) {
         panic!("no GM could sit over HTTP: {err}");
     }

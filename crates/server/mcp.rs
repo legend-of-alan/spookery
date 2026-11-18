@@ -44,7 +44,6 @@ pub(super) async fn serve(
         http_config(),
     );
     let app = axum::Router::new().route_service("/mcp", service);
-    // Close senders are dropped here, so the loop ends with `serve`.
     tokio::select! {
         served = axum::serve(listener, app) => if let Err(error) = served {
             tracing::error!(%error, "the MCP endpoint stopped serving");
@@ -61,7 +60,6 @@ fn http_config() -> StreamableHttpServerConfig {
     let mut config = StreamableHttpServerConfig::default()
         .with_allowed_hosts(["127.0.0.1"])
         .with_allowed_origins(["http://127.0.0.1:*"]);
-    // HTTP POST bodies on the MCP endpoint stop at this cap.
     config.max_request_body_bytes = GM_BODY_CAP;
     config
 }
@@ -146,7 +144,6 @@ impl SessionManager for SeatSessions {
                 .lock()
                 .unwrap_or_else(|err| err.into_inner())
                 .insert(id.clone(), conn);
-            // `Handler` reads the id back during initialize.
             request.request.extensions_mut().insert(conn);
         }
         self.inner.initialize_session(id, message).await
@@ -156,8 +153,8 @@ impl SessionManager for SeatSessions {
         self.inner.has_session(id).await
     }
 
+    /// Frees the session's seat. A second call for the same id frees nothing.
     async fn close_session(&self, id: &SessionId) -> Result<(), Self::Error> {
-        // Remove first, so the worker's second call after a DELETE is a no-op.
         let conn = self
             .conns
             .lock()
@@ -187,7 +184,7 @@ impl SessionManager for SeatSessions {
     }
 
     /// Takes the GM seat for the session. A refused seat is a stream of one refusal, and
-    /// it closes nothing.
+    /// it closes nothing. A DELETE for the session closes the seat after it opens.
     async fn create_standalone_stream(
         &self,
         id: &SessionId,
@@ -195,7 +192,6 @@ impl SessionManager for SeatSessions {
         let (frames_tx, frames_rx) = frame_queue();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         {
-            // Hold `conns` until `Open` is queued, so a DELETE's `Close` queues after it.
             let conns = self.conns.lock().unwrap_or_else(|err| err.into_inner());
             let conn = conns
                 .get(id)
@@ -578,8 +574,6 @@ mod tests {
         (session, version, events)
     }
 
-    // A GM that dies without DELETE hangs up its event stream. That frees
-    // the seat, so the next GM sits at once (issue #313).
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_gm_that_hangs_up_frees_the_seat() {
         let (port, mut fault_seen, let_go) = bind_mcp().await;
@@ -597,8 +591,6 @@ mod tests {
         sit(port).await;
     }
 
-    // A GM that holds its event stream open but sends nothing keeps the seat
-    // past rmcp's old 300 s idle window (issue #313).
     #[tokio::test]
     async fn a_quiet_gm_keeps_the_seat() {
         let (port, mut fault_seen, _let_go) = bind_mcp().await;
@@ -617,9 +609,6 @@ mod tests {
         assert!(fault_seen.try_recv().is_err(), "the quiet GM lost the seat");
     }
 
-    // End to end over HTTP: the handler's drop reaches the table thread, the
-    // DELETE reply waits for the release, and a GM that reconnects as soon as
-    // DELETE answers is not told the table is full (issue #214).
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_gm_can_sit_again_as_soon_as_delete_answers() {
         let (port, mut fault_seen, let_go) = bind_mcp().await;
@@ -630,7 +619,6 @@ mod tests {
                 async move { send_http(port, "DELETE", Some(&session), &version, "").await },
             );
 
-        // The release reaches the table thread, which holds the seat for now.
         tokio::select! {
             biased;
             reply = &mut delete => {
@@ -645,7 +633,6 @@ mod tests {
             "DELETE answered while the table thread still held the seat"
         );
 
-        // Let the release through. Only now may DELETE answer.
         let_go
             .send(())
             .unwrap_or_else(|err| panic!("let go: {err}"));
@@ -658,7 +645,6 @@ mod tests {
             "DELETE did not answer with success\n{reply}"
         );
 
-        // A GM that reconnects as soon as DELETE answers finds the seat free.
         sit(port).await;
     }
 }

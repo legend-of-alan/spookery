@@ -152,6 +152,7 @@
       "type": "object",
       "properties": {
         "as": {
+          "description": "The actor whose view the GM reads. The schema requires it, and the table refuses a call\nwithout it as `UNSCOPED_PERCEIVE`.",
           "type": "string"
         },
         "max_body_chars": {
@@ -187,9 +188,11 @@
           "minimum": 0
         },
         "actor_id": {
+          "description": "The actor the move is for. The schema requires it, and the table refuses a call without\nit as `SCHEMA`.",
           "type": "string"
         },
         "move": {
+          "description": "The move to queue. The schema requires it, and the table refuses a call without it as\n`SCHEMA`.",
           "type": "string"
         },
         "target": {

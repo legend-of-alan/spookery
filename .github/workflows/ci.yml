@@ -101,11 +101,13 @@ jobs:
           # Naming rule 8: in each Rust file this change touches, no type, trait or function name starts
           # or ends with its module's name, unless it is that name (query::Query). A marker counts on the
           # name's line or the next one, where rustfmt moves a comment that follows an opening brace.
+          # item_re is the start of an item definition line, here and in the plain comment check.
+          item_re='^(pub([(][^)]*[)])? )?((const|async|unsafe) )*(struct|enum|trait|type|union|fn) '
           for f in $(git diff --name-only --diff-filter=d HEAD^ HEAD -- '*.rs'); do
             m=$(basename "$f" .rs); [ "$m" = mod ] && m=$(basename "$(dirname "$f")")
             [[ $m =~ ^(lib|main|build)$ ]] && continue
-            awk -v m="$m" -v M="$(sed -E 's/(^|_)(.)/\U\2/g' <<< "$m")" 'pending && !/\/\/ repeats module: ./ { print pending; bad = 1 } { pending = "" }
-              !/\/\/ repeats module: ./ && match($0, /^(pub(\([^)]*\))? )?((const|async|unsafe) )*(struct|enum|trait|type|union|fn) [A-Za-z0-9_]+/) {
+            awk -v item_re="$item_re" -v m="$m" -v M="$(sed -E 's/(^|_)(.)/\U\2/g' <<< "$m")" 'pending && !/\/\/ repeats module: ./ { print pending; bad = 1 } { pending = "" }
+              !/\/\/ repeats module: ./ && match($0, item_re "[A-Za-z0-9_]+") {
                 n = substr($0, 1, RLENGTH); sub(/.* /, "", n); snake = n ~ /^[a-z]/; w = snake ? m : M
                 if (n != w && (n ~ ("^" w (snake ? "_" : "[A-Z_]")) || n ~ ((snake ? "_" : "") w "$"))) pending = FILENAME ":" FNR ": " n " repeats its module " m
               } END { if (pending) { print pending; bad = 1 } exit bad }' "$f" || repeats=1
@@ -128,6 +130,11 @@ jobs:
           cargo tree -e normal -p spookery-server --locked | (! grep -E 'reqwest|tracing-subscriber')
           # Only the `spook play` and `spook gm` terminals print. Library code hands output to a writer.
           (! grep -rnE '\b(e?print(ln)?!|io::std(out|err)\(\))' crates/{engine,protocol,agent,server,client} --include='*.rs' | grep -vE '^crates/client/(play|gm)\.rs:')
+          # Rust source has no plain comments: only ///, //! and the rule-8 marker on an item's line or
+          # the next one (CONTRIBUTING.md No plain comments).
+          git ls-files -z '*.rs' | xargs -0 awk -v item_re="$item_re" 'FNR == 1 { on_item = 0 } { after_item = on_item; on_item = $0 ~ item_re }
+            /(^|[[:space:]])(\/\/(\/\/+|[^\/!]|$)|\/\*)/ && !((on_item || after_item) && /\/\/ repeats module: ./) { print FILENAME ":" FNR ": " $0; bad = 1 }
+            END { exit bad }'
           cargo tree -e normal -p spook --no-default-features --features server --locked | (! grep -E 'reqwest')
           cargo build -p spook --no-default-features --features server --locked
           cargo build -p spook --no-default-features --features client --locked

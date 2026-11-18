@@ -214,7 +214,6 @@ pub(crate) fn exit_view(
         exit_id: exit.id.clone(),
         name: exit.name.clone(),
         place_id: exit.to.clone(),
-        // Load refuses an exit whose `to` is not a place, so the place has a name.
         place_name: find_place_name(canon, &exit.to).unwrap_or_default(),
         ticks: ticks.unwrap_or(0),
         locked: is_locked(world, exit),
@@ -224,7 +223,6 @@ pub(crate) fn exit_view(
 /// Every actor notes the exits they see where they stand, for `map`. Runs once at the end
 /// of each round, after triggers, so a reveal is seen in the round it lands.
 pub(crate) fn note_exits(canon: &Canon, world: &mut ecs::World) -> Result<(), Reason> {
-    // A walker on an exit is in no place, so there is nothing to note.
     let actors = world.actors().query::<(ActorId, &component::Place)>();
     let seen: Vec<(ActorId, String, Vec<String>)> = (actors.iter())
         .filter(|(_, place)| canon.places.contains_key(place.as_str()))

@@ -30,7 +30,6 @@ pub(crate) fn run(
     world.world_time = world_after;
     world.last_round_at = wall.to_string();
     world.actors_mut().expire_modifiers(world_after)?;
-    // Each act count resets when the round crosses the end of its window.
     for (counter, ticks) in windows {
         if world_before / ticks != world_after / ticks {
             world.actors_mut().reset_acts(counter)?;

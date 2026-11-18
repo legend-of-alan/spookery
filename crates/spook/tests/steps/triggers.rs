@@ -222,7 +222,6 @@ fn a_round_stops_at_depth_4(world: &mut World) {
         &pack,
         vec![intent("raise-sun", "nell", "raise", None)],
     );
-    // Each pass adds 1 to Nell's vigor, which starts at Rowan's 1.
     let nell = entity::Id::Actor("nell".into());
     let vigor = now.entities().get::<component::Meter>(&nell).value("vigor");
     assert_eq!(vigor, Ok(5), "four passes add 4");
@@ -922,7 +921,6 @@ fn insert_actor_copy(
             .set(&key, false)
             .unwrap();
     }
-    // Only rowan carries the debt, so a copy of them does not.
     actors
         .get_mut::<component::Meter>(&copy)
         .set("assassination_debt", None)

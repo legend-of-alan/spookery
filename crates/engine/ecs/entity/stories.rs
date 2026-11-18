@@ -36,7 +36,6 @@ entity::has!(Stories, component::Flag, flags);
 impl Stories {
     /// Every store, as the history a rollback undoes and an accept clears.
     pub(in crate::ecs) fn history_mut(&mut self) -> [&mut dyn undo::History; 2] {
-        // Every store, with no `..`: a store added later must be listed here to compile.
         let Stories { meters, flags } = self;
         [meters, flags]
     }

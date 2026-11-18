@@ -18,7 +18,8 @@ pub(crate) fn recover(root: &Path, write: &WriteGuard) -> Result<(), Reason> {
 }
 
 /// Gzip every plain bundle that ends in a published checkpoint.
-/// When the gzip is already complete, only the plain file is removed.
+/// When the gzip is already complete, only the plain file is removed. A bundle whose
+/// snapshot is missing stays open, and the next commit writes the snapshot and closes it.
 pub(crate) fn close_finished(root: &Path, _write: &WriteGuard) -> Result<(), Reason> {
     let mut failed = Ok(());
     for plain in plain_bundles(root) {
@@ -38,8 +39,6 @@ fn close_one(root: &Path, plain: &Path) -> Result<(), Reason> {
     if gz_matches(&gz, &bytes) {
         return remove_plain(plain);
     }
-    // Without its snapshot the bundle stays open, and the next commit's
-    // settle step writes the snapshot and closes it.
     if !journal::is_published(root, plain) || !snapshot_matches(root, plain) {
         return Ok(());
     }
