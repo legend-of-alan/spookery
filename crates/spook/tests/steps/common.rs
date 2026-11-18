@@ -191,6 +191,11 @@ fn break_pack(pack: &Path, fault: &str) {
                 replace_in_file(&path, after, &format!("{after}{ghost}"));
             }
         }
+        "a control type with two keys" => replace_in_file(
+            &pack.join("state/save.yaml"),
+            "    aldric: npc\n",
+            "    aldric: { npc: null, pc: null }\n",
+        ),
         "exit to an unknown place" => replace_in_file(
             &pack.join("world/places/docks_shop.md"),
             "  - to: docks_street\n",

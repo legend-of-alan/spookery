@@ -201,7 +201,14 @@ pub(crate) fn check_tag(
     )
 }
 
-pub(crate) fn yaml_diagnostic(file: &str, err: &YamlError, line_base: u32) -> Diagnostic {
+/// Turns a YAML read error into a `SCHEMA` diagnostic. In a file that holds rule lines, where one
+/// key names each condition or effect, a second key is refused in those words.
+pub(crate) fn diagnose_yaml(
+    file: &str,
+    err: &YamlError,
+    line_base: u32,
+    holds_rule_lines: bool,
+) -> Diagnostic {
     let err = err.without_snippet();
     let spot = err.location().and_then(|loc| {
         let line = u32::try_from(loc.line()).ok()?;
@@ -242,11 +249,28 @@ pub(crate) fn yaml_diagnostic(file: &str, err: &YamlError, line_base: u32) -> Di
             format!("value {unexpected} is not allowed"),
             format!("use {expected}"),
         ),
-        YamlError::SerdeUnknownVariant { variant, .. } => (
+        YamlError::SerdeUnknownVariant {
+            variant, expected, ..
+        } => (
             Some(variant.clone()),
-            format!("unknown value '{variant}'"),
-            "use one of the values this field allows".to_string(),
+            format!("unknown '{variant}'"),
+            format!("use one of {}", expected.join(", ")),
         ),
+        YamlError::ExpectedMappingEndAfterEnumVariantValue { .. }
+        | YamlError::Unexpected {
+            expected: "mapping end",
+            ..
+        } => {
+            let (problem, hint) = if holds_rule_lines {
+                (
+                    "two keys in one condition or effect",
+                    "give each condition or effect its own dash; combine conditions with all:, any: or not:",
+                )
+            } else {
+                ("two keys where one belongs", "keep one of them")
+            };
+            (None, problem.to_string(), hint.to_string())
+        }
         YamlError::InvalidScalar { ty, .. } => (
             None,
             format!("this value is not a valid {ty}"),
@@ -272,8 +296,10 @@ pub(crate) fn parse_file<T: serde::de::DeserializeOwned>(
     file: &str,
     text: &str,
     line_base: u32,
+    holds_rule_lines: bool,
 ) -> Result<T, Vec<Diagnostic>> {
-    serde_saphyr::from_str(text).map_err(|err| vec![yaml_diagnostic(file, &err, line_base)])
+    serde_saphyr::from_str(text)
+        .map_err(|err| vec![diagnose_yaml(file, &err, line_base, holds_rule_lines)])
 }
 
 #[cfg(test)]

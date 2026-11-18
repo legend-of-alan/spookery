@@ -634,7 +634,7 @@ fn check_reports_the_key(world: &mut World) {
         .find(|item| {
             item["message"]
                 .as_str()
-                .is_some_and(|message| message.contains("unknown field 'bogus'"))
+                .is_some_and(|message| message.contains("unknown 'bogus'"))
         })
         .unwrap_or_else(|| panic!("{}", world.stdout));
     assert_eq!(hit["file"], "rules/verbs.yaml");
@@ -643,41 +643,39 @@ fn check_reports_the_key(world: &mut World) {
     assert_ne!(hit["line"].as_u64(), Some(rumor as u64));
 }
 
-#[given(expr = "a verb whose if dash holds two conditions")]
-fn two_conditions_under_one_dash(world: &mut World) {
+const SECOND_KEY: &str = "flag: { of: self, key: second_key";
+
+#[given(expr = "a verb whose {word} {word} holds two keys in one line")]
+fn two_keys_in_one_line(world: &mut World, field: String, form: String) {
     let pack = copy_pack("docks", "rules-two");
-    append(
-        &pack.join("rules/verbs.yaml"),
-        r#"
-  - id: both
-    when:
-      verb: both
-    if:
-      - has_item:
-          subject: self
-          id: knife
-        flag:
-          of: self
-          key: marked
-          is: true
-    do: []
-"#,
+    let (first, second) = match field.as_str() {
+        "if" => ("has_item: { subject: self, id: knife }", "is: true }"),
+        "do" => ("narrate: { to: self, text: hi }", "value: true }"),
+        other => panic!("no {other} field"),
+    };
+    let (dash, indent) = if form == "list" {
+        ("- ", "  ")
+    } else {
+        ("", "")
+    };
+    let rule = format!(
+        "\n  - id: both\n    when:\n      verb: both\n    {field}:\n      {dash}{first}\n      {indent}{SECOND_KEY}, {second}\n"
     );
+    append(&pack.join("rules/verbs.yaml"), &rule);
     stamp_pack_rev(&pack);
     world.pack = Some(pack);
 }
 
-#[then(expr = "spook check reports two conditions under one dash")]
-fn check_reports_two_conditions(world: &mut World) {
+#[then(expr = "spook check reports two keys in one condition or effect at the second key")]
+fn check_reports_two_keys(world: &mut World) {
+    let text = fs::read_to_string(world.pack.as_ref().unwrap().join("rules/verbs.yaml")).unwrap();
+    let (line, _) = locate_key(&text, SECOND_KEY);
     run(world, &["check"]);
     assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
-    assert!(
-        world
-            .stderr
-            .contains("two conditions under one dash; use any: or not: to combine (SCHEMA)"),
-        "{}",
-        world.stderr
+    let want = format!(
+        "rules/verbs.yaml:{line}: two keys in one condition or effect; give each condition or effect its own dash; combine conditions with all:, any: or not: (SCHEMA)"
     );
+    assert!(world.stderr.contains(&want), "{}", world.stderr);
 }
 
 #[given(expr = "steady costs 5 vigor and the sitter has 1")]
