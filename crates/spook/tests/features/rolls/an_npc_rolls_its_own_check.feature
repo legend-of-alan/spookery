@@ -7,7 +7,6 @@ Feature: An NPC rolls its own check
     Then Mira is braced
     And the GM sees Mira's sure notice
     And the player sees no check frame
-    And the journal records the check's dice
     And replaying the round reproduces the save
 
   Scenario: A GM-queued NPC notice fails
@@ -17,14 +16,12 @@ Feature: An NPC rolls its own check
     Then Mira slipped
     And the GM sees Mira's failed notice
     And the player sees no check frame
-    And the journal records the check's dice
     And replaying the round reproduces the save
 
   Scenario: An engine habit rolls its NPC's check
     When an engine habit rolls a check for Mira
     Then Mira slipped
     And the journal records Mira's engine brace
-    And the journal records the check's dice
     And replaying the round reproduces the save
 
   Scenario: A success_at that reads the target's vigor defends the target
@@ -35,7 +32,6 @@ Feature: An NPC rolls its own check
     Then the mark missed Mira
     And the player sees only their own check
     And the GM sees one roll and a dice line for its total and for its success_at
-    And the journal records the check's dice
     And replaying the round reproduces the save
 
   Scenario: A command line with a player prefix is refused

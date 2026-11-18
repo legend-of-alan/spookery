@@ -99,7 +99,7 @@ pub(super) fn unknown_rule_items(
 }
 
 /// The item ids `slots` name, each once and in order.
-fn collect_item_ids<'a>(slots: Vec<(&'static str, Slot<'a>)>) -> BTreeSet<&'a str> {
+fn collect_item_ids<'l>(slots: Vec<(&'static str, Slot<'l>)>) -> BTreeSet<&'l str> {
     let ids = slots.into_iter().filter_map(|(_, slot)| match slot {
         Slot::Item(id) => Some(id),
         Slot::Owner(_) | Slot::Target(_) => None,
@@ -810,11 +810,11 @@ fn narrates_to_present(rule: &Rule) -> bool {
     present
 }
 
-/// Whether `rule` needs a subject: `self` or `here` named as `of`, `subject`, `to` or in a
-/// number, a nested check's `by`, a narrate's `to`, or a location effect, which moves the
-/// subject.
+/// Whether `rule` needs a subject: `self` or `here` named as `of`, `subject` or `to`, a
+/// nested check's `by`, a narrate's `to`, a location effect, which moves the subject, or a
+/// check, which is the subject's.
 fn names_subject(rule: &Rule) -> bool {
-    let mut needs = false;
+    let mut needs = rule.check.is_some();
     rule.visit_templates(|effect| match effect {
         EffectTemplate::Narrate { to, .. } => {
             needs |= matches!(to, NarrateTo::Self_ | NarrateTo::Here);
@@ -822,9 +822,10 @@ fn names_subject(rule: &Rule) -> bool {
         EffectTemplate::Location { .. } => needs = true,
         _ => {}
     });
-    let subject = Slot::Owner(grammar::Object::Actor(grammar::Actor::Self_));
+    let self_slot = Slot::Owner(grammar::Object::Actor(grammar::Actor::Self_));
     let here = Slot::Owner(grammar::Object::Here);
-    needs || (rule.slots().iter()).any(|(_, slot)| *slot == subject || *slot == here)
+    let names_self_or_here = |(_, slot): &(&str, Slot)| *slot == self_slot || *slot == here;
+    needs || rule.slots().iter().any(names_self_or_here)
 }
 
 fn mark_cycles(next: &[Vec<usize>], hit: &mut [bool]) {
