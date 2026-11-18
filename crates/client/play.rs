@@ -12,8 +12,8 @@ use crate::text;
 use crate::ws::Connection;
 use crate::Error;
 
-/// Closes the first connection and dials again after the PC choice, since the choice can
-/// outlast the first-message deadline.
+/// Dials a fresh connection after the PC choice, so a slow choice never trips the
+/// first-message deadline.
 pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
     let mut printer = Printer {
         text: text::Renderer::new(),
