@@ -22,7 +22,7 @@ Issue titles are plain sentences. Every issue gets an area label and a size labe
 
 A PR squashes into one commit titled after the PR, so the title starts with the first letter of its issue's area label and ends with its size label, like `N: Rename Hangup to Close [S]`. CI checks it.
 
-Every issue gets a priority label from `P0` (most urgent) to `P4` (a parked idea). It also gets a type label, which is `enhancement`, `bug` or `documentation`. Phases are milestones.
+Every issue gets a priority label from `P0` (most urgent) to `P3` (least urgent), except an `idea`, which carries none. It also gets a type label, which is `enhancement`, `bug` or `documentation`. Phases are milestones.
 
 ## Design principles
 
