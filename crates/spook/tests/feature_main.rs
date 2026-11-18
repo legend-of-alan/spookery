@@ -47,6 +47,8 @@ pub struct World {
     pub model: scripted_gm::ScriptedModel,
     /// The AI GM once it sits, run in this process.
     pub ai_gm: Option<scripted_gm::AiGm>,
+    /// What a scenario's HTTP model stub has read.
+    pub stub_seen: Option<std::sync::Arc<std::sync::Mutex<scripted_gm::Seen>>>,
     /// World time before a scenario's player acts.
     pub start_ticks: u64,
     /// The world times of the rounds a scenario's player heard.

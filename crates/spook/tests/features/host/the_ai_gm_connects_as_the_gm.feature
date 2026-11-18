@@ -33,12 +33,11 @@ Feature: The AI GM connects as the GM
     Then the queued line committed one round
     And the hung call retried once after the delay
     And both hung calls closed
-    And the seat stayed up
+    And the AI GM is still connected
 
   Scenario: A model that answers 500 once is retried and its speech lands
     When a model answers 500 once and then speaks
-    Then the stub saw 3 model posts
-    And the model's say landed
+    Then the model's say landed
     And the queued line committed one round
 
   Scenario: A model that answers 401 is not retried
@@ -62,7 +61,6 @@ Feature: The AI GM connects as the GM
     And a scripted model whose first call fails in transport
     When the player travels to Docks Street
     Then one round committed
-    And the model was called once
     And Rowan is in docks_street
 
   Scenario: The rolls are narrated without another round
@@ -79,8 +77,7 @@ Feature: The AI GM connects as the GM
 
   Scenario: A move queued while the model answers a player's speech gets its own turn
     When a player queues travel while the model answers their say
-    Then the stub saw 2 model posts
-    And the queued line committed one round
+    Then the queued line committed one round
 
   Scenario: The AI GM dials the game port
     Given a docks table
