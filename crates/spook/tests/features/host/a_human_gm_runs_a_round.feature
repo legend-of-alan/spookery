@@ -5,6 +5,7 @@ Feature: A human GM runs a round
     When play and a human GM share a free loopback port
     And the player says hello to the GM
     Then the GM shows "Rowan: hello"
+    And the GM shows no protocol JSON
     When the GM says "good evening"
     Then play shows "GM: good evening"
     When the GM queues Mira's door note and commits
@@ -33,13 +34,6 @@ Feature: A human GM runs a round
     And the GM queues Wren's exert and commits
     And the GM queues Wren's exert and commits
     Then the GM shows 2 rolls
-
-  Scenario: The GM's output is text
-    Given a docks table
-    When play and a human GM share a free loopback port
-    And the player says hello to the GM
-    Then the GM shows "Rowan: hello"
-    And the GM shows no protocol JSON
 
   Scenario: Raw frames are JSON lines
     Given a docks table

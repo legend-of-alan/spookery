@@ -56,11 +56,10 @@ fn one_round_plays(world: &mut World) {
 }
 
 #[when(
-    regex = r#"^the pack's hit stores "(.+)" and has "(.+)" as (its vigor add|a condition value|a cost amount|a second let)$"#
+    regex = r#"^the pack's hit stores "(.+)" and has "(.+)" as (?:its|a) (vigor add|nested check's vigor add|condition value|cost amount|second let)$"#
 )]
 fn the_packs_hit_stores_and_has(world: &mut World, lets: String, number: String, field: String) {
-    let (_, field) = field.split_once(' ').unwrap();
-    append_hit_line(world, &format!("let: {{ {lets} }}\n    "), &number, field);
+    append_hit_line(world, &format!("let: {{ {lets} }}\n    "), &number, &field);
 }
 
 #[when(expr = "the pack's hit stores {string} and adds {string} to Rowan's and Mira's vigor")]
@@ -147,8 +146,8 @@ fn the_pack_has(world: &mut World, number: String, field: String) {
     crate::support::stamp_pack_rev(&pack);
 }
 
-#[when(expr = "the player hits and the GM commits")]
-fn the_player_hits_and_the_gm_commits(world: &mut World) {
+#[when(regex = r"^the player (hits|hits Aldric) and the GM commits$")]
+fn the_player_hits_and_the_gm_commits(world: &mut World, hits: String) {
     let pack = table::pack(world).to_path_buf();
     let snap = crate::support::fresh_dir("before-hit");
     crate::support::copy_dir(&pack, &snap);
@@ -156,7 +155,8 @@ fn the_player_hits_and_the_gm_commits(world: &mut World) {
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
     table::seat_gm(world);
-    let _ = table::player_send(world, "hit", "\"kind\":\"queued\"");
+    let line = if hits == "hits" { "hit" } else { "hit aldric" };
+    let _ = table::player_send(world, line, "\"kind\":\"queued\"");
     world.mark = table::player_mark(world);
     world.stdout = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#);
 }
@@ -331,9 +331,16 @@ fn append_hit_line(world: &World, lets: &str, number: &str, field: &str) {
         "cost item count" => format!("cost: {{ items: {{ chock: \"{number}\" }} }}\n    do: []"),
         "cost ticks" => format!("cost: {{ ticks: \"{number}\" }}\n    do: []"),
         "second let" => format!("let: {{ {number} }}\n    do: []"),
+        "nested check's vigor add" => format!(
+            "do: [check: {{ by: target, total: \"{number}\", success_at: \"{number}\", success: [meter: {{ of: self, key: vigor, add: \"{number}\" }}] }}]"
+        ),
         _ => format!("do: [meter: {{ of: self, key: vigor, add: \"{number}\" }}]"),
     };
-    let rule = format!("\n  - id: hit\n    when: {{ verb: hit }}\n    {lets}{lines}\n");
+    let target = match field {
+        "nested check's vigor add" => ", target: actor",
+        _ => "",
+    };
+    let rule = format!("\n  - id: hit\n    when: {{ verb: hit{target} }}\n    {lets}{lines}\n");
     append_rule(world, &rule);
 }
 

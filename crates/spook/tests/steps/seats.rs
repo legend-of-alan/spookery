@@ -264,16 +264,6 @@ fn that_pc_says_the_hidden_fact(world: &mut World) {
     }
 }
 
-#[given(expr = "a docks table with a GM and two seated players")]
-fn a_docks_table_with_a_gm_and_two_seated_players(world: &mut World) {
-    let pack = crate::support::copy_pack("docks", "two-queue");
-    table::listen(world, &pack);
-    table::seat_gm(world);
-    table::seat_actor(world, &pack, "rowan");
-    table::seat_actor(world, &pack, "harbormouse");
-    world.pack = Some(pack);
-}
-
 #[given(expr = "a docks table with two seated players")]
 fn a_docks_table_with_two_seated_players(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "two-live");
@@ -294,38 +284,6 @@ fn both_players_wait(world: &mut World) {
     for id in ids {
         world.player_added = table::actor_send(world, &id, "wait", "\"kind\":");
     }
-}
-
-#[then(expr = "both lines are queued for the GM")]
-fn both_lines_are_queued_for_the_gm(world: &mut World) {
-    let queued = |text: &str, id: &str| {
-        text.lines().any(|line| {
-            line.contains("\"kind\":\"queued\"")
-                && line.contains(&format!("\"actor\":\"{id}\""))
-                && line.contains("\"move\":\"wait\"")
-        })
-    };
-    table::wait_gm_until(world, "queued waits for rowan and harbormouse", |text| {
-        queued(text, "rowan") && queued(text, "harbormouse")
-    });
-}
-
-#[then(expr = "table status lists both queued lines")]
-fn table_status_lists_both_queued_lines(world: &mut World) {
-    let text = table::gm_tool_call(world, 4, "status", "{}");
-    for id in ["rowan", "harbormouse"] {
-        assert!(text.contains(id), "{text}");
-    }
-    assert!(
-        text.matches("wait").count() >= 2,
-        "queue did not list both waits\n{text}"
-    );
-}
-
-#[then(expr = "the journal records both waits")]
-fn the_journal_records_both_waits(world: &mut World) {
-    let actors = table::list_player_waits(table::pack(world), "round-0001");
-    assert_eq!(actors, vec!["rowan".to_string(), "harbormouse".to_string()]);
 }
 
 #[then(expr = "each wait committed its own round")]
@@ -391,25 +349,6 @@ fn only_the_shop_players_receive_the_speech(world: &mut World) {
     wren.wait_reply(&id);
     let wren = table::actor_text(world, "wren");
     assert!(!wren.contains("the blue rope is tied"), "{wren}");
-}
-
-#[when(expr = "three play clients sit on a free port")]
-fn three_play_clients_sit_on_a_free_port(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    let addr = table::game_addr(world);
-    for id in DOCKS_PCS {
-        world.plays.push(super::common::spawn_play(&addr, id, &[]));
-    }
-}
-
-#[then(expr = "each play client shows its first perceive")]
-fn each_play_client_shows_its_first_perceive(world: &mut World) {
-    assert_eq!(world.plays.len(), 3);
-    for play in &mut world.plays {
-        let you_are_in = |stdout: &str| stdout.contains("You are in");
-        super::common::wait_proc_until(play, you_are_in, "You are in");
-    }
 }
 
 fn listen_pack(world: &mut World) {
