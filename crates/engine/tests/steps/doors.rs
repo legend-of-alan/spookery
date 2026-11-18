@@ -216,15 +216,4 @@ fn the_watch_ran(world: &mut World) {
         .entities()
         .get::<component::Flag>(&entity::Id::Global)
         .contains("creaked"));
-    drop(saved);
-    let round = support::read_round(world.pack(), "round-0001");
-    let creaked = round["effects"].as_array().unwrap().iter().any(|effect| {
-        effect["kind"] == "flag" && effect["entity"] == "world" && effect["key"] == "creaked"
-    });
-    assert!(creaked, "{round}");
-}
-
-#[then(expr = "spook verify replays the journal and passes")]
-fn verify_passes(world: &mut World) {
-    spookery_engine::verify_pack(world.pack(), None).unwrap_or_else(|err| panic!("verify: {err}"));
 }

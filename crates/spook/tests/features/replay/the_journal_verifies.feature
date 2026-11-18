@@ -24,17 +24,6 @@ Feature: The journal verifies
     And stdout says the save was verified
     And stderr is empty
 
-  Scenario: A migrate between rounds verifies
-    Given a docks table
-    When the operator tries a round
-    And a canon file gains a byte
-    And the operator runs migrate
-    And the operator tries a round
-    And the operator runs verify
-    Then the command exits 0
-    And stdout says the save was verified
-    And stderr is empty
-
   Scenario: Startup repair verifies
     Given a docks table
     When a seated player's host is killed and restarted

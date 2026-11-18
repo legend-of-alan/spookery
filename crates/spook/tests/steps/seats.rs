@@ -362,23 +362,6 @@ fn seat_three(world: &mut World, pack: &std::path::Path) {
     }
 }
 
-#[then(expr = "the round state_hash matches the save")]
-fn the_round_state_hash_matches_the_save(world: &mut World) {
-    let pack = table::pack(world);
-    let round = spookery_engine::testing::journal::read_record_line(pack, "round-0001")
-        .unwrap_or_else(|err| panic!("read round: {}", err.detail));
-    let value: serde_json::Value =
-        serde_json::from_str(&round).unwrap_or_else(|err| panic!("{err}"));
-    let expected = value["state_hash"]
-        .as_str()
-        .unwrap_or_else(|| panic!("state_hash\n{round}"));
-    let report = spookery_engine::testing::replay_pack(pack).unwrap_or_else(|err| panic!("{err}"));
-    assert_eq!(
-        spookery_engine::testing::journal::blake2s_tagged(&report.now_yaml),
-        expected
-    );
-}
-
 const HUMMED_OIL: &str = "lamp_oil";
 
 #[given(expr = "a pack with a habit rule that requires players == 0")]

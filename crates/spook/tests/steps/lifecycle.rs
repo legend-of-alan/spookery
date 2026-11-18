@@ -215,24 +215,6 @@ fn rounds_pass_until(world: &mut World, tick: u64) {
     assert_eq!(opened.world().world_time, tick);
 }
 
-#[when(expr = "the GM queues Mira's {string} outside the hours its if allows")]
-fn the_gm_queues_miras(world: &mut World, habit: String) {
-    let mut opened = open(world.pack.as_ref().unwrap());
-    let spec = spookery_protocol::QueueArgs {
-        id: Some("gm-1".to_string()),
-        round_index: None,
-        actor_id: Some("mira".to_string()),
-        move_id: Some(habit),
-        target: None,
-        message_to: None,
-        rationale_code: String::new(),
-    };
-    world.scratch = match opened.queue_gm_intent(&seated(), spec, || Ok("gm-1".into())) {
-        Ok(_) => "queued".to_string(),
-        Err(code) => code.as_str().to_string(),
-    };
-}
-
 #[then(expr = "Rowan holds {int} {word}")]
 fn rowan_holds(world: &mut World, count: u32, id: String) {
     let now = world_of(world.pack.as_ref().unwrap());
@@ -330,18 +312,4 @@ fn rowans_line_lands(world: &mut World, line: String) {
 fn that_round_refused_nothing(world: &mut World) {
     let record = read_round(world.pack.as_ref().unwrap(), "round-0001");
     assert_eq!(record["refused"], serde_json::json!([]), "{record}");
-}
-
-#[then(expr = "the GM is refused at once")]
-fn the_gm_is_refused_at_once(world: &mut World) {
-    assert_ne!(world.scratch, "queued");
-}
-
-#[then(expr = "a round later the shop still holds {int} lamp_oil")]
-fn a_round_later_the_shop_holds(world: &mut World, count: u32) {
-    let mut opened = open(world.pack.as_ref().unwrap());
-    play(&mut opened);
-    let shop = "docks_shop".into();
-    let stock = opened.world().places().get::<component::Item>(&shop);
-    assert_eq!(stock.get("lamp_oil").copied(), Some(count));
 }

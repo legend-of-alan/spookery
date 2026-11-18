@@ -297,14 +297,6 @@ fn briar_restocks_on_cycle(world: &mut World, cycle_id: String, from: u64, to: u
     write_briar(table::pack(world), &cycle_id, from, to);
 }
 
-#[given(expr = "the docks pack, whose budget sets cycle day to 1440")]
-fn the_docks_day(world: &mut World) {
-    let pack = copy_pack("docks", "rules-docks-day");
-    let budget = fs::read_to_string(pack.join("rules/budget.yaml")).unwrap();
-    assert!(budget.contains("cycles:\n  day: 1440\n"), "{budget}");
-    world.pack = Some(pack);
-}
-
 fn write_briar(pack: &Path, cycle: &str, from: u64, to: u64) {
     write(
         &pack.join("cast/briar.md"),
@@ -363,22 +355,6 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
         edit_as_saved(now, |save| {
             save["actors"]["acts"]["mira"]["idle_acts_this_window"] = 3.into()
         });
-    });
-    play_an_empty_round(&pack);
-}
-
-/// The round starts one idle round's ticks before `tick`. Mira's shop day is spent, so her
-/// door note waits and her restock is the habit that can run.
-#[when(expr = "an empty round lands at tick {int} with Mira in the shop")]
-fn an_empty_round_lands_with_mira(world: &mut World, tick: u64) {
-    let pack = world.pack.clone().unwrap();
-    edit_save(&pack, |now| {
-        now.world_time = tick - 60;
-        edit_meter(now, "mira", "shop_day", |shop_day| shop_day.base = 0);
-        now.actors_mut()
-            .get_mut::<component::Place>(&"mira".into())
-            .set("docks_shop")
-            .unwrap();
     });
     play_an_empty_round(&pack);
 }

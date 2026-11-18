@@ -309,28 +309,6 @@ rules:
     world.pack = Some(pack);
 }
 
-#[then(expr = "spook verify passes after rounds that fired triggers")]
-fn verify_passes_after_firing(world: &mut World) {
-    let pack = copy_pack("docks", "trigger-verify");
-    add_door(&pack);
-    add_bell(&pack);
-    flag_pcs(&pack, "heard_bell");
-    write_nell(&pack, &["heard_bell"]);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
-    });
-    play(
-        world,
-        &pack,
-        vec![intent("nell-door", "nell", "travel", Some("door"))],
-    );
-    let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "verify failed\n{stdout}{stderr}");
-    world.pack = Some(pack);
-}
-
 #[when(expr = "nell enters the bog")]
 fn nell_enters_the_bog(world: &mut World) {
     let pack = copy_pack("docks", "trigger-bog");

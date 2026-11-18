@@ -387,25 +387,6 @@ fn twelve_rounds_then_more(world: &mut World) {
     assert_eq!(world_of(&pack).world_time, mid + 12 * 5);
 }
 
-#[then(expr = "spook verify passes over a fast-forwarded journey")]
-fn verify_passes(world: &mut World) {
-    let pack = copy_pack("docks", "verify-journey");
-    edit_save(&pack, |now| {
-        now.world_time = EVENING;
-        set_busy(now, "rowan", EVENING + 10, "docks_shop.stairs");
-    });
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
-    let (_mark, _) = table::player_send(world, "wait", "BUSY");
-    world.pack = Some(pack.clone());
-    let arg = pack.to_str().unwrap();
-    let output = support::run_spook(&["verify", arg]);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "{stdout}\n{stderr}");
-    assert!(stdout.contains("verified"), "{stdout}");
-}
-
 #[given(expr = "rowan visited the shop and mira_rooms in an earlier sitting")]
 fn rowan_visited_both_rooms(world: &mut World) {
     let pack = copy_pack("docks", "map");

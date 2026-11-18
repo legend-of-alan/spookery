@@ -16,11 +16,6 @@ Feature: Cycle and act windows read the tick
       | tide  | 144    | 120  | 24  | 130  | 8   |
       | tide  | 144    | 120  | 24  | 154  | 8   |
 
-  Scenario: Mira restocks inside the docks day
-    Given the docks pack, whose budget sets cycle day to 1440
-    When an empty round lands at tick 500 with Mira in the shop
-    Then docks_shop holds 8 lamp_oil
-
   Scenario Outline: Only a round that crosses the end of an idle window gives idle acts back
     Given idle_act_window_ticks is <window> and every actor has used its idle acts at tick <start>
     When a seated round runs

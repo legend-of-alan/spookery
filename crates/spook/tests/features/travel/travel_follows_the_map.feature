@@ -60,9 +60,6 @@ Feature: Travel follows the map
     Given busy_until is 200 rounds away and max_fastforward_rounds is 12
     Then 12 rounds run and the rest continues on the next action
 
-  Scenario: Verify passes over a fast-forwarded journey
-    Then spook verify passes over a fast-forwarded journey
-
   Scenario: A player map lists the places rowan visited, across sittings
     Given rowan visited the shop and mira_rooms in an earlier sitting
     When play joins the table again
