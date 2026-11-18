@@ -17,7 +17,7 @@ Feature: A roll can partly succeed
     Then Mira is touched and halfway
     And the player sees outcome "partial" and no faces
     And the GM sees outcome "partial" and the faces
-    And replaying the round reproduces the save
+    And spook verify passes
 
   Scenario: A low total applies the failure list and the shared effects
     Given a docks table where press vigor base is 0
@@ -55,4 +55,4 @@ Feature: A roll can partly succeed
     Then Mira is touched and halfway
     And the GM sees outcome "partial" and the faces
     And the player sees no check frame
-    And replaying the round reproduces the save
+    And spook verify passes

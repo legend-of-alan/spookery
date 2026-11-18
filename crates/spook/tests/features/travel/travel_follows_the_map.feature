@@ -39,7 +39,7 @@ Feature: Travel follows the map
   Scenario: Rounds never shorten
     Then a seated round advances world_time by 5 and an empty one by 60
 
-  Scenario: Fast-forward when all seated PCs are busy lands each arrival in its own round
+  Scenario: Fast-forward when all seated PCs are busy plays through both arrivals
     Given rowan and nell are seated and both busy, with no GM
     Then the table plays rounds to tick 1295 then tick 1300 without waiting on the wall clock
     And Bram has flag tolled

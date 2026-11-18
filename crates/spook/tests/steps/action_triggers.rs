@@ -3,7 +3,7 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::{component, entity, MoveReport, Presence};
+use spookery_engine::{component, entity, Presence};
 
 use super::rules::open;
 use super::triggers::world_flags;
@@ -19,8 +19,8 @@ fn seated() -> Presence {
     }
 }
 
-/// Queue each `(actor, verb)` in order, then play one round. The scratch holds each refused
-/// player and code the round reported, one per line.
+/// Queue each `(actor, verb)` in order, then play one round. The scratch lists the refusals
+/// the round reported.
 fn play_in_one_round(world: &mut World, moves: &[(&str, &str)]) {
     let mut opened = open(world.pack.as_ref().unwrap());
     for (actor, verb) in moves {
@@ -32,13 +32,7 @@ fn play_in_one_round(world: &mut World, moves: &[(&str, &str)]) {
     let output = opened
         .play(&seated(), &wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
-    let refused = output.reports.iter().filter_map(|report| match report {
-        MoveReport::Refused { actor_id, refusal } => {
-            Some(format!("{actor_id} {}", refusal.code.as_str()))
-        }
-        MoveReport::Rolled { .. } => None,
-    });
-    world.scratch = refused.collect::<Vec<_>>().join("\n");
+    world.scratch = super::items::list_refusals(&output.reports);
 }
 
 /// Add `verbs` to `rules/verbs.yaml` and `story/<id>.yaml` holding `rules`.

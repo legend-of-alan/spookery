@@ -170,9 +170,6 @@ fn the_pack_has(world: &mut World, number: String, field: String) {
 )]
 fn the_player_hits_and_the_gm_commits(world: &mut World, hits: String) {
     let pack = table::pack(world).to_path_buf();
-    let snap = crate::support::fresh_dir("before-hit");
-    crate::support::copy_dir(&pack, &snap);
-    world.scratch = snap.display().to_string();
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
     table::seat_gm(world);

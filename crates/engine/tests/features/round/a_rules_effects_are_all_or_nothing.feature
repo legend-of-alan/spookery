@@ -4,12 +4,12 @@ Feature: A rule's effects are all or nothing
     Given a docks row overreach that adds 1 lamp oil and then removes 8
     When Rowan plays overreach
     Then lamp oil stays 4
-    And Rowan's overreach is refused OUT_OF_RANGE
+    And Rowan's move is refused OUT_OF_RANGE
 
   Scenario: An effect on a cast member the save does not list is refused UNKNOWN_ID
     Given the docks pack has a cast member nell the save does not list and a row "mark" that marks her
     When Rowan plays mark
-    Then Rowan's mark is refused UNKNOWN_ID
+    Then Rowan's move is refused UNKNOWN_ID
 
   Scenario: A rule over the effect cap is refused, not truncated
     Given max_effects_per_intent is 1 and a row with 2 effects
@@ -24,7 +24,7 @@ Feature: A rule's effects are all or nothing
     Given a docks row spilled that rolls exert and then removes 8 lamp oil
     When Rowan plays spilled
     Then lamp oil stays 4 and no roll is reported
-    And Rowan's spilled is refused OUT_OF_RANGE
+    And Rowan's move is refused OUT_OF_RANGE
 
   Scenario: A later intent sees what the earlier one already did
     Given the docks pack, where Mira's door-note habit is due

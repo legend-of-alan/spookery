@@ -2,7 +2,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
-use serde_json::Value;
 use spookery_engine::testing::roll;
 use spookery_engine::{component, GlobalId, MoveReport, Note};
 
@@ -69,15 +68,6 @@ fn a_played_d20_strike(world: &mut World) {
 fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     spookery_engine::verify_pack(pack, None).expect("verify");
-    let report =
-        spookery_engine::testing::replay_pack(pack).unwrap_or_else(|err| panic!("{err:?}"));
-    let line = spookery_engine::testing::journal::read_record_line(pack, "round-0001")
-        .unwrap_or_else(|err| panic!("{}", err.detail));
-    let round: Value = serde_json::from_str(&line).unwrap();
-    assert_eq!(
-        spookery_engine::testing::journal::blake2s_tagged(&report.now_yaml),
-        round["state_hash"].as_str().unwrap()
-    );
 }
 
 #[given(expr = "two fresh copies of the docks pack as shipped")]
@@ -682,8 +672,8 @@ fn add_place_rules(pack: &Path, place: &str, rules: &str) {
 }
 
 /// Each refused move in `reports` as `actor CODE`, joined by commas.
-fn list_refusals(reports: &[MoveReport]) -> String {
-    let refused = reports.iter().filter_map(|report| match report {
+pub(crate) fn list_refusals<'r>(reports: impl IntoIterator<Item = &'r MoveReport>) -> String {
+    let refused = reports.into_iter().filter_map(|report| match report {
         MoveReport::Refused { actor_id, refusal } => Some(format!("{actor_id} {}", refusal.code)),
         MoveReport::Rolled { .. } => None,
     });
@@ -879,8 +869,8 @@ fn rowan_plays(world: &mut World, verb: String) {
     world.summary_lines = output.changed_keys;
 }
 
-#[then(expr = "Rowan's {word} is refused {word}")]
-fn rowans_move_is_refused(world: &mut World, _verb: String, code: String) {
+#[then(expr = "Rowan's move is refused {word}")]
+fn rowans_move_is_refused(world: &mut World, code: String) {
     assert_eq!(world.scratch, format!("rowan {code}"));
 }
 

@@ -5,7 +5,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing as support;
-use spookery_engine::{GlobalId, MoveReport, Note, Presence};
+use spookery_engine::{GlobalId, Note, Presence};
 
 use crate::{resolve_id, split_line, World};
 
@@ -92,12 +92,7 @@ fn play(world: &mut World, actor: &str, line: &str) {
         .commit_then_fast_forward(&seated, &wall)
         .unwrap_or_else(|err| panic!("{line}: {err}"));
     let reports = outputs.iter().flat_map(|output| &output.reports);
-    world.scratch = (reports.filter_map(|report| match report {
-        MoveReport::Refused { refusal, .. } => Some(refusal.code.as_str()),
-        MoveReport::Rolled { .. } => None,
-    }))
-    .collect::<Vec<_>>()
-    .join(" ");
+    world.scratch = super::round_play::list_refusals(reports);
 }
 
 fn strip_room_facts(pack: &Path) {

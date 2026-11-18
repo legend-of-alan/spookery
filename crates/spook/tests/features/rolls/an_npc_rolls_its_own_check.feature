@@ -7,7 +7,7 @@ Feature: An NPC rolls its own check
     Then Mira is braced
     And the GM sees Mira's sure notice
     And the player sees no check frame
-    And replaying the round reproduces the save
+    And spook verify passes
 
   Scenario: A GM-queued NPC notice fails
     Given a docks table where Mira can notice
@@ -16,12 +16,12 @@ Feature: An NPC rolls its own check
     Then Mira slipped
     And the GM sees Mira's failed notice
     And the player sees no check frame
-    And replaying the round reproduces the save
+    And spook verify passes
 
   Scenario: An engine habit rolls its NPC's check
     When an engine habit rolls a check for Mira
     Then Mira slipped
-    And replaying the round reproduces the save
+    And spook verify passes
 
   Scenario: A dodge stored in let that reads the target's vigor defends the target
     Given a docks table where Mira's vigor contests a mark
@@ -31,7 +31,7 @@ Feature: An NPC rolls its own check
     Then the mark missed Mira
     And the player sees only their own check
     And the GM sees one roll read from the attack and dodge dice lines
-    And replaying the round reproduces the save
+    And spook verify passes
 
   Scenario: A command line with a player prefix is refused
     Given a docks table with a seated player

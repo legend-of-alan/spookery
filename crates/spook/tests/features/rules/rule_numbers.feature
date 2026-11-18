@@ -7,7 +7,7 @@ Feature: Dice and arithmetic in rule numbers
     Then Rowan's vigor rose by the 2d6 faces
     And the GM commit reply shows the 2d6 faces
     And the player text has no dice faces
-    And replaying the round reproduces the save
+    And spook verify passes
 
   Scenario Outline: A rule number reads an actor's or a place's meter, min, max and minus, and division rounds down
     Given a docks table

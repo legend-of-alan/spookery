@@ -166,7 +166,7 @@ fn actor_types(world: &mut World, actor: String, line: String) {
     let pack = world.pack.clone().unwrap();
     world.scratch = match handle_move(&pack, &actor, &line) {
         Ok(outputs) => {
-            let refused = list_refused_codes(&outputs);
+            let refused = list_refusals(outputs.iter().flat_map(|output| &output.reports));
             world.summary = outputs.into_iter().flat_map(|o| o.changed_keys).collect();
             refused
         }
@@ -174,14 +174,15 @@ fn actor_types(world: &mut World, actor: String, line: String) {
     };
 }
 
-/// The codes of the moves the rounds told a player were refused, one per line.
-fn list_refused_codes(outputs: &[spookery_engine::round::Output]) -> String {
-    let reports = outputs.iter().flat_map(|output| &output.reports);
-    let codes = reports.filter_map(|report| match report {
-        MoveReport::Refused { refusal, .. } => Some(refusal.code.as_str()),
+/// Each move `reports` told a player was refused, as `actor CODE`, joined by commas.
+pub(crate) fn list_refusals<'r>(reports: impl IntoIterator<Item = &'r MoveReport>) -> String {
+    let refused = reports.into_iter().filter_map(|report| match report {
+        MoveReport::Refused { actor_id, refusal } => {
+            Some(format!("{actor_id} {}", refusal.code.as_str()))
+        }
         MoveReport::Rolled { .. } => None,
     });
-    codes.collect::<Vec<_>>().join(" ")
+    refused.collect::<Vec<_>>().join(", ")
 }
 
 #[then(expr = "harbormouse has 7 hp and 0 tonic")]
@@ -307,12 +308,12 @@ fn rowan_drops_oil(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let outputs = handle_move(&pack, "rowan", "drop lamp_oil")
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
-    world.scratch = list_refused_codes(&outputs);
+    world.scratch = list_refusals(outputs.iter().flat_map(|output| &output.reports));
 }
 
 #[then(expr = "rowan is told MISSING_ITEM and still has no lamp_oil")]
 fn the_drop_was_missing(world: &mut World) {
-    assert_eq!(world.scratch, "MISSING_ITEM");
+    assert_eq!(world.scratch, "rowan MISSING_ITEM");
     let pack = world.pack.as_ref().unwrap();
     let now = support::world_of(pack);
     assert_eq!(
@@ -350,7 +351,7 @@ fn harbormouse_wielded_slot_is_poisoned_dagger(world: &mut World) {
 
 #[then(expr = "it is rejected with NOT_A_WEAPON and the slot is unchanged")]
 fn tonic_is_not_a_weapon(world: &mut World) {
-    assert_eq!(world.scratch, "NOT_A_WEAPON");
+    assert_eq!(world.scratch, "harbormouse NOT_A_WEAPON");
     assert_eq!(wielded(world.pack.as_ref().unwrap(), "harbormouse"), None);
 }
 

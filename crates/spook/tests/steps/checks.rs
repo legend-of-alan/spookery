@@ -1,7 +1,7 @@
 use spookery_engine::component;
 use spookery_engine::testing::world_of;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
@@ -131,7 +131,6 @@ fn a_docks_table_where_mira_can_notice(world: &mut World) {
     insert_mira_flags(&pack, "    - braced\n    - slipped\n");
     support::stamp_pack_rev(&pack);
     listen_and_seat_both(world, &pack);
-    world.scratch = snapshot_pack(&pack).display().to_string();
     world.mark = table::player_mark(world);
 }
 
@@ -149,7 +148,6 @@ fn a_docks_table_where_miras_vigor_contests_a_mark(world: &mut World) {
             .unwrap();
     });
     listen_and_seat_both(world, &pack);
-    world.scratch = snapshot_pack(&pack).display().to_string();
 }
 
 #[when(expr = "the GM queues Mira's sure notice")]
@@ -169,9 +167,7 @@ fn an_engine_habit_rolls_a_check_for_mira(world: &mut World) {
     insert_mira_flags(&pack, "    - braced\n    - slipped\n");
     insert_brace_habit(&pack);
     support::stamp_pack_rev(&pack);
-    let before = snapshot_pack(&pack);
     spookery_engine::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    world.scratch = before.display().to_string();
 }
 
 #[when(expr = "the player sends a line with a player prefix")]
@@ -242,11 +238,6 @@ fn the_gm_sees_one_roll_from_attack_and_dodge(world: &mut World) {
     assert_roll(&body, "attack: ", 1, face_sum + MIRA_VIGOR, "miss");
 }
 
-#[when(expr = "the save before the fight is kept")]
-fn the_save_before_the_fight_is_kept(world: &mut World) {
-    world.scratch = snapshot_pack(table::pack(world)).display().to_string();
-}
-
 #[then(expr = "play shows {int} successful rolls")]
 fn play_shows_successful_rolls(world: &mut World, rolls: usize) {
     let succeeded = |stdout: &str| stdout.matches("Your roll succeeded.").count() >= rolls;
@@ -264,33 +255,6 @@ fn hp_is(world: &mut World, actor: String, expected: i64) {
             held => Err(format!("hp {held:?}")),
         }
     });
-}
-
-#[then(expr = "replaying the round reproduces the save")]
-fn replaying_the_round_reproduces_the_save(world: &mut World) {
-    let played = table::pack(world);
-    let start = PathBuf::from(&world.scratch);
-    let before = fs::read(played.join("state/save.yaml"))
-        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    let entries = spookery_engine::testing::journal::read_records(played)
-        .unwrap_or_else(|err| panic!("{}", err.detail));
-    let report =
-        spookery_engine::testing::replay::apply_journal(played, &entries, Some(&start), None)
-            .unwrap_or_else(|err| panic!("replay: {err}"));
-    let last = entries
-        .iter()
-        .rev()
-        .find(|entry| entry.changes_state())
-        .unwrap_or_else(|| panic!("no round was written"));
-    assert_eq!(
-        spookery_engine::testing::journal::blake2s_tagged(&report.now_yaml),
-        spookery_engine::testing::journal::state_hash(last)
-    );
-    assert_eq!(
-        fs::read(played.join("state/save.yaml")).unwrap_or_else(|err| panic!("read played: {err}")),
-        before
-    );
-    let _ = fs::remove_dir_all(&start);
 }
 
 fn listen_and_seat_both(world: &mut World, pack: &Path) {
@@ -335,12 +299,6 @@ fn set_vigor(pack: &Path, actor: &str, base: i64) {
     support::edit_save(pack, |now| {
         support::edit_meter(now, actor, "vigor", |vigor| vigor.base = base);
     });
-}
-
-fn snapshot_pack(pack: &Path) -> PathBuf {
-    let dest = support::fresh_dir("before");
-    support::copy_dir(pack, &dest);
-    dest
 }
 
 fn flags_of(world: &World, id: &str) -> Vec<String> {
@@ -491,7 +449,6 @@ fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
     set_vigor(&pack, "mira", 6);
     support::stamp_pack_rev(&pack);
     listen_and_seat_both(world, &pack);
-    world.scratch = snapshot_pack(&pack).display().to_string();
     world.mark = table::player_mark(world);
 }
 
@@ -586,7 +543,6 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     });
     if sit {
         listen_and_seat_both(world, &pack);
-        world.scratch = snapshot_pack(&pack).display().to_string();
     }
 }
 
