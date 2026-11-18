@@ -31,7 +31,7 @@ pub(crate) fn emit_options() -> SerializerOptions {
 }
 
 pub fn parse(text: &str) -> Result<Save, Vec<Diagnostic>> {
-    if let Some(diag) = check_tag(text, crate::diagnostic::SAVE_SCHEMA, FILE, 0) {
+    if let Some(diag) = check_tag(text, crate::diagnostic::SAVE_SCHEMA, FILE) {
         return Err(vec![diag]);
     }
     // Check the rules version before the full shape, so a save from older rules
@@ -46,7 +46,7 @@ pub fn parse(text: &str) -> Result<Save, Vec<Diagnostic>> {
             return Err(vec![rules_rev_diagnostic(text)]);
         }
     }
-    parse_file(FILE, text, 0, false)
+    parse_file(FILE, text, false)
 }
 
 pub fn emit(save: &Save) -> Result<String, Reason> {

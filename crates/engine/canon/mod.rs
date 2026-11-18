@@ -464,7 +464,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
 #[cfg(any(test, feature = "testing"))]
 pub fn strip_body(text: &str) -> Result<String, Reason> {
     let (yaml, _) = source::split_frontmatter("", text).map_err(|_| Reason::Schema)?;
-    Ok(format!("---\n{yaml}\n---\n"))
+    Ok(format!("{yaml}\n---\n"))
 }
 
 #[cfg(test)]

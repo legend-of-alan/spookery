@@ -46,14 +46,10 @@ pub(super) fn load_stories(
             ));
             continue;
         };
-        let Some(story) = diags.keep(load_tagged::<StoryDoc>(&file, text, STORY_SCHEMA, 0)) else {
+        let Some(story) = diags.keep(load_tagged::<StoryDoc>(&file, text, STORY_SCHEMA)) else {
             continue;
         };
-        let source = FileText {
-            file: &file,
-            text,
-            line_base: 0,
-        };
+        let source = FileText { file: &file, text };
         let empty = ("id is empty", "set id to a short story id");
         let twice = ("story", "is already defined", "keep one story with this id");
         let taken = stories.contains_key(story.id.as_str());

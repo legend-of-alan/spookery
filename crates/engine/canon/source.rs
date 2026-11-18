@@ -19,22 +19,17 @@ pub(super) const ITEM_SCHEMA: &str = "item";
 pub(super) const STORY_SCHEMA: &str = "story";
 pub(super) const BUDGET_SCHEMA: &str = "budget";
 
-/// One pack file as the loader sees it: its pack-relative name, its YAML text,
-/// and the file line the YAML starts on (1 for Markdown frontmatter, 0 for YAML).
+/// One pack file as the loader sees it: its pack-relative name and its YAML text, which
+/// starts on the file's first line.
 pub(super) struct FileText<'a> {
     pub file: &'a str,
     pub text: &'a str,
-    pub line_base: u32,
 }
 
 impl<'a> FileText<'a> {
     /// A file or directory whose text the caller does not hold, such as a lint's.
     pub fn named(file: &'a str) -> Self {
-        Self {
-            file,
-            text: "",
-            line_base: 0,
-        }
+        Self { file, text: "" }
     }
 
     /// The refusal at `path` when `id` is empty.
@@ -133,10 +128,10 @@ pub(super) type DuplicateWords = (&'static str, &'static str, &'static str);
 pub(super) enum Locator<'a> {
     /// No line; the path alone says where.
     Nowhere,
-    /// The first `key` in the text, moved down by `line_base`.
+    /// The first `key` in the text.
     Key(&'a str),
     /// `key` inside the `row`th item of the top-level `list` (such as `facts:`), counted
-    /// in the text as given, without `line_base`. Each item starts at its `id:` key.
+    /// in the text. Each item starts at its `id:` key.
     Row {
         list: &'a str,
         row: usize,
@@ -165,9 +160,9 @@ impl Problem<'_> {
         }
         match self.at {
             Locator::Nowhere | Locator::Spot(None) => diag,
-            Locator::Key(key) => diag.at_spot(locate_nth(source.text, key, 0), source.line_base),
+            Locator::Key(key) => diag.at_spot(locate_nth(source.text, key, 0)),
             Locator::Row { list, row, key } => {
-                diag.at_spot(locate_row_field(source.text, list, row, key), 0)
+                diag.at_spot(locate_row_field(source.text, list, row, key))
             }
             Locator::Spot(Some(spot)) => {
                 diag.at_line(spot.line, Some(spot.column).filter(|column| *column > 0))
@@ -272,19 +267,19 @@ pub(super) fn load_tagged<T: serde::de::DeserializeOwned>(
     file: &str,
     text: &str,
     expected: &str,
-    line_base: u32,
 ) -> Result<T, Vec<Diagnostic>> {
-    if let Some(diag) = check_tag(text, expected, file, line_base) {
+    if let Some(diag) = check_tag(text, expected, file) {
         return Err(vec![diag]);
     }
     let holds_rule_lines = matches!(
         expected,
         VERBS_SCHEMA | CAST_SCHEMA | ITEM_SCHEMA | PLACE_SCHEMA | STORY_SCHEMA
     );
-    parse_file(file, text, line_base, holds_rule_lines)
+    parse_file(file, text, holds_rule_lines)
 }
 
-/// A Markdown file split at its frontmatter fence. `text` is the whole file.
+/// A Markdown file split at its frontmatter fence. `text` is the whole file, and `yaml` is
+/// the frontmatter from the opening fence, so its line numbers are the file's.
 pub(super) struct Page {
     pub file: String,
     pub text: String,
@@ -390,6 +385,7 @@ pub(super) fn collect_files(
     Ok(())
 }
 
+/// The frontmatter, opening fence included and closing fence left out, and the body after it.
 pub(super) fn split_frontmatter<'a>(
     file: &str,
     text: &'a str,
@@ -408,14 +404,15 @@ pub(super) fn split_frontmatter<'a>(
             .at_line(1, Some(1))]);
         }
     };
+    let fence_end = text.len() - rest.len();
     if let Some(index) = rest.find("\n---\n") {
-        return Ok((&rest[..index], &rest[index + 5..]));
+        return Ok((&text[..fence_end + index], &rest[index + 5..]));
     }
     if let Some(index) = rest.find("\n---\r\n") {
-        return Ok((&rest[..index], &rest[index + 6..]));
+        return Ok((&text[..fence_end + index], &rest[index + 6..]));
     }
-    if let Some(yaml) = rest.strip_suffix("\n---") {
-        return Ok((yaml, ""));
+    if rest.ends_with("\n---") {
+        return Ok((&text[..text.len() - 4], ""));
     }
     Err(vec![schema_error(
         file,

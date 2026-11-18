@@ -62,6 +62,13 @@ fn the_packs_hit_has(world: &mut World, dice: String, field: String) {
     append_hit_line(world, "", &dice, &field);
 }
 
+#[when(expr = "the pack's street exit has {string} as its cost ticks")]
+fn the_packs_street_exit_has(world: &mut World, number: String) {
+    let pack = table::pack(world).to_path_buf();
+    set_street_exit_ticks(&pack, &number);
+    crate::support::stamp_pack_rev(&pack);
+}
+
 #[when(
     regex = r#"^the pack's hit stores "(.+)" and has "(.+)" as (its vigor add|a condition value|a cost amount|a second let)$"#
 )]
@@ -129,10 +136,7 @@ fn the_pack_has(world: &mut World, number: String, field: String) {
     let strain = "\n  - id: strain\n    when: { verb: strain }\n";
     match field.as_str() {
         "the street exit's ticks" => {
-            let path = pack.join("world/places/docks_shop.md");
-            let text = fs::read_to_string(&path).unwrap();
-            let cost = format!("    id: docks_street\n    cost: {{ ticks: \"{number}\" }}\n");
-            fs::write(&path, text.replace("    id: docks_street\n", &cost)).unwrap();
+            set_street_exit_ticks(&pack, &number);
         }
         "the strain's modifier ticks" => {
             super::modifiers::add_modifier(&pack, "fatigue", "vigor", "");
@@ -184,9 +188,15 @@ fn the_journal_records_the_1d4_face(world: &mut World) {
 
 #[then(expr = "the report names the line holding {string}")]
 fn the_report_names_the_line_holding(world: &mut World, needle: String) {
+    the_report_names_the_line_in_file_holding(world, "rules/verbs.yaml".into(), needle);
+}
+
+/// The report locates the last line of the pack's `file` that holds `needle`.
+#[then(expr = "the report names the line in {word} holding {string}")]
+fn the_report_names_the_line_in_file_holding(world: &mut World, file: String, needle: String) {
     let pack = table::pack(world);
-    let text = fs::read_to_string(pack.join("rules/verbs.yaml"))
-        .unwrap_or_else(|err| panic!("read verbs: {err}"));
+    let text =
+        fs::read_to_string(pack.join(&file)).unwrap_or_else(|err| panic!("read {file}: {err}"));
     let mut line = None;
     for (index, item) in text.lines().enumerate() {
         if item.contains(&needle) {
@@ -194,7 +204,7 @@ fn the_report_names_the_line_holding(world: &mut World, needle: String) {
         }
     }
     let line = line.unwrap_or_else(|| panic!("no line holding {needle}"));
-    let located = format!("rules/verbs.yaml:{line}:");
+    let located = format!("{file}:{line}:");
     assert!(
         world.stderr.contains(&located),
         "missing {located}\n{}",
@@ -332,6 +342,26 @@ fn append_hit_line(world: &World, lets: &str, number: &str, field: &str) {
     };
     let rule = format!("\n  - id: hit\n    when: {{ verb: hit }}\n    {lets}{lines}\n");
     append_rule(world, &rule);
+}
+
+/// Give the shop's street exit `number` as its cost ticks.
+fn set_street_exit_ticks(pack: &Path, number: &str) {
+    let path = pack.join("world/places/docks_shop.md");
+    let text = fs::read_to_string(&path).unwrap();
+    let cost = format!(
+        "    id: docks_street
+    cost: {{ ticks: \"{number}\" }}
+"
+    );
+    fs::write(
+        &path,
+        text.replace(
+            "    id: docks_street
+",
+            &cost,
+        ),
+    )
+    .unwrap();
 }
 
 /// Append `rule` to the pack's verbs and restamp its save.

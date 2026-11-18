@@ -61,12 +61,8 @@ impl Default for Budget {
 }
 
 pub(crate) fn load_budget(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    let doc: BudgetDoc = load_tagged(rel, text, BUDGET_SCHEMA, 0)?;
-    let source = FileText {
-        file: rel,
-        text,
-        line_base: 0,
-    };
+    let doc: BudgetDoc = load_tagged(rel, text, BUDGET_SCHEMA)?;
+    let source = FileText { file: rel, text };
     let mut diags = Vec::new();
     let mut budget = Budget::default();
     // Each row is a counter key and the least value it allows, in report order.
