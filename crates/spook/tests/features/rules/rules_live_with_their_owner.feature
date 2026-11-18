@@ -14,7 +14,7 @@ Feature: Rules live with their owner
     When an empty round lands at tick 420 with briar in the shop
     Then docks_shop lamp_oil increases by 4
 
-  Scenario: Difficulty from defense
+  Scenario: An attack below the target's defense plus 10 misses
     Given attack targets defense + 10 and briar's defense is 12
     When harbormouse attacks with a seeded total of 21
     Then the outcome is a miss

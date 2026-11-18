@@ -58,7 +58,7 @@ warning. The next commit publishes that checkpoint and then starts a new
 bundle. A plain copy beside a finished gzip is removed. `save.yaml` is the latest
 checkpoint, taken every `checkpoint_every` rounds (100 when the pack omits it;
 the scenario "A pack that does not set checkpoint_every checkpoints every 100
-rounds" in `features/replay/journal_bundles.feature` pins it). Between
+rounds" in `features/replay/the_journal_repairs_and_verify_finds_edits.feature` pins it). Between
 checkpoints the current state is the journal replayed from that snapshot. A
 missing snapshot is rebuilt from the bundles. History is not deleted.
 
@@ -97,8 +97,8 @@ replay to its recorded hash is refused with `JOURNAL_DIVERGED`.
 Tested in `features/replay/the_journal_verifies.feature`,
 `features/commit/a_hand_edit_waits_for_migrate.feature`,
 `features/meters/modifiers_stack_and_expire.feature`,
-`features/replay/typed_journal_records.feature`,
-`features/replay/journal_bundles.feature`,
+`features/replay/verify_names_a_malformed_record.feature`,
+`features/replay/the_journal_repairs_and_verify_finds_edits.feature`,
 `features/round/each_roll_has_its_own_seed.feature`,
 `features/rolls/a_rule_stores_a_roll.feature`,
 `features/rules/rule_versions.feature`, and
@@ -294,7 +294,7 @@ length or an act window of 0, a `cycle` that names no cycle in the budget, or an
 integer bound at or past the cycle's length. A bound read at play outside the
 cycle refuses the move.
 
-Tested in `features/rules/game_time_counts_in_ticks.feature`,
+Tested in `features/rules/windows_read_the_tick.feature`,
 `features/seats/a_player_knows_the_place.feature`,
 `features/check/spook_check_explains_a_broken_pack.feature`, and
 `features/rules/rule_numbers.feature`.
@@ -340,7 +340,7 @@ Tested in `features/rules/rules_live_with_their_owner.feature`,
 `features/seats/a_claim_comes_back_with_its_token.feature`,
 `features/limits/the_listener_bounds_input.feature`,
 `features/loopback/only_loopback_binds.feature`,
-`features/replay/typed_journal_records.feature`,
+`features/replay/verify_names_a_malformed_record.feature`,
 `features/travel/travel_follows_the_map.feature`,
 `features/check/spook_check_explains_a_broken_pack.feature`, and
 `features/rules/rule_versions.feature`.
