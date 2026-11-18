@@ -17,7 +17,7 @@ use crate::rules::expr::{self, stamp_spots, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
     self, ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner,
-    Phase, Rule, Slot, TargetKind, When,
+    Phase, Rule, TargetKind, When,
 };
 
 const MOVES_REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
@@ -621,7 +621,7 @@ fn compile_one(
         When::Verb { target, .. } => *target,
         When::Habit | When::Change(_) => TargetKind::None,
     };
-    let misplaced = find_misplaced_target(targets, rule.slots()).map(|(key, needs)| {
+    let misplaced = rule::find_misplaced_target(targets, rule.slots()).map(|(key, needs)| {
         let (needs, targets) = (needs.as_str(), targets.as_str());
         (
             format!("says target in {key}, but its target is {targets}"),
@@ -672,19 +672,6 @@ fn find_let_read_problem(rule: &Rule) -> Option<(String, String)> {
         }
     }
     None
-}
-
-/// The first of `slots` that says `target` where a move that targets `targets` does not allow
-/// it, as the slot's key and what it needs the move to target. A habit, a change rule and an
-/// exit target nothing.
-pub(super) fn find_misplaced_target(
-    targets: TargetKind,
-    slots: Vec<(&'static str, Slot<'_>)>,
-) -> Option<(&'static str, TargetKind)> {
-    slots.into_iter().find_map(|(key, slot)| match slot {
-        Slot::Target(needs) if needs != targets => Some((key, needs)),
-        _ => None,
-    })
 }
 
 fn when_of(yaml: &WhenYaml) -> Result<When, String> {

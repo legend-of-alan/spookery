@@ -188,6 +188,19 @@ pub(crate) fn collect_slots<'l>(
     slots
 }
 
+/// The first of `slots` that says `target` where a move that targets `targets` does not allow
+/// it, as the slot's key and what it needs the move to target. A habit, a change rule and an
+/// exit target nothing.
+pub(crate) fn find_misplaced_target(
+    targets: TargetKind,
+    slots: Vec<(&'static str, Slot<'_>)>,
+) -> Option<(&'static str, TargetKind)> {
+    slots.into_iter().find_map(|(key, slot)| match slot {
+        Slot::Target(needs) if needs != targets => Some((key, needs)),
+        _ => None,
+    })
+}
+
 /// What the start or the finish of an action costs, and whether it uses the actor's act.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Phase {
