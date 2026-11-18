@@ -21,11 +21,10 @@ pub(super) fn add(
     meters: Option<&mut BTreeMap<String, meter::Descriptor>>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
-    let file = diags.keep(load(&page.file, &page.yaml, 1))?;
+    let file = diags.keep(load(&page.file, &page.yaml))?;
     let whole = FileText {
         file: &page.file,
         text: &page.text,
-        line_base: 0,
     };
     // `load` validates `file.control_type` is `"npc"` or `"pc_template"`.
     let control_type = if file.control_type == "npc" {
@@ -65,13 +64,9 @@ pub(super) fn add(
     ))
 }
 
-fn load(file: &str, yaml: &str, line_base: u32) -> Result<CastDoc, Vec<Diagnostic>> {
-    let parsed: CastDoc = load_tagged(file, yaml, CAST_SCHEMA, line_base)?;
-    let source = FileText {
-        file,
-        text: yaml,
-        line_base,
-    };
+fn load(file: &str, yaml: &str) -> Result<CastDoc, Vec<Diagnostic>> {
+    let parsed: CastDoc = load_tagged(file, yaml, CAST_SCHEMA)?;
+    let source = FileText { file, text: yaml };
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short cast id");
     diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));

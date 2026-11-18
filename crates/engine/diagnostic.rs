@@ -38,11 +38,12 @@ struct FoundSchema<'a> {
     value: &'a str,
 }
 
-/// The first `schema` key, with its 1-based line. Comments and blank lines are skipped.
+/// The first `schema` key, with its 1-based line. Comments, blank lines and the `---` that
+/// opens a document are skipped.
 fn find_schema(text: &str) -> Option<FoundSchema<'_>> {
     for (index, line) in text.lines().enumerate() {
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed == "---" {
             continue;
         }
         let value = unquote(trimmed.strip_prefix("schema:")?.trim());
@@ -109,10 +110,10 @@ impl Diagnostic {
         self
     }
 
-    /// At `spot`, a line and column `line_base` lines into the file. No spot leaves it as is.
-    pub(crate) fn at_spot(self, spot: Option<(u32, u32)>, line_base: u32) -> Self {
+    /// At `spot`, a line and column in the file. No spot leaves it as is.
+    pub(crate) fn at_spot(self, spot: Option<(u32, u32)>) -> Self {
         match spot {
-            Some((line, column)) => self.at_line(line + line_base, Some(column)),
+            Some((line, column)) => self.at_line(line, Some(column)),
             None => self,
         }
     }
@@ -176,18 +177,13 @@ pub(crate) fn locate_nth(text: &str, needle: &str, nth: usize) -> Option<(u32, u
 }
 
 /// Wrong or missing `schema` tag. `None` means the tag is the one this file uses.
-pub(crate) fn check_tag(
-    text: &str,
-    expected: &str,
-    file: &str,
-    line_base: u32,
-) -> Option<Diagnostic> {
+pub(crate) fn check_tag(text: &str, expected: &str, file: &str) -> Option<Diagnostic> {
     let hint = format!("write 'schema: {expected}'");
     let Some(found) = find_schema(text) else {
         return Some(
             schema_error(file, "the schema tag is missing", &hint)
                 .at_path("schema")
-                .at_line(1 + line_base, Some(1)),
+                .at_line(1, Some(1)),
         );
     };
     if found.value == expected {
@@ -197,18 +193,13 @@ pub(crate) fn check_tag(
     Some(
         schema_error(file, &problem, &hint)
             .at_path("schema")
-            .at_line(found.line + line_base, Some(1)),
+            .at_line(found.line, Some(1)),
     )
 }
 
 /// Turns a YAML read error into a `SCHEMA` diagnostic. In a file that holds rule lines, where one
 /// key names each condition or effect, a second key is refused in those words.
-pub(crate) fn diagnose_yaml(
-    file: &str,
-    err: &YamlError,
-    line_base: u32,
-    holds_rule_lines: bool,
-) -> Diagnostic {
+pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool) -> Diagnostic {
     let err = err.without_snippet();
     let spot = err.location().and_then(|loc| {
         let line = u32::try_from(loc.line()).ok()?;
@@ -218,7 +209,7 @@ pub(crate) fn diagnose_yaml(
         let column = u32::try_from(loc.column())
             .ok()
             .filter(|column| *column > 0);
-        Some((line + line_base, column))
+        Some((line, column))
     });
     let (path, problem, hint) = match err {
         YamlError::SerdeUnknownField { field, .. } => (
@@ -300,11 +291,9 @@ pub(crate) fn diagnose_yaml(
 pub(crate) fn parse_file<T: serde::de::DeserializeOwned>(
     file: &str,
     text: &str,
-    line_base: u32,
     holds_rule_lines: bool,
 ) -> Result<T, Vec<Diagnostic>> {
-    serde_saphyr::from_str(text)
-        .map_err(|err| vec![diagnose_yaml(file, &err, line_base, holds_rule_lines)])
+    serde_saphyr::from_str(text).map_err(|err| vec![diagnose_yaml(file, &err, holds_rule_lines)])
 }
 
 #[cfg(test)]

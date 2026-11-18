@@ -17,11 +17,10 @@ pub(super) fn load(
     text: &str,
     meters: &BTreeMap<String, meter::Descriptor>,
 ) -> Result<BTreeMap<String, modifier::Descriptor>, Vec<Diagnostic>> {
-    let doc: ModifiersDoc = load_tagged(MODIFIERS_FILE, text, MODIFIERS_SCHEMA, 0)?;
+    let doc: ModifiersDoc = load_tagged(MODIFIERS_FILE, text, MODIFIERS_SCHEMA)?;
     let source = FileText {
         file: MODIFIERS_FILE,
         text,
-        line_base: 0,
     };
     let mut diags = Diags::default();
     let mut modifiers = BTreeMap::new();

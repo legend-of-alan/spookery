@@ -6,7 +6,7 @@ use crate::canon::source::{load_tagged, FileText, Locator, PACK_SCHEMA};
 use crate::diagnostic::{schema_error, Diagnostic};
 
 pub(super) fn load_pack_yaml(text: &str) -> Result<PackDoc, Vec<Diagnostic>> {
-    let doc: PackDoc = load_tagged("pack.yaml", text, PACK_SCHEMA, 0)?;
+    let doc: PackDoc = load_tagged("pack.yaml", text, PACK_SCHEMA)?;
     let empty = ("id is empty", "set id to a short pack id");
     let refused = FileText::named("pack.yaml").refuse_empty(&doc.id, "id", Locator::Nowhere, empty);
     refused.map_or(Ok(doc), |diag| Err(vec![diag]))
@@ -31,6 +31,7 @@ impl PackDoc {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct PackDoc {
+    // repeats module: every file shape in canon ends in Doc
     #[serde(rename = "schema")]
     _schema: String,
     pub(super) id: String,

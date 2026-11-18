@@ -31,7 +31,7 @@ fn the_operator_runs_ai_gm_with_an_extra_argument(world: &mut World) {
 fn the_operator_runs_ai_gm_with_nothing_listening(world: &mut World) {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.args(["ai-gm", "--addr", "127.0.0.1:1"]);
-    command.current_dir(std::env::temp_dir());
+    command.current_dir(env!("CARGO_TARGET_TMPDIR"));
     apply_model_env(&mut command, None);
     let output = command
         .output()
@@ -47,7 +47,7 @@ fn the_operator_runs_ai_gm_without(world: &mut World, var: String) {
     let listeners = [listener];
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.args(["ai-gm", "--addr", &addr]);
-    command.current_dir(std::env::temp_dir());
+    command.current_dir(env!("CARGO_TARGET_TMPDIR"));
     apply_model_env(&mut command, Some(&var));
     let output = command
         .output()
@@ -90,7 +90,7 @@ fn ai_gm_is_pointed_at_a_game_port(world: &mut World) {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command
         .args(["ai-gm", "--addr", &addr])
-        .current_dir(std::env::temp_dir())
+        .current_dir(env!("CARGO_TARGET_TMPDIR"))
         .stdin(Stdio::null());
     apply_model_env(&mut command, None);
     let child = command
@@ -138,7 +138,7 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     let mut host_cmd = Command::new(env!("CARGO_BIN_EXE_spook"));
     host_cmd
         .args(["ai-gm", "--addr", &addr])
-        .current_dir(std::env::temp_dir())
+        .current_dir(env!("CARGO_TARGET_TMPDIR"))
         .stdin(Stdio::null());
     apply_model_env(&mut host_cmd, None);
     let mut host = host_cmd
@@ -256,15 +256,23 @@ fn world_time_moved_one_round(world: &mut World) {
 
 #[then(expr = "the GM's own speech did not call the model")]
 fn the_gms_own_speech_did_not_call_the_model(world: &mut World) {
-    // A turn the GM's own speech started would show it in that turn's observation.
-    let calls = world.model.wait_past_script();
+    // A turn the GM's own speech started would show it in that turn's observation, and it
+    // would start before the AI GM reads the player's bye, so read the calls before that one.
+    let calls = table::poll_until("a model call that shows bye", || {
+        let calls = world.model.calls();
+        let bye = calls.iter().position(|call| observation_shows(call, "bye"));
+        bye.map(|bye| calls[..bye].to_vec()).ok_or(calls.len())
+    });
     for call in &calls {
-        for message in call {
-            if let model::Message::User { content } = message {
-                assert!(!content.contains("evening"), "{content}");
-            }
-        }
+        assert!(!observation_shows(call, "evening"), "{call:?}");
     }
+}
+
+/// Whether a user message of the model call, its observation, contains `text`.
+fn observation_shows(call: &[model::Message], text: &str) -> bool {
+    call.iter().any(
+        |message| matches!(message, model::Message::User { content } if content.contains(text)),
+    )
 }
 
 #[then(expr = "one round committed")]

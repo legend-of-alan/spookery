@@ -16,12 +16,8 @@ pub(super) fn load(
     text: &str,
     carrier: Option<entity::Id>,
 ) -> Result<BTreeMap<String, meter::Descriptor>, Vec<Diagnostic>> {
-    let doc: MetersDoc = load_tagged(rel, text, METERS_SCHEMA, 0)?;
-    let source = FileText {
-        file: rel,
-        text,
-        line_base: 0,
-    };
+    let doc: MetersDoc = load_tagged(rel, text, METERS_SCHEMA)?;
+    let source = FileText { file: rel, text };
     meter_descs(&source, doc.meters, carrier)
 }
 

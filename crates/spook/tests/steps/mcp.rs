@@ -442,7 +442,7 @@ fn listen_on_free_ports(world: &mut World) -> (u16, u16) {
     let pack = table::pack(world).to_path_buf();
     table::run_with_flags(
         world,
-        &std::env::temp_dir(),
+        env!("CARGO_TARGET_TMPDIR").as_ref(),
         &pack,
         &["--addr", "127.0.0.1:0", "--mcp-addr", "127.0.0.1:0"],
     )
@@ -503,7 +503,11 @@ fn an_mcp_gm_and_a_websocket_gm(world: &mut World) {
     table::seat_gm(world);
     let ws_pack = support::copy_pack("docks", "parity-ws");
     let flags = ["--addr", "127.0.0.1:0"];
-    let running = table::wait_addrs(table::spawn(&std::env::temp_dir(), &ws_pack, &flags));
+    let running = table::wait_addrs(table::spawn(
+        env!("CARGO_TARGET_TMPDIR").as_ref(),
+        &ws_pack,
+        &flags,
+    ));
     let gm = table::Seat::open(running.game.port(), "gm");
     table::wait_suffix(&gm.text, 0, "\"kind\":\"hello\"");
     table::live_mut(world).ws_gm = Some(gm);

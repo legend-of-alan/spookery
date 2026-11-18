@@ -56,14 +56,7 @@ fn one_round_plays(world: &mut World) {
 }
 
 #[when(
-    regex = r#"^the pack's hit has "(.+)" as (a condition value|a cost amount|a cost item count|its cost ticks)$"#
-)]
-fn the_packs_hit_has(world: &mut World, dice: String, field: String) {
-    append_hit_line(world, "", &dice, &field);
-}
-
-#[when(
-    regex = r#"^the pack's hit stores "(.+)" and has "(.+)" as (its vigor add|a nested check's vigor add|a condition value|a cost amount|a second let)$"#
+    regex = r#"^the pack's hit stores "(.+)" and has "(.+)" as (?:its|a) (vigor add|nested check's vigor add|condition value|cost amount|second let)$"#
 )]
 fn the_packs_hit_stores_and_has(world: &mut World, lets: String, number: String, field: String) {
     append_hit_line(world, &format!("let: {{ {lets} }}\n    "), &number, &field);
@@ -121,12 +114,15 @@ fn stock_reads_rest(world: &mut World) {
 }
 
 #[given(
-    regex = r#"^the pack has "(.+)" as (the street exit's ticks|the strain's modifier ticks|the strain's cycle bound)$"#
+    regex = r#"^the pack has "(.+)" as (the hit's (?:condition value|cost amount|cost item count|cost ticks)|the street exit's ticks|the strain's modifier ticks|the strain's cycle bound)$"#
 )]
 fn the_pack_has(world: &mut World, number: String, field: String) {
     let pack = world.pack.clone().unwrap();
     let verbs = pack.join("rules/verbs.yaml");
     let strain = "\n  - id: strain\n    when: { verb: strain }\n";
+    if let Some(hit_field) = field.strip_prefix("the hit's ") {
+        return append_hit_line(world, "", &number, hit_field);
+    }
     match field.as_str() {
         "the street exit's ticks" => {
             let path = pack.join("world/places/docks_shop.md");
@@ -179,9 +175,15 @@ fn miras_vigor_rose_by_the_1d4_face(world: &mut World) {
 
 #[then(expr = "the report names the line holding {string}")]
 fn the_report_names_the_line_holding(world: &mut World, needle: String) {
+    the_report_names_the_line_in_file_holding(world, "rules/verbs.yaml".into(), needle);
+}
+
+/// The report locates the last line of the pack's `file` that holds `needle`.
+#[then(expr = "the report names the line in {word} holding {string}")]
+fn the_report_names_the_line_in_file_holding(world: &mut World, file: String, needle: String) {
     let pack = table::pack(world);
-    let text = fs::read_to_string(pack.join("rules/verbs.yaml"))
-        .unwrap_or_else(|err| panic!("read verbs: {err}"));
+    let text =
+        fs::read_to_string(pack.join(&file)).unwrap_or_else(|err| panic!("read {file}: {err}"));
     let mut line = None;
     for (index, item) in text.lines().enumerate() {
         if item.contains(&needle) {
@@ -189,7 +191,7 @@ fn the_report_names_the_line_holding(world: &mut World, needle: String) {
         }
     }
     let line = line.unwrap_or_else(|| panic!("no line holding {needle}"));
-    let located = format!("rules/verbs.yaml:{line}:");
+    let located = format!("{file}:{line}:");
     assert!(
         world.stderr.contains(&located),
         "missing {located}\n{}",
@@ -279,20 +281,20 @@ fn the_report_names_the_expression_line(world: &mut World) {
 /// Append rule `hit`, its `lets` line, then `number` as `field`.
 fn append_hit_line(world: &World, lets: &str, number: &str, field: &str) {
     let lines = match field {
-        "a condition value" => format!(
+        "condition value" => format!(
             "if: [meter: {{ of: self, id: vigor, op: \">=\", value: \"{number}\" }}]\n    do: []"
         ),
-        "a cost amount" => format!("cost: {{ meters: {{ vigor: \"{number}\" }} }}\n    do: []"),
-        "a cost item count" => format!("cost: {{ items: {{ chock: \"{number}\" }} }}\n    do: []"),
-        "its cost ticks" => format!("cost: {{ ticks: \"{number}\" }}\n    do: []"),
-        "a second let" => format!("let: {{ {number} }}\n    do: []"),
-        "a nested check's vigor add" => format!(
+        "cost amount" => format!("cost: {{ meters: {{ vigor: \"{number}\" }} }}\n    do: []"),
+        "cost item count" => format!("cost: {{ items: {{ chock: \"{number}\" }} }}\n    do: []"),
+        "cost ticks" => format!("cost: {{ ticks: \"{number}\" }}\n    do: []"),
+        "second let" => format!("let: {{ {number} }}\n    do: []"),
+        "nested check's vigor add" => format!(
             "do: [check: {{ by: target, total: \"{number}\", success_at: \"{number}\", success: [meter: {{ of: self, key: vigor, add: \"{number}\" }}] }}]"
         ),
         _ => format!("do: [meter: {{ of: self, key: vigor, add: \"{number}\" }}]"),
     };
     let target = match field {
-        "a nested check's vigor add" => ", target: actor",
+        "nested check's vigor add" => ", target: actor",
         _ => "",
     };
     let rule = format!("\n  - id: hit\n    when: {{ verb: hit{target} }}\n    {lets}{lines}\n");
