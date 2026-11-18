@@ -30,6 +30,8 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Listen for the player seat and the GM seat.
+    ///
+    /// A second Ctrl+C exits at once when shutdown hangs.
     #[cfg(feature = "server")]
     Run {
         /// Pack directory.
