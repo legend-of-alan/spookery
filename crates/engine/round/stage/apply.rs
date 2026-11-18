@@ -8,7 +8,7 @@ use crate::rules::cost;
 use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::expand::{self, Cause, Expansion};
 use crate::rules::gate;
-use crate::rules::roll::{MoveReport, Roll};
+use crate::rules::roll::MoveReport;
 use crate::rules::rule::Rule;
 use crate::rules::travel;
 use crate::store::records::Step;
@@ -43,30 +43,24 @@ pub(crate) fn run(
         let spends_slot = matches!(intent.actor, Some(Viewer::Npc(_)));
         if keys_spent || (spends_slot && slots >= max_npcs) {
             let refusal = gate::Refusal::new(intent, Reason::Budget);
-            refuse(ledger, intent, refusal, false);
+            refuse(ledger, intent, refusal);
             continue;
         }
         let point = world.savepoint();
         let landing = match resolution {
-            Resolution::Ready { rule, rolled } => {
+            Resolution::Ready { rule } => {
                 // The world may have changed since the queue, so the gate checks the rule again.
                 let context = Context::new(canon, world, presence, intent);
                 if let Err(refusal) = gate::admit(&context, rule, None) {
-                    refuse(ledger, intent, refusal, false);
+                    refuse(ledger, intent, refusal);
                     continue;
                 }
                 let at = clock.world_time_before;
-                start(
-                    canon, world, presence, intent, rule, rolled, at, dice, ledger,
-                )
+                start(canon, world, presence, intent, rule, at, dice, ledger)
             }
             Resolution::Cancel => cancel(canon, world, presence, intent, ledger),
             Resolution::Refused(refusal) => {
-                refuse(ledger, intent, refusal, false);
-                continue;
-            }
-            Resolution::CannotRoll(code) => {
-                refuse(ledger, intent, gate::Refusal::new(intent, code), true);
+                refuse(ledger, intent, refusal);
                 continue;
             }
         };
@@ -94,7 +88,6 @@ fn start(
     presence: &Presence,
     intent: &Intent,
     rule: &Rule,
-    rolled: Option<Roll>,
     at: u64,
     dice: &mut round::Dice,
     ledger: &mut Ledger,
@@ -104,7 +97,7 @@ fn start(
     let ticks = match travel::span(&context, rule) {
         Ok(ticks) => ticks,
         Err(code) => {
-            refuse(ledger, intent, gate::Refusal::new(intent, code), false);
+            refuse(ledger, intent, gate::Refusal::new(intent, code));
             return landing_of(code);
         }
     };
@@ -133,16 +126,14 @@ fn start(
         });
     }
     if let Err(code) = started {
-        refuse(ledger, intent, gate::Refusal::new(intent, code), false);
+        refuse(ledger, intent, gate::Refusal::new(intent, code));
         return landing_of(code);
     }
     if ticks > 0 {
         ledger.extra_steps.push(Step::Rule(rule.id.clone()));
         return Landing::Landed;
     }
-    finish(
-        canon, world, presence, intent, rule, rolled, at, dice, ledger,
-    )
+    finish(canon, world, presence, intent, rule, at, dice, ledger)
 }
 
 /// Drop the actor's action under way, with no refund, if the gate still allows it now. Its
@@ -156,7 +147,7 @@ fn cancel(
 ) -> Landing {
     let context = Context::new(canon, world, presence, intent);
     if let Err(refusal) = gate::admit_cancel(&context) {
-        refuse(ledger, intent, refusal, false);
+        refuse(ledger, intent, refusal);
         return Landing::Refused;
     }
     let actor_id = intent.actor_id().ok_or(Reason::UnknownId);
@@ -164,7 +155,7 @@ fn cancel(
     {
         Ok(_) => Landing::Landed,
         Err(code) => {
-            refuse(ledger, intent, gate::Refusal::new(intent, code), false);
+            refuse(ledger, intent, gate::Refusal::new(intent, code));
             landing_of(code)
         }
     }
@@ -214,17 +205,16 @@ pub(crate) fn finish(
     presence: &Presence,
     intent: &Intent,
     rule: &Rule,
-    rolled: Option<Roll>,
     at: u64,
     dice: &mut round::Dice,
     ledger: &mut Ledger,
 ) -> Landing {
     let context = Context::new(canon, world, presence, intent);
     let roller = dice.roller(ledger, &rule.id, intent.actor_id());
-    let mut expansion = match expand::expand(&context, rule, Cause::Finish, rolled, roller) {
+    let mut expansion = match expand::expand(&context, rule, Cause::Finish, roller) {
         Ok(expansion) => expansion,
         Err(code) => {
-            refuse(ledger, intent, gate::Refusal::new(intent, code), false);
+            refuse(ledger, intent, gate::Refusal::new(intent, code));
             return landing_of(code);
         }
     };
@@ -250,7 +240,7 @@ pub(crate) fn finish(
     }
     if let Err(code) = finished {
         world.rollback(point);
-        refuse(ledger, intent, gate::Refusal::new(intent, code), false);
+        refuse(ledger, intent, gate::Refusal::new(intent, code));
         return landing_of(code);
     }
     let landing = land(canon, world, presence, intent, rule, expansion, ledger);
@@ -303,7 +293,7 @@ pub(crate) fn land(
         world.rollback(point);
         let refusal = gate::Refusal::new(intent, code);
         match cause {
-            Cause::Finish => refuse(ledger, intent, refusal, false),
+            Cause::Finish => refuse(ledger, intent, refusal),
             Cause::Trigger => ledger.refused.push(refusal),
         }
         return landing_of(code);
@@ -315,20 +305,9 @@ pub(crate) fn land(
     Landing::Landed
 }
 
-/// Journal the refusal, and tell the actor its code and detail: a player always, an NPC only
-/// when `tell_npcs`.
-pub(crate) fn refuse(
-    ledger: &mut Ledger,
-    intent: &Intent,
-    refusal: gate::Refusal,
-    tell_npcs: bool,
-) {
-    let told = match &intent.actor {
-        Some(Viewer::Player(id)) => Some(id),
-        Some(Viewer::Npc(id)) if tell_npcs => Some(id),
-        _ => None,
-    };
-    if let Some(actor_id) = told {
+/// Journal the refusal, and tell its code and detail to the actor when that is a player.
+pub(crate) fn refuse(ledger: &mut Ledger, intent: &Intent, refusal: gate::Refusal) {
+    if let Some(Viewer::Player(actor_id)) = &intent.actor {
         ledger.reports.push(MoveReport::Refused {
             actor_id: actor_id.clone(),
             refusal: refusal.clone(),

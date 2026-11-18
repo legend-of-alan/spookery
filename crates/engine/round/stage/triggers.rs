@@ -120,7 +120,7 @@ fn fire(
         return;
     }
     let roller = dice.roller(ledger, &rule.id, subject);
-    match expand::expand(&context, rule, Cause::Trigger, None, roller) {
+    match expand::expand(&context, rule, Cause::Trigger, roller) {
         Ok(expansion) => {
             apply::land(canon, world, presence, &intent, rule, expansion, ledger);
         }

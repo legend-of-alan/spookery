@@ -35,7 +35,7 @@ impl Dice {
     }
 
     /// The one allocator: the next key for this rule and subject.
-    pub(crate) fn next_key(&mut self, rule: &str, subject: Option<&ActorId>) -> roll::Key {
+    fn next_key(&mut self, rule: &str, subject: Option<&ActorId>) -> roll::Key {
         let index = self
             .counts
             .entry((rule.to_string(), subject.cloned()))
@@ -52,7 +52,7 @@ impl Dice {
     }
 
     /// The one `rules::roll` call.
-    pub(crate) fn roll_check(
+    fn roll_check(
         &mut self,
         canon: &Canon,
         world: &ecs::World,
@@ -101,9 +101,13 @@ pub(crate) struct Roller<'a> {
 }
 
 impl Roller<'_> {
-    /// Evaluate a rule's `roll:` spec, then roll its check.
+    /// Evaluate a rule's `roll:` spec, `threshold` then `partial_at`, then roll its check.
     pub(crate) fn roll_spec(&mut self, context: &Context, spec: &RollSpec) -> Result<Roll, Reason> {
-        let (threshold, partial_at) = self.eval_thresholds(context, spec)?;
+        let threshold = eval_with_dice(context, &spec.threshold, self)?;
+        let partial_at = match &spec.partial_at {
+            Some(expr) => Some(eval_with_dice(context, expr, self)?),
+            None => None,
+        };
         let key = self.dice.next_key(self.rule, self.subject);
         self.dice.roll_check(
             context.canon,
@@ -113,20 +117,6 @@ impl Roller<'_> {
             threshold,
             partial_at,
         )
-    }
-
-    /// The one order a `roll:` spec's thresholds draw dice in: threshold, then partial_at.
-    pub(crate) fn eval_thresholds(
-        &mut self,
-        context: &Context,
-        spec: &RollSpec,
-    ) -> Result<(i64, Option<i64>), Reason> {
-        let threshold = eval_with_dice(context, &spec.threshold, self)?;
-        let partial_at = match &spec.partial_at {
-            Some(expr) => Some(eval_with_dice(context, expr, self)?),
-            None => None,
-        };
-        Ok((threshold, partial_at))
     }
 
     /// The resist rolls this roller made, in order.

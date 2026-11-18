@@ -37,7 +37,7 @@ pub(crate) fn run(
     let limit = (canon.budget.max_intents_applied as usize).min(candidates.len());
     for intent in candidates.split_off(limit) {
         let refusal = gate::Refusal::new(&intent, Reason::Budget);
-        refuse(ledger, &intent, refusal, false);
+        refuse(ledger, &intent, refusal);
     }
     Ok(candidates)
 }

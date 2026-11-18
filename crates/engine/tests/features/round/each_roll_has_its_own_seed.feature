@@ -13,9 +13,10 @@ Feature: Each roll has its own seed
     Given a played d20 strike
     Then spook verify passes and re-derives every roll
 
-  Scenario: Opposed strikes share one roll each
+  Scenario: Two strikes at each other each roll once against the strike's own threshold
     When Harbormouse and Briar strike each other
-    Then each strike is scored on the other's own roll
+    Then each strike rolls once against threshold 38
+    And spook verify passes and re-derives every roll
 
   Scenario: A fresh world picks its own seed, and spook verify replays it
     Given two fresh copies of the docks pack as shipped

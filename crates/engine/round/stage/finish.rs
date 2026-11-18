@@ -30,9 +30,7 @@ pub(crate) fn run(
         let intent = Intent::finish(world, actor_id, source, &verb, target)?;
         let rule = canon.rules.get(&rule).ok_or(Reason::UnknownMove)?;
         let until = due_action.until;
-        apply::finish(
-            canon, world, presence, &intent, rule, None, until, dice, ledger,
-        );
+        apply::finish(canon, world, presence, &intent, rule, until, dice, ledger);
         triggers::run(canon, world, presence, dice, ledger);
     }
     Ok(())

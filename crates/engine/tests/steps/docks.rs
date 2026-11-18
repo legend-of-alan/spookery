@@ -6,14 +6,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use spookery_engine::testing::{
-    self as support, act_of, insert_nell, journal::list_round_keys, place_of,
-    read_round as round_value, resume, stamp_pack_rev, world_of, write_save, Canon,
+    self as support, act_of, journal::list_round_keys, place_of, read_round as round_value, resume,
+    stamp_pack_rev, world_of, write_save, Canon,
 };
 use spookery_engine::{
-    component, ecs, emit_save, entity, load_canon, play_pack_once, ActorId, GlobalId, Meter,
-    MoveReport, Note, PlaceId, Presence,
+    component, ecs, emit_save, entity, load_canon, play_pack_once, ActorId, GlobalId, Meter, Note,
+    PlaceId, Presence,
 };
-use spookery_protocol::Outcome;
 
 use crate::World;
 
@@ -646,12 +645,6 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             vec!["marked".to_string()],
             "{label} success {success}"
         );
-        let round = round_value(&pack, "round-0001");
-        assert!(round["extra_steps"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|step| step == "check_rolled"));
         assert!(
             !spookery_engine::testing::journal::read_record_line(&pack, "round-0001")
                 .unwrap_or_else(|err| panic!("{}", err.detail))
@@ -674,103 +667,6 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
         assert_eq!(world.world_time, 1085);
         let _ = fs::remove_dir_all(&pack);
     }
-}
-
-fn roll_with_stat(reports: &[MoveReport], stat: i64) -> spookery_protocol::Roll {
-    reports
-        .iter()
-        .find_map(|report| match report {
-            MoveReport::Rolled { roll: out, .. } if out.stat == stat => Some(out.clone()),
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("no stat {stat} in {reports:?}"))
-}
-
-fn opposing_total_reused() {
-    for opposed in [false, true] {
-        let label = if opposed { "opposed" } else { "open-check" };
-        let pack = support::copy_pack("docks", label);
-        let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
-        moves.push_str(
-            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: exert\n      threshold: 0\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: exert\n      threshold: 0\n    success:\n      - flag:\n          of: self\n          key: guarded\n          value: true\n",
-        );
-        fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
-        insert_nell(&pack);
-        stamp_pack_rev(&pack);
-        let mut opened = resume(&pack);
-        if opposed {
-            queue_gm_intent(&mut opened, "gm-1", "nell", "defend");
-        }
-        let wall = opened.world().last_round_at.clone();
-        opened
-            .queue_player_move(&rowan(), &"rowan".into(), "mark", Some("nell"))
-            .unwrap();
-        assert_eq!(opened.world().world_time, 1080);
-        let outputs = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
-        let reports = outputs.into_iter().next().unwrap().reports;
-        let rowan = roll_with_stat(&reports, 1);
-        assert_eq!(opened.world().world_time, 1085);
-        let round = spookery_engine::testing::journal::read_record_line(&pack, "round-0001")
-            .unwrap_or_else(|err| panic!("{}", err.detail));
-        assert!(!round.contains("faces"));
-        if opposed {
-            let nell = roll_with_stat(&reports, 100);
-            assert_eq!(nell.target, 0);
-            assert_eq!(nell.outcome, Outcome::Success);
-            assert!(nell.total >= 102, "{nell:?}");
-            assert_eq!(rowan.target, nell.total);
-            assert_eq!(rowan.outcome, Outcome::Miss);
-            let mut flags = flags_of(opened.world(), "nell");
-            flags.sort();
-            assert_eq!(flags, vec!["guarded".to_string(), "missed".to_string()]);
-        } else {
-            assert_eq!(rowan.target, 0);
-            assert_eq!(rowan.outcome, Outcome::Success);
-            assert_eq!(flags_of(opened.world(), "nell"), vec!["marked".to_string()]);
-        }
-        let _ = fs::remove_dir_all(&pack);
-    }
-}
-
-fn a_held_knife_still_runs_the_opposed_row() {
-    let held = support::copy_pack("docks", "item-held");
-    let mut moves = fs::read_to_string(held.join("rules/verbs.yaml")).unwrap();
-    moves.push_str(
-        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          subject: self\n          id: knife\n    roll:\n      check: exert\n      threshold: 0\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: exert\n      threshold: 0\n    success:\n      - flag:\n          of: self\n          key: guarded\n          value: true\n",
-    );
-    fs::write(held.join("rules/verbs.yaml"), moves).unwrap();
-    let knife = held.join("world/items/knife.md");
-    fs::create_dir_all(knife.parent().unwrap()).unwrap();
-    fs::write(
-        &knife,
-        "---\nschema: item\nid: knife\nname: Knife\ntags: []\nrules: []\n---\n\nA knife.\n",
-    )
-    .unwrap();
-    insert_nell(&held);
-    support::edit_save(&held, |world| {
-        let (mut actors, rowan) = (world.actors_mut(), "rowan".into());
-        let shifted = actors
-            .get_mut::<component::Item>(&rowan)
-            .shift("knife", 1, None);
-        shifted.unwrap();
-    });
-    let mut opened = resume(&held);
-    queue_gm_intent(&mut opened, "gm-1", "nell", "defend");
-    let wall = opened.world().last_round_at.clone();
-    opened
-        .queue_player_move(&rowan(), &"rowan".into(), "mark", Some("nell"))
-        .unwrap();
-    let before = opened.world().world_time;
-    let outputs = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
-    assert_ne!(opened.world().world_time, before);
-    let rowan = roll_with_stat(&outputs[0].reports, 1);
-    assert_eq!(rowan.outcome, Outcome::Miss);
-    assert!(
-        !spookery_engine::testing::journal::read_record_line(&held, "round-0001")
-            .unwrap_or_else(|err| panic!("{}", err.detail))
-            .contains("faces")
-    );
-    let _ = fs::remove_dir_all(&held);
 }
 
 fn rowans_debt(pack: &Path) -> i64 {
@@ -960,16 +856,6 @@ fn prose_is_stripped(_world: &mut World) {
 #[when(expr = "effect rows and outcome lists are played")]
 fn effect_rows_and_outcome_lists_are_played(_world: &mut World) {
     effects_run_on_both_outcomes_and_lists_run_on_one();
-}
-
-#[when(expr = "an opposing total is in the queue")]
-fn an_opposing_total_is_in_the_queue(_world: &mut World) {
-    opposing_total_reused();
-}
-
-#[when(expr = "Rowan marks Nell while holding the knife")]
-fn rowan_marks_nell_while_holding_the_knife(_world: &mut World) {
-    a_held_knife_still_runs_the_opposed_row();
 }
 
 /// A save with no actors on `canon`, for world `world_id` at pack revision `rev`.

@@ -26,11 +26,12 @@ Feature: A round refusal names the gap
     Then Harbormouse's refused frame for "MISSING_ITEM" has no missing field
 
   Scenario: A strike on someone who is out of sight when the round applies is refused
-    Given a docks table with a stub GM and Harbormouse seated
+    Given a docks table with a stub GM, Harbormouse seated and a strike threshold of "1d20 + 18"
     When Harbormouse queues "travel wheel_shed"
     And Harbormouse queues "strike briar"
     And the GM commits the round
     Then Harbormouse's refused frame for "NOT_IN_SPEC" has no missing field
+    And the GM sees no roll and the round records no dice line
 
   Scenario: A strike the GM sends across rooms is refused at once
     Given a docks table with a seated GM

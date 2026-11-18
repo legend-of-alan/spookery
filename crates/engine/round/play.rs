@@ -166,15 +166,7 @@ fn run_stages(
     let mut dice = round::Dice::new(world.seed.clone(), clock.round_index);
     let mut ledger = Ledger::default();
     let picked = pick::run(canon, &world, presence, queue, &mut ledger)?;
-    let candidates = resolve::run(
-        canon,
-        &world,
-        presence,
-        &picked,
-        queue,
-        &mut dice,
-        &mut ledger,
-    );
+    let candidates = resolve::run(canon, &world, presence, &picked);
     apply::run(
         canon,
         &mut world,
