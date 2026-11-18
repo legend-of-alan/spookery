@@ -28,9 +28,15 @@ Feature: Rules live with their owner
     When an effect key later in that file is bogus
     Then spook check reports that key at its own line and column
 
-  Scenario: Two conditions under one dash are refused
-    Given a verb whose if dash holds two conditions
-    Then spook check reports two conditions under one dash
+  Scenario Outline: Two keys in one condition or effect are refused at the second key
+    Given a verb whose <list> holds two keys in one line
+    Then spook check reports two keys under one dash at the second key
+
+    Examples:
+      | list    |
+      | if list |
+      | do list |
+      | if map  |
 
   Scenario: A cost the actor cannot pay changes nothing
     Given steady costs 5 vigor and the sitter has 1

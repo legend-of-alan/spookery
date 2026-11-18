@@ -201,7 +201,7 @@ pub(crate) fn check_tag(
     )
 }
 
-pub(crate) fn yaml_diagnostic(file: &str, err: &YamlError, line_base: u32) -> Diagnostic {
+pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, line_base: u32) -> Diagnostic {
     let err = err.without_snippet();
     let spot = err.location().and_then(|loc| {
         let line = u32::try_from(loc.line()).ok()?;
@@ -242,10 +242,23 @@ pub(crate) fn yaml_diagnostic(file: &str, err: &YamlError, line_base: u32) -> Di
             format!("value {unexpected} is not allowed"),
             format!("use {expected}"),
         ),
-        YamlError::SerdeUnknownVariant { variant, .. } => (
+        YamlError::SerdeUnknownVariant {
+            variant, expected, ..
+        } => (
             Some(variant.clone()),
-            format!("unknown value '{variant}'"),
-            "use one of the values this field allows".to_string(),
+            format!("unknown '{variant}'"),
+            format!("use one of {}", expected.join(", ")),
+        ),
+        // A second key beside a condition or effect: in a list, or in an `if:` of one condition.
+        YamlError::ExpectedMappingEndAfterEnumVariantValue { .. }
+        | YamlError::Unexpected {
+            expected: "mapping end",
+            ..
+        } => (
+            None,
+            "two keys under one dash".to_string(),
+            "keep one condition or effect per dash; combine conditions with all:, any: or not:"
+                .to_string(),
         ),
         YamlError::InvalidScalar { ty, .. } => (
             None,
@@ -273,7 +286,7 @@ pub(crate) fn parse_file<T: serde::de::DeserializeOwned>(
     text: &str,
     line_base: u32,
 ) -> Result<T, Vec<Diagnostic>> {
-    serde_saphyr::from_str(text).map_err(|err| vec![yaml_diagnostic(file, &err, line_base)])
+    serde_saphyr::from_str(text).map_err(|err| vec![diagnose_yaml(file, &err, line_base)])
 }
 
 #[cfg(test)]

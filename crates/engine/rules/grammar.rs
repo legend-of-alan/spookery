@@ -27,3 +27,46 @@ pub enum Object {
     Exit(ExitId),
     Actor(ActorId),
 }
+
+impl Object {
+    /// Reads an owner word: `self`, `target`, `here`, `world`, `place:<id>`, `story:<id>`,
+    /// `exit:<place>.<exit>` or a cast id. The error is the refusal a pack author reads.
+    pub(crate) fn parse(word: &str) -> Result<Object, String> {
+        if let Some(place) = word.strip_prefix("place:") {
+            if place.is_empty() {
+                return Err("place: needs an id".to_string());
+            }
+            return Ok(Object::Place(place.into()));
+        }
+        if let Some(story) = word.strip_prefix("story:") {
+            if story.is_empty() {
+                return Err("story: needs an id".to_string());
+            }
+            return Ok(Object::Story(story.into()));
+        }
+        if let Some(exit) = word.strip_prefix("exit:") {
+            return match exit.split_once('.') {
+                Some((place, exit_id)) if !place.is_empty() && !exit_id.is_empty() => {
+                    let (place, exit) = (place.into(), exit_id.to_string());
+                    Ok(Object::Exit(ExitId { place, exit }))
+                }
+                _ => Err("exit: needs <place>.<exit>".to_string()),
+            };
+        }
+        match word {
+            "self" => Ok(Object::Self_),
+            "target" => Ok(Object::Target),
+            "here" => Ok(Object::Here),
+            "world" => Ok(Object::Global),
+            "subject" => Err(
+                "'subject' is not an owner; use self, or target for the move's target".to_string(),
+            ),
+            // Empty, or a selector word that retired packs used as an owner.
+            "" | "token" | "first_rate" | "rate" | "first_drift" | "toward_target"
+            | "first_known" | "first_listener" | "keep" | "first_due_note" | "first_owned" => {
+                Err(format!("'{word}' is not an owner"))
+            }
+            actor_id => Ok(Object::Actor(actor_id.into())),
+        }
+    }
+}

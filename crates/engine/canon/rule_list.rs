@@ -12,8 +12,8 @@ use crate::canon::source::{
     load_tagged, spot_of, Diags, Fault, FileText, Locator, Problem, VERBS_SCHEMA,
 };
 use crate::diagnostic::{schema_error, Diagnostic};
-use crate::ecs::id::{ActorId, ExitId, PlaceId};
-use crate::rules::expr::{stamp_expr, BinOp, Expr};
+use crate::ecs::id::{ActorId, PlaceId};
+use crate::rules::expr::{stamp_spots, BinOp, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner, Phase,
@@ -142,21 +142,23 @@ impl<'de> Deserialize<'de> for IfYaml {
     }
 }
 
+/// One condition under a dash; its one key names the condition.
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CondYaml {
-    pub has_item: Option<HasItemYaml>,
-    pub meter: Option<MeterCondYaml>,
-    pub flag: Option<FlagCondYaml>,
-    pub at: Option<AtYaml>,
-    pub knows: Option<KnowsYaml>,
-    pub cycle: Option<CycleYaml>,
-    pub players: Option<PlayersYaml>,
-    pub note_exists: Option<String>,
-    pub wielding: Option<WieldingYaml>,
-    pub all: Option<Vec<CondYaml>>,
-    pub any: Option<Vec<CondYaml>>,
-    pub not: Option<Box<CondYaml>>,
+#[serde(rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
+pub enum CondYaml {
+    HasItem(HasItemYaml),
+    Meter(MeterCondYaml),
+    Flag(FlagCondYaml),
+    At(AtYaml),
+    Knows(KnowsYaml),
+    Cycle(CycleYaml),
+    Players(PlayersYaml),
+    NoteExists(String),
+    Wielding(WieldingYaml),
+    All(Vec<CondYaml>),
+    Any(Vec<CondYaml>),
+    Not(Box<CondYaml>),
 }
 
 #[derive(Deserialize)]
@@ -293,20 +295,22 @@ pub struct MeterOfYaml {
     pub key: Spanned<String>,
 }
 
+/// One effect under a dash; its one key names the effect.
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct EffectYaml {
-    pub meter: Option<MeterEffectYaml>,
-    pub flag: Option<FlagEffectYaml>,
-    pub modifier: Option<ModifierEffectYaml>,
-    pub location: Option<LocationYaml>,
-    pub note: Option<NoteYaml>,
-    pub narrate: Option<NarrateYaml>,
-    pub memory: Option<MemoryYaml>,
-    pub item: Option<ItemEffectYaml>,
-    pub reveal: Option<RevealYaml>,
-    pub wield: Option<WieldYaml>,
-    pub unwield: Option<UnwieldYaml>,
+#[serde(rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
+pub enum EffectYaml {
+    Meter(MeterEffectYaml),
+    Flag(FlagEffectYaml),
+    Modifier(ModifierEffectYaml),
+    Location(LocationYaml),
+    Note(NoteYaml),
+    Narrate(NarrateYaml),
+    Memory(MemoryYaml),
+    Item(ItemEffectYaml),
+    Reveal(RevealYaml),
+    Wield(WieldYaml),
+    Unwield(UnwieldYaml),
 }
 
 #[derive(Deserialize)]
@@ -731,96 +735,52 @@ fn if_of(yaml: &IfYaml) -> Result<Vec<Cond>, Fault> {
 }
 
 pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
-    let mut found = 0u8;
-    let mut cond = None;
-    if let Some(item) = &yaml.has_item {
-        found += 1;
-        cond = Some(Cond::HasItem {
+    Ok(match yaml {
+        CondYaml::HasItem(item) => Cond::HasItem {
             subject: object_of(&item.subject)?,
             id: item.id.clone(),
             count: item.count,
-        });
-    }
-    if let Some(meter) = &yaml.meter {
-        found += 1;
-        cond = Some(Cond::Meter {
+        },
+        CondYaml::Meter(meter) => Cond::Meter {
             of: object_of(&meter.of)?,
             key: meter.id.clone(),
             op: op_of(&meter.op)?,
             value: cond_value_of(&meter.value)?,
-        });
-    }
-    if let Some(flag) = &yaml.flag {
-        found += 1;
-        cond = Some(Cond::Flag {
+        },
+        CondYaml::Flag(flag) => Cond::Flag {
             of: object_of(&flag.of)?,
             key: flag.key.clone(),
             is: flag.is_,
-        });
-    }
-    if let Some(at) = &yaml.at {
-        found += 1;
-        cond = Some(Cond::At {
+        },
+        CondYaml::At(at) => Cond::At {
             subject: object_of(&at.subject)?,
             place: at.place.clone(),
-        });
-    }
-    if let Some(knows) = &yaml.knows {
-        found += 1;
-        cond = Some(Cond::Knows {
+        },
+        CondYaml::Knows(knows) => Cond::Knows {
             subject: object_of(&knows.subject)?,
             fact: knows.fact.clone(),
-        });
-    }
-    if let Some(cycle) = &yaml.cycle {
-        found += 1;
-        if cycle.from == cycle.to {
+        },
+        CondYaml::Cycle(cycle) if cycle.from == cycle.to => {
             return Err("cycle needs from and to that differ".into());
         }
-        cond = Some(Cond::Cycle {
+        CondYaml::Cycle(cycle) => Cond::Cycle {
             id: cycle.id.clone(),
             from: cycle.from,
             to: cycle.to,
-        });
-    }
-    if let Some(players) = &yaml.players {
-        found += 1;
-        cond = Some(Cond::Players {
+        },
+        CondYaml::Players(players) => Cond::Players {
             op: op_of(&players.op)?,
             value: players.value,
-        });
-    }
-    if let Some(id) = &yaml.note_exists {
-        found += 1;
-        cond = Some(Cond::NoteExists(id.clone()));
-    }
-    if let Some(wielding) = &yaml.wielding {
-        found += 1;
-        cond = Some(Cond::Wielding {
+        },
+        CondYaml::NoteExists(id) => Cond::NoteExists(id.clone()),
+        CondYaml::Wielding(wielding) => Cond::Wielding {
             subject: object_of(&wielding.subject)?,
             id: wielding.id.clone(),
-        });
-    }
-    if let Some(all) = &yaml.all {
-        found += 1;
-        cond = Some(Cond::All(
-            all.iter().map(cond_of).collect::<Result<_, _>>()?,
-        ));
-    }
-    if let Some(any) = &yaml.any {
-        found += 1;
-        cond = Some(Cond::Any(
-            any.iter().map(cond_of).collect::<Result<_, _>>()?,
-        ));
-    }
-    if let Some(not) = &yaml.not {
-        found += 1;
-        cond = Some(Cond::Not(Box::new(cond_of(not)?)));
-    }
-    if found == 1 {
-        return Ok(cond.expect("one condition"));
-    }
-    Err("two conditions under one dash; use any: or not: to combine".into())
+        },
+        CondYaml::All(all) => Cond::All(all.iter().map(cond_of).collect::<Result<_, _>>()?),
+        CondYaml::Any(any) => Cond::Any(any.iter().map(cond_of).collect::<Result<_, _>>()?),
+        CondYaml::Not(not) => Cond::Not(Box::new(cond_of(not)?)),
+    })
 }
 
 pub(super) fn cost_of(yaml: &CostYaml) -> Result<Cost, Fault> {
@@ -870,7 +830,7 @@ fn expr_of(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
         ExprYaml::Text(text) => {
             let mut expr = Expr::parse(text).map_err(|message| Fault { message, spot })?;
             if let Some(LineColumn { line, column }) = spot {
-                stamp_expr(&mut expr, line, column);
+                stamp_spots(&mut expr, line, column);
             }
             Ok(expr)
         }
@@ -907,128 +867,91 @@ fn effects_of(file: &str, list: &[EffectYaml]) -> Result<Vec<EffectTemplate>, Ve
 }
 
 fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
-    let mut found = 0u8;
-    let mut effect = None;
-    if let Some(meter) = &yaml.meter {
-        found += 1;
-        if meter.add.is_some() == meter.set.is_some() {
+    Ok(match yaml {
+        EffectYaml::Meter(meter) if meter.add.is_some() == meter.set.is_some() => {
             return Err("a meter effect needs add or set, not both".into());
         }
-        effect = Some(EffectTemplate::Meter {
+        EffectYaml::Meter(meter) => EffectTemplate::Meter {
             of: object_of(&meter.of)?,
             key: meter.key.clone(),
             add: meter.add.as_ref().map(expr_of).transpose()?,
             set: meter.set.as_ref().map(expr_of).transpose()?,
             resist: resist_of(meter.resist.as_ref())?,
-        });
-    }
-    if let Some(flag) = &yaml.flag {
-        found += 1;
-        if flag.key == "busy" {
+        },
+        EffectYaml::Flag(flag) if flag.key == "busy" => {
             return Err("flag key busy is not a flag".into());
         }
-        effect = Some(EffectTemplate::Flag {
+        EffectYaml::Flag(flag) => EffectTemplate::Flag {
             of: object_of(&flag.of)?,
             key: flag.key.clone(),
             value: flag.value,
             resist: resist_of(flag.resist.as_ref())?,
-        });
-    }
-    if let Some(modifier) = &yaml.modifier {
-        found += 1;
-        if modifier.ticks == 0 {
+        },
+        EffectYaml::Modifier(modifier) if modifier.ticks == 0 => {
             return Err("a modifier effect has ticks below 1, so set ticks to 1 or more".into());
         }
-        effect = Some(EffectTemplate::Modifier {
+        EffectYaml::Modifier(modifier) => EffectTemplate::Modifier {
             to: object_of(&modifier.to)?,
             id: modifier.id.clone(),
             add: expr_of(&modifier.add)?,
             ticks: modifier.ticks,
-        });
-    }
-    if let Some(location) = &yaml.location {
-        found += 1;
-        let to = match (&location.to, &location.via) {
-            (Some(word), None) if word == "target" => LocationTo::Target,
-            (Some(place), None) => LocationTo::Place(place.clone()),
-            (None, Some(via)) => LocationTo::Via(via.clone()),
-            _ => return Err("location needs to or via".into()),
-        };
-        effect = Some(EffectTemplate::Location {
-            to,
+        },
+        EffectYaml::Location(location) => EffectTemplate::Location {
+            to: match (&location.to, &location.via) {
+                (Some(word), None) if word == "target" => LocationTo::Target,
+                (Some(place), None) => LocationTo::Place(place.clone()),
+                (None, Some(via)) => LocationTo::Via(via.clone()),
+                _ => return Err("location needs to or via".into()),
+            },
             teleport: location.teleport,
-        });
-    }
-    if let Some(note) = &yaml.note {
-        found += 1;
-        if note.id.is_empty() || note.text.is_empty() || note.to_ids.is_empty() {
+        },
+        EffectYaml::Note(note)
+            if note.id.is_empty() || note.text.is_empty() || note.to_ids.is_empty() =>
+        {
             return Err("a note needs id, text, and to_ids".into());
         }
-        effect = Some(EffectTemplate::Note {
+        EffectYaml::Note(note) => EffectTemplate::Note {
             id: note.id.clone(),
             to_ids: note.to_ids.clone(),
             place_id: note.place_id.clone(),
             fact_ids: note.fact_ids.clone(),
             text: note.text.clone(),
-        });
-    }
-    if let Some(narrate) = &yaml.narrate {
-        found += 1;
-        let to = match narrate.to.as_deref() {
-            Some("here") => NarrateTo::Here,
-            Some("self") => NarrateTo::Self_,
-            Some(other) => NarrateTo::Actors(vec![other.into()]),
-            None => NarrateTo::Present,
-        };
-        effect = Some(EffectTemplate::Narrate {
-            to,
+        },
+        EffectYaml::Narrate(narrate) => EffectTemplate::Narrate {
+            to: match narrate.to.as_deref() {
+                Some("here") => NarrateTo::Here,
+                Some("self") => NarrateTo::Self_,
+                Some(other) => NarrateTo::Actors(vec![other.into()]),
+                None => NarrateTo::Present,
+            },
             text: narrate.text.clone(),
             fact_ids: narrate.fact_ids.clone(),
             resist: resist_of(narrate.resist.as_ref())?,
-        });
-    }
-    if let Some(memory) = &yaml.memory {
-        found += 1;
-        effect = Some(EffectTemplate::Memory {
+        },
+        EffectYaml::Memory(memory) => EffectTemplate::Memory {
             to: object_of(&memory.to)?,
             fact_ids: memory.fact_ids.clone(),
             text: memory.text.clone(),
-        });
-    }
-    if let Some(item) = &yaml.item {
-        found += 1;
-        effect = Some(EffectTemplate::Item {
+        },
+        EffectYaml::Item(item) => EffectTemplate::Item {
             of: object_of(&item.of)?,
             id: item.id.clone(),
             add: item.add,
             max: item.max,
             resist: resist_of(item.resist.as_ref())?,
-        });
-    }
-    if let Some(reveal) = &yaml.reveal {
-        found += 1;
-        effect = Some(EffectTemplate::Reveal {
+        },
+        EffectYaml::Reveal(reveal) => EffectTemplate::Reveal {
             to: object_of(&reveal.to)?,
             fact: reveal.fact.clone(),
-        });
-    }
-    if let Some(wield) = &yaml.wield {
-        found += 1;
-        effect = Some(EffectTemplate::Wield {
+        },
+        EffectYaml::Wield(wield) => EffectTemplate::Wield {
             subject: object_of(&wield.subject)?,
             id: wield.id.clone(),
-        });
-    }
-    if let Some(unwield) = &yaml.unwield {
-        found += 1;
-        effect = Some(EffectTemplate::Unwield {
+        },
+        EffectYaml::Unwield(unwield) => EffectTemplate::Unwield {
             subject: object_of(&unwield.subject)?,
-        });
-    }
-    if found == 1 {
-        return Ok(effect.expect("one effect"));
-    }
-    Err("write one effect key under each dash".into())
+        },
+    })
 }
 
 fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {
@@ -1055,61 +978,10 @@ fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {
 }
 
 fn object_of(yaml: &Spanned<String>) -> Result<grammar::Object, Fault> {
-    let fault = |message: String| Fault {
+    grammar::Object::parse(&yaml.value).map_err(|message| Fault {
         message,
         spot: spot_of(yaml),
-    };
-    let word = yaml.value.as_str();
-    if let Some(place) = word.strip_prefix("place:") {
-        if place.is_empty() {
-            return Err(fault("place: needs an id".to_string()));
-        }
-        return Ok(grammar::Object::Place(place.into()));
-    }
-    if let Some(story) = word.strip_prefix("story:") {
-        if story.is_empty() {
-            return Err(fault("story: needs an id".to_string()));
-        }
-        return Ok(grammar::Object::Story(story.into()));
-    }
-    if let Some(exit) = word.strip_prefix("exit:") {
-        return match exit.split_once('.') {
-            Some((place, exit_id)) if !place.is_empty() && !exit_id.is_empty() => {
-                let (place, exit) = (place.into(), exit_id.to_string());
-                Ok(grammar::Object::Exit(ExitId { place, exit }))
-            }
-            _ => Err(fault("exit: needs <place>.<exit>".to_string())),
-        };
-    }
-    match word {
-        "self" => Ok(grammar::Object::Self_),
-        "target" => Ok(grammar::Object::Target),
-        "here" => Ok(grammar::Object::Here),
-        "world" => Ok(grammar::Object::Global),
-        "subject" => Err(fault(
-            "'subject' is not an owner; use self, or target for the move's target".to_string(),
-        )),
-        other if !other.is_empty() && !is_retired_selector(other) => {
-            Ok(grammar::Object::Actor(other.into()))
-        }
-        other => Err(fault(format!("'{other}' is not an owner"))),
-    }
-}
-
-fn is_retired_selector(word: &str) -> bool {
-    matches!(
-        word,
-        "token"
-            | "first_rate"
-            | "rate"
-            | "first_drift"
-            | "toward_target"
-            | "first_known"
-            | "first_listener"
-            | "keep"
-            | "first_due_note"
-            | "first_owned"
-    )
+    })
 }
 
 fn op_of(word: &str) -> Result<Op, String> {

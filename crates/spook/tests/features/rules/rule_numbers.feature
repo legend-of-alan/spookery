@@ -50,7 +50,8 @@ Feature: Dice and arithmetic in rule numbers
       | 2d6 +         | expression '2d6 +' is not a number (SCHEMA)                                                                                                |
       | self.nope     | expression reads meter 'nope', but no file declares meter 'nope'; declare the meter on that entity, or read one that exists (SCHEMA)       |
       | world.vigor   | expression reads meter 'vigor', but the world carries no meter 'vigor'; declare the meter on that entity, or read one that exists (SCHEMA) |
-      | subject.vigor | expression names 'subject', which is not an owner; use self, target, here, world, place:<id>, story:<id>, or a cast id (SCHEMA)            |
+      | subject.vigor | 'subject' is not an owner; use self, or target for the move's target (SCHEMA)                                                              |
+      | exit:a.b.hp   | 'exit:a.b' is an exit, which has no meters (SCHEMA)                                                                                        |
       | 100000000d6   | expression '100000000d6' rolls more than 1000 dice (SCHEMA)                                                                                |
       | 0d6           | expression '0d6' rolls no dice (SCHEMA)                                                                                                    |
       | 10 / 0        | expression '10 / 0' divides by zero (SCHEMA)                                                                                               |

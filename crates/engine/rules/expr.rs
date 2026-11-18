@@ -394,7 +394,7 @@ impl Expr {
 }
 
 /// Fill meter spots that the parser left empty. A structured meter keeps its own spot.
-pub(crate) fn stamp_expr(expr: &mut Expr, line: u32, column: u32) {
+pub(crate) fn stamp_spots(expr: &mut Expr, line: u32, column: u32) {
     if line == 0 {
         return;
     }
@@ -551,6 +551,7 @@ impl<'a> Parser<'a> {
     }
 
     fn call_or_meter(&mut self) -> Result<Expr, String> {
+        let start = self.pos;
         let word = self.ident()?;
         self.skip_whitespace();
         if (word == "min" || word == "max") && self.eat('(') {
@@ -571,27 +572,27 @@ impl<'a> Parser<'a> {
                 right: Box::new(right),
             });
         }
-        let of = if word == "place" && self.eat(':') {
-            grammar::Object::Place(self.ident()?.into())
-        } else if word == "story" && self.eat(':') {
-            grammar::Object::Story(self.ident()?.into())
-        } else {
-            match word.as_str() {
-                "self" => grammar::Object::Self_,
-                "target" => grammar::Object::Target,
-                "here" => grammar::Object::Here,
-                "world" => grammar::Object::Global,
-                _ => grammar::Object::Actor(word.into()),
-            }
+        // A meter read is `<owner>.<key>`, and an owner may hold `:` and `.` itself.
+        self.pos = start;
+        while self.peek().is_ascii_alphanumeric() || matches!(self.peek(), '_' | ':' | '.') {
+            self.pos += 1;
+        }
+        let read = &self.src[start..self.pos];
+        let Some((owner, key)) = read.rsplit_once('.') else {
+            return Err(self.error());
         };
-        self.skip_whitespace();
-        if !self.eat('.') {
+        if !key.starts_with(|ch: char| ch.is_ascii_alphabetic() || ch == '_') || key.contains(':') {
             return Err(self.error());
         }
-        let key = self.ident()?;
+        let of = match grammar::Object::parse(owner)? {
+            grammar::Object::Exit(_) => {
+                return Err(format!("'{owner}' is an exit, which has no meters"))
+            }
+            of => of,
+        };
         Ok(Expr::Meter {
             of,
-            key,
+            key: key.to_string(),
             spot: None,
         })
     }
