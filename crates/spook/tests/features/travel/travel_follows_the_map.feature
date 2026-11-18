@@ -5,10 +5,15 @@ Feature: Travel follows the map
     When rowan travels to mira_rooms from docks_street
     Then the intent is refused with NO_EXIT and rowan stays put
 
-  Scenario: A locked exit shows its text and changes nothing
-    Given the stairs exit needs brass_key and rowan has none
+  Scenario Outline: A locked exit shows its text and changes nothing
+    Given the stairs exit needs brass_key, rowan has none, and travel walks <walk>
     When rowan travels via stairs
     Then rowan sees "The stair door is locked." and no state changes
+
+    Examples:
+      | walk                  |
+      | at once               |
+      | inside a nested check |
 
   Scenario: An exit's ticks are stamped on the arrival
     When rowan travels via stairs holding brass_key

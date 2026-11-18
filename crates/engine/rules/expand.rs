@@ -87,12 +87,12 @@ fn build_effects(
 }
 
 /// The list `outcome` picks.
-fn select_list<'a>(
+fn select_list<'c>(
     outcome: Outcome,
-    success: &'a [EffectTemplate],
-    partial: &'a [EffectTemplate],
-    miss: &'a [EffectTemplate],
-) -> &'a [EffectTemplate] {
+    success: &'c [EffectTemplate],
+    partial: &'c [EffectTemplate],
+    miss: &'c [EffectTemplate],
+) -> &'c [EffectTemplate] {
     match outcome {
         Outcome::Success => success,
         Outcome::Partial => partial,

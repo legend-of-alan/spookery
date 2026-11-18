@@ -465,7 +465,7 @@ Mira's restock in `tests/packs/docks/cast/mira.md`:
 
 reads as *while the day is from tick 480 to tick 960, add 4 lamp_oil of place:docks_shop.* A cycle window is `from` inclusive and `to` exclusive: tick 480 is inside it and tick 960 is not.
 
-In the `shrug` rule below, `check: { by: target, total: 2d6 + target.nerve, success_at: 4 }` reads as *the target saves: it rolls 2d6 plus its nerve, and succeeds at 4.* Its `success` list runs when the save succeeds and its `miss` list, the nerve loss of self, when it fails. `by` is the actor who makes the save; omitted, it is `self`. `self` inside it is still the rule's actor.
+In the `shrug` rule below, `check: { by: target, total: 2d6 + target.nerve, success_at: 4 }` reads as *the target saves: it rolls 2d6 plus its nerve, and succeeds at 4.* Its `success` list runs when the save succeeds, and its `miss` list, the nerve loss of self and the `shrugged` flag, when it fails. `by` is the actor who makes the save; omitted, it is `self`. `self` inside it is still the rule's actor.
 
 In the `give_oil` rule below, the nested check's `success_at: "self.nerve + 2"` reads as *nerve of self, plus 2*: in an [expression](spec.md) the owner comes first, then its meter.
 
@@ -636,7 +636,7 @@ rules:
           success:
             - narrate:
                 to: self
-                text: The hit glances off.
+                text: They hold their nerve.
                 fact_ids: []
           miss:
             - meter:

@@ -24,12 +24,12 @@ pub(crate) fn find_exit<'a>(canon: &'a Canon, from: &str, exit_id: &str) -> Opti
 }
 
 /// The exit this rule travels by: the one its first `location via` that is not a teleport
-/// names. `None` when the rule does not travel.
+/// names, in a nested check too. `None` when the rule does not travel.
 pub(crate) fn exit_of<'a>(
     context: &Context<'a, '_>,
     rule: &Rule,
 ) -> Result<Option<&'a Exit>, gate::Refusal> {
-    let via = rule.top_templates().find_map(|effect| match effect {
+    let via = (rule.templates().into_iter()).find_map(|effect| match effect {
         EffectTemplate::Location {
             to: LocationTo::Via(via),
             teleport: false,

@@ -47,12 +47,12 @@ impl Rule {
         self.start.cost.iter().chain(&self.finish.cost)
     }
 
-    pub(crate) fn top_templates(&self) -> impl Iterator<Item = &EffectTemplate> {
-        self.do_
-            .iter()
-            .chain(&self.success)
-            .chain(&self.partial)
-            .chain(&self.miss)
+    /// Every effect the rule holds, in the order `visit_templates` walks them, with the effects
+    /// in its nested checks' lists.
+    pub(crate) fn templates(&self) -> Vec<&EffectTemplate> {
+        let mut templates = Vec::new();
+        self.visit_templates(|effect| templates.push(effect));
+        templates
     }
 
     pub(crate) fn visit_templates<'a>(&'a self, mut visit: impl FnMut(&'a EffectTemplate)) {

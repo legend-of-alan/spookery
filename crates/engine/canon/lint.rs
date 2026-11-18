@@ -498,7 +498,8 @@ fn check_teleport_verbs(canon: &Canon) -> Vec<Diagnostic> {
         .filter(|rule| {
             rule.owner == Owner::Verb
                 && rule
-                    .top_templates()
+                    .templates()
+                    .into_iter()
                     .any(|effect| matches!(effect, EffectTemplate::Location { teleport: true, .. }))
         })
         .map(|rule| {
@@ -773,7 +774,7 @@ fn check_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
         let (message, hint) = if on_world && names_subject(rule) {
             (
                 "watches a world change, which has no self and no here",
-                "name the actor, or world",
+                "name the actor, or world; a nested check's by: is self when left out",
             )
         } else if !on_world && narrates_to_present(rule) {
             (

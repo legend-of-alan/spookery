@@ -407,7 +407,7 @@ fn assert_roll(body: &Value, vigor: i64, success_at: i64, outcome: &str) {
 }
 
 /// What a dice line comes to: `2d6 → 5, 2 = 7 + 1` is 8.
-fn dice_line_total(line: &str) -> i64 {
+pub(crate) fn dice_line_total(line: &str) -> i64 {
     let (_, sum) = line.split_once(" = ").unwrap_or_else(|| panic!("{line}"));
     sum.split(" + ")
         .map(|part| part.parse::<i64>().unwrap_or_else(|_| panic!("{line}")))
@@ -548,6 +548,9 @@ fn the_verbs_file_gains(world: &mut World, fault: String) {
         }
         "partial_at above success_at" => {
             "\n  - id: press\n    when:\n      verb: press\n    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n      partial_at: 10\n    success:\n      - flag:\n          of: self\n          key: touched\n          value: true\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
+        }
+        "a nested partial_at without partial" => {
+            "\n  - id: press\n    when:\n      verb: press\n    do:\n      - check:\n          total: 2d6 + self.vigor\n          success_at: 10\n          partial_at: 7\n          success:\n            - flag:\n                of: self\n                key: touched\n                value: true\n"
         }
         "partial without a check" => {
             "\n  - id: press\n    when:\n      verb: press\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"

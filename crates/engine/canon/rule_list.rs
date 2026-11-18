@@ -501,7 +501,10 @@ fn compile_one(
             None
         }
     };
-    let check = match entry.check.as_ref().map(check_of).transpose() {
+    let check = match (entry.check.as_ref())
+        .map(|yaml| check_of(&yaml.total, &yaml.success_at, yaml.partial_at.as_ref()))
+        .transpose()
+    {
         Ok(check) => check,
         Err(fault) => {
             diags.push(source.fault("", fault));
@@ -539,10 +542,10 @@ fn compile_one(
                 "add success",
             ));
         }
-        let band = check
+        let band_problem = check
             .as_ref()
             .and_then(|check| find_partial_band_problem(check, &partial));
-        if let Some((problem, hint)) = band {
+        if let Some((problem, hint)) = band_problem {
             diags.push(schema_error(
                 file,
                 &format!("rule '{local}' {problem}"),
@@ -784,11 +787,15 @@ fn counts_of(yaml: &Counts) -> Result<Vec<(String, Expr)>, Fault> {
         .collect()
 }
 
-fn check_of(yaml: &CheckYaml) -> Result<rule::Check, Fault> {
+fn check_of(
+    total: &Spanned<ExprYaml>,
+    success_at: &Spanned<ExprYaml>,
+    partial_at: Option<&Spanned<ExprYaml>>,
+) -> Result<rule::Check, Fault> {
     Ok(rule::Check {
-        total: expr_of(&yaml.total)?,
-        success_at: expr_of(&yaml.success_at)?,
-        partial_at: yaml.partial_at.as_ref().map(expr_of).transpose()?,
+        total: expr_of(total)?,
+        success_at: expr_of(success_at)?,
+        partial_at: partial_at.map(expr_of).transpose()?,
     })
 }
 
@@ -918,11 +925,11 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             subject: actor_of(&unwield.subject)?,
         },
         EffectYaml::Check(nested) => {
-            let check = rule::Check {
-                total: expr_of(&nested.total)?,
-                success_at: expr_of(&nested.success_at)?,
-                partial_at: nested.partial_at.as_ref().map(expr_of).transpose()?,
-            };
+            let check = check_of(
+                &nested.total,
+                &nested.success_at,
+                nested.partial_at.as_ref(),
+            )?;
             let list_of =
                 |list: &[EffectYaml]| list.iter().map(effect_of).collect::<Result<Vec<_>, _>>();
             let partial = list_of(&nested.partial)?;
@@ -943,9 +950,9 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     })
 }
 
-/// What is wrong with `check`'s partial band, given the `partial` list it picks, as the words
-/// after the check's name and the hint: a `partial_at` with no list, a list with no
-/// `partial_at`, or a constant `partial_at` at or above a constant `success_at`.
+/// What is wrong with `check`'s partial band, given `partial`, the list its partial outcome
+/// runs, as the words after the check's name and the hint: a `partial_at` with no list, a list
+/// with no `partial_at`, or a constant `partial_at` at or above a constant `success_at`.
 fn find_partial_band_problem(
     check: &rule::Check,
     partial: &[EffectTemplate],
@@ -967,7 +974,7 @@ fn find_partial_band_problem(
         .and_then(Expr::constant)
         .zip(check.success_at.constant());
     constants
-        .is_some_and(|(band, success_at)| band >= success_at)
+        .is_some_and(|(partial_at, success_at)| partial_at >= success_at)
         .then_some((
             "sets partial_at at or above success_at",
             "set partial_at strictly below success_at",
