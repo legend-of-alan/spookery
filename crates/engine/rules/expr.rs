@@ -61,6 +61,21 @@ pub(crate) fn roll_lets(
     Ok(values)
 }
 
+/// Whether `word` can be a `let:` name: a bare word that a number reads back as that name, and
+/// not an owner word such as `self` or `world` or a call such as `min` or `high`.
+pub(crate) fn is_let_name(word: &str) -> bool {
+    let read = Expr::Let {
+        name: word.to_string(),
+        keep: None,
+    };
+    let owner_word = !matches!(
+        grammar::Object::parse(word),
+        Ok(grammar::Object::Actor(grammar::Actor::Id(_)))
+    );
+    let call = ["min", "max", "high", "low"].contains(&word);
+    Expr::parse(word) == Ok(read) && !owner_word && !call
+}
+
 /// One `let:` name as the rule rolled it: its value, and its faces when its number is one dice
 /// group, for `high` and `low` to read.
 pub(crate) struct LetValue {

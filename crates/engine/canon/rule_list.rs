@@ -13,7 +13,7 @@ use crate::canon::source::{
 };
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::id::{ActorId, PlaceId};
-use crate::rules::expr::{stamp_spots, Expr};
+use crate::rules::expr::{self, stamp_spots, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
     self, ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner,
@@ -508,7 +508,7 @@ fn compile_one(
     let mut lets: Vec<_> = entry.lets.iter().collect();
     lets.sort_by_key(|(_, number)| (number.referenced.line(), number.referenced.column()));
     let lets = (lets.into_iter())
-        .map(|(name, number)| Ok((name.clone(), expr_of(number)?)))
+        .map(|(name, number)| let_of(name, number))
         .collect::<Result<Vec<_>, Fault>>();
     let lets = match lets {
         Ok(lets) => lets,
@@ -631,7 +631,8 @@ fn compile_one(
 
 /// The first `let:` read in `rule` that fails, as the problem and the hint: a name its `let:`
 /// does not hold, a name a `let:` number reads at or above the line that holds it, or `high` or
-/// `low` of a name whose number is not one dice group. The `let:` numbers come first in
+/// `low` of a name whose number is not one dice group that keeps every face. The `let:` numbers
+/// come first in
 /// `Rule::exprs`, so the one at `index` reads only the names above it.
 fn find_let_read_problem(rule: &Rule) -> Option<(String, String)> {
     let lets = rule.lets.as_slice();
@@ -642,10 +643,10 @@ fn find_let_read_problem(rule: &Rule) -> Option<(String, String)> {
                 continue;
             };
             let (problem, hint) = match (readable.iter().find(|(held, _)| held == name), keep) {
-                (Some((_, Expr::Dice { .. })), _) | (Some(_), None) => continue,
+                (Some((_, Expr::Dice { keep: None, .. })), _) | (Some(_), None) => continue,
                 (Some(_), Some(_)) => (
-                    format!("reads high or low of '{name}', which is not one dice group"),
-                    "read high or low only of a name whose number is dice such as 2d8",
+                    format!("reads high or low of '{name}', which is not one dice group that keeps every face"),
+                    "read high or low only of a name whose number is dice such as 2d8, with no kh1 or kl1",
                 ),
                 (None, _) if lets.iter().any(|(held, _)| held == name) => (
                     format!("reads '{name}' in let: at or above the line that holds it"),
@@ -861,6 +862,20 @@ fn refuse_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
         });
     }
     Ok(expr)
+}
+
+/// One `let:` name and its number. A name no number could read back is refused on its line.
+fn let_of(name: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), Fault> {
+    if !expr::is_let_name(name) {
+        return Err(Fault {
+            message: format!(
+                "let: name '{name}' is not a word a number can read; use letters, digits and _, \
+                 not starting with a digit, and not an owner word or min, max, high or low"
+            ),
+            spot: spot_of(number),
+        });
+    }
+    Ok((name.to_string(), expr_of(number)?))
 }
 
 fn expr_of(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {

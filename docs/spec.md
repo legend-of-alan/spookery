@@ -28,12 +28,12 @@ A number in a condition or a cost cannot roll dice; dice there fail `spook check
 | `story:ending.dread` | The named story's meter. |
 | `mira.vigor` | That cast member's meter. |
 | `attack` | The value the rule's `let:` stored under that name. |
-| `high(dmg)`, `low(dmg)` | The higher or lower face of a `let:` name whose number is one dice group, such as `dmg: 2d8`. |
+| `high(dmg)`, `low(dmg)` | The higher or lower face of a `let:` name whose number is one dice group with no keep, such as `dmg: 2d8`. |
 | `a + b`, `a - b`, `a * b`, `a / b` | Arithmetic. `/` rounds toward negative infinity. |
 | `min(a, b)`, `max(a, b)` | The lower or higher value. |
 | `(a + b) * c` | Parentheses. |
 
-A bare word is a `let:` name, so it never names a meter or an owner. A `let:` number reads only the names written above it. A name the rule's `let:` does not hold, a name a `let:` number reads at or above the line that holds it, and `high` or `low` of a number that is not one dice group fail `spook check` at the rule's line.
+A bare word is a `let:` name, so it never names a meter or an owner. A `let:` number reads only the names written above it. A name the rule's `let:` does not hold, a name a `let:` number reads at or above the line that holds it, and `high` or `low` of a number that is not one dice group with no keep fail `spook check` at the rule's line. A `let:` name that is not such a bare word, or that is an owner word or `min`, `max`, `high` or `low`, fails at its own line.
 
 Because `/` rounds toward negative infinity, halving a loss rounds the loss up: `-(1d8 + self.might) / 2` turns 7 into −4. `-((1d8 + self.might) / 2)` turns it into −3.
 

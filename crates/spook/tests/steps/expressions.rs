@@ -3,6 +3,7 @@
 use spookery_engine::component;
 use spookery_engine::testing::world_of;
 use std::fs;
+use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
@@ -79,19 +80,20 @@ fn the_packs_hit_stores_and_adds_twice(world: &mut World, lets: String, add: Str
 }
 
 #[when(
-    expr = "the pack's hit stores {string}, checks {string} against {int}, and adds {string} to vigor on a success"
+    expr = "the pack's hit stores {string}, checks {string} against {int}, takes {int} ticks, and adds {string} to vigor on a success"
 )]
 fn the_packs_hit_stores_and_checks(
     world: &mut World,
     lets: String,
     total: String,
     success_at: i64,
+    ticks: u64,
     add: String,
 ) {
     append_rule(
         world,
         &format!(
-            "\n  - id: hit\n    when: {{ verb: hit }}\n    let: {{ {lets} }}\n    check: {{ total: {total}, success_at: {success_at} }}\n    success:\n      - meter: {{ of: self, key: vigor, add: {add} }}\n"
+            "\n  - id: hit\n    when: {{ verb: hit }}\n    let: {{ {lets} }}\n    cost: {{ ticks: {ticks} }}\n    check: {{ total: {total}, success_at: {success_at} }}\n    success:\n      - meter: {{ of: self, key: vigor, add: {add} }}\n"
         ),
     );
 }
@@ -267,6 +269,16 @@ fn the_journal_and_the_gm_commit_hold_dice_lines(world: &mut World, expected: St
     }
 }
 
+#[then(expr = "no round before the last one rolled dice")]
+fn no_round_before_the_last_one_rolled_dice(world: &mut World) {
+    let pack = table::pack(world);
+    let keys = list_round_keys(pack);
+    for key in keys.iter().rev().skip(1) {
+        let round = read_round(pack, key);
+        assert!(round.get("dice").is_none(), "{key}: {round}");
+    }
+}
+
 #[then(expr = "the player text has no dice faces")]
 fn the_player_text_has_no_dice_faces(world: &mut World) {
     let added = table::wait_player_from(world, world.mark, "\"kind\":");
@@ -355,7 +367,11 @@ fn vigor_of(world: &World, actor: &str) -> i64 {
 fn latest_round(world: &World) -> Value {
     let pack = table::pack(world);
     let keys = list_round_keys(pack);
-    let key = keys.last().unwrap_or_else(|| panic!("no round"));
+    read_round(pack, keys.last().unwrap_or_else(|| panic!("no round")))
+}
+
+/// The journal's round record `key` in `pack`.
+fn read_round(pack: &Path, key: &str) -> Value {
     let text = spookery_engine::testing::journal::read_record_line(pack, key)
         .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{key}: {err}"))
