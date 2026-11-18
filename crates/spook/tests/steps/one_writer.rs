@@ -51,8 +51,7 @@ fn a_seated_player_commits_a_move(world: &mut World) {
 #[when(expr = "spook run is stopped while the GM is seated")]
 fn spook_run_is_stopped_while_the_gm_is_seated(world: &mut World) {
     assert!(table::live_mut(world).gm.is_some(), "no seated GM");
-    let (status, stderr) =
-        table::interrupt_host(world).unwrap_or_else(|| panic!("no spook run child"));
+    let (status, stderr) = table::interrupt_host(world).expect("no spook run child");
     world.code = status.code();
     world.stderr = stderr;
 }

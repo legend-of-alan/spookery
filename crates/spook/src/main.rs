@@ -149,9 +149,13 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             let mut config = spookery_server::Config::new(addr);
             config.mcp_addr = mcp_addr;
             config.out = Box::new(std::io::stdout());
-            let ctrl_c = tokio::spawn(wait_for_interrupt());
+            let interrupt = tokio::spawn(wait_for_interrupt());
             let shutdown = async {
-                if let Err(err) = ctrl_c.await.map_err(std::io::Error::from).and_then(|r| r) {
+                if let Err(err) = interrupt
+                    .await
+                    .map_err(std::io::Error::from)
+                    .and_then(|r| r)
+                {
                     eprintln!("{err}");
                 }
                 tokio::spawn(async {
