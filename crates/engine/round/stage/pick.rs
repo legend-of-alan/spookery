@@ -1,4 +1,5 @@
-//! Take queued intents and habits, in the order this round will try them.
+//! Take queued intents and habits, in the order this round will try them, and pick each one's
+//! rule. The gate runs at queue and start; the check rolls when the move lands.
 
 use std::collections::BTreeSet;
 
@@ -10,7 +11,7 @@ use crate::rules::effect::EffectKind;
 use crate::rules::expand;
 use crate::rules::gate;
 use crate::rules::habits::{self, is_player_at};
-use crate::rules::rule::{TargetKind, When};
+use crate::rules::rule::{Rule, TargetKind, When};
 use crate::rules::travel::find_exit;
 use crate::Reason;
 
@@ -18,28 +19,66 @@ use crate::round::dice::shuffle_key;
 use crate::round::stage::apply::refuse;
 use crate::round::Ledger;
 
-/// The queue and the habits, stamped, in priority order, cut to the budget. Each intent past
-/// the cut is refused `BUDGET`.
-pub(crate) fn run(
-    canon: &Canon,
+/// One candidate and how pick left it for apply.
+pub(crate) struct Candidate<'c> {
+    pub intent: Intent,
+    pub resolution: Resolution<'c>,
+}
+
+/// How pick left an intent for apply.
+pub(crate) enum Resolution<'c> {
+    /// Picked against the state. Apply admits `rule` again against the working copy when it starts,
+    /// then pays for and expands it, so a move pays the cost of the rule it picked.
+    Ready { rule: &'c Rule },
+    /// A player's `cancel`, which runs no rule.
+    Cancel,
+    /// No rule picked: journaled, and told to a player.
+    Refused(gate::Refusal),
+}
+
+/// The queue and the habits, stamped, in priority order, cut to the budget, each with its rule.
+/// Each intent past the cut is refused `BUDGET`.
+pub(crate) fn run<'c>(
+    canon: &'c Canon,
     world: &ecs::World,
     presence: &Presence,
     queue: &[Intent],
     ledger: &mut Ledger,
-) -> Result<Vec<Intent>, Reason> {
-    let mut candidates = queue.to_vec();
-    candidates.extend(habits::intents(canon, world, presence));
-    for intent in &mut candidates {
+) -> Result<Vec<Candidate<'c>>, Reason> {
+    let mut intents = queue.to_vec();
+    intents.extend(habits::intents(canon, world, presence));
+    for intent in &mut intents {
         stamp_target(canon, world, presence, intent);
     }
-    candidates.sort_by_cached_key(|intent| priority(canon, world, presence, intent));
-    check_unique_ids(&candidates)?;
-    let limit = (canon.budget.max_intents_applied as usize).min(candidates.len());
-    for intent in candidates.split_off(limit) {
+    intents.sort_by_cached_key(|intent| priority(canon, world, presence, intent));
+    check_unique_ids(&intents)?;
+    let limit = (canon.budget.max_intents_applied as usize).min(intents.len());
+    for intent in intents.split_off(limit) {
         let refusal = gate::Refusal::new(&intent, Reason::Budget);
         refuse(ledger, &intent, refusal);
     }
-    Ok(candidates)
+    Ok(intents
+        .into_iter()
+        .map(|intent| Candidate {
+            resolution: resolve(canon, world, presence, &intent),
+            intent,
+        })
+        .collect())
+}
+
+fn resolve<'c>(
+    canon: &'c Canon,
+    world: &ecs::World,
+    presence: &Presence,
+    intent: &Intent,
+) -> Resolution<'c> {
+    if gate::is_cancel(intent) {
+        return Resolution::Cancel;
+    }
+    match gate::rule_of(&Context::new(canon, world, presence, intent)) {
+        Ok(rule) => Resolution::Ready { rule },
+        Err(refusal) => Resolution::Refused(refusal),
+    }
 }
 
 /// Fill an empty target from a preview of the intent's effects, a place it moves to, and
@@ -77,9 +116,9 @@ fn stamp_target(canon: &Canon, world: &ecs::World, presence: &Presence, intent: 
 }
 
 /// Refuse `SCHEMA` when a GM-chosen id equals a habit's: the one way two intents share an id.
-fn check_unique_ids(candidates: &[Intent]) -> Result<(), Reason> {
+fn check_unique_ids(intents: &[Intent]) -> Result<(), Reason> {
     let mut seen = BTreeSet::new();
-    for intent in candidates {
+    for intent in intents {
         if !seen.insert(&intent.id) {
             return Err(Reason::Schema);
         }

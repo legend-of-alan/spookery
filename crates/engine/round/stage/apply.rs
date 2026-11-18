@@ -14,7 +14,7 @@ use crate::rules::travel;
 use crate::store::records::Step;
 use crate::Reason;
 
-use crate::round::stage::resolve::{Candidate, Resolution};
+use crate::round::stage::pick::{Candidate, Resolution};
 use crate::round::stage::triggers;
 use crate::round::{self, Ledger};
 
@@ -40,6 +40,7 @@ pub(crate) fn run(
     // Set once a landing goes over the key budget: every later intent is refused `BUDGET`.
     let mut keys_spent = false;
     for Candidate { intent, resolution } in candidates {
+        let intent = &intent;
         let spends_slot = matches!(intent.actor, Some(Viewer::Npc(_)));
         if keys_spent || (spends_slot && slots >= max_npcs) {
             let refusal = gate::Refusal::new(intent, Reason::Budget);

@@ -15,7 +15,7 @@ use crate::store::commit;
 use crate::store::lock::lock_pack;
 use crate::Reason;
 
-use crate::round::stage::{advance, apply, deliver, finish, pick, record, resolve, triggers};
+use crate::round::stage::{advance, apply, deliver, finish, pick, record, triggers};
 use crate::round::{self, Ledger};
 
 /// What one round showed. Returned from the engine's round to the host table, which sends it on
@@ -165,8 +165,7 @@ fn run_stages(
     let clock = advance::run(canon, &mut world, presence, wall)?;
     let mut dice = round::Dice::new(world.seed.clone(), clock.round_index);
     let mut ledger = Ledger::default();
-    let picked = pick::run(canon, &world, presence, queue, &mut ledger)?;
-    let candidates = resolve::run(canon, &world, presence, &picked);
+    let candidates = pick::run(canon, &world, presence, queue, &mut ledger)?;
     apply::run(
         canon,
         &mut world,
