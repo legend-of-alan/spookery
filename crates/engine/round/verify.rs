@@ -22,7 +22,8 @@ pub struct Report {
     pub trusted_edits: Vec<u64>,
 }
 
-/// Read the journal, replay it, and check checkpoints and `state/save.yaml`.
+/// Read the journal, replay it, and check checkpoints and `state/save.yaml`. A pack with
+/// neither a save nor a base is refused `NOT_IN_SPEC`, with or without `from`.
 pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
     // repeats module: re-exported at the crate root
     if !pack.join("pack.yaml").is_file() {

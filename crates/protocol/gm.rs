@@ -19,6 +19,8 @@ pub fn parse_args<T: DeserializeOwned>(
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct PerceiveArgs {
+    /// The actor whose view the GM reads. The schema requires it, and the table refuses a call
+    /// without it as `UNSCOPED_PERCEIVE`.
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(rename = "as", skip_serializing_if = "Option::is_none")]
     pub viewer_id: Option<String>,
@@ -72,9 +74,13 @@ pub struct QueueArgs {
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub round_index: Option<u64>,
+    /// The actor the move is for. The schema requires it, and the table refuses a call without
+    /// it as `SCHEMA`.
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actor_id: Option<String>,
+    /// The move to queue. The schema requires it, and the table refuses a call without it as
+    /// `SCHEMA`.
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(rename = "move", skip_serializing_if = "Option::is_none")]
     pub move_id: Option<String>,

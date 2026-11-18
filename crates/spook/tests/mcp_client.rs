@@ -57,7 +57,8 @@ pub(crate) struct GmClient {
 
 impl GmClient {
     /// Dial `http://<mcp_addr>/mcp`, finish the handshake, and wait for the event stream to
-    /// take the seat: its hello. A refused seat is the refusal's sentence.
+    /// take the seat: its hello. A refused seat is the refusal's sentence. A `spook run` that
+    /// stops or is killed ends the events, and the client never redials it.
     pub(crate) async fn connect(mcp_addr: SocketAddr) -> Result<Self, String> {
         let url = format!("http://{mcp_addr}/mcp");
         let (tx, rx) = mpsc::unbounded_channel();
@@ -172,7 +173,8 @@ impl GmClient {
         out
     }
 
-    /// Give the seat back. The host has freed it when this returns.
+    /// Give the seat back. The host has freed it when this returns, and it returns at once when
+    /// the host is gone.
     pub(crate) async fn close(self) {
         if !self.watch.is_finished() {
             let _ = self.service.cancel().await;
