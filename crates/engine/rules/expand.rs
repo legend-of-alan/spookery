@@ -35,14 +35,17 @@ pub(crate) struct Expansion {
     pub cause: Cause,
 }
 
-/// Roll the rule's `check:`, then expand the lists its band picks, rolling each nested check
-/// on the way, all on `roller`. More effects than `max_effects_per_intent` is `BUDGET`.
+/// Roll the rule's `let:`, then its `check:`, then expand the lists its band picks, rolling
+/// each nested check on the way, all on `roller`. More effects than `max_effects_per_intent` is
+/// `BUDGET`.
 pub(crate) fn expand(
     context: &Context,
     rule: &Rule,
     cause: Cause,
     mut roller: Roller,
 ) -> Result<Expansion, Reason> {
+    let lets = expr::roll_lets(context, &rule.lets, &mut roller)?;
+    let context = &context.bind(&lets);
     let rolled = match &rule.check {
         Some(check) => Some(check.roll(context, &mut roller)?),
         None => None,
@@ -61,10 +64,12 @@ pub(crate) fn expand(
     })
 }
 
-/// The effects the rule's `do` list makes, with faces of 1 and its nested checks rolled on
-/// them, told to nobody: their shapes are what the pick stage and habits read before the round
-/// rolls.
+/// The effects the rule's `do` list makes, with faces of 1 and its `let:` and nested checks
+/// rolled on them, told to nobody: their shapes are what the pick stage and habits read before
+/// the round rolls.
 pub(crate) fn preview(context: &Context, rule: &Rule) -> Result<Vec<Effect>, Reason> {
+    let lets = expr::roll_lets(context, &rule.lets, &mut PreviewDice)?;
+    let context = &context.bind(&lets);
     build_effects(context, rule, None, &mut PreviewDice, &mut Vec::new())
 }
 

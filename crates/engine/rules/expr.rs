@@ -39,27 +39,89 @@ pub(crate) fn eval_with_dice(
     expr: &Expr,
     dice: &mut dyn Dice,
 ) -> Result<i64, Reason> {
+    Ok(eval_with_label(context, expr, dice, "")?.value)
+}
+
+/// Roll a rule's `let:` in written order on `dice`, each number reading the ids above it. An
+/// id whose number rolls writes its dice line with the id in front.
+pub(crate) fn roll_lets(
+    context: &Context,
+    lets: &[(String, Expr)],
+    dice: &mut dyn Dice,
+) -> Result<Vec<LetValue>, Reason> {
+    let mut values = Vec::new();
+    for (id, expr) in lets {
+        let step = eval_with_label(&context.bind(&values), expr, dice, &format!("{id}: "))?;
+        values.push(LetValue {
+            id: id.clone(),
+            value: step.value,
+            faces: step.faces,
+        });
+    }
+    Ok(values)
+}
+
+/// Whether `word` can be a `let:` id: a bare word that a number reads back as that id, and
+/// not an owner word such as `self` or `world` or a call such as `min` or `high`.
+pub(crate) fn is_let_id(word: &str) -> bool {
+    let read = Expr::Let {
+        id: word.to_string(),
+        keep: None,
+    };
+    let cast_id = matches!(
+        grammar::Object::parse(word),
+        Ok(grammar::Object::Actor(grammar::Actor::Id(_)))
+    );
+    let call = ["min", "max", "high", "low"].contains(&word);
+    Expr::parse(word) == Ok(read) && cast_id && !call
+}
+
+/// One `let:` id as the rule rolled it: its value, and its faces when its number is one dice
+/// group, for `high` and `low` to read.
+pub(crate) struct LetValue {
+    pub id: String,
+    pub value: i64,
+    pub faces: Vec<u32>,
+}
+
+/// Evaluate `expr` on a new roll seed, noting a line with `label` in front when any dice fall.
+fn eval_with_label(
+    context: &Context,
+    expr: &Expr,
+    dice: &mut dyn Dice,
+    label: &str,
+) -> Result<EvalStep, Reason> {
     dice.begin();
     let step = eval_node(context, expr, dice)?;
     if !step.dice.is_empty() {
-        dice.push_line(format!("{} = {}", step.dice.join("; "), step.text));
+        dice.push_line(format!("{label}{} = {}", step.dice.join("; "), step.text));
     }
-    Ok(step.value)
+    Ok(step)
 }
 
 struct EvalStep {
     value: i64,
     text: String,
     dice: Vec<String>,
+    /// The faces, when the number is one dice group: what `high` and `low` of a `let:` read.
+    faces: Vec<u32>,
+}
+
+impl From<i64> for EvalStep {
+    /// A value that rolled no dice.
+    fn from(value: i64) -> Self {
+        EvalStep {
+            value,
+            text: value.to_string(),
+            dice: Vec::new(),
+            faces: Vec::new(),
+        }
+    }
 }
 
 fn eval_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<EvalStep, Reason> {
     match expr {
-        Expr::Num(n) => Ok(EvalStep {
-            value: *n,
-            text: n.to_string(),
-            dice: Vec::new(),
-        }),
+        Expr::Num(n) => Ok(EvalStep::from(*n)),
         Expr::Dice {
             count: n,
             sides,
@@ -76,15 +138,18 @@ fn eval_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Eval
                 value,
                 text: value.to_string(),
                 dice: vec![format!("{} → {listed}", name_dice(*n, *sides, *keep))],
+                faces,
             })
         }
-        Expr::Meter { of, key, .. } => {
-            let value = read_meter(context, of, key)?;
-            Ok(EvalStep {
-                value,
-                text: value.to_string(),
-                dice: Vec::new(),
-            })
+        Expr::Meter { of, key, .. } => Ok(EvalStep::from(read_meter(context, of, key)?)),
+        Expr::Let { id, keep } => {
+            let stored = (context.lets.iter())
+                .find(|stored| stored.id == *id)
+                .ok_or(Reason::Schema)?;
+            Ok(EvalStep::from(match keep {
+                Some(_) => keep_faces(&stored.faces, *keep)?,
+                None => stored.value,
+            }))
         }
         Expr::Neg(inner) => {
             let inner = eval_node(context, inner, dice)?;
@@ -93,6 +158,7 @@ fn eval_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Eval
                 value,
                 text: negate_body(&inner.text),
                 dice: inner.dice,
+                faces: Vec::new(),
             })
         }
         Expr::Binary { op, left, right } => {
@@ -105,6 +171,7 @@ fn eval_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Eval
                 value,
                 text: format!("{} {} {}", left.text, name_op(*op), right.text),
                 dice: rolled,
+                faces: Vec::new(),
             })
         }
         Expr::Call { fun, left, right } => {
@@ -124,6 +191,7 @@ fn eval_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Eval
                 value,
                 text: format!("{function}({}, {})", left.text, right.text),
                 dice: rolled,
+                faces: Vec::new(),
             })
         }
     }
@@ -273,6 +341,12 @@ pub enum Expr {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    /// A read of a rule's `let:` id: its value, or with `keep`, the highest or lowest face of
+    /// its one dice group.
+    Let {
+        id: String,
+        keep: Option<Keep>,
+    },
 }
 
 impl BinOp {
@@ -305,7 +379,7 @@ impl Expr {
     pub(crate) fn constant(&self) -> Option<i64> {
         match self {
             Expr::Num(n) => Some(*n),
-            Expr::Dice { .. } | Expr::Meter { .. } => None,
+            Expr::Dice { .. } | Expr::Meter { .. } | Expr::Let { .. } => None,
             Expr::Neg(inner) => inner.constant().and_then(|n| n.checked_neg()),
             Expr::Binary { op, left, right } => {
                 let left = left.constant()?;
@@ -323,9 +397,10 @@ impl Expr {
         }
     }
 
+    /// Whether the number rolls dice. A `let:` read counts, since its value was rolled.
     pub(crate) fn needs_dice(&self) -> bool {
         match self {
-            Expr::Dice { .. } => true,
+            Expr::Dice { .. } | Expr::Let { .. } => true,
             Expr::Neg(inner) => inner.needs_dice(),
             Expr::Binary { left, right, .. } | Expr::Call { left, right, .. } => {
                 left.needs_dice() || right.needs_dice()
@@ -334,13 +409,14 @@ impl Expr {
         }
     }
 
-    pub(crate) fn meter_reads(&self) -> Vec<(&grammar::Object, &str, Option<LineColumn>)> {
+    /// Every meter read and `let:` read in the number, left to right.
+    pub(crate) fn reads(&self) -> Vec<&Expr> {
         match self {
-            Expr::Meter { of, key, spot } => vec![(of, key, *spot)],
-            Expr::Neg(inner) => inner.meter_reads(),
+            Expr::Meter { .. } | Expr::Let { .. } => vec![self],
+            Expr::Neg(inner) => inner.reads(),
             Expr::Binary { left, right, .. } | Expr::Call { left, right, .. } => {
-                let mut reads = left.meter_reads();
-                reads.extend(right.meter_reads());
+                let mut reads = left.reads();
+                reads.extend(right.reads());
                 reads
             }
             Expr::Num(_) | Expr::Dice { .. } => Vec::new(),
@@ -387,7 +463,7 @@ fn stamp_at(expr: &mut Expr, spot: LineColumn) {
             stamp_at(left, spot);
             stamp_at(right, spot);
         }
-        Expr::Num(_) | Expr::Dice { .. } => {}
+        Expr::Num(_) | Expr::Dice { .. } | Expr::Let { .. } => {}
     }
 }
 
@@ -468,17 +544,14 @@ impl<'a> Parser<'a> {
         self.skip_whitespace();
         if self.eat('(') {
             let inner = self.expr()?;
-            self.skip_whitespace();
-            if !self.eat(')') {
-                return Err(self.error());
-            }
+            self.eat_closing_parenthesis()?;
             return Ok(inner);
         }
         if self.peek().is_ascii_digit() {
             return self.number_or_dice();
         }
         if self.peek().is_ascii_alphabetic() || self.peek() == '_' {
-            return self.call_or_meter();
+            return self.call_or_read();
         }
         Err(self.error())
     }
@@ -523,7 +596,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn call_or_meter(&mut self) -> Result<Expr, String> {
+    fn call_or_read(&mut self) -> Result<Expr, String> {
         let start = self.pos;
         let word = self.ident()?;
         self.skip_whitespace();
@@ -535,14 +608,21 @@ impl<'a> Parser<'a> {
                 return Err(self.error());
             }
             let right = self.expr()?;
-            self.skip_whitespace();
-            if !self.eat(')') {
-                return Err(self.error());
-            }
+            self.eat_closing_parenthesis()?;
             return Ok(Expr::Call {
                 fun,
                 left: Box::new(left),
                 right: Box::new(right),
+            });
+        }
+        if (word == "high" || word == "low") && self.eat('(') {
+            let keep = if word == "low" { Keep::Low } else { Keep::High };
+            self.skip_whitespace();
+            let id = self.ident()?;
+            self.eat_closing_parenthesis()?;
+            return Ok(Expr::Let {
+                id,
+                keep: Some(keep),
             });
         }
         self.pos = start;
@@ -550,6 +630,12 @@ impl<'a> Parser<'a> {
             self.pos += 1;
         }
         let owner_and_key = &self.src[start..self.pos];
+        if owner_and_key == word {
+            return Ok(Expr::Let {
+                id: word,
+                keep: None,
+            });
+        }
         let Some((owner, key)) = owner_and_key.rsplit_once('.') else {
             return Err(self.error());
         };
@@ -599,6 +685,16 @@ impl<'a> Parser<'a> {
         while self.peek().is_whitespace() {
             let ch = self.peek();
             self.pos += ch.len_utf8();
+        }
+    }
+
+    /// Skip whitespace and eat the `)` that closes a group or a call, or refuse the expression.
+    fn eat_closing_parenthesis(&mut self) -> Result<(), String> {
+        self.skip_whitespace();
+        if self.eat(')') {
+            Ok(())
+        } else {
+            Err(self.error())
         }
     }
 

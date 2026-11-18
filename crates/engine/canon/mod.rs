@@ -125,10 +125,9 @@ impl Exit {
         self.cost.exprs().chain(cond_numbers).collect()
     }
 
-    /// Every slot the exit's conditions and cost fill, and every owner its numbers read, with
-    /// each slot's key as written.
-    pub(crate) fn slots(&self) -> Vec<(&'static str, rule::Slot<'_>)> {
-        rule::collect_slots(&self.if_, [&self.cost], self.exprs())
+    /// The owners, item ids and `target`s the exit's conditions, cost and numbers name.
+    pub(crate) fn mentions(&self) -> rule::Mentions<'_> {
+        rule::Mentions::of_lines(&self.if_, [&self.cost], self.exprs())
     }
 }
 

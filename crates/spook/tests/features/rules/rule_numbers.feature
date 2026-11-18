@@ -29,7 +29,7 @@ Feature: Dice and arithmetic in rule numbers
     Given a docks table
     When the pack's hit adds "<dice>" to vigor
     And the player hits and the GM commits
-    Then Rowan's vigor rose by the <kept> d20
+    Then Rowan's vigor rose by the <kept> face of 2d20k
     And the journal records both d20 faces
 
     Examples:
@@ -65,12 +65,17 @@ Feature: Dice and arithmetic in rule numbers
     And the report says "use self"
     And the report names the line holding "subject"
 
-  Scenario: An NPC habit rolls its effect dice
+  Scenario Outline: An NPC habit rolls its effect dice
     Given a docks table
-    When Mira's habit adds "1d4" to vigor
+    When Mira's habit <adds>
     And one round plays
     Then Mira's vigor rose by the 1d4 face
     And the journal records the 1d4 face
+
+    Examples:
+      | adds                                        |
+      | adds "1d4" to vigor                         |
+      | stores "lift: 1d4" and adds "lift" to vigor |
 
   Scenario Outline: Dice in a condition or a cost fail spook check
     Given a docks table

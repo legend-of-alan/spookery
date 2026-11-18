@@ -13,11 +13,11 @@ use crate::canon::source::{
 };
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::id::{ActorId, PlaceId};
-use crate::rules::expr::{stamp_spots, Expr};
+use crate::rules::expr::{self, stamp_spots, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
     self, ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner,
-    Phase, Rule, Slot, TargetKind, When,
+    Phase, Rule, TargetKind, When,
 };
 
 const MOVES_REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
@@ -57,6 +57,10 @@ pub struct RuleYaml {
     /// Whether the actor may cancel the action while it is under way.
     #[serde(default)]
     pub cancellable: bool,
+    /// `let:`: each id and its number. A map keeps no order, so `compile_one` sorts the
+    /// numbers by where they are written; an id written twice is the YAML's duplicate key.
+    #[serde(rename = "let", default)]
+    pub lets: std::collections::BTreeMap<String, Spanned<ExprYaml>>,
     pub check: Option<CheckYaml>,
     #[serde(rename = "do", default)]
     pub do_: Vec<EffectYaml>,
@@ -501,6 +505,18 @@ fn compile_one(
             None
         }
     };
+    let mut lets: Vec<_> = entry.lets.iter().collect();
+    lets.sort_by_key(|(_, number)| (number.referenced.line(), number.referenced.column()));
+    let lets = (lets.into_iter())
+        .map(|(id, number)| let_of(id, number))
+        .collect::<Result<Vec<_>, Fault>>();
+    let lets = match lets {
+        Ok(lets) => lets,
+        Err(fault) => {
+            diags.push(source.fault("", fault));
+            Vec::new()
+        }
+    };
     let check = match (entry.check.as_ref())
         .map(|yaml| check_of(&yaml.total, &yaml.success_at, yaml.partial_at.as_ref()))
         .transpose()
@@ -575,6 +591,7 @@ fn compile_one(
         owner: owner.clone(),
         when,
         if_,
+        lets,
         check,
         start: Phase {
             cost,
@@ -604,35 +621,58 @@ fn compile_one(
         When::Verb { target, .. } => *target,
         When::Habit | When::Change(_) => TargetKind::None,
     };
-    if let Some((key, needs)) = find_misplaced_target(targets, rule.slots()) {
-        let needs = needs.as_str();
+    let misplaced_target = rule.mentions().find_misplaced_target(targets);
+    let misplaced = misplaced_target.map(|(key, needs)| {
+        let (needs, targets) = (needs.as_str(), targets.as_str());
+        (
+            format!("says target in {key}, but its target is {targets}"),
+            format!("give the verb target: {needs}, or name the {needs} by its id"),
+        )
+    });
+    if let Some((problem, hint)) = misplaced.or_else(|| find_let_read_problem(&rule)) {
         return Err(vec![Problem {
             source: &source,
             path: &format!("rules[{index}].id"),
             at: Locator::Spot(spot_of(&entry.id)),
-            message: format!(
-                "rule '{}' says target in {key}, but its target is {}",
-                rule.local_id,
-                targets.as_str()
-            ),
-            hint: &format!("give the verb target: {needs}, or name the {needs} by its id"),
+            message: format!("rule '{}' {problem}", rule.local_id),
+            hint: &hint,
         }
         .into_diagnostic()]);
     }
     Ok(rule)
 }
 
-/// The first of `slots` that says `target` where a move that targets `targets` does not allow
-/// it, as the slot's key and what it needs the move to target. A habit, a change rule and an
-/// exit target nothing.
-pub(super) fn find_misplaced_target(
-    targets: TargetKind,
-    slots: Vec<(&'static str, Slot<'_>)>,
-) -> Option<(&'static str, TargetKind)> {
-    slots.into_iter().find_map(|(key, slot)| match slot {
-        Slot::Target(needs) if needs != targets => Some((key, needs)),
-        _ => None,
-    })
+/// The first `let:` read in `rule` that fails, as the problem and the hint: an id its `let:`
+/// does not hold, an id a `let:` number reads at or above the line that holds it, or `high` or
+/// `low` of an id whose number is not one dice group with no keep. The `let:` numbers come
+/// first in `Rule::exprs`, so the one at `index` reads only the ids above it.
+fn find_let_read_problem(rule: &Rule) -> Option<(String, String)> {
+    let lets = rule.lets.as_slice();
+    for (index, expr) in rule.exprs().into_iter().enumerate() {
+        let readable = lets.get(..index).unwrap_or(lets);
+        for read in expr.reads() {
+            let Expr::Let { id, keep } = read else {
+                continue;
+            };
+            let (problem, hint) = match (readable.iter().find(|(held, _)| held == id), keep) {
+                (Some((_, Expr::Dice { keep: None, .. })), _) | (Some(_), None) => continue,
+                (Some(_), Some(_)) => (
+                    format!("reads high or low of '{id}', which is not one dice group with no keep"),
+                    "read high or low only of an id whose number is dice such as 2d8, with no keep such as kh1",
+                ),
+                (None, _) if lets.iter().any(|(held, _)| held == id) => (
+                    format!("reads '{id}' in let: at or above the line that holds it"),
+                    "a let: number reads only the ids written above it",
+                ),
+                (None, _) => (
+                    format!("reads '{id}', which its let: does not hold"),
+                    "add the id to let:, or read an id that is there",
+                ),
+            };
+            return Some((problem, hint.to_string()));
+        }
+    }
+    None
 }
 
 fn when_of(yaml: &WhenYaml) -> Result<When, String> {
@@ -821,6 +861,20 @@ fn refuse_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
         });
     }
     Ok(expr)
+}
+
+/// One `let:` id and its number. An id no number could read back is refused on its line.
+fn let_of(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), Fault> {
+    if !expr::is_let_id(id) {
+        return Err(Fault {
+            message: format!(
+                "let: id '{id}' is not a word a number can read; use letters, digits and _, \
+                 not starting with a digit, and not an owner word or min, max, high or low"
+            ),
+            spot: spot_of(number),
+        });
+    }
+    Ok((id.to_string(), expr_of(number)?))
 }
 
 fn expr_of(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {

@@ -80,7 +80,11 @@ seed and the round, are written on the journal line, and are shown to the GM. A
 save with no seed gets a fresh one the first time the world opens for play, so
 each copy of a shipped pack rolls its own dice; writing `seed:` into
 `state/save.yaml` pins them. The base save keeps the seed, and `spook verify`
-replays the journal, rolls the dice again from it, and checks the save. A condition's value does not roll; dice there fail the pack check. A change of who is present, and a migrate between rounds, verify too.
+replays the journal, rolls the dice again from it, and checks the save. A
+rule's dice roll in the order it reads: its `let:` ids top to bottom, then
+its check's `total`, `success_at` and `partial_at`, then each effect as it
+runs. A `let:` id rolls once however often it is read, and an effect that
+does not run rolls nothing. A condition's value does not roll; dice there fail the pack check. A change of who is present, and a migrate between rounds, verify too.
 A pack author can edit the pack's world, cast, or rules while a save exists,
 and migrate fits that save to the new canon.
 Migrate may carry a hand edit of `save.yaml`. It writes a checkpoint of the
@@ -96,6 +100,7 @@ Tested in `features/replay/the_journal_verifies.feature`,
 `features/replay/typed_journal_records.feature`,
 `features/replay/journal_bundles.feature`,
 `features/round/each_roll_has_its_own_seed.feature`,
+`features/rolls/a_rule_stores_a_roll.feature`,
 `features/rules/rule_versions.feature`, and
 `features/rules/rule_numbers.feature`.
 

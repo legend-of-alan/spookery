@@ -3,6 +3,7 @@
 use spookery_engine::component;
 use spookery_engine::testing::world_of;
 use std::fs;
+use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
@@ -23,13 +24,23 @@ fn the_packs_hit_raises_the_vigor_of(world: &mut World, of: String) {
 
 #[when(expr = "Mira's habit adds {string} to vigor")]
 fn miras_habit_adds(world: &mut World, add: String) {
+    insert_miras_habit(world, "", &add);
+}
+
+#[when(expr = "Mira's habit stores {string} and adds {string} to vigor")]
+fn miras_habit_stores_and_adds(world: &mut World, lets: String, add: String) {
+    insert_miras_habit(world, &format!("    let: {{ {lets} }}\n"), &add);
+}
+
+/// Insert Mira's habit `toss`, with its `lets` line, adding `add` to her vigor.
+fn insert_miras_habit(world: &World, lets: &str, add: &str) {
     let pack = table::pack(world).to_path_buf();
     let path = pack.join("cast/mira.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
     let next = text.replacen(
         "rules:\n  - id: leave_door_note\n",
         &format!(
-            "rules:\n  - id: toss\n    when: habit\n    do:\n      - meter:\n          of: self\n          key: vigor\n          add: \"{add}\"\n  - id: leave_door_note\n"
+            "rules:\n  - id: toss\n    when: habit\n{lets}    do:\n      - meter:\n          of: self\n          key: vigor\n          add: \"{add}\"\n  - id: leave_door_note\n"
         ),
         1,
     );
@@ -48,17 +59,43 @@ fn one_round_plays(world: &mut World) {
     regex = r#"^the pack's hit has "(.+)" as (a condition value|a cost amount|a cost item count|its cost ticks)$"#
 )]
 fn the_packs_hit_has(world: &mut World, dice: String, field: String) {
-    let line = match field.as_str() {
-        "a condition value" => {
-            format!("if: [meter: {{ of: self, id: vigor, op: \">=\", value: \"{dice}\" }}]")
-        }
-        "a cost amount" => format!("cost: {{ meters: {{ vigor: \"{dice}\" }} }}"),
-        "a cost item count" => format!("cost: {{ items: {{ chock: \"{dice}\" }} }}"),
-        _ => format!("cost: {{ ticks: \"{dice}\" }}"),
-    };
-    let pack = table::pack(world).to_path_buf();
-    let rule = format!("\n  - id: hit\n    when: {{ verb: hit }}\n    {line}\n    do: []\n");
-    crate::support::append(&pack.join("rules/verbs.yaml"), &rule);
+    append_hit_line(world, "", &dice, &field);
+}
+
+#[when(
+    regex = r#"^the pack's hit stores "(.+)" and has "(.+)" as (its vigor add|a condition value|a cost amount|a second let)$"#
+)]
+fn the_packs_hit_stores_and_has(world: &mut World, lets: String, number: String, field: String) {
+    append_hit_line(world, &format!("let: {{ {lets} }}\n    "), &number, &field);
+}
+
+#[when(expr = "the pack's hit stores {string} and adds {string} to Rowan's and Mira's vigor")]
+fn the_packs_hit_stores_and_adds_twice(world: &mut World, lets: String, add: String) {
+    append_rule(
+        world,
+        &format!(
+            "\n  - id: hit\n    when: {{ verb: hit }}\n    let: {{ {lets} }}\n    do:\n      - meter: {{ of: self, key: vigor, add: {add} }}\n      - meter: {{ of: mira, key: vigor, add: {add} }}\n"
+        ),
+    );
+}
+
+#[when(
+    expr = "the pack's hit stores {string}, checks {string} against {int}, takes {int} ticks, and adds {string} to vigor on a success"
+)]
+fn the_packs_hit_stores_and_checks(
+    world: &mut World,
+    lets: String,
+    total: String,
+    success_at: i64,
+    ticks: u64,
+    add: String,
+) {
+    append_rule(
+        world,
+        &format!(
+            "\n  - id: hit\n    when: {{ verb: hit }}\n    let: {{ {lets} }}\n    cost: {{ ticks: {ticks} }}\n    check: {{ total: {total}, success_at: {success_at} }}\n    success:\n      - meter: {{ of: self, key: vigor, add: {add} }}\n"
+        ),
+    );
 }
 
 #[given(expr = "the rule \"stock\" reads Rowan's rest of 3 in every number")]
@@ -173,9 +210,9 @@ fn rowans_vigor_rose_by_the_2d6_faces(world: &mut World) {
     assert_eq!(rowans_vigor(world), 1 + sum);
 }
 
-#[then(expr = "Rowan's vigor rose by the {word} d20")]
-fn rowans_vigor_rose_by_the_kept_d20(world: &mut World, kept: String) {
-    let faces = dice_faces(world, "2d20k").into_iter();
+#[then(expr = "Rowan's vigor rose by the {word} face of {word}")]
+fn rowans_vigor_rose_by_the_kept_face(world: &mut World, kept: String, dice: String) {
+    let faces = dice_faces(world, &dice).into_iter();
     let face = if kept == "higher" {
         faces.max()
     } else {
@@ -204,6 +241,42 @@ fn the_gm_commit_reply_shows_the_2d6_faces(world: &mut World) {
         "missing dice\n{}",
         world.stdout
     );
+}
+
+#[then(expr = "Rowan's and Mira's vigor both rose by the boost total")]
+fn rowans_and_miras_vigor_rose_by_the_boost_total(world: &mut World) {
+    let line = dice_line(world);
+    assert!(line.starts_with("boost: 2d6 → "), "{line}");
+    let total: i64 = (line.rsplit(" = ").next())
+        .and_then(|total| total.parse().ok())
+        .unwrap_or_else(|| panic!("no total\n{line}"));
+    assert_eq!(rowans_vigor(world), 1 + total);
+    assert_eq!(vigor_of(world, "mira"), 1 + total);
+}
+
+#[then(expr = "the journal and the GM commit reply hold dice lines for {string}")]
+fn the_journal_and_the_gm_commit_hold_dice_lines(world: &mut World, expected: String) {
+    let reply = table::read_reply(&world.stdout);
+    let journal = latest_round(world);
+    for dice in [&reply["dice"], &journal["dice"]] {
+        let lines = dice.as_array().unwrap_or_else(|| panic!("no dice\n{dice}"));
+        let prefixes: Vec<&str> = expected.split(", ").collect();
+        assert_eq!(lines.len(), prefixes.len(), "{dice}");
+        for (line, prefix) in lines.iter().zip(prefixes) {
+            let line = line.as_str().unwrap_or_default();
+            assert!(line.starts_with(&format!("{prefix} → ")), "{dice}");
+        }
+    }
+}
+
+#[then(expr = "no round before the last one rolled dice")]
+fn no_round_before_the_last_one_rolled_dice(world: &mut World) {
+    let pack = table::pack(world);
+    let keys = list_round_keys(pack);
+    for key in keys.iter().rev().skip(1) {
+        let round = read_round(pack, key);
+        assert!(round.get("dice").is_none(), "{key}: {round}");
+    }
 }
 
 #[then(expr = "the player text has no dice faces")]
@@ -245,15 +318,36 @@ fn the_journal_rejects_the_hit_as_out_of_range(world: &mut World) {
     );
 }
 
-fn append_hit(world: &World, of: &str, add: &str) {
+/// Append rule `hit`, its `lets` line, then `number` as `field`.
+fn append_hit_line(world: &World, lets: &str, number: &str, field: &str) {
+    let lines = match field {
+        "a condition value" => format!(
+            "if: [meter: {{ of: self, id: vigor, op: \">=\", value: \"{number}\" }}]\n    do: []"
+        ),
+        "a cost amount" => format!("cost: {{ meters: {{ vigor: \"{number}\" }} }}\n    do: []"),
+        "a cost item count" => format!("cost: {{ items: {{ chock: \"{number}\" }} }}\n    do: []"),
+        "its cost ticks" => format!("cost: {{ ticks: \"{number}\" }}\n    do: []"),
+        "a second let" => format!("let: {{ {number} }}\n    do: []"),
+        _ => format!("do: [meter: {{ of: self, key: vigor, add: \"{number}\" }}]"),
+    };
+    let rule = format!("\n  - id: hit\n    when: {{ verb: hit }}\n    {lets}{lines}\n");
+    append_rule(world, &rule);
+}
+
+/// Append `rule` to the pack's verbs and restamp its save.
+fn append_rule(world: &World, rule: &str) {
     let pack = table::pack(world).to_path_buf();
-    let path = pack.join("rules/verbs.yaml");
-    let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
-    text.push_str(&format!(
-        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          of: {of}\n          key: vigor\n          add: {add}\n"
-    ));
-    fs::write(&path, &text).unwrap_or_else(|err| panic!("write verbs: {err}"));
+    crate::support::append(&pack.join("rules/verbs.yaml"), rule);
     crate::support::stamp_pack_rev(&pack);
+}
+
+fn append_hit(world: &World, of: &str, add: &str) {
+    append_rule(
+        world,
+        &format!(
+            "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          of: {of}\n          key: vigor\n          add: {add}\n"
+        ),
+    );
 }
 
 fn rowans_vigor(world: &World) -> i64 {
@@ -274,7 +368,11 @@ fn vigor_of(world: &World, actor: &str) -> i64 {
 fn latest_round(world: &World) -> Value {
     let pack = table::pack(world);
     let keys = list_round_keys(pack);
-    let key = keys.last().unwrap_or_else(|| panic!("no round"));
+    read_round(pack, keys.last().unwrap_or_else(|| panic!("no round")))
+}
+
+/// The journal's round record `key` in `pack`.
+fn read_round(pack: &Path, key: &str) -> Value {
     let text = spookery_engine::testing::journal::read_record_line(pack, key)
         .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{key}: {err}"))

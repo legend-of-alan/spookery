@@ -161,8 +161,8 @@ fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>
             file: file.to_string(),
             index,
         };
-        let slots = compiled_exit.slots();
-        if let Some((key, _)) = rule_list::find_misplaced_target(TargetKind::None, slots) {
+        let mentions = compiled_exit.mentions();
+        if let Some((key, _)) = mentions.find_misplaced_target(TargetKind::None) {
             let problem = format!(
                 "exit '{}' says target in {key}, but an exit has no target",
                 exit.id
