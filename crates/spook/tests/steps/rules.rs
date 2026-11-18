@@ -642,34 +642,34 @@ fn check_reports_the_key(world: &mut World) {
 const SECOND_KEY: &str = "flag: { of: self, key: second_key";
 
 #[given(expr = "a verb whose {word} {word} holds two keys in one line")]
-fn two_keys_in_one_line(world: &mut World, list: String, form: String) {
+fn two_keys_in_one_line(world: &mut World, field: String, form: String) {
     let pack = copy_pack("docks", "rules-two");
-    let (first, second) = match list.as_str() {
+    let (first, second) = match field.as_str() {
         "if" => ("has_item: { subject: self, id: knife }", "is: true }"),
         "do" => ("narrate: { to: self, text: hi }", "value: true }"),
-        other => panic!("no {other} list"),
+        other => panic!("no {other} field"),
     };
     let (dash, indent) = if form == "list" {
         ("- ", "  ")
     } else {
         ("", "")
     };
-    let line = format!(
-        "\n  - id: both\n    when:\n      verb: both\n    {list}:\n      {dash}{first}\n      {indent}{SECOND_KEY}, {second}\n"
+    let rule = format!(
+        "\n  - id: both\n    when:\n      verb: both\n    {field}:\n      {dash}{first}\n      {indent}{SECOND_KEY}, {second}\n"
     );
-    append(&pack.join("rules/verbs.yaml"), &line);
+    append(&pack.join("rules/verbs.yaml"), &rule);
     stamp_pack_rev(&pack);
     world.pack = Some(pack);
 }
 
-#[then(expr = "spook check reports two keys under one dash at the second key")]
+#[then(expr = "spook check reports two keys in one condition or effect at the second key")]
 fn check_reports_two_keys(world: &mut World) {
     let text = fs::read_to_string(world.pack.as_ref().unwrap().join("rules/verbs.yaml")).unwrap();
     let (line, _) = locate_key(&text, SECOND_KEY);
     run(world, &["check"]);
     assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
     let want = format!(
-        "rules/verbs.yaml:{line}: two keys under one dash; keep one condition or effect per dash; combine conditions with all:, any: or not: (SCHEMA)"
+        "rules/verbs.yaml:{line}: two keys in one condition or effect; give each condition or effect its own dash; combine conditions with all:, any: or not: (SCHEMA)"
     );
     assert!(world.stderr.contains(&want), "{}", world.stderr);
 }

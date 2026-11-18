@@ -9,10 +9,12 @@ use crate::ecs::component::meter;
 use crate::ecs::component::modifier;
 use crate::ecs::id::{ActorId, PlaceId, StoryId};
 use crate::entity;
+use crate::rules::cond;
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
 use crate::rules::rule::{
-    self, ChangeWatch, Cond, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule, When,
+    self, ChangeWatch, Cond, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule, Slot,
+    When,
 };
 use crate::Reason;
 
@@ -60,10 +62,7 @@ pub(super) fn broken_exits(
                     );
                 }
             }
-            let mut named: Vec<&str> = exit.item_ids().into_iter().map(|(_, id)| id).collect();
-            named.sort();
-            named.dedup();
-            for id in named {
+            for id in collect_item_ids(exit.slots()) {
                 if !items.contains_key(id) {
                     diags.push(
                         schema_error(
@@ -86,12 +85,7 @@ pub(super) fn unknown_rule_items(
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
-        let mut ids: Vec<&str> = rule.item_ids().into_iter().map(|(_, id)| id).collect();
-        // The load refuses `id: target` unless the rule targets an item; the item is the intent's.
-        ids.retain(|id| *id != "target");
-        ids.sort();
-        ids.dedup();
-        for id in ids {
+        for id in collect_item_ids(rule.slots()) {
             if items.contains_key(id) {
                 continue;
             }
@@ -103,6 +97,15 @@ pub(super) fn unknown_rule_items(
         }
     }
     diags
+}
+
+/// The item ids `slots` name, each once and in order.
+fn collect_item_ids<'a>(slots: Vec<(&'static str, Slot<'a>)>) -> BTreeSet<&'a str> {
+    let ids = slots.into_iter().filter_map(|(_, slot)| match slot {
+        Slot::Item(id) => Some(id),
+        Slot::Owner(_) | Slot::Target(_) => None,
+    });
+    ids.collect()
 }
 
 /// Modifier effects naming a modifier `rules/modifiers.yaml` does not define.
@@ -471,7 +474,7 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
                 }
             });
         }
-        for (id, bounds) in cycles {
+        for (id, constant_bounds) in cycles {
             let Some(&length) = canon.budget.cycles.get(id) else {
                 diags.push(
                     schema_error(
@@ -483,9 +486,8 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
                 );
                 continue;
             };
-            // A bound that reads a meter is checked when it is read at play.
-            let outside = |bound| u64::try_from(bound).map_or(true, |bound| bound >= length);
-            if bounds.into_iter().flatten().any(outside) {
+            let is_outside = |bound| cond::cycle_tick_of(bound, length).is_none();
+            if constant_bounds.into_iter().flatten().any(is_outside) {
                 diags.push(
                     schema_error(
                         file,
@@ -672,10 +674,9 @@ fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<Write>) {
         }
         EffectTemplate::Meter { key, .. } => out.push(Write::Meter(key.clone())),
         EffectTemplate::Item { id, add, .. } => {
-            // An amount that is not constant may be a gain or a loss.
-            let sign = add.constant().map(i64::signum);
-            for (gained, signum) in [(true, 1), (false, -1)] {
-                if sign.is_none_or(|sign| sign == signum) {
+            let constant_sign = add.constant().map(i64::signum);
+            for (gained, sign) in [(true, 1), (false, -1)] {
+                if constant_sign.is_none_or(|constant| constant == sign) {
                     out.push(Write::Item {
                         id: id.clone(),
                         gained,
@@ -863,8 +864,9 @@ fn names_subject(rule: &Rule) -> bool {
         EffectTemplate::Location { .. } => needs = true,
         _ => {}
     });
-    let subject = grammar::Object::Actor(grammar::Actor::Self_);
-    needs || (rule.objects().iter()).any(|(_, of)| *of == subject || *of == grammar::Object::Here)
+    let subject = Slot::Owner(grammar::Object::Actor(grammar::Actor::Self_));
+    let here = Slot::Owner(grammar::Object::Here);
+    needs || (rule.slots().iter()).any(|(_, slot)| *slot == subject || *slot == here)
 }
 
 fn mark_cycles(next: &[Vec<usize>], hit: &mut [bool]) {

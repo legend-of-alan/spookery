@@ -17,7 +17,7 @@ use crate::rules::expr::{stamp_spots, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
     self, ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner,
-    Phase, ResistSpec, Rule, TargetKind, When,
+    Phase, ResistSpec, Rule, Slot, TargetKind, When,
 };
 
 const MOVES_REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
@@ -142,7 +142,7 @@ impl<'de> Deserialize<'de> for IfYaml {
     }
 }
 
-/// One condition under a dash; its one key names the condition.
+/// One condition; its one key names the condition.
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)]
@@ -612,27 +612,14 @@ fn compile_one(
         When::Verb { target, .. } => *target,
         When::Habit | When::Change(_) => TargetKind::None,
     };
-    let mut locations = Vec::new();
-    rule.visit_templates(|effect| match effect {
-        EffectTemplate::Location {
-            to: LocationTo::Target,
-            ..
-        } => locations.push(("location to:", TargetKind::Place)),
-        EffectTemplate::Location {
-            to: LocationTo::Via(via),
-            ..
-        } if via == "target" => locations.push(("location via:", TargetKind::Exit)),
-        _ => {}
-    });
-    let (objects, item_ids) = (rule.objects(), rule.item_ids());
-    if let Some((slot, needs)) = find_misplaced_target(targets, objects, item_ids, locations) {
+    if let Some((key, needs)) = find_misplaced_target(targets, rule.slots()) {
         let needs = needs.as_str();
         return Err(vec![Problem {
             source: &source,
             path: &format!("rules[{index}].id"),
             at: Locator::Spot(spot_of(&entry.id)),
             message: format!(
-                "rule '{}' says target in {slot}, but its target is {}",
+                "rule '{}' says target in {key}, but its target is {}",
                 rule.local_id,
                 targets.as_str()
             ),
@@ -643,25 +630,17 @@ fn compile_one(
     Ok(rule)
 }
 
-/// The first use of the word `target` that a move targeting `targets` does not allow, as its
-/// slot and what it needs the move to target. An owner among `objects` needs an actor and an id
-/// among `item_ids` an item; each of `locations` says what it needs (`location: { to: target }`
-/// a place, `location: { via: target }` an exit). A habit, a change rule and an exit target
-/// nothing.
+/// The first of `slots` that says `target` where a move that targets `targets` does not allow
+/// it, as the slot's key and what it needs the move to target. A habit, a change rule and an
+/// exit target nothing.
 pub(super) fn find_misplaced_target(
     targets: TargetKind,
-    objects: Vec<(&'static str, grammar::Object)>,
-    item_ids: Vec<(&'static str, &str)>,
-    locations: Vec<(&'static str, TargetKind)>,
+    slots: Vec<(&'static str, Slot<'_>)>,
 ) -> Option<(&'static str, TargetKind)> {
-    let target = grammar::Object::Actor(grammar::Actor::Target);
-    let owners = (objects.into_iter())
-        .filter(|(_, of)| *of == target)
-        .map(|(slot, _)| (slot, TargetKind::Actor));
-    let items = (item_ids.into_iter())
-        .filter(|(_, id)| *id == "target")
-        .map(|(slot, _)| (slot, TargetKind::Item));
-    (owners.chain(items).chain(locations)).find(|(_, needs)| *needs != targets)
+    slots.into_iter().find_map(|(key, slot)| match slot {
+        Slot::Target(needs) if needs != targets => Some((key, needs)),
+        _ => None,
+    })
 }
 
 fn when_of(yaml: &WhenYaml) -> Result<When, String> {
@@ -788,7 +767,8 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
             fact: knows.fact.clone(),
         },
         CondYaml::Cycle(cycle) => {
-            let (from, to) = (refuse_dice(&cycle.from)?, refuse_dice(&cycle.to)?);
+            let from = refuse_dice(&cycle.from)?;
+            let to = refuse_dice(&cycle.to)?;
             if from.constant().is_some() && from.constant() == to.constant() {
                 return Err("cycle needs from and to that differ".into());
             }

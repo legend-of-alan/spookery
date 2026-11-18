@@ -4,8 +4,8 @@ use crate::canon::{Canon, OPEN};
 use crate::ecs::component::Note;
 use crate::ecs::id::GlobalId;
 use crate::ecs::{self, component, Presence};
-use crate::intent::{Target, Viewer};
-use crate::rules::context::{self, Context};
+use crate::intent::{Intent, Source, Target, Viewer};
+use crate::rules::context::Context;
 use crate::rules::expr;
 use crate::rules::grammar;
 use crate::rules::rule::Cond;
@@ -22,8 +22,8 @@ pub(crate) fn all_hold(context: &Context, conds: &[Cond]) -> Result<(), Reason> 
 }
 
 /// Whether `conds` hold for `viewer` doing `verb` to `target`. `help`, exit locks and an
-/// NPC's habit list read an `if` this way: they have no intent, so they read it against
-/// [`context::probe`].
+/// NPC's habit list read an `if` this way: they have no intent, so they read it against a
+/// probe with no id.
 pub(crate) fn if_holds(
     canon: &Canon,
     world: &ecs::World,
@@ -33,7 +33,14 @@ pub(crate) fn if_holds(
     target: Target,
     conds: &[Cond],
 ) -> bool {
-    let probe = context::probe(world, viewer, verb, target);
+    let probe = Intent::new(
+        String::new(),
+        world.round_index,
+        Some(viewer.clone()),
+        Source::Player,
+        verb,
+        target,
+    );
     all_hold(&Context::new(canon, world, presence, &probe), conds).is_ok()
 }
 
@@ -92,13 +99,11 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         Cond::Cycle { id, from, to } => {
             let cycles = &context.canon.budget.cycles;
             let length = *cycles.get(id).ok_or(Reason::UnknownId)?;
-            // A bound is a tick of the cycle: not negative and below its length.
-            let bound = |expr| -> Result<u64, Reason> {
-                let tick = u64::try_from(expr::eval(context, expr)?).ok();
-                tick.filter(|tick| *tick < length).ok_or(Reason::OutOfRange)
+            let read_tick = |expr| -> Result<u64, Reason> {
+                cycle_tick_of(expr::eval(context, expr)?, length).ok_or(Reason::OutOfRange)
             };
             let tick = world.world_time % length;
-            Ok(is_in_window(bound(from)?, bound(to)?, tick))
+            Ok(is_in_window(read_tick(from)?, read_tick(to)?, tick))
         }
         Cond::Players { op, value } => {
             let players = i64::from(context.presence.players);
@@ -123,6 +128,12 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         }
         Cond::Not(inner) => Ok(!holds(context, inner)?),
     }
+}
+
+/// `bound` as a tick of a cycle `length` ticks long, when it is not negative and below the
+/// length. Load checks a constant bound with it, and play a bound read from a meter.
+pub(crate) fn cycle_tick_of(bound: i64, length: u64) -> Option<u64> {
+    u64::try_from(bound).ok().filter(|tick| *tick < length)
 }
 
 fn is_in_window(start: u64, end: u64, tick: u64) -> bool {

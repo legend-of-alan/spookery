@@ -289,7 +289,7 @@ fn each_strike_rolls_once_against_success_at(world: &mut World, expected: i64) {
         let (total, success_at) = strike_line(&world.scratch, actor_id);
         assert_eq!(
             total,
-            first_strike_total(pack, actor_id),
+            derive_first_strike(pack, actor_id),
             "{actor_id} did not roll its own first key"
         );
         assert_eq!(success_at, expected, "{actor_id}'s strike took another bar");
@@ -797,7 +797,7 @@ fn strike_line(scratch: &str, actor: &str) -> (i64, i64) {
 }
 
 /// The total of `actor_id`'s first strike key this round: the docks strike's `1d20 + self.might`.
-fn first_strike_total(pack: &Path, actor_id: &str) -> i64 {
+fn derive_first_strike(pack: &Path, actor_id: &str) -> i64 {
     let session = spookery_engine::Session::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let desc = session.canon().meters.get("might").unwrap();
     let actor = actor_id.into();

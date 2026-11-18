@@ -48,7 +48,7 @@ fn item_count(amount: i64) -> Result<u32, Reason> {
 }
 
 /// The ticks `cost` takes, read for the intent's actor. A negative count is `OUT_OF_RANGE`.
-pub(crate) fn count_ticks(context: &Context, cost: &Cost) -> Result<u64, Reason> {
+pub(crate) fn read_ticks(context: &Context, cost: &Cost) -> Result<u64, Reason> {
     u64::try_from(expr::eval(context, &cost.ticks)?).map_err(|_| Reason::OutOfRange)
 }
 
