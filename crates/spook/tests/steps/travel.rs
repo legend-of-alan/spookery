@@ -504,11 +504,11 @@ fn the_lane_script_is_played_with_the_stub_gm(world: &mut World) {
 #[then(expr = "Harbormouse reaches the lane at the exit's cost in ticks and hears the ending")]
 fn harbormouse_reaches_the_lane_and_hears_the_ending(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let canon =
-        spookery_engine::load_canon(&pack).unwrap_or_else(|err| panic!("load canon: {err:?}"));
-    let yard = canon.places.get("gate_yard").unwrap();
-    let cost = yard.exits.iter().find(|exit| exit.id == "mill_lane");
-    let cost = cost.unwrap().cost.ticks;
+    // The lane's ticks as Harbormouse's map shows them.
+    let session = spookery_engine::Session::peek(&pack).unwrap();
+    let map = session.map(&ActorId::from("harbormouse")).unwrap();
+    let lane = (map.iter().flat_map(|place| &place.exits)).find(|exit| exit.exit_id == "mill_lane");
+    let cost = lane.unwrap().ticks;
     assert!(cost > 0);
     let now = world_of(&pack);
     assert_eq!(place_of(&now, "harbormouse"), "mill_lane");

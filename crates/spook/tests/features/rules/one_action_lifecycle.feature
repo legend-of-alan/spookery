@@ -8,7 +8,7 @@ Feature: One action lifecycle
 
   Scenario: An instant action lands this round and uses the act
     When Rowan plays "take lamp_oil"
-    Then Rowan holds lamp_oil
+    Then Rowan holds 1 lamp_oil
     And Rowan has used the act of round 1
 
   Scenario: A walker is on the stairs and in neither room
@@ -57,7 +57,7 @@ Feature: One action lifecycle
     Given the rule "drink" does not count its start as an act
     When Rowan plays "drink" and "take lamp_oil" in the same round
     Then that round refused nothing
-    And Rowan holds lamp_oil
+    And Rowan holds 1 lamp_oil
     And Rowan has used the act of round 1
 
   Scenario: A habit the GM queues is checked like one the engine picks

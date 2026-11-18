@@ -478,11 +478,7 @@ fn attack_targets_defense(world: &mut World) {
       target: actor
     roll:
       check: strike
-      threshold:
-        meter:
-          of: target
-          key: defense
-        plus: 10
+      threshold: "target.defense + 10"
     success:
       - flag:
           of: target

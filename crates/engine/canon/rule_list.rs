@@ -13,7 +13,7 @@ use crate::canon::source::{
 };
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::id::{ActorId, PlaceId};
-use crate::rules::expr::{stamp_spots, BinOp, Expr};
+use crate::rules::expr::{stamp_spots, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner, Phase,
@@ -166,8 +166,8 @@ pub enum CondYaml {
 pub struct HasItemYaml {
     pub subject: Spanned<String>,
     pub id: String,
-    #[serde(default = "default_count")]
-    pub count: u32,
+    /// How many the subject holds at least; 1 when left out.
+    pub count: Option<Spanned<ExprYaml>>,
 }
 
 #[derive(Deserialize)]
@@ -175,10 +175,6 @@ pub struct HasItemYaml {
 pub struct WieldingYaml {
     pub subject: Spanned<String>,
     pub id: String,
-}
-
-fn default_count() -> u32 {
-    1
 }
 
 #[derive(Deserialize)]
@@ -217,27 +213,29 @@ pub struct KnowsYaml {
 #[serde(deny_unknown_fields)]
 pub struct CycleYaml {
     pub id: String,
-    pub from: u64,
-    pub to: u64,
+    pub from: Spanned<ExprYaml>,
+    pub to: Spanned<ExprYaml>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlayersYaml {
     pub op: String,
-    pub value: i64,
+    pub value: Spanned<ExprYaml>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CostYaml {
-    #[serde(default)]
-    pub ticks: u64,
+    pub ticks: Option<Spanned<ExprYaml>>,
     #[serde(default)]
     pub meters: Counts,
     #[serde(default)]
     pub items: Counts,
 }
+
+/// Counts by key under a cost. A plain map, so each count keeps its line.
+pub type Counts = std::collections::BTreeMap<String, Spanned<ExprYaml>>;
 
 /// The start of an action. Its cost is the rule's `cost`.
 #[derive(Deserialize)]
@@ -255,15 +253,6 @@ pub struct FinishYaml {
     pub counts_as_act: bool,
 }
 
-/// Counts by key under a cost. The unit variant keeps a scalar's refusal generic.
-#[derive(Deserialize, Default)]
-#[serde(untagged)]
-pub enum Counts {
-    Map(std::collections::BTreeMap<String, Spanned<ExprYaml>>),
-    #[default]
-    None,
-}
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RollYaml {
@@ -277,22 +266,6 @@ pub struct RollYaml {
 pub enum ExprYaml {
     Literal(i64),
     Text(String),
-    Plus(MeterPlusYaml),
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct MeterPlusYaml {
-    pub meter: MeterOfYaml,
-    #[serde(default)]
-    pub plus: i64,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct MeterOfYaml {
-    pub of: Spanned<String>,
-    pub key: Spanned<String>,
 }
 
 /// One effect under a dash; its one key names the effect.
@@ -339,7 +312,7 @@ pub struct ModifierEffectYaml {
     pub id: String,
     pub add: Spanned<ExprYaml>,
     /// How long this application lasts, 1 or more.
-    pub ticks: u64,
+    pub ticks: Spanned<ExprYaml>,
 }
 
 #[derive(Deserialize)]
@@ -387,8 +360,8 @@ pub struct MemoryYaml {
 pub struct ItemEffectYaml {
     pub of: Spanned<String>,
     pub id: String,
-    pub add: i64,
-    pub max: Option<i64>,
+    pub add: Spanned<ExprYaml>,
+    pub max: Option<Spanned<ExprYaml>>,
     pub resist: Option<ResistYaml>,
 }
 
@@ -512,12 +485,12 @@ fn compile_one(
             None
         }
     };
-    let finish_cost = entry
+    let finish_yaml = entry
         .finish
         .as_ref()
         .and_then(|finish| finish.cost.as_ref());
-    let finish_cost = match finish_cost.map(cost_of).transpose() {
-        Ok(Some(cost)) if cost.ticks > 0 => {
+    let finish_cost = match finish_yaml.map(cost_of).transpose() {
+        Ok(Some(_)) if finish_yaml.is_some_and(|cost| cost.ticks.is_some()) => {
             diags.push(schema_error(
                 file,
                 &format!("rule '{local}' has ticks in its finish cost"),
@@ -793,13 +766,13 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
         CondYaml::HasItem(item) => Cond::HasItem {
             subject: actor_of(&item.subject)?,
             id: item.id.clone(),
-            count: item.count,
+            count: (item.count.as_ref()).map_or(Ok(Expr::Num(1)), refuse_dice)?,
         },
         CondYaml::Meter(meter) => Cond::Meter {
             of: object_of(&meter.of)?,
             key: meter.id.clone(),
             op: op_of(&meter.op)?,
-            value: cond_value_of(&meter.value)?,
+            value: refuse_dice(&meter.value)?,
         },
         CondYaml::Flag(flag) => Cond::Flag {
             of: object_of(&flag.of)?,
@@ -814,17 +787,20 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
             subject: actor_of(&knows.subject)?,
             fact: knows.fact.clone(),
         },
-        CondYaml::Cycle(cycle) if cycle.from == cycle.to => {
-            return Err("cycle needs from and to that differ".into());
+        CondYaml::Cycle(cycle) => {
+            let (from, to) = (refuse_dice(&cycle.from)?, refuse_dice(&cycle.to)?);
+            if from.constant().is_some() && from.constant() == to.constant() {
+                return Err("cycle needs from and to that differ".into());
+            }
+            Cond::Cycle {
+                id: cycle.id.clone(),
+                from,
+                to,
+            }
         }
-        CondYaml::Cycle(cycle) => Cond::Cycle {
-            id: cycle.id.clone(),
-            from: cycle.from,
-            to: cycle.to,
-        },
         CondYaml::Players(players) => Cond::Players {
             op: op_of(&players.op)?,
-            value: players.value,
+            value: refuse_dice(&players.value)?,
         },
         CondYaml::NoteExists(id) => Cond::NoteExists(id.clone()),
         CondYaml::Wielding(wielding) => Cond::Wielding {
@@ -839,20 +815,16 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
 
 pub(super) fn cost_of(yaml: &CostYaml) -> Result<Cost, Fault> {
     Ok(Cost {
-        ticks: yaml.ticks,
+        ticks: (yaml.ticks.as_ref()).map_or(Ok(Expr::Num(0)), refuse_dice)?,
         meters: counts_of(&yaml.meters)?,
         items: counts_of(&yaml.items)?,
     })
 }
 
 fn counts_of(yaml: &Counts) -> Result<Vec<(String, Expr)>, Fault> {
-    match yaml {
-        Counts::Map(map) => map
-            .iter()
-            .map(|(key, n)| Ok((key.clone(), expr_of(n)?)))
-            .collect(),
-        Counts::None => Ok(Vec::new()),
-    }
+    (yaml.iter())
+        .map(|(key, n)| Ok((key.clone(), refuse_dice(n)?)))
+        .collect()
 }
 
 fn roll_of(yaml: &RollYaml) -> Result<RollSpec, Fault> {
@@ -866,11 +838,12 @@ fn roll_of(yaml: &RollYaml) -> Result<RollSpec, Fault> {
     })
 }
 
-fn cond_value_of(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
+/// A number in a condition or a cost, refused on its line when it rolls dice.
+fn refuse_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
     let expr = expr_of(yaml)?;
     if expr.needs_dice() {
         return Err(Fault {
-            message: "a condition cannot roll dice".into(),
+            message: "a condition or a cost cannot roll dice".into(),
             spot: spot_of(yaml),
         });
     }
@@ -887,22 +860,6 @@ fn expr_of(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
                 stamp_spots(&mut expr, line, column);
             }
             Ok(expr)
-        }
-        ExprYaml::Plus(plus) => {
-            let meter = Expr::Meter {
-                of: object_of(&plus.meter.of)?,
-                key: plus.meter.key.value.clone(),
-                spot: spot_of(&plus.meter.key).or(spot),
-            };
-            if plus.plus == 0 {
-                Ok(meter)
-            } else {
-                Ok(Expr::Binary {
-                    op: BinOp::Add,
-                    left: Box::new(meter),
-                    right: Box::new(Expr::Num(plus.plus)),
-                })
-            }
         }
     }
 }
@@ -941,15 +898,20 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             value: flag.value,
             resist: resist_of(flag.resist.as_ref())?,
         },
-        EffectYaml::Modifier(modifier) if modifier.ticks == 0 => {
-            return Err("a modifier effect has ticks below 1, so set ticks to 1 or more".into());
+        EffectYaml::Modifier(modifier) => {
+            let ticks = expr_of(&modifier.ticks)?;
+            if ticks.constant().is_some_and(|ticks| ticks < 1) {
+                return Err(
+                    "a modifier effect has ticks below 1, so set ticks to 1 or more".into(),
+                );
+            }
+            EffectTemplate::Modifier {
+                to: actor_of(&modifier.to)?,
+                id: modifier.id.clone(),
+                add: expr_of(&modifier.add)?,
+                ticks,
+            }
         }
-        EffectYaml::Modifier(modifier) => EffectTemplate::Modifier {
-            to: actor_of(&modifier.to)?,
-            id: modifier.id.clone(),
-            add: expr_of(&modifier.add)?,
-            ticks: modifier.ticks,
-        },
         EffectYaml::Location(location) => EffectTemplate::Location {
             to: match (&location.to, &location.via) {
                 (Some(word), None) if word == "target" => LocationTo::Target,
@@ -990,8 +952,8 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
         EffectYaml::Item(item) => EffectTemplate::Item {
             of: object_of(&item.of)?,
             id: item.id.clone(),
-            add: item.add,
-            max: item.max,
+            add: expr_of(&item.add)?,
+            max: item.max.as_ref().map(expr_of).transpose()?,
             resist: resist_of(item.resist.as_ref())?,
         },
         EffectYaml::Reveal(reveal) => EffectTemplate::Reveal {

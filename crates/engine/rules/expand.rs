@@ -156,7 +156,9 @@ fn push_effects(
                     actor_id: expr::resolve_actor(context, to)?.clone(),
                     id: id.clone(),
                     add: expr::eval_with_dice(context, add, dice)?,
-                    ticks: *ticks,
+                    ticks: (u64::try_from(expr::eval_with_dice(context, ticks, dice)?).ok())
+                        .filter(|ticks| *ticks >= 1)
+                        .ok_or(Reason::OutOfRange)?,
                 },
             ));
         }
@@ -206,8 +208,10 @@ fn push_effects(
                     actor_id,
                     place,
                     id: item_id,
-                    delta: *add,
-                    max: *max,
+                    delta: expr::eval_with_dice(context, add, dice)?,
+                    max: (max.as_ref())
+                        .map(|max| expr::eval_with_dice(context, max, dice))
+                        .transpose()?,
                 },
             ));
         }

@@ -72,13 +72,29 @@ Feature: Dice and arithmetic in rule numbers
     Then Mira's vigor rose by the 1d4 face
     And the journal records the 1d4 face
 
-  Scenario: Dice in a condition fail spook check
+  Scenario Outline: Dice in a condition or a cost fail spook check
     Given a docks table
-    When the pack's hit requires vigor of at least "1d6"
+    When the pack's hit has "1d6" as <number>
     And the operator runs spook check
     Then the check exits 1
     And the report says "cannot roll dice"
     And the report names the line holding "1d6"
+
+    Examples:
+      | number            |
+      | a condition value |
+      | a cost amount     |
+      | a cost item count |
+      | its cost ticks    |
+
+  Scenario: Every number in a rule line can read a meter
+    Given a docks table with Rowan and Wren seated in the shop
+    And the rule "stock" reads Rowan's rest of 3 in every number
+    When Rowan plays "stock"
+    Then Rowan's look shows "stocking until tick 1090"
+    When rounds pass until tick 1090
+    Then Rowan holds 4 chock
+    And the fatigue has 5 ticks left
 
   Scenario: Overflow refuses the effect and changes nothing
     Given a docks table

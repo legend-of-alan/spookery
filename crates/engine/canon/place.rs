@@ -13,6 +13,7 @@ use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::PlaceId;
 use crate::entity;
+use crate::rules::expr::Expr;
 use crate::rules::rule::{self, Cost, Owner, Rule, TargetKind};
 
 /// The meters one place file declares, by that file, for `load_canon` to add once the meters
@@ -127,7 +128,7 @@ fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>
                 }
             },
             None => Cost {
-                ticks: 0,
+                ticks: Expr::Num(0),
                 meters: Vec::new(),
                 items: Vec::new(),
             },

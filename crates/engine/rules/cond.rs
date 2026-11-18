@@ -4,8 +4,8 @@ use crate::canon::{Canon, OPEN};
 use crate::ecs::component::Note;
 use crate::ecs::id::GlobalId;
 use crate::ecs::{self, component, Presence};
-use crate::intent::{Intent, Source, Target, Viewer};
-use crate::rules::context::Context;
+use crate::intent::{Target, Viewer};
+use crate::rules::context::{self, Context};
 use crate::rules::expr;
 use crate::rules::grammar;
 use crate::rules::rule::Cond;
@@ -22,8 +22,8 @@ pub(crate) fn all_hold(context: &Context, conds: &[Cond]) -> Result<(), Reason> 
 }
 
 /// Whether `conds` hold for `viewer` doing `verb` to `target`. `help`, exit locks and an
-/// NPC's habit list read an `if` this way: they have no intent, so they read it against a
-/// probe with no id.
+/// NPC's habit list read an `if` this way: they have no intent, so they read it against
+/// [`context::probe`].
 pub(crate) fn if_holds(
     canon: &Canon,
     world: &ecs::World,
@@ -33,14 +33,7 @@ pub(crate) fn if_holds(
     target: Target,
     conds: &[Cond],
 ) -> bool {
-    let probe = Intent::new(
-        String::new(),
-        world.round_index,
-        Some(viewer.clone()),
-        Source::Player,
-        verb,
-        target,
-    );
+    let probe = context::probe(world, viewer, verb, target);
     all_hold(&Context::new(canon, world, presence, &probe), conds).is_ok()
 }
 
@@ -62,7 +55,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let actor = expr::resolve_actor(context, subject)?;
             let id = expr::resolve_item_id(context, id)?;
             let held = world.actors().get::<component::Item>(actor);
-            Ok(held.get(&id).copied().unwrap_or(0) >= *count)
+            Ok(i64::from(held.get(&id).copied().unwrap_or(0)) >= expr::eval(context, count)?)
         }
         Cond::Wielding { subject, id } => {
             let actor = expr::resolve_actor(context, subject)?;
@@ -97,11 +90,20 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             Ok(known.is_some_and(|facts| facts.iter().any(|id| id == fact)))
         }
         Cond::Cycle { id, from, to } => {
-            let length = context.canon.budget.cycles.get(id);
-            let tick = world.world_time % length.ok_or(Reason::UnknownId)?;
-            Ok(is_in_window(*from, *to, tick))
+            let cycles = &context.canon.budget.cycles;
+            let length = *cycles.get(id).ok_or(Reason::UnknownId)?;
+            // A bound is a tick of the cycle: not negative and below its length.
+            let bound = |expr| -> Result<u64, Reason> {
+                let tick = u64::try_from(expr::eval(context, expr)?).ok();
+                tick.filter(|tick| *tick < length).ok_or(Reason::OutOfRange)
+            };
+            let tick = world.world_time % length;
+            Ok(is_in_window(bound(from)?, bound(to)?, tick))
         }
-        Cond::Players { op, value } => Ok(op.holds(i64::from(context.presence.players), *value)),
+        Cond::Players { op, value } => {
+            let players = i64::from(context.presence.players);
+            Ok(op.holds(players, expr::eval(context, value)?))
+        }
         Cond::NoteExists(id) => Ok(world.globals().get::<Note>(&GlobalId).contains(id)),
         Cond::All(inner) => {
             for cond in inner {

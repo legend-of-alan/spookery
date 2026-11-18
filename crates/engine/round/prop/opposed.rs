@@ -36,12 +36,6 @@ fn a_refused_or_dropped_opposing_roll_replays_the_same_way() {
             "    if: [has_item: { subject: self, id: chock }]\n",
             Some(Reason::MissingItem),
         ),
-        // A dice cost passes the gate, then goes unpaid in apply.
-        (
-            None,
-            "    cost: { items: { chock: 1d4 } }\n",
-            Some(Reason::CantAfford),
-        ),
         // Players go first, so the strike is cut, refused `BUDGET`, and the lunge reads it from
         // the raw queue.
         (Some("max_intents_applied: 1"), "", None),

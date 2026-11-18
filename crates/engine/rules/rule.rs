@@ -68,7 +68,7 @@ impl Rule {
     }
 
     /// Every number the rule holds: its roll's threshold and band, its costs, its conditions'
-    /// values, and its effects' amounts and resist thresholds.
+    /// numbers, and its effects' amounts, caps, ticks and resist thresholds.
     pub(crate) fn exprs(&self) -> Vec<&Expr> {
         let mut exprs = Vec::new();
         if let Some(roll) = &self.roll {
@@ -81,8 +81,9 @@ impl Rule {
         exprs.extend(self.if_.iter().flat_map(Cond::exprs));
         self.visit_templates(|effect| {
             match effect {
-                EffectTemplate::Modifier { add, .. } => exprs.push(add),
+                EffectTemplate::Modifier { add, ticks, .. } => exprs.extend([add, ticks]),
                 EffectTemplate::Meter { add, set, .. } => exprs.extend(add.iter().chain(set)),
+                EffectTemplate::Item { add, max, .. } => exprs.extend([add].into_iter().chain(max)),
                 _ => {}
             }
             if let Some(ResistSpec::Roll { threshold, .. }) = effect.resist() {
@@ -293,15 +294,16 @@ pub struct LineColumn {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Cost {
-    pub ticks: u64,
+    pub ticks: Expr,
     pub meters: Vec<(String, Expr)>,
     pub items: Vec<(String, Expr)>,
 }
 
 impl Cost {
-    /// The meter amounts, then the item counts.
+    /// The ticks, the meter amounts, then the item counts.
     pub(crate) fn exprs(&self) -> impl Iterator<Item = &Expr> {
-        self.meters.iter().chain(&self.items).map(|(_, expr)| expr)
+        let amounts = self.meters.iter().chain(&self.items).map(|(_, expr)| expr);
+        std::iter::once(&self.ticks).chain(amounts)
     }
 }
 
@@ -310,7 +312,7 @@ pub enum Cond {
     HasItem {
         subject: grammar::Actor,
         id: String,
-        count: u32,
+        count: Expr,
     },
     Meter {
         of: grammar::Object,
@@ -334,12 +336,12 @@ pub enum Cond {
     /// A tick of cycle `id` in `from..to`, wrapping past the cycle's end when `from > to`.
     Cycle {
         id: String,
-        from: u64,
-        to: u64,
+        from: Expr,
+        to: Expr,
     },
     Players {
         op: Op,
-        value: i64,
+        value: Expr,
     },
     NoteExists(String),
     Wielding {
@@ -368,13 +370,16 @@ impl Cond {
         walk(self, &mut visit);
     }
 
-    /// The value each meter leaf compares against, walking into `all`, `any` and `not`.
+    /// Every number a leaf holds: an item count, a meter or player value, a cycle's bounds,
+    /// walking into `all`, `any` and `not`.
     pub(crate) fn exprs(&self) -> Vec<&Expr> {
         let mut exprs = Vec::new();
-        self.visit(|cond| {
-            if let Cond::Meter { value, .. } = cond {
-                exprs.push(value);
-            }
+        self.visit(|cond| match cond {
+            Cond::HasItem { count: value, .. }
+            | Cond::Meter { value, .. }
+            | Cond::Players { value, .. } => exprs.push(value),
+            Cond::Cycle { from, to, .. } => exprs.extend([from, to]),
+            _ => {}
         });
         exprs
     }
@@ -432,7 +437,7 @@ pub enum EffectTemplate {
         to: grammar::Actor,
         id: String,
         add: Expr,
-        ticks: u64,
+        ticks: Expr,
     },
     Location {
         to: LocationTo,
@@ -459,8 +464,8 @@ pub enum EffectTemplate {
     Item {
         of: grammar::Object,
         id: String,
-        add: i64,
-        max: Option<i64>,
+        add: Expr,
+        max: Option<Expr>,
         resist: Option<ResistSpec>,
     },
     Reveal {

@@ -152,7 +152,7 @@ pub(crate) fn map(
                         .exits
                         .iter()
                         .filter(|exit| seen.contains(&exit.id))
-                        .map(|exit| exit_view(canon, world, exit))
+                        .map(|exit| exit_view(canon, world, actor_id, exit))
                         .collect()
                 })
                 .unwrap_or_default(),

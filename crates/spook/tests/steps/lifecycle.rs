@@ -263,12 +263,12 @@ fn the_gm_queues_miras(world: &mut World, habit: String) {
     };
 }
 
-#[then(expr = "Rowan holds lamp_oil")]
-fn rowan_holds_lamp_oil(world: &mut World) {
+#[then(expr = "Rowan holds {int} {word}")]
+fn rowan_holds(world: &mut World, count: u32, id: String) {
     let now = world_of(world.pack.as_ref().unwrap());
     let rowan = "rowan".into();
-    let oil = now.actors().get::<component::Item>(&rowan).get("lamp_oil");
-    assert_eq!(oil.copied().unwrap_or(0), 1);
+    let held = now.actors().get::<component::Item>(&rowan).get(&id);
+    assert_eq!(held.copied().unwrap_or(0), count);
 }
 
 #[then(expr = "Rowan has used no act")]

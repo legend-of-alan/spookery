@@ -521,11 +521,11 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
         for cond in conds {
             cond.visit(|cond| {
                 if let Cond::Cycle { id, from, to } = cond {
-                    cycles.push((id.as_str(), *from, *to));
+                    cycles.push((id.as_str(), [from.constant(), to.constant()]));
                 }
             });
         }
-        for (id, from, to) in cycles {
+        for (id, bounds) in cycles {
             let Some(&length) = canon.budget.cycles.get(id) else {
                 diags.push(
                     schema_error(
@@ -537,7 +537,9 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
                 );
                 continue;
             };
-            if from.max(to) >= length {
+            // A bound that reads a meter is checked when it is read at play.
+            let outside = |bound| u64::try_from(bound).map_or(true, |bound| bound >= length);
+            if bounds.into_iter().flatten().any(outside) {
                 diags.push(
                     schema_error(
                         file,
@@ -724,16 +726,15 @@ fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<Write>) {
         }
         EffectTemplate::Meter { key, .. } => out.push(Write::Meter(key.clone())),
         EffectTemplate::Item { id, add, .. } => {
-            if *add > 0 {
-                out.push(Write::Item {
-                    id: id.clone(),
-                    gained: true,
-                });
-            } else if *add < 0 {
-                out.push(Write::Item {
-                    id: id.clone(),
-                    gained: false,
-                });
+            // An amount that is not constant may be a gain or a loss.
+            let sign = add.constant().map(i64::signum);
+            for (gained, signum) in [(true, 1), (false, -1)] {
+                if sign.is_none_or(|sign| sign == signum) {
+                    out.push(Write::Item {
+                        id: id.clone(),
+                        gained,
+                    });
+                }
             }
         }
         EffectTemplate::Location {
