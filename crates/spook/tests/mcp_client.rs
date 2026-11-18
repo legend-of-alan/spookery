@@ -8,15 +8,14 @@ use rmcp::model::{
     ProtocolVersion, Tool,
 };
 use rmcp::service::{NotificationContext, RoleClient, RunningService};
-use rmcp::transport::{StreamableHttpClientTransport, Transport};
+use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::{ClientHandler, ServiceExt};
 use serde_json::Value;
 use spookery::protocol::{ServerBody, ServerMessage, ToolResult};
 use tokio::sync::mpsc;
 
-/// One item on the event channel: an event, the line for one that could not be read, or
-/// `None` for the end of the seat.
-type EventItem = Option<Result<ServerMessage, String>>;
+/// One item on the event channel: an event, or the line for one that could not be read.
+type EventItem = Result<ServerMessage, String>;
 
 /// Hands each `spook/event` notification to the `GmClient` as an `EventItem`.
 struct EventSender {
@@ -30,7 +29,7 @@ impl ClientHandler for EventSender {
         _context: NotificationContext<RoleClient>,
     ) -> impl std::future::Future<Output = ()> + Send + '_ {
         if notification.method == "spook/event" {
-            let _ = self.tx.send(Some(parse_event(notification.params)));
+            let _ = self.tx.send(parse_event(notification.params));
         }
         std::future::ready(())
     }
@@ -56,11 +55,7 @@ impl GmClient {
     pub(crate) async fn connect(mcp_addr: SocketAddr) -> Result<Self, String> {
         let url = format!("http://{mcp_addr}/mcp");
         let (tx, rx) = mpsc::unbounded_channel();
-        let transport = ClientTransport {
-            inner: StreamableHttpClientTransport::from_uri(url),
-            tx: tx.clone(),
-            closed: false,
-        };
+        let transport = StreamableHttpClientTransport::from_uri(url);
         let sender = EventSender { tx };
         let service = sender
             .serve(transport)
@@ -72,14 +67,14 @@ impl GmClient {
             buffered: VecDeque::new(),
         };
         match gm.recv().await {
-            Some(Ok(hello)) if matches!(hello.body, ServerBody::Hello { .. }) => {
-                gm.buffered.push_front(Some(Ok(hello)));
+            Ok(hello) if matches!(hello.body, ServerBody::Hello { .. }) => {
+                gm.buffered.push_front(Ok(hello));
                 Ok(gm)
             }
-            Some(Ok(ServerMessage {
+            Ok(ServerMessage {
                 body: ServerBody::Refused(refusal),
                 ..
-            })) => {
+            }) => {
                 gm.close().await;
                 Err(refusal.to_string())
             }
@@ -126,29 +121,30 @@ impl GmClient {
     /// Events read while waiting for the latest tool result, in arrival order.
     pub(crate) fn drain_events(&mut self) -> Vec<ServerMessage> {
         let mut out = Vec::new();
-        while matches!(self.buffered.front(), Some(Some(Ok(_)))) {
-            if let Some(Some(Ok(event))) = self.buffered.pop_front() {
+        while matches!(self.buffered.front(), Some(Ok(_))) {
+            if let Some(Ok(event)) = self.buffered.pop_front() {
                 out.push(event);
             }
         }
         out
     }
 
-    /// The next event, or the line for one that could not be read. `None` when the seat ends.
+    /// The next event, or the line for one that could not be read.
     pub(crate) async fn recv(&mut self) -> EventItem {
         if let Some(item) = self.buffered.pop_front() {
             return item;
         }
-        self.rx.recv().await.flatten()
+        self.rx
+            .recv()
+            .await
+            .unwrap_or_else(|| Err("the event channel closed".to_string()))
     }
 
-    /// Buffered events, then any the reader has already queued. An end of the seat among
-    /// them is dropped.
-    pub(crate) fn drain(&mut self) -> Vec<Result<ServerMessage, String>> {
-        let mut out: Vec<Result<ServerMessage, String>> =
-            self.buffered.drain(..).flatten().collect();
+    /// Buffered events, then any the reader has already queued.
+    pub(crate) fn drain(&mut self) -> Vec<EventItem> {
+        let mut out: Vec<EventItem> = self.buffered.drain(..).collect();
         while let Ok(item) = self.rx.try_recv() {
-            out.extend(item);
+            out.push(item);
         }
         out
     }
@@ -156,41 +152,6 @@ impl GmClient {
     /// Give the seat back. The host has freed it when this returns.
     pub(crate) async fn close(self) {
         let _ = self.service.cancel().await;
-    }
-}
-
-/// The streamable HTTP transport, plus one end-of-seat notice: `receive` returning nothing
-/// sends `None` on the event channel, so `GmClient::recv` returns `None`.
-struct ClientTransport<T> {
-    inner: T,
-    tx: mpsc::UnboundedSender<EventItem>,
-    closed: bool,
-}
-
-impl<T> Transport<RoleClient> for ClientTransport<T>
-where
-    T: Transport<RoleClient>,
-{
-    type Error = T::Error;
-
-    fn send(
-        &mut self,
-        item: rmcp::service::TxJsonRpcMessage<RoleClient>,
-    ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send + 'static {
-        self.inner.send(item)
-    }
-
-    async fn receive(&mut self) -> Option<rmcp::service::RxJsonRpcMessage<RoleClient>> {
-        let message = self.inner.receive().await;
-        if message.is_none() && !self.closed {
-            self.closed = true;
-            let _ = self.tx.send(None);
-        }
-        message
-    }
-
-    fn close(&mut self) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
-        self.inner.close()
     }
 }
 
