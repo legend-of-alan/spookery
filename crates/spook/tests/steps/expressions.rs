@@ -73,20 +73,39 @@ fn the_packs_hit_stores_and_adds_twice(world: &mut World, lets: String, add: Str
 }
 
 #[when(
-    expr = "the pack's hit stores {string}, checks {string} against {int}, takes {int} ticks, and adds {string} to vigor on a success"
+    expr = "the pack's hit stores {string}, checks {string} against {int}, and adds {string} to vigor on a success"
 )]
 fn the_packs_hit_stores_and_checks(
     world: &mut World,
     lets: String,
     total: String,
     success_at: i64,
-    ticks: u64,
     add: String,
 ) {
     append_rule(
         world,
         &format!(
-            "\n  - id: hit\n    when: {{ verb: hit }}\n    let: {{ {lets} }}\n    cost: {{ ticks: {ticks} }}\n    check: {{ total: {total}, success_at: {success_at} }}\n    success:\n      - meter: {{ of: self, key: vigor, add: {add} }}\n"
+            "\n  - id: hit\n    when: {{ verb: hit }}\n    let: {{ {lets} }}\n    check: {{ total: {total}, success_at: {success_at} }}\n    success:\n      - meter: {{ of: self, key: vigor, add: {add} }}\n"
+        ),
+    );
+}
+
+#[when(expr = "the pack's hit stores {string}, takes {int} ticks, and adds {string} to vigor")]
+fn the_packs_timed_hit_stores(world: &mut World, lets: String, ticks: u64, add: String) {
+    append_rule(
+        world,
+        &format!(
+            "\n  - id: hit\n    when: {{ verb: hit }}\n    let: {{ {lets} }}\n    cost: {{ ticks: {ticks} }}\n    do:\n      - meter: {{ of: self, key: vigor, add: {add} }}\n"
+        ),
+    );
+}
+
+#[when(expr = "Mira's rouse takes {int} ticks and adds {int} to Rowan's rest")]
+fn miras_rouse(world: &mut World, ticks: u64, add: i64) {
+    append_rule(
+        world,
+        &format!(
+            "\n  - id: rouse\n    when: {{ verb: rouse }}\n    cost: {{ ticks: {ticks} }}\n    do:\n      - meter: {{ of: rowan, key: rest, add: {add} }}\n"
         ),
     );
 }
@@ -146,7 +165,9 @@ fn the_pack_has(world: &mut World, number: String, field: String) {
     crate::support::stamp_pack_rev(&pack);
 }
 
-#[when(regex = r"^the player (hits|hits Aldric) and the GM commits$")]
+#[when(
+    regex = r"^the player (hits|hits Aldric|hits while the GM queues Mira's rouse) and the GM commits$"
+)]
 fn the_player_hits_and_the_gm_commits(world: &mut World, hits: String) {
     let pack = table::pack(world).to_path_buf();
     let snap = crate::support::fresh_dir("before-hit");
@@ -155,8 +176,17 @@ fn the_player_hits_and_the_gm_commits(world: &mut World, hits: String) {
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
     table::seat_gm(world);
-    let line = if hits == "hits" { "hit" } else { "hit aldric" };
+    let line = if hits == "hits Aldric" {
+        "hit aldric"
+    } else {
+        "hit"
+    };
     let _ = table::player_send(world, line, "\"kind\":\"queued\"");
+    if hits.ends_with("rouse") {
+        let queued =
+            table::gm_tool_call(world, 6, "queue", r#"{"actor_id":"mira","move":"rouse"}"#);
+        assert!(!queued.contains("\"refused\""), "{queued}");
+    }
     world.mark = table::player_mark(world);
     world.stdout = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#);
 }

@@ -11,8 +11,8 @@ the [seat protocol](seat-protocol.md).
 
 ## One writer
 
-The journal changes when a round commits, and when migrate stores a new hash of
-the world, cast, and rules files. Sitting or leaving writes nothing. A GM `say` is
+A round commit and a migrate, which stores a new hash of the world, cast, and
+rules files, each bump `state_rev`. Sitting or leaving writes nothing. A GM `say` is
 speech. A commit runs the queued moves as one round, in queue order. With no GM,
 each player line commits its own round. A call off the GM menu is refused.
 Speech goes on the tape and leaves the journal and the clock alone. A world,
