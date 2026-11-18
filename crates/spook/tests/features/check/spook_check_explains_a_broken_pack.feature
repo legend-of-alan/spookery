@@ -32,6 +32,7 @@ Feature: spook check explains a broken pack
       | meter base outside its range | rules/meters.yaml          | SCHEMA            | base outside min and base_cap      |
       | pack_rev mismatch            | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                           |
       | an actor the cast lacks      | state/save.yaml            | SCHEMA            | is not a cast member               |
+      | a control type with two keys | state/save.yaml            | SCHEMA            | two keys where one belongs         |
       | exit to an unknown place     | world/places/docks_shop.md | SCHEMA            | not a place                        |
       | duplicate exit               | world/places/docks_shop.md | SCHEMA            | listed twice                       |
       | a target alias               | rules/verbs.yaml           | SCHEMA            | not a target kind                  |
@@ -51,6 +52,7 @@ Feature: spook check explains a broken pack
       | owner target on an item move | rules/verbs.yaml           | SCHEMA            | in of:, but its target is item     |
       | id: target with no target    | rules/verbs.yaml           | SCHEMA            | in id:, but its target is none     |
       | a save by target with none   | rules/verbs.yaml           | SCHEMA            | in by:, but its target is none     |
+      | target on an exit            | world/places/gate_yard.md  | SCHEMA            | but an exit has no target          |
 
   Scenario: Two problems in two files are both reported
     Given a docks table
@@ -138,9 +140,9 @@ Feature: spook check explains a broken pack
     And a JSON diagnostic has code "WARNING" file "world/places" path "docks_street" and null line and column
     And stderr is empty
 
-  Scenario: Teleport in verbs.yaml is a warning and the check still exits 0
+  Scenario Outline: Teleport in verbs.yaml is a warning and the check still exits 0
     Given a docks table
-    When travel in verbs.yaml teleports
+    When travel in verbs.yaml teleports <walk>
     And the pack_rev is restamped
     And the operator runs spook check
     Then the check exits 0
@@ -152,6 +154,11 @@ Feature: spook check explains a broken pack
     And stdout is a JSON array of diagnostics
     And a JSON diagnostic has code "WARNING" file "rules/verbs.yaml" path "rules[1]" and null line and column
     And stderr is empty
+
+    Examples:
+      | walk                  |
+      | at once               |
+      | inside a nested check |
 
   Scenario: Long gm_notes are a warning and the check still exits 0
     Given a docks table

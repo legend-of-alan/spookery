@@ -558,15 +558,27 @@ fn compile_one(
                 "add success",
             ));
         }
-        let band_problem = check
-            .as_ref()
-            .and_then(|check| find_partial_band_problem(check, &partial));
+        let mut checks: Vec<_> = check.iter().map(|check| (check, &partial[..])).collect();
+        for effect in [&do_, &success, &partial, &miss].into_iter().flatten() {
+            effect.visit(|effect| {
+                if let EffectTemplate::Check { check, partial, .. } = effect {
+                    checks.push((check, &partial[..]));
+                }
+            });
+        }
+        let band_problem = (checks.into_iter())
+            .find_map(|(check, partial)| find_partial_band_problem(check, partial));
         if let Some((problem, hint)) = band_problem {
-            diags.push(schema_error(
-                file,
-                &format!("rule '{local}' {problem}"),
-                hint,
-            ));
+            diags.push(
+                Problem {
+                    source: &source,
+                    path: &format!("rules[{index}].id"),
+                    at: Locator::Spot(spot_of(&entry.id)),
+                    message: format!("rule '{local}' {problem}"),
+                    hint,
+                }
+                .into_diagnostic(),
+            );
         }
     }
     if !diags.is_empty() {
@@ -991,25 +1003,20 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             subject: actor_of(&unwield.subject)?,
         },
         EffectYaml::Check(nested) => {
-            let check = check_of(
-                &nested.total,
-                &nested.success_at,
-                nested.partial_at.as_ref(),
-            )?;
             let list_of =
                 |list: &[EffectYaml]| list.iter().map(effect_of).collect::<Result<Vec<_>, _>>();
-            let partial = list_of(&nested.partial)?;
-            if let Some((problem, hint)) = find_partial_band_problem(&check, &partial) {
-                return Err(format!("a nested check {problem}, so {hint}").into());
-            }
             EffectTemplate::Check {
                 by: match &nested.by {
                     Some(by) => actor_of(by)?,
                     None => grammar::Actor::Self_,
                 },
-                check,
+                check: check_of(
+                    &nested.total,
+                    &nested.success_at,
+                    nested.partial_at.as_ref(),
+                )?,
                 success: list_of(&nested.success)?,
-                partial,
+                partial: list_of(&nested.partial)?,
                 miss: list_of(&nested.miss)?,
             }
         }
@@ -1017,7 +1024,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
 }
 
 /// What is wrong with `check`'s partial band, given `partial`, the list its partial outcome
-/// runs, as the words after the check's name and the hint: a `partial_at` with no list, a list
+/// runs, as the words after the rule's id and the hint: a `partial_at` with no list, a list
 /// with no `partial_at`, or a constant `partial_at` at or above a constant `success_at`.
 fn find_partial_band_problem(
     check: &rule::Check,

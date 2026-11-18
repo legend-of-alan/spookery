@@ -92,14 +92,16 @@ Feature: Dice and arithmetic in rule numbers
       | a cost item count |
       | its cost ticks    |
 
-  Scenario: Every number in a rule line can read a meter
+  Scenario: Every number in a rule line can read a meter, and an exit's ticks are read for each viewer
     Given a docks table with Rowan and Wren seated in the shop
     And the rule "stock" reads Rowan's rest of 3 in every number
+    And the pack has "self.assassination_debt + 3" as the street exit's ticks
     When Rowan plays "stock"
     Then Rowan's look shows "stocking until tick 1090"
     When rounds pass until tick 1090
     Then Rowan holds 4 chock
     And the fatigue has 5 ticks left
+    And the street exit shows 5 ticks to Rowan and 0 to Wren, who carries no assassination_debt
 
   Scenario Outline: A number read out of range at play refuses the move OUT_OF_RANGE
     Given a docks table with Rowan and Wren seated in the shop

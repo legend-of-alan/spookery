@@ -28,14 +28,15 @@ fn the_street_exit_is_removed(world: &mut World) {
     );
 }
 
-#[when(expr = "travel in verbs.yaml teleports")]
-fn travel_in_verbs_yaml_teleports(world: &mut World) {
+#[when(regex = r"^travel in verbs.yaml teleports (at once|inside a nested check)$")]
+fn travel_in_verbs_yaml_teleports(world: &mut World, walk: String) {
     let pack = table::pack(world).to_path_buf();
-    super::common::replace_in_file(
-        &pack.join("rules/verbs.yaml"),
-        "          via: target\n",
-        "          via: target\n          teleport: true\n",
-    );
+    let teleport = match walk.as_str() {
+        "at once" => "      - location:\n          via: target\n          teleport: true\n",
+        _ => "      - check: { total: 1, success_at: 1, success: [{ location: { via: target, teleport: true } }] }\n",
+    };
+    let location = "      - location:\n          via: target\n";
+    super::common::replace_in_file(&pack.join("rules/verbs.yaml"), location, teleport);
 }
 
 #[when(expr = "the pack's gm_notes run to {int} characters")]
