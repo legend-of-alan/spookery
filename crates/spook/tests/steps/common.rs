@@ -14,12 +14,6 @@ use crate::World;
 
 pub(crate) const EVENING: u64 = 1290;
 
-/// The first word of `line`, and the rest of it when there is any.
-pub(crate) fn split_line(line: &str) -> (&str, Option<&str>) {
-    line.split_once(' ')
-        .map_or((line, None), |(head, rest)| (head, Some(rest)))
-}
-
 pub(crate) use crate::support::edit_save;
 
 /// Rowan holds brass_key, and the stair door is open, as a round that ended with him in the
@@ -743,6 +737,14 @@ fn is_in(world: &mut World, actor: String, place: String) {
     let [actor, place] =
         [&actor, &place].map(|text| resolve_id(now.canon(), text.trim_matches('"')));
     assert_eq!(place_of(&now, &actor), place);
+}
+
+#[then(regex = r"^(?P<actor>\S+) (?P<has>has|does not have) flag (?P<flag>\S+)$")]
+fn has_flag(world: &mut World, actor: String, has: String, flag: String) {
+    let now = world_of(table::pack(world));
+    let actor = resolve_id(now.canon(), &actor);
+    let flags = flags_of(&now, &actor);
+    assert_eq!(flags.contains(&flag), has == "has", "{actor}: {flags:?}");
 }
 
 #[when(regex = r"^the player marks (?P<actor>\S+)$")]

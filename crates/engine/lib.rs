@@ -303,11 +303,4 @@ pub mod testing {
             }
         });
     }
-
-    pub fn read_round(pack: &Path, key: &str) -> serde_json::Value {
-        let text = journal::read_record_line(pack, key)
-            .unwrap_or_else(|err| panic!("{} {key}: {}", pack.display(), err.detail));
-        serde_json::from_str(text.trim_end())
-            .unwrap_or_else(|err| panic!("{} {key}: {err}\n{text}", pack.display()))
-    }
 }

@@ -7,7 +7,7 @@ Feature: A rule stores a roll in let
     Then Rowan's and Mira's vigor both rose by the boost total
     And the GM commit reply holds dice lines for "boost: 2d6"
     And the player text has no dice faces
-    And replaying the round reproduces the save
+    And spook verify passes
 
   Scenario Outline: high and low read one face of a stored pool, also from a nested check under by: target
     Given a docks table

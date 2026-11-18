@@ -1,5 +1,5 @@
 use cucumber::when;
-use spookery_engine::testing::world_of;
+use spookery_engine::testing::{act_of, world_of};
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -8,23 +8,13 @@ use std::time::Duration;
 use serde_json::Value;
 use spookery_engine::testing::journal::list_round_keys;
 
-use crate::support::{self, read_round, stamp_pack_rev};
+use crate::support::{self, stamp_pack_rev};
 use crate::World;
 
 use super::table;
 
 /// The docks pack's `round_every_real_seconds`: one idle timer interval.
 const INTERVAL: Duration = Duration::from_secs(300);
-
-fn player_wait_ids(round: &Value) -> Vec<String> {
-    round["intents"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
-        .map(|intent| intent["id"].as_str().unwrap().to_string())
-        .collect()
-}
 
 /// A docks copy served in this process, on a paused clock.
 fn serve_docks(world: &mut World, label: &str, idle: Option<&str>) -> PathBuf {
@@ -99,7 +89,6 @@ fn a_queued_wait_meets_wakes(world: &mut World) {
     assert_eq!(rows[0]["id"], id.as_str(), "{status}");
     assert_eq!(rows[0]["actor_id"], "rowan", "{status}");
     assert_eq!(world_of(&pack).world_time, 1080);
-    assert!(list_round_keys(&pack).is_empty());
 }
 
 #[when(expr = "a committed wait wakes early")]
@@ -117,7 +106,6 @@ fn a_committed_wait_wakes_early(world: &mut World) {
     let now = world_of(&pack);
     assert_eq!(now.world_time, committed.world_time);
     assert_eq!(now.round_index, committed.round_index);
-    assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);
 }
 
 #[when(expr = "a queued wait is due")]
@@ -126,7 +114,7 @@ fn a_queued_wait_is_due(world: &mut World) {
     assert_eq!(world_of(&pack).last_round_at, "2026-01-01T00:00:00Z");
     table::seat_gm(world);
     table::seat_rowan(world, &pack);
-    let id = queue_rowan_wait(world);
+    let _ = queue_rowan_wait(world);
     table::close_actor(world, "rowan");
     table::wait_players(world, 0);
     let _ = table::release_gm(world);
@@ -134,8 +122,8 @@ fn a_queued_wait_is_due(world: &mut World) {
     let now = world_of(&pack);
     assert_eq!(now.round_index, 12);
     assert_eq!(now.world_time, 1800);
-    assert_eq!(player_wait_ids(&read_round(&pack, "round-0001")), vec![id]);
-    assert!(player_wait_ids(&read_round(&pack, "round-0002")).is_empty());
+    // The wait is Rowan's one act, in the first catch-up round.
+    assert_eq!(act_of(&now, "rowan").last_act_round, 1);
     // The catch-up stamped the save, so the next wake is not due.
     table::release_probe_gm(world);
     advance_and_settle(world, INTERVAL);
@@ -151,7 +139,6 @@ fn idle_is_off_and_an_empty_table_wakes(world: &mut World, seconds: u64) {
     let opened = table::live_mut(world).opened_save.clone();
     let now = fs::read(pack.join("state/save.yaml")).unwrap();
     assert_eq!(now, opened, "the save changed");
-    assert!(list_round_keys(&pack).is_empty());
 }
 
 #[when(expr = "idle is off and a player waits and spook round runs")]
@@ -163,17 +150,12 @@ fn idle_is_off_and_a_player_waits(world: &mut World) {
     let now = world_of(&pack);
     assert_eq!(now.world_time, 1085);
     assert_eq!(now.round_index, 1);
-    assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);
     table::run(world, &["round", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     // `spook round` plays at an empty table: one idle round of 60 ticks.
     let now = world_of(&pack);
     assert_eq!(now.round_index, 2);
     assert_eq!(now.world_time, 1145);
-    assert_eq!(
-        list_round_keys(&pack),
-        vec!["round-0001".to_string(), "round-0002".to_string()]
-    );
 }
 
 #[when(expr = "idle is off and the GM commits a queued wait")]
@@ -182,11 +164,10 @@ fn idle_is_off_and_the_gm_commits(world: &mut World) {
     table::seat_gm(world);
     table::seat_rowan(world, &pack);
     let _ = queue_rowan_wait(world);
-    assert!(list_round_keys(&pack).is_empty());
+    assert_eq!(world_of(&pack).round_index, 0);
     let done = table::gm_tool_call(world, 5, "commit", r#"{"include_round":true}"#);
     assert_eq!(table::read_reply(&done)["kind"], "committed", "{done}");
     let now = world_of(&pack);
     assert_eq!(now.world_time, 1085);
     assert_eq!(now.round_index, 1);
-    assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);
 }

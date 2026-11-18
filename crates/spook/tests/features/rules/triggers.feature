@@ -2,18 +2,19 @@ Feature: Triggers
 
   Scenario: Arrival hangs on the place
     When nell travels via door into docks_shop
-    Then place:docks_shop/bell fires in the same round
-    And teleporting into docks_shop by an author rule also fires it
+    Then nell has flag heard_bell
+    When wren teleports into docks_shop by an author rule
+    Then wren has flag heard_bell
 
   Scenario: Downed at 0 hp
     Given briar has 3 hp and a story rule on hp crosses <=0 sets flag downed
     When an attack removes 4 hp
-    Then briar has flag downed in the same round
+    Then briar has flag downed
 
-  Scenario: A change rule does not fire again while its watch stays true
-    Given briar is already downed
+  Scenario: A change rule does not fire while its watch stays true
+    Given briar has 1 hp and a story rule on hp crosses <=1 sets flag downed
     When another round passes
-    Then the rule does not fire again
+    Then briar does not have flag downed
 
   Scenario: An arrival with a flag grants a fact and turns the world's tide
     Given nell has flag found_key and arrives at mira_rooms

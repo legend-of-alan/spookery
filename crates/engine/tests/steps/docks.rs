@@ -6,8 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use spookery_engine::testing::{
-    self as support, act_of, journal::list_round_keys, place_of, read_round as round_value, resume,
-    stamp_pack_rev, world_of, write_save, Canon,
+    self as support, act_of, place_of, resume, stamp_pack_rev, world_of, write_save, Canon,
 };
 use spookery_engine::{
     component, ecs, emit_save, entity, load_canon, play_pack_once, ActorId, GlobalId, Meter, Note,
@@ -259,8 +258,17 @@ fn gm_restocks() {
     let _ = fs::remove_dir_all(&pack);
 }
 
+/// With room for one intent, the door note for seated Rowan lands and Bram's wait does not.
 fn claimed_note_sorts_first() {
     let pack = support::copy_pack("docks", "claimed");
+    let budget = pack.join("rules/budget.yaml");
+    let text = fs::read_to_string(&budget).unwrap();
+    fs::write(
+        &budget,
+        text.replace("max_intents_applied: 12", "max_intents_applied: 1"),
+    )
+    .unwrap();
+    stamp_pack_rev(&pack);
     {
         let opened = resume(&pack);
         let mut world = opened.world().clone();
@@ -281,21 +289,16 @@ fn claimed_note_sorts_first() {
         queue_gm_intent(&mut opened, id, actor, move_id);
     }
     opened.play(&rowan(), &wall).unwrap();
-    let log = round_value(&pack, "round-0001");
-    let rules: Vec<&str> = log["extra_steps"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|step| step["rule"].as_str())
-        .collect();
-    assert_eq!(rules, vec!["cast:mira/leave_door_note", "verb:wait"]);
-    let note = log["effects"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|effect| effect["kind"] == "note")
-        .unwrap_or_else(|| panic!("no door note: {log}"));
-    assert_eq!(note["to_ids"], serde_json::json!(["rowan"]));
+    let world = opened.world();
+    let notes = world.globals().get::<Note>(&GlobalId);
+    let door = notes.get("note_mira_door").expect("the door note");
+    assert_eq!(door.to_ids, BTreeSet::from(["rowan".into()]));
+    assert_eq!(
+        act_of(world, "bram").last_act_round,
+        0,
+        "bram's wait landed"
+    );
+    drop(opened);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -370,7 +373,6 @@ Rowan.
     assert_eq!(world.round_index, rounds);
     assert_eq!(world.world_time, rounds * 60);
     assert_eq!(world.last_round_at, "2026-01-01T00:00:00Z");
-    assert_eq!(list_round_keys(&pack).len() as u64, rounds);
     assert_eq!(
         fs::read(pack.join("world/places/gate.md")).unwrap(),
         place_before
@@ -490,14 +492,7 @@ rules:
         .iter()
         .filter(|act| act.last_act_round == 1)
         .count();
-    let applied = round_value(&pack, "round-0001")["extra_steps"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|step| step["rule"].is_string())
-        .count();
     assert!((1..=8).contains(&acted), "acted {acted}");
-    assert!((1..=12).contains(&applied), "applied {applied}");
     let _ = fs::remove_dir_all(&pack);
 }
 

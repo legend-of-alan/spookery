@@ -1,9 +1,8 @@
 use spookery_engine::component;
-use spookery_engine::testing::world_of;
+use spookery_engine::testing::{act_of, world_of};
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::journal::list_round_keys;
 
 use crate::World;
 
@@ -289,20 +288,10 @@ fn both_players_wait(world: &mut World) {
 #[then(expr = "each wait committed its own round")]
 fn each_wait_committed_its_own_round(world: &mut World) {
     table::wait_round(world, 1090);
-    let pack = table::pack(world);
-    assert_eq!(world_of(pack).round_index, 2);
-    assert_eq!(
-        list_round_keys(pack),
-        vec!["round-0001".to_string(), "round-0002".to_string()]
-    );
-    assert_eq!(
-        table::list_player_waits(pack, "round-0001"),
-        vec!["rowan".to_string()]
-    );
-    assert_eq!(
-        table::list_player_waits(pack, "round-0002"),
-        vec!["harbormouse".to_string()]
-    );
+    let now = world_of(table::pack(world));
+    assert_eq!(now.round_index, 2);
+    assert_eq!(act_of(&now, "rowan").last_act_round, 1);
+    assert_eq!(act_of(&now, "harbormouse").last_act_round, 2);
 }
 
 #[given(expr = "a docks table with two PCs in the shop")]
@@ -427,11 +416,11 @@ fn a_round_commits(world: &mut World) {
         table::seat_gm(world);
     }
     let pack = table::pack(world).to_path_buf();
-    let before = list_round_keys(&pack).len();
+    let before = world_of(&pack).round_index;
     let queued = table::gm_tool_call(world, 5, "queue", r#"{"actor_id":"aldric","move":"wait"}"#);
     assert!(queued.contains("\"id\""), "{queued}");
     let committed = table::gm_tool_call(world, 6, "commit", r#"{"include_round":true}"#);
-    assert_eq!(list_round_keys(&pack).len(), before + 1, "{committed}");
+    assert_eq!(world_of(&pack).round_index, before + 1, "{committed}");
 }
 
 fn street_oil(world: &World) -> u32 {

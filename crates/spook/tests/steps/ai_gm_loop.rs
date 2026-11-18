@@ -8,8 +8,7 @@ use std::time::Duration;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery::agent::{model, MAX_MODEL_CALLS};
-use spookery_engine::testing::journal::{list_round_keys, read_record_line};
-use spookery_engine::testing::world_of;
+use spookery_engine::testing::{act_of, world_of};
 
 use crate::support::copy_pack;
 use crate::World;
@@ -307,18 +306,13 @@ fn one_round_is_committed(world: &mut World) {
 #[then(expr = "the round resolves the player's, Mira's and Aldric's moves together")]
 fn the_round_resolves_three_moves(world: &mut World) {
     assert_eq!(table::wait_rounds_to_view(world, world.mark).len(), 1);
-    let pack = table::pack(world);
-    let key = list_round_keys(pack).pop().expect("a round");
-    let text = read_record_line(pack, &key).unwrap_or_else(|err| panic!("{}", err.detail));
-    let round: Value = serde_json::from_str(text.trim_end()).unwrap();
-    let actors: Vec<&str> = round["intents"]
-        .as_array()
-        .expect("intents")
-        .iter()
-        .filter_map(|intent| intent["actor"].as_str()?.split(':').nth(1))
-        .collect();
+    let now = world_of(table::pack(world));
     for actor in ["rowan", "mira", "aldric"] {
-        assert!(actors.contains(&actor), "{actors:?}");
+        assert_eq!(
+            act_of(&now, actor).last_act_round,
+            now.round_index,
+            "{actor}"
+        );
     }
 }
 

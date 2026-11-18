@@ -56,7 +56,8 @@ Feature: Rules live with their owner
   Scenario: A cast member's rule is at hand while they share the room
     Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage, and Mira's door note is not due
     When harbormouse, in the yard with briar, plays ask briar
-    Then cast:briar/ask runs with briar as its target and passage is set
+    Then "harbormouse" is told "Briar steps aside."
+    And the world has flag passage
 
   Scenario: A cast member's rule needs its owner named
     Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage, and Mira's door note is not due

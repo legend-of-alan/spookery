@@ -15,4 +15,4 @@ Feature: A move refused in its round says why
     Given Bram's habit takes a tonic that is not there
     When the player waits for the resume
     Then the player sees no refused frame
-    And the round rejects that habit with "MISSING_ITEM"
+    And Bram does not have flag grabbed

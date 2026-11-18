@@ -4,10 +4,9 @@ use std::fs;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::testing::journal::list_round_keys;
 
 use super::common::{
-    capture_play_stdout, edit_save, spawn_play, split_line, wait_play, wait_play_until, write_play,
+    capture_play_stdout, edit_save, spawn_play, wait_play, wait_play_until, write_play,
 };
 use super::table;
 use crate::support::{self, text_of};
@@ -44,10 +43,16 @@ fn brams_habit_takes_a_missing_tonic(world: &mut World) {
         "\
 idle:
   eligible: true
+flags:
+  - grabbed
 rules:
   - id: grab
     when: habit
     do:
+      - flag:
+          of: self
+          key: grabbed
+          value: true
       - item:
           of: here
           id: tonic
@@ -321,31 +326,21 @@ fn harbormouse_saps_bram(world: &mut World) {
     world.player_added = added;
 }
 
-#[then(expr = "play does not show the round's intent ids")]
+#[then(expr = "play does not show the intent ids the GM saw queued")]
 fn play_does_not_show_the_intent_ids(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let gm_text = table::drain_gm_text(world);
+    let events = gm_text.lines().filter_map(|line| {
+        let event: Value = serde_json::from_str(line).ok()?;
+        let body = &event["params"]["body"];
+        let intent = body["intent"].as_str().filter(|_| body["kind"] == "queued");
+        intent.map(str::to_string)
+    });
+    let ids: Vec<String> = events.collect();
+    assert!(!ids.is_empty(), "no queued intents\n{gm_text}");
     let stdout = capture_play_stdout(world);
-    let mut ids = Vec::new();
-    for key in list_round_keys(&pack) {
-        let line = spookery_engine::testing::journal::read_record_line(&pack, &key)
-            .unwrap_or_else(|err| panic!("{key}: {}", err.detail));
-        let round: Value = serde_json::from_str(&line).unwrap_or_else(|err| panic!("{key}: {err}"));
-        let intents = round["intents"].as_array().cloned().unwrap_or_default();
-        ids.extend(
-            intents
-                .iter()
-                .filter_map(|intent| Some(intent["id"].as_str()?.to_string())),
-        );
-    }
-    assert!(!ids.is_empty(), "no intents");
     for id in ids {
         assert!(!stdout.contains(&id), "{id}\n{stdout}");
     }
-}
-
-#[then(expr = "the round rejects that habit with {string}")]
-fn the_round_rejects_that_habit_with(world: &mut World, word: String) {
-    assert_one_rejection(world, &word);
 }
 
 fn seat_gm_and_harbormouse(world: &mut World, pack: std::path::PathBuf) {
@@ -363,25 +358,4 @@ fn replace_idle_and_rules(text: &str, block: &str) -> String {
     let next = format!("{}{}{}", &text[..start], block, &text[end + 1..]);
     assert_ne!(text, next, "the habit was not inserted");
     next
-}
-
-/// `word` is a code, optionally followed by the missing meter or item.
-fn assert_one_rejection(world: &World, word: &str) {
-    let (code, missing) = split_line(word);
-    let pack = table::pack(world);
-    let keys = list_round_keys(pack);
-    let mut hits = 0;
-    for key in &keys {
-        let line = spookery_engine::testing::journal::read_record_line(pack, key)
-            .unwrap_or_else(|err| panic!("{}: {}", key, err.detail));
-        let round: Value = serde_json::from_str(&line).unwrap_or_else(|err| panic!("{key}: {err}"));
-        let Some(rejected) = round["refused"].as_array() else {
-            continue;
-        };
-        hits += rejected
-            .iter()
-            .filter(|item| item["code"] == code && item["detail"].as_str() == missing)
-            .count();
-    }
-    assert_eq!(hits, 1, "{keys:?}");
 }

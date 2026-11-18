@@ -7,7 +7,7 @@ Feature: Each roll has its own seed
 
   Scenario: Ten dice in one round
     Given ten rolling intents in one round
-    Then all ten resolve and none is refused NotInSpec
+    Then all ten roll and none is refused
 
   Scenario: Verify reproduces every roll
     Given a played d20 strike

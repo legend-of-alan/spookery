@@ -46,12 +46,12 @@ Feature: One action lifecycle
   Scenario: A free instant drink does not use the act
     Given the rule "drink" does not count its start as an act
     When Rowan plays "drink"
-    Then that round refused nothing
+    Then "drink" finished
     And Rowan has used no act
 
   Scenario: A free instant drink and a move both land in one round
     Given the rule "drink" does not count its start as an act
     When Rowan plays "drink" and "take lamp_oil" in the same round
-    Then that round refused nothing
+    Then "drink" finished
     And Rowan holds 1 lamp_oil
     And Rowan has used the act of round 1

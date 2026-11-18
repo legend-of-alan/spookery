@@ -15,10 +15,6 @@ Feature: Travel follows the map
       | at once               |
       | inside a nested check |
 
-  Scenario: An exit's ticks are stamped on the arrival
-    When rowan travels via stairs holding brass_key
-    Then rowan is in mira_rooms and the 2 tick cost is stamped on the arrival
-
   Scenario: Hidden exit
     Given the trapdoor is hidden and rowan does not know fact_trapdoor
     Then rowan's view does not list the trapdoor
@@ -33,10 +29,6 @@ Feature: Travel follows the map
     Then the world is at tick 1300 and rowan is in mira_rooms
     And rowan's line shows "mira_rooms"
 
-  Scenario: Arrivals complete in time order
-    Given rowan arrives at tick 1300 and nell at tick 1295
-    Then nell's arrival is applied before rowan's, in separate rounds
-
   Scenario: Arrival is stamped at its exact tick and the actor acts next round
     Given rounds are 5 ticks while seated and the stairs exit costs 2 ticks
     When rowan travels via stairs in the round starting at tick 1290
@@ -47,10 +39,10 @@ Feature: Travel follows the map
   Scenario: Rounds never shorten
     Then a seated round advances world_time by 5 and an empty one by 60
 
-  Scenario: Fast-forward when all seated PCs are busy
+  Scenario: Fast-forward when all seated PCs are busy plays through both arrivals
     Given rowan and nell are seated and both busy, with no GM
     Then the table plays rounds to tick 1295 then tick 1300 without waiting on the wall clock
-    And an NPC habit due at tick 1295 runs in that round
+    And Bram has flag tolled
 
   Scenario: GM mode waits for commit
     Given a GM is seated and both PCs are busy

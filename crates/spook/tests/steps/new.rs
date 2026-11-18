@@ -145,11 +145,7 @@ fn the_travel_committed_a_round(world: &mut World) {
     let pack = table::pack(world);
     let now = world_of(pack);
     assert_eq!(place_of(&now, "ada"), "lane");
-    assert!(
-        spookery_engine::testing::journal::list_round_keys(pack)
-            .contains(&"round-0001".to_string()),
-        "no round file"
-    );
+    assert!(now.round_index >= 1, "no round");
 }
 
 #[when(expr = "the operator runs spook new beside that pack")]
@@ -320,6 +316,7 @@ fn insert_before(text: &str, anchor: &str, body: &str) -> String {
 }
 
 fn run_new(world: &mut World, pack: &Path) {
+    // repeats module: mirrors the `spook new` command
     table::run(world, &["new", pack.to_str().unwrap()]);
 }
 

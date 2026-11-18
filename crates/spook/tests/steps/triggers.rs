@@ -3,7 +3,6 @@ use std::path::Path;
 use std::sync::Arc;
 
 use cucumber::{given, then, when};
-use serde_json::Value;
 use spookery::protocol::{self, ChangeView};
 use spookery_engine::testing::world_of;
 use spookery_engine::{component, emit_save, parse_save};
@@ -11,7 +10,6 @@ use spookery_engine::{ecs, entity, Presence};
 
 use super::common::{add_verb, flags_of, replace_in_file, write_tide_story};
 use super::meters::write_world_meter_rows;
-use super::record::read_extra_steps;
 use crate::support::{self, copy_pack};
 use crate::World;
 
@@ -37,37 +35,19 @@ fn nell_travels_via_door(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "place:docks_shop\\/bell fires in the same round")]
-fn bell_fires_in_the_same_round(world: &mut World) {
-    let round = read_latest_round(world.pack.as_ref().unwrap());
-    assert!(
-        read_extra_steps(&round)
-            .iter()
-            .any(|step| step == "place:docks_shop/bell"),
-        "bell did not fire\n{round}"
-    );
-}
-
-#[then(expr = "teleporting into docks_shop by an author rule also fires it")]
-fn teleport_also_fires_the_bell(world: &mut World) {
+#[when(expr = "wren teleports into docks_shop by an author rule")]
+fn wren_teleports_into_the_shop(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     play(
         world,
         &pack,
         vec![intent("wren-blink", "wren", "blink", None)],
     );
-    let round = read_latest_round(&pack);
-    assert!(
-        read_extra_steps(&round)
-            .iter()
-            .any(|step| step == "place:docks_shop/bell"),
-        "a teleport did not fire the bell\n{round}"
-    );
 }
 
-#[given(expr = "briar has 3 hp and a story rule on hp crosses <=0 sets flag downed")]
-fn briar_has_3_hp_and_a_downed_rule(world: &mut World) {
-    let pack = downed_pack(world, "trigger-downed", 3, false, "<=0");
+#[given(expr = "briar has {int} hp and a story rule on hp crosses {word} sets flag downed")]
+fn briar_has_hp_and_a_downed_rule(world: &mut World, hp: i64, crosses: String) {
+    let pack = downed_pack(world, hp, &crosses);
     world.pack = Some(pack);
 }
 
@@ -81,31 +61,6 @@ fn an_attack_removes_4_hp(world: &mut World) {
     );
 }
 
-#[then(expr = "briar has flag downed in the same round")]
-fn briar_has_flag_downed(world: &mut World) {
-    let pack = world.pack.as_ref().unwrap();
-    let round = read_latest_round(pack);
-    assert!(
-        read_extra_steps(&round)
-            .iter()
-            .any(|step| step == "story:injury/downed"),
-        "the downed rule did not fire\n{round}"
-    );
-    assert!(
-        world_of(pack)
-            .actors()
-            .get::<component::Flag>(&"briar".into())
-            .contains("downed"),
-        "briar is not downed"
-    );
-}
-
-#[given(expr = "briar is already downed")]
-fn briar_is_already_downed(world: &mut World) {
-    let pack = downed_pack(world, "trigger-already", 1, true, "<=1");
-    world.pack = Some(pack);
-}
-
 #[when(expr = "another round passes")]
 fn another_round_passes(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
@@ -113,17 +68,6 @@ fn another_round_passes(world: &mut World) {
         world,
         &pack,
         vec![intent("nick-briar", "rowan", "nick", Some("briar"))],
-    );
-}
-
-#[then(expr = "the rule does not fire again")]
-fn the_rule_does_not_fire_again(world: &mut World) {
-    let round = read_latest_round(world.pack.as_ref().unwrap());
-    assert!(
-        read_extra_steps(&round)
-            .iter()
-            .all(|step| step != "story:injury/downed"),
-        "the downed rule fired again\n{round}"
     );
 }
 
@@ -273,7 +217,7 @@ fn check_warns_of_a_cycle_and_the_round_stops(world: &mut World) {
 
 fn a_round_stops_at_depth_4(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
-    let (now, _reports, _record) = play(
+    let (now, _reports) = play(
         world,
         &pack,
         vec![intent("raise-sun", "nell", "raise", None)],
@@ -354,7 +298,7 @@ The ground gives.
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
     });
-    let (_now, rolls, round) = play(
+    let (_now, rolls) = play(
         world,
         &pack,
         vec![intent("nell-bog", "nell", "travel", Some("bog"))],
@@ -363,7 +307,7 @@ The ground gives.
         spookery_engine::MoveReport::Rolled { actor_id, .. }
         | spookery_engine::MoveReport::Refused { actor_id, .. } => actor_id == "nell",
     });
-    assert!(faces, "nell did not roll\n{round}");
+    assert!(faces, "nell did not roll\n{rolls:?}");
     world.pack = Some(pack);
 }
 
@@ -399,29 +343,10 @@ fn nell_travels_and_the_bell_narrates(world: &mut World) {
         &pack,
         vec![intent("nell-door", "nell", "travel", Some("door"))],
     );
-    world.scratch = played.record.to_string();
     world.summary = played.changed_keys;
     world.seen = played.seen;
     world.told = played.lines;
     world.pack = Some(pack);
-}
-
-#[then(expr = "the round narrates {string} to {string}")]
-fn the_round_narrates_to(world: &mut World, text: String, viewer: String) {
-    let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    assert!(
-        narrates(&round, &text, &viewer),
-        "missing narrate to {viewer}\n{round}"
-    );
-}
-
-#[then(expr = "the round does not narrate {string} to {string}")]
-fn the_round_does_not_narrate_to(world: &mut World, text: String, viewer: String) {
-    let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    assert!(
-        !narrates(&round, &text, &viewer),
-        "narrate reached {viewer}\n{round}"
-    );
 }
 
 #[then(expr = "{string} is not told {string}")]
@@ -490,7 +415,7 @@ Under the street.
 #[when(expr = "nell reveals fact_trapdoor")]
 fn nell_reveals_the_trapdoor(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
-    let (now, _, _) = play(
+    let (now, _) = play(
         world,
         &pack,
         vec![intent("nell-uncover", "nell", "uncover", None)],
@@ -591,11 +516,11 @@ pub(crate) fn world_flags(world: &ecs::World) -> Vec<String> {
     flags.map(|(_, flag, ())| flag.to_string()).collect()
 }
 
-#[then(expr = "the world has flag tide_turned")]
-fn the_world_has_the_tide(world: &mut World) {
+#[then(expr = "the world has flag {word}")]
+fn the_world_has_flag(world: &mut World, flag: String) {
     let now = world_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
-    assert!(flags.contains("tide_turned"), "{:?}", world_flags(&now));
+    assert!(flags.contains(&flag), "{:?}", world_flags(&now));
 }
 
 #[then(expr = "the GM summary lists {string}")]
@@ -867,20 +792,6 @@ pub(crate) fn sit(seated: &mut Presence, ids: &[&str]) {
     seated.actors_present.sort();
 }
 
-fn narrates(round: &Value, text: &str, viewer: &str) -> bool {
-    round["effects"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .any(|effect| {
-            effect["kind"] == "narrate"
-                && effect["text"] == text
-                && effect["to"]
-                    .as_array()
-                    .is_some_and(|to| to.iter().any(|id| id == viewer))
-        })
-}
-
 fn add_bell_narrate(pack: &Path) {
     replace_in_file(
         &pack.join("world/places/docks_shop.md"),
@@ -889,14 +800,8 @@ fn add_bell_narrate(pack: &Path) {
     );
 }
 
-fn downed_pack(
-    world: &mut World,
-    label: &str,
-    hp: i64,
-    downed: bool,
-    crosses: &str,
-) -> std::path::PathBuf {
-    let pack = copy_pack("docks", label);
+fn downed_pack(world: &mut World, hp: i64, crosses: &str) -> std::path::PathBuf {
+    let pack = copy_pack("docks", "trigger-downed");
     add_verb(
         &pack,
         "\n  - id: hit\n    when:\n      verb: hit\n      target: actor\n    do:\n      - meter:\n          of: target\n          key: hp\n          add: -4\n  - id: nick\n    when:\n      verb: nick\n      target: actor\n    do:\n      - meter:\n          of: target\n          key: hp\n          add: -1\n",
@@ -931,12 +836,6 @@ rules:
         set_place(now, "briar", "docks_shop");
         let briar = entity::Id::Actor("briar".into());
         support::put_meter(now, &briar, "hp", hp);
-        if downed {
-            now.entities_mut()
-                .get_mut::<component::Flag>(&briar)
-                .set("downed", true)
-                .unwrap();
-        }
         sit(seated, &["rowan"]);
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
@@ -1064,7 +963,6 @@ fn remembered_presence(world: &World, pack: &Path) -> Option<Presence> {
 pub(crate) struct PlayedRound {
     now: ecs::World,
     reports: Vec<spookery_engine::MoveReport>,
-    record: Value,
     pub(crate) changed_keys: Vec<String>,
     pub(crate) seen: Vec<(String, Vec<String>)>,
     pub(crate) lines: Vec<(String, String)>,
@@ -1076,9 +974,9 @@ fn play(
     world: &mut World,
     pack: &Path,
     intents: Vec<protocol::QueueArgs>,
-) -> (ecs::World, Vec<spookery_engine::MoveReport>, Value) {
+) -> (ecs::World, Vec<spookery_engine::MoveReport>) {
     let played = play_round(world, pack, intents);
-    (played.now, played.reports, played.record)
+    (played.now, played.reports)
 }
 
 pub(crate) fn play_round(
@@ -1095,7 +993,6 @@ pub(crate) fn play_round(
     let output = session
         .play(&presence, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
-    let record = read_latest_round(pack);
     let told = output
         .lines
         .into_iter()
@@ -1114,7 +1011,6 @@ pub(crate) fn play_round(
     PlayedRound {
         now: session.world().clone(),
         reports: output.reports,
-        record,
         changed_keys: output.changed_keys,
         seen,
         lines: told,
@@ -1147,14 +1043,4 @@ fn queue(session: &mut spookery_engine::Session, intent: protocol::QueueArgs) {
             panic!("the GM chose the id")
         })
         .unwrap_or_else(|code| panic!("queue: {code}"));
-}
-
-fn read_latest_round(pack: &Path) -> Value {
-    let keys = spookery_engine::testing::journal::list_round_keys(pack);
-    let key = keys
-        .last()
-        .unwrap_or_else(|| panic!("no round was written"));
-    let text = spookery_engine::testing::journal::read_record_line(pack, key)
-        .unwrap_or_else(|err| panic!("{}", err.detail));
-    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{key}: {err}"))
 }

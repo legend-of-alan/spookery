@@ -2,9 +2,8 @@ Feature: Trigger delivery
 
   Scenario: Narrate reaches the people in the room
     When nell travels into the shop and the bell narrates
-    Then the round narrates "The bell rings." to "nell"
-    And the round does not narrate "The bell rings." to "wren"
-    And "nell" is told "The bell rings."
+    Then "nell" is told "The bell rings."
+    And "wren" is not told "The bell rings."
     And spook verify passes on this pack
 
   Scenario: Reveal teaches the fact that uncovers an exit

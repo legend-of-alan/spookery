@@ -7,8 +7,7 @@ Feature: A round refusal names the gap
     And play queues "shove"
     And the GM commits the round
     Then play's error shows "You cannot afford vigor. [CANT_AFFORD]" once
-    And the round rejects that habit with "CANT_AFFORD vigor"
-    And play does not show the round's intent ids
+    And play does not show the intent ids the GM saw queued
 
   Scenario: A locked exit refused during the round keeps its sentence
     Given a docks table where dropping the tonic locks the loft
@@ -48,4 +47,4 @@ Feature: A round refusal names the gap
     Given Bram can pay for a habit until Harbormouse spends Bram's vigor
     When Harbormouse saps Bram
     Then the player sees no refused frame
-    And the round rejects that habit with "CANT_AFFORD vigor"
+    And Bram does not have flag heaved

@@ -7,7 +7,7 @@ Feature: Dice and arithmetic in rule numbers
     Then Rowan's vigor rose by the 2d6 faces
     And the GM commit reply shows the 2d6 faces
     And the player text has no dice faces
-    And replaying the round reproduces the save
+    And spook verify passes
 
   Scenario Outline: A rule number reads an actor's or a place's meter, min, max and minus, and division rounds down
     Given a docks table
@@ -66,7 +66,7 @@ Feature: Dice and arithmetic in rule numbers
   Scenario Outline: An NPC habit rolls its effect dice
     Given a docks table
     When Mira's habit <adds>
-    And one round plays
+    And the GM queues Aldric's wait and commits
     Then Mira's vigor rose by the 1d4 face
 
     Examples:

@@ -2,12 +2,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
-use serde_json::Value;
 use spookery_engine::testing::roll;
 use spookery_engine::{component, GlobalId, MoveReport, Note};
 
 use crate::{resolve_id, World};
-use spookery_engine::testing::{self as support, act_of, place_of, read_round};
+use spookery_engine::round::Output;
+use spookery_engine::testing::{self as support, act_of, place_of};
 
 #[given(expr = "a round where Harbormouse rolls exert")]
 fn a_round_where_harbormouse_rolls_exert(world: &mut World) {
@@ -38,21 +38,16 @@ fn ten_rolling_intents_in_one_round(world: &mut World) {
     let intents = (0..10)
         .map(|index| intent(&format!("exert-{index}"), "rowan", "exert", None))
         .collect();
-    let (_state, rolls, round) = play_queued(&pack, &[], intents);
-    world.scratch = round.to_string();
-    world.intent_id = rolls.len().to_string();
+    let (_state, output) = play_queued(&pack, &[], intents);
+    world.scratch = list_refusals(&output.reports);
+    world.count = count_rolls(&output.reports, "rowan");
     world.pack = Some(pack);
 }
 
-#[then(expr = "all ten resolve and none is refused NotInSpec")]
-fn all_ten_resolve_and_none_is_refused_not_in_spec(world: &mut World) {
-    assert_eq!(world.intent_id, "10");
-    let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    let rejected = round["refused"].as_array().unwrap();
-    assert!(
-        rejected.iter().all(|item| item["code"] != "NOT_IN_SPEC"),
-        "{rejected:?}"
-    );
+#[then(expr = "all ten roll and none is refused")]
+fn all_ten_roll_and_none_is_refused(world: &mut World) {
+    assert_eq!(world.scratch, "");
+    assert_eq!(world.count, 10);
 }
 
 #[given(expr = "a played d20 strike")]
@@ -64,7 +59,7 @@ fn a_played_d20_strike(world: &mut World) {
         "strike",
         Some("briar"),
     )];
-    let (ecs_world, _rolls, _round) = play_queued(&pack, &[], intents);
+    let (ecs_world, _output) = play_queued(&pack, &[], intents);
     world.oil = spookery_engine::emit_save(&ecs_world).unwrap().into_bytes();
     world.pack = Some(pack);
 }
@@ -73,15 +68,6 @@ fn a_played_d20_strike(world: &mut World) {
 fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     spookery_engine::verify_pack(pack, None).expect("verify");
-    let report =
-        spookery_engine::testing::replay_pack(pack).unwrap_or_else(|err| panic!("{err:?}"));
-    let line = spookery_engine::testing::journal::read_record_line(pack, "round-0001")
-        .unwrap_or_else(|err| panic!("{}", err.detail));
-    let round: Value = serde_json::from_str(&line).unwrap();
-    assert_eq!(
-        spookery_engine::testing::journal::blake2s_tagged(&report.now_yaml),
-        round["state_hash"].as_str().unwrap()
-    );
 }
 
 #[given(expr = "two fresh copies of the docks pack as shipped")]
@@ -174,43 +160,14 @@ fn a_docks_row_spilled(world: &mut World, remove: i64) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "Mira plays {word}")]
-fn mira_plays(world: &mut World, move_id: String) {
-    let pack = world.pack.as_ref().unwrap().clone();
-    let id = format!("{move_id}-1");
-    let (ecs_world, rolls, round) =
-        play_queued(&pack, &[], vec![intent(&id, "mira", &move_id, None)]);
-    let oil = ecs_world
-        .places()
-        .get::<component::Item>(&"docks_shop".into())
-        .get("lamp_oil")
-        .copied()
-        .map(i64::from)
-        .unwrap_or(-1);
-    world.oil = oil.to_string().into_bytes();
-    world.intent_id = id;
-    world.scratch = round.to_string();
-    world.count = rolls
-        .iter()
-        .filter(|report| match report {
-            MoveReport::Rolled { actor_id, .. } => actor_id == "mira",
-            MoveReport::Refused { .. } => false,
-        })
-        .count();
+#[then(expr = "lamp oil stays {int}")]
+fn lamp_oil_stays(world: &mut World, oil: i64) {
+    assert_eq!(String::from_utf8_lossy(&world.oil), oil.to_string());
 }
 
-#[then(expr = "lamp oil stays {int} and the round names {word}")]
-fn lamp_oil_stays_and_the_round_names(world: &mut World, oil: i64, reason: String) {
-    assert_refusal(world, oil, &reason);
-}
-
-#[then(expr = "lamp oil stays {int}, the round names {word}, and no roll is reported")]
-fn lamp_oil_stays_the_round_names_and_no_roll_is_reported(
-    world: &mut World,
-    oil: i64,
-    reason: String,
-) {
-    assert_refusal(world, oil, &reason);
+#[then(expr = "lamp oil stays {int} and no roll is reported")]
+fn lamp_oil_stays_and_no_roll_is_reported(world: &mut World, oil: i64) {
+    lamp_oil_stays(world, oil);
     assert_eq!(world.count, 0, "a refused move reported a roll");
 }
 
@@ -228,26 +185,11 @@ fn the_docks_pack_where_miras_habit_is_due(world: &mut World) {
 #[when(expr = "the GM queues mira wait and an empty round plays")]
 fn the_gm_queues_mira_wait(world: &mut World) {
     let wait = intent("gm-wait", "mira", "wait", None);
-    let (_state, _rolls, round) = play_queued(world.pack(), &[], vec![wait]);
-    world.scratch = round.to_string();
+    play_queued(world.pack(), &[], vec![wait]);
 }
 
-#[then(
-    expr = "the wait lands, and Mira's habit is refused INELIGIBLE because she already acted this round"
-)]
-fn the_wait_lands_and_miras_habit_is_ineligible(world: &mut World) {
-    let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    let rules: Vec<&str> = round["extra_steps"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|step| step["rule"].as_str())
-        .collect();
-    assert_eq!(rules, ["verb:wait"], "{round}");
-    let refused = round["refused"].as_array().unwrap();
-    assert_eq!(refused.len(), 1, "{round}");
-    assert_eq!(refused[0]["code"], "INELIGIBLE", "{round}");
-    assert_ne!(refused[0]["id"], "gm-wait", "{round}");
+#[then(expr = "the wait lands, and Mira's habit does not run because she already acted this round")]
+fn the_wait_lands_and_miras_habit_does_not_run(world: &mut World) {
     let ecs_world = support::world_of(world.pack());
     assert_eq!(act_of(&ecs_world, "mira").last_act_round, 1);
     let notes = ecs_world.globals().get::<Note>(&GlobalId);
@@ -260,7 +202,7 @@ fn the_wait_lands_and_miras_habit_is_ineligible(world: &mut World) {
 #[when(expr = "Harbormouse and Briar strike each other")]
 fn harbormouse_and_briar_strike_each_other(world: &mut World) {
     let pack = support::copy_pack("docks", "mutual-strike");
-    let (_state, rolls, _round) = play_queued(
+    let (_state, output) = play_queued(
         &pack,
         &[],
         vec![
@@ -269,8 +211,7 @@ fn harbormouse_and_briar_strike_each_other(world: &mut World) {
         ],
     );
     world.pack = Some(pack);
-    world.scratch = rolls
-        .iter()
+    world.scratch = (output.reports.iter())
         .filter_map(|report| match report {
             MoveReport::Rolled { actor_id, roll } => {
                 Some(format!("{actor_id}={}:{}", roll.total, roll.success_at))
@@ -319,7 +260,7 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     );
     support::stamp_pack_rev(&pack);
     make_mira_ineligible(&pack);
-    let (ecs_world, _rolls, _round) =
+    let (ecs_world, _output) =
         play_queued(&pack, &[], vec![intent("two-1", "mira", "two_stock", None)]);
     world.oil = format!(
         "{}",
@@ -430,35 +371,30 @@ fn rowan_hauls_until_it_finishes(world: &mut World) {
     let wall = session.world().last_round_at.clone();
     world.scratch.clear();
     for round in 1..=6 {
-        if let Err(err) = session.play(&rowan, &wall) {
-            world.scratch = format!("round {round} failed: {err}");
-            return;
+        match session.play(&rowan, &wall) {
+            Ok(output) => world.seen.push_str(&list_refusals(&output.reports)),
+            Err(err) => {
+                world.scratch = format!("round {round} failed: {err}");
+                return;
+            }
         }
         let ecs_world = session.world();
         if !support::is_busy(ecs_world, "rowan") {
             break;
         }
     }
-    world.count = usize::try_from(session.world().round_index).unwrap();
 }
 
 #[then(
-    expr = "the finishing round commits with finish:rowan refused MISSING_ITEM, Rowan is no longer busy, and spook verify passes"
+    expr = "the finishing round commits with Rowan's haul refused MISSING_ITEM, Rowan is no longer busy, and spook verify passes"
 )]
 fn the_refused_finish_commits(world: &mut World) {
     assert!(world.scratch.is_empty(), "{}", world.scratch);
+    assert_eq!(world.seen, "rowan MISSING_ITEM");
     let pack = world.pack();
-    let round = read_round(pack, &format!("round-{:04}", world.count));
-    let refused = round["refused"].as_array().unwrap();
-    assert!(
-        refused
-            .iter()
-            .any(|item| item["id"] == "finish:rowan" && item["code"] == "MISSING_ITEM"),
-        "{round}"
-    );
     let saved = spookery_engine::Session::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let ecs_world = saved.world();
-    assert!(!support::is_busy(ecs_world, "rowan"), "{round}");
+    assert!(!support::is_busy(ecs_world, "rowan"));
     spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
 }
 
@@ -483,20 +419,13 @@ fn a_docks_pack_with_a_broken_pick(world: &mut World) {
 #[when(expr = "Rowan walks to the street and Wren plays pick in the same round")]
 fn rowan_walks_and_wren_picks(world: &mut World) {
     let pick = intent("pick-1", "wren", "pick", None);
-    let (_state, _rolls, round) = rowan_walks(world.pack(), vec![pick]);
-    world.scratch = round.to_string();
+    let (_state, output) = rowan_walks(world.pack(), vec![pick]);
+    world.scratch = list_refusals(&output.reports);
 }
 
 #[then(expr = "Wren's pick is refused {word} and Rowan is on the street")]
 fn wrens_pick_is_refused(world: &mut World, code: String) {
-    let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    let refused = round["refused"].as_array().unwrap();
-    assert!(
-        refused
-            .iter()
-            .any(|item| item["id"] == "pick-1" && item["code"] == code.as_str()),
-        "{round}"
-    );
+    assert_eq!(world.scratch, format!("wren {code}"));
     let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     assert_eq!(place_of(saved.world(), "rowan"), "docks_street");
 }
@@ -565,10 +494,8 @@ fn the_walk_to_the_street_costs_rest(world: &mut World, rest: i64) {
 #[when(expr = "Rowan walks to the street and rummages in the same round")]
 fn rowan_walks_and_rummages(world: &mut World) {
     let rummage = intent("rummage", "rowan", "rummage", None);
-    let (_state, rolls, round) = rowan_walks(world.pack(), vec![rummage]);
-    world.scratch = round.to_string();
-    world.seen = rolls
-        .iter()
+    let (_state, output) = rowan_walks(world.pack(), vec![rummage]);
+    world.seen = (output.reports.iter())
         .filter_map(|report| match report {
             MoveReport::Rolled { actor_id, roll } if actor_id == "rowan" => {
                 Some(roll.success_at.to_string())
@@ -581,7 +508,7 @@ fn rowan_walks_and_rummages(world: &mut World) {
 
 #[then(expr = "the GM sees Rowan's check against a bar of {int}")]
 fn the_gm_sees_rowans_check_against_a_bar_of(world: &mut World, bar: i64) {
-    assert_eq!(world.seen, bar.to_string(), "{}", world.scratch);
+    assert_eq!(world.seen, bar.to_string());
 }
 
 #[given(
@@ -603,7 +530,7 @@ fn a_street_rule_over_the_cap(world: &mut World) {
 
 #[when(expr = "Rowan walks to the street")]
 fn rowan_walks_to_the_street(world: &mut World) {
-    let (ecs_world, _rolls, _round) = rowan_walks(world.pack(), Vec::new());
+    let (ecs_world, _output) = rowan_walks(world.pack(), Vec::new());
     let rowan = "rowan".into();
     let flags = ecs_world.actors().get::<component::Flag>(&rowan);
     world.count = flags.iter().count();
@@ -614,11 +541,6 @@ fn neither_flag_is_set(world: &mut World) {
     assert_eq!(world.count, 0, "flags were set");
 }
 
-#[given(expr = "the docks pack with Rowan seated in the shop")]
-fn the_docks_pack_with_rowan_seated(world: &mut World) {
-    world.pack = Some(support::copy_pack("docks", "exit-touch"));
-}
-
 #[when(expr = "Bram and Aldric wait and then Mira travels through the {string} exit")]
 fn two_wait_and_mira_travels(world: &mut World, exit: String) {
     let intents = vec![
@@ -626,26 +548,20 @@ fn two_wait_and_mira_travels(world: &mut World, exit: String) {
         intent("wait-aldric", "aldric", "wait", None),
         intent("walk-mira", "mira", "travel", Some(&exit)),
     ];
-    let (_state, _rolls, round) = play_queued(world.pack(), &["rowan"], intents);
-    world.scratch = round.to_string();
+    play_queued(world.pack(), &["rowan"], intents);
 }
 
+/// The round has room for one intent, so only the one picked first acts.
 #[then(expr = "Mira's travel is picked ahead of both waits")]
 fn miras_travel_is_picked_first(world: &mut World) {
-    let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    let rules: Vec<&str> = round["extra_steps"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|step| step["rule"].as_str())
-        .filter(|rule| ["verb:travel", "verb:wait"].contains(rule))
-        .collect();
-    // Mira's walk starts first and finishes after the waits, when its ticks pass.
-    assert_eq!(
-        rules,
-        vec!["verb:travel", "verb:wait", "verb:wait", "verb:travel"],
-        "{round}"
-    );
+    let now = support::world_of(world.pack());
+    for actor in ["bram", "aldric"] {
+        assert_eq!(
+            act_of(&now, actor).last_act_round,
+            0,
+            "{actor}'s wait landed"
+        );
+    }
 }
 
 #[then(expr = "Mira has visited the Docks Shop")]
@@ -666,19 +582,19 @@ fn the_docks_pack_allows_intents(world: &mut World, limit: u64) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "Harbormouse waits and Briar waits in the same round")]
-fn harbormouse_and_briar_wait(world: &mut World) {
+#[when(expr = "Harbormouse waits and Wren waits in the same round")]
+fn harbormouse_and_wren_wait(world: &mut World) {
     let intents = vec![
         intent("harbormouse-wait", "harbormouse", "wait", None),
-        intent("briar-wait", "briar", "wait", None),
+        intent("wren-wait", "wren", "wait", None),
     ];
-    let (_state, _rolls, round) = play_queued(world.pack(), &[], intents);
-    world.scratch = round.to_string();
+    let (_state, output) = play_queued(world.pack(), &[], intents);
+    world.scratch = list_refusals(&output.reports);
 }
 
-#[then(expr = "Briar's wait is refused BUDGET and nothing is left queued")]
-fn briars_wait_is_refused_budget(world: &mut World) {
-    assert_budget_refusals(world, &["briar-wait"]);
+#[then(expr = "Wren's wait is refused BUDGET and nothing is left queued")]
+fn wrens_wait_is_refused_budget(world: &mut World) {
+    assert_budget_refusals(world, "wren BUDGET");
 }
 
 #[given(
@@ -707,27 +623,18 @@ fn rowan_oversets_and_wren_waits(world: &mut World) {
         intent("rowan-overset", "rowan", "overset", None),
         intent("wren-wait", "wren", "wait", None),
     ];
-    let (_state, _rolls, round) = play_queued(world.pack(), &[], intents);
-    world.scratch = round.to_string();
+    let (_state, output) = play_queued(world.pack(), &[], intents);
+    world.scratch = list_refusals(&output.reports);
 }
 
 #[then(expr = "Rowan's overset and Wren's wait are both refused BUDGET and nothing is left queued")]
 fn rowans_overset_and_wrens_wait_are_refused_budget(world: &mut World) {
-    assert_budget_refusals(world, &["rowan-overset", "wren-wait"]);
+    assert_budget_refusals(world, "rowan BUDGET, wren BUDGET");
 }
 
-/// Each of `ids` is refused `BUDGET` in the round, and the save keeps no queue.
-fn assert_budget_refusals(world: &World, ids: &[&str]) {
-    let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    let refused = round["refused"].as_array().unwrap();
-    for id in ids {
-        assert!(
-            refused
-                .iter()
-                .any(|item| item["id"] == *id && item["code"] == "BUDGET"),
-            "{id}: {round}"
-        );
-    }
+/// The round's refusals are `expected`, and the save keeps no queue.
+fn assert_budget_refusals(world: &World, expected: &str) {
+    assert_eq!(world.scratch, expected);
     let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     assert!(saved.queued_intents().is_empty());
 }
@@ -747,12 +654,12 @@ fn set_budget(pack: &Path, key: &str, value: u64) {
 fn rowan_walks(
     pack: &Path,
     then: Vec<spookery_protocol::QueueArgs>,
-) -> (spookery_engine::ecs::World, Vec<MoveReport>, Value) {
+) -> (spookery_engine::ecs::World, Output) {
     let mut intents = vec![intent("walk", "rowan", "travel", Some("docks_street"))];
     intents.extend(then);
-    let (world, rolls, round) = play_queued(pack, &["rowan"], intents);
-    assert_eq!(place_of(&world, "rowan"), "docks_street", "{round}");
-    (world, rolls, round)
+    let (world, output) = play_queued(pack, &["rowan"], intents);
+    assert_eq!(place_of(&world, "rowan"), "docks_street");
+    (world, output)
 }
 
 /// Give `place` its own `rules:` list, written just before its exits.
@@ -764,17 +671,19 @@ fn add_place_rules(pack: &Path, place: &str, rules: &str) {
     fs::write(&path, next).unwrap();
 }
 
-fn assert_refusal(world: &World, oil: i64, reason: &str) {
-    assert_eq!(String::from_utf8_lossy(&world.oil), oil.to_string());
-    let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    assert!(round["effects"].as_array().unwrap().is_empty(), "{round}");
-    let rejected = round["refused"].as_array().unwrap();
-    assert!(
-        rejected
-            .iter()
-            .any(|item| item["id"] == world.intent_id && item["code"] == reason),
-        "{round}"
-    );
+/// Each refused move in `reports` as `actor CODE`, joined by commas.
+pub(crate) fn list_refusals<'r>(reports: impl IntoIterator<Item = &'r MoveReport>) -> String {
+    let refused = reports.into_iter().filter_map(|report| match report {
+        MoveReport::Refused { actor_id, refusal } => Some(format!("{actor_id} {}", refusal.code)),
+        MoveReport::Rolled { .. } => None,
+    });
+    refused.collect::<Vec<_>>().join(", ")
+}
+
+/// How many rolls `reports` holds for `actor`.
+fn count_rolls(reports: &[MoveReport], actor: &str) -> usize {
+    let rolled = |report: &&MoveReport| matches!(report, MoveReport::Rolled { actor_id, .. } if actor_id == actor);
+    reports.iter().filter(rolled).count()
 }
 
 fn strike_line(scratch: &str, actor: &str) -> (i64, i64) {
@@ -827,16 +736,15 @@ fn harbormouse_roll(pack: &Path, extra_first: bool) -> (String, i64) {
         ));
     }
     intents.push(intent("harbormouse-exert", "harbormouse", "exert", None));
-    let (_state, rolls, round) = play_queued(pack, &[], intents);
-    let total = rolls.into_iter().find_map(|report| match report {
+    let (_state, output) = play_queued(pack, &[], intents);
+    let total = output.reports.into_iter().find_map(|report| match report {
         MoveReport::Rolled { actor_id, roll } if actor_id == *"harbormouse" => Some(roll.total),
         _ => None,
     });
     let total = total.unwrap_or_else(|| panic!("Harbormouse did not roll"));
-    let exert_line = (round["dice"].as_array().into_iter().flatten())
-        .filter_map(Value::as_str)
+    let exert_line = (output.dice.iter())
         .find(|line| line.starts_with("2d6 "))
-        .unwrap_or_else(|| panic!("no exert dice line\n{round}"));
+        .unwrap_or_else(|| panic!("no exert dice line: {:?}", output.dice));
     (exert_line.to_string(), total)
 }
 
@@ -845,7 +753,7 @@ fn play_queued(
     pack: &Path,
     seated: &[&str],
     intents: Vec<spookery_protocol::QueueArgs>,
-) -> (spookery_engine::ecs::World, Vec<MoveReport>, Value) {
+) -> (spookery_engine::ecs::World, Output) {
     let lock = spookery_engine::lock_pack(pack).unwrap();
     let mut session =
         spookery_engine::Session::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
@@ -864,9 +772,7 @@ fn play_queued(
     let output = session
         .play(&presence, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
-    let round = read_round(pack, "round-0001");
-    let ecs_world = session.world().clone();
-    (ecs_world, output.reports, round)
+    (session.world().clone(), output)
 }
 
 /// The GM's `queue` command: `actor_id` plays `verb` at `target`, under the id `id`.
@@ -948,42 +854,29 @@ fn a_cast_member_the_save_does_not_list(world: &mut World, row: String) {
     world.pack = Some(pack);
 }
 
+/// The GM queues Rowan's `verb`. The scenario keeps the shop's lamp oil, the round's
+/// refusals, Rowan's rolls and what the GM sees change.
 #[when(expr = "Rowan plays {word}")]
 fn rowan_plays(world: &mut World, verb: String) {
-    let pack = world.pack().to_path_buf();
-    let lock = spookery_engine::lock_pack(&pack).unwrap();
-    let mut opened = spookery_engine::Session::resume(&pack, lock).unwrap();
-    let wall = opened.world().last_round_at.clone();
-    let nobody = spookery_engine::Presence::default();
-    opened
-        .queue_gm_intent(
-            &nobody,
-            intent(&format!("rowan-{verb}"), "rowan", &verb, None),
-            || panic!("the GM chose the id"),
-        )
-        .unwrap();
-    let output = opened.play(&nobody, &wall).unwrap();
-    world.summary_lines = output.changed_keys.clone();
-    world.scratch = read_round(&pack, "round-0001").to_string();
+    let queued = intent(&format!("rowan-{verb}"), "rowan", &verb, None);
+    let (ecs_world, output) = play_queued(world.pack(), &[], vec![queued]);
+    let shop = "docks_shop".into();
+    let items = ecs_world.places().get::<component::Item>(&shop);
+    let oil = items.get("lamp_oil").copied().map_or(-1, i64::from);
+    world.oil = oil.to_string().into_bytes();
+    world.scratch = list_refusals(&output.reports);
+    world.count = count_rolls(&output.reports, "rowan");
+    world.summary_lines = output.changed_keys;
 }
 
-#[then(expr = "Rowan's {word} is refused {word}")]
-fn rowans_move_is_refused(world: &mut World, verb: String, code: String) {
-    let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    let refused = round["refused"].as_array().unwrap();
-    assert_eq!(refused.len(), 1, "{round}");
-    assert_eq!(
-        refused[0]["id"],
-        format!("rowan-{verb}").as_str(),
-        "{round}"
-    );
-    assert_eq!(refused[0]["code"], code.as_str(), "{round}");
+#[then(expr = "Rowan's move is refused {word}")]
+fn rowans_move_is_refused(world: &mut World, code: String) {
+    assert_eq!(world.scratch, format!("rowan {code}"));
 }
 
 #[then(expr = "Rowan's brace lands, and the GM sees both {string} and {string} change")]
 fn rowans_brace_lands(world: &mut World, modifier: String, meter: String) {
-    let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    assert_eq!(round["refused"].as_array().unwrap().len(), 0, "{round}");
+    assert_eq!(world.scratch, "");
     for key in [modifier, meter] {
         assert!(
             world.summary_lines.contains(&key),

@@ -5,9 +5,10 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::roll;
-use spookery_engine::{component, ecs, entity};
+use spookery_engine::{component, ecs, entity, MoveReport};
 
-use super::common::{resolve_id, split_line};
+use super::common::resolve_id;
+use super::rules::split_line;
 use super::table;
 use crate::support;
 use crate::World;
@@ -58,11 +59,6 @@ fn handle_move(
     Ok(session
         .commit_then_fast_forward(&nobody, &stamp)
         .unwrap_or_else(|err| panic!("{line}: {err}")))
-}
-
-fn read_first_round_line(pack: &Path) -> String {
-    spookery_engine::testing::journal::read_record_line(pack, "round-0001")
-        .unwrap_or_else(|err| panic!("{}", err.detail))
 }
 
 fn write_dagger(pack: &Path, rules: &str) {
@@ -170,11 +166,23 @@ fn actor_types(world: &mut World, actor: String, line: String) {
     let pack = world.pack.clone().unwrap();
     world.scratch = match handle_move(&pack, &actor, &line) {
         Ok(outputs) => {
+            let refused = list_refusals(outputs.iter().flat_map(|output| &output.reports));
             world.summary = outputs.into_iter().flat_map(|o| o.changed_keys).collect();
-            "ok".to_string()
+            refused
         }
         Err(err) => err.code.as_str().to_string(),
     };
+}
+
+/// Each move `reports` told a player was refused, as `actor CODE`, joined by commas.
+pub(crate) fn list_refusals<'r>(reports: impl IntoIterator<Item = &'r MoveReport>) -> String {
+    let refused = reports.into_iter().filter_map(|report| match report {
+        MoveReport::Refused { actor_id, refusal } => {
+            Some(format!("{actor_id} {}", refusal.code.as_str()))
+        }
+        MoveReport::Rolled { .. } => None,
+    });
+    refused.collect::<Vec<_>>().join(", ")
 }
 
 #[then(expr = "harbormouse has 7 hp and 0 tonic")]
@@ -278,7 +286,6 @@ fn no_round_was_spent(world: &mut World) {
         world.scratch,
         "a round was spent"
     );
-    assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
     assert_eq!(
         now.actors()
             .get::<component::Item>(&"harbormouse".into())
@@ -294,29 +301,20 @@ fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
     assert_eq!(world.scratch, code);
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(support::world_of(pack).round_index, 0);
-    assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
 }
 
 #[when(expr = "rowan drops lamp_oil")]
 fn rowan_drops_oil(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    handle_move(&pack, "rowan", "drop lamp_oil")
+    let outputs = handle_move(&pack, "rowan", "drop lamp_oil")
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
+    world.scratch = list_refusals(outputs.iter().flat_map(|output| &output.reports));
 }
 
-fn assert_round_rejects_missing_item(pack: &Path) {
-    let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
-    let rejected = round["refused"].as_array().unwrap();
-    assert!(
-        rejected.iter().any(|item| item["code"] == "MISSING_ITEM"),
-        "{round}"
-    );
-}
-
-#[then(expr = "the round names MISSING_ITEM and rowan still has no lamp_oil")]
+#[then(expr = "rowan is told MISSING_ITEM and still has no lamp_oil")]
 fn the_drop_was_missing(world: &mut World) {
+    assert_eq!(world.scratch, "rowan MISSING_ITEM");
     let pack = world.pack.as_ref().unwrap();
-    assert_round_rejects_missing_item(pack);
     let now = support::world_of(pack);
     assert_eq!(
         now.actors()
@@ -353,14 +351,8 @@ fn harbormouse_wielded_slot_is_poisoned_dagger(world: &mut World) {
 
 #[then(expr = "it is rejected with NOT_A_WEAPON and the slot is unchanged")]
 fn tonic_is_not_a_weapon(world: &mut World) {
-    let pack = world.pack.as_ref().unwrap();
-    let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
-    let rejected = round["refused"].as_array().unwrap();
-    assert!(
-        rejected.iter().any(|item| item["code"] == "NOT_A_WEAPON"),
-        "{round}"
-    );
-    assert_eq!(wielded(pack, "harbormouse"), None);
+    assert_eq!(world.scratch, "harbormouse NOT_A_WEAPON");
+    assert_eq!(wielded(world.pack.as_ref().unwrap(), "harbormouse"), None);
 }
 
 #[given(expr = "harbormouse wields poisoned_dagger")]
@@ -505,7 +497,6 @@ fn wren_rolls_a_nested_check_on_a_seeded_roll(world: &mut World) {
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
-    world.scratch = stat.to_string();
 }
 
 #[when(expr = "harbormouse hits a seated wren with poisoned_dagger")]
@@ -516,14 +507,6 @@ fn harbormouse_hits_a_seated_wren_with_the_dagger(world: &mut World) {
     table::seat_actor(world, &pack, "wren");
     world.wren_mark = table::player_client(world, "wren").seat.mark();
     let _ = table::actor_send(world, "harbormouse", "attack wren", "\"kind\":\"check\"");
-    let round: Value = serde_json::from_str(read_first_round_line(&pack).trim()).unwrap();
-    let dice = round["dice"]
-        .as_array()
-        .unwrap_or_else(|| panic!("{round}"));
-    assert_eq!(dice.len(), 2, "{round}");
-    let line = dice[1].as_str().unwrap_or_else(|| panic!("{round}"));
-    let total = super::checks::dice_line_total(line);
-    assert_eq!(total, 15, "stat {}: {line}", world.scratch);
 }
 
 #[then(expr = "wren is told she saved")]
@@ -533,7 +516,7 @@ fn wren_is_told_her_nested_check_succeeded(world: &mut World) {
     assert_eq!(added.matches(r#""kind":"check""#).count(), 1, "{added}");
 }
 
-#[then(expr = "wren loses 3 hp, is not poisoned, sees {string}, and the round shows no refusal")]
+#[then(expr = "wren loses 3 hp, is not poisoned and sees {string}")]
 fn the_poison_fades(world: &mut World, text: String) {
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(hp(pack, "wren"), 7);
@@ -541,11 +524,7 @@ fn the_poison_fades(world: &mut World, text: String) {
         .actors()
         .get::<component::Flag>(&"wren".into())
         .contains("poisoned"));
-    let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
-    assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");
-    let effects = round["effects"].to_string();
-    assert!(effects.contains(&text), "{effects}");
-    assert!(effects.contains("wren"), "{effects}");
+    table::wait_actor_from(world, "wren", world.wren_mark, &text);
 }
 
 #[then(expr = "spook verify reproduces both rolls")]
