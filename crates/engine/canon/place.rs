@@ -29,11 +29,10 @@ pub(super) fn add(
     meters: &mut Meters,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
-    let file = diags.keep(load(&page.file, &page.yaml, 1))?;
+    let file = diags.keep(load(&page.file, &page.yaml))?;
     let whole = FileText {
         file: &page.file,
         text: &page.text,
-        line_base: 0,
     };
     diags.keep(facts.add(&whole, file.facts, &file.id))?;
     let exits = diags
@@ -84,13 +83,9 @@ pub(super) fn name_exits(places: &mut BTreeMap<PlaceId, PlaceDef>) {
     }
 }
 
-fn load(file: &str, yaml: &str, line_base: u32) -> Result<PlaceDoc, Vec<Diagnostic>> {
-    let parsed: PlaceDoc = load_tagged(file, yaml, PLACE_SCHEMA, line_base)?;
-    let source = FileText {
-        file,
-        text: yaml,
-        line_base,
-    };
+fn load(file: &str, yaml: &str) -> Result<PlaceDoc, Vec<Diagnostic>> {
+    let parsed: PlaceDoc = load_tagged(file, yaml, PLACE_SCHEMA)?;
+    let source = FileText { file, text: yaml };
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short place id");
     diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));

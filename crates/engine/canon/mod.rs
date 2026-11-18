@@ -32,7 +32,6 @@ mod story;
 
 pub(crate) use budget::Budget;
 use fact::Facts;
-use item::add_item;
 use lint::{
     broken_exits, reveal_problems, unknown_carriers, unknown_modifiers, unknown_reads,
     unknown_rule_items, EntityScope,
@@ -330,7 +329,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
             continue;
         };
         let rules = if page.file.starts_with("world/items/") {
-            add_item(page, &mut items, &mut diags)
+            item::add(page, &mut items, &mut diags)
         } else if page.file.starts_with("world/places/") {
             place::add(page, &mut facts, &mut places, &mut place_meters, &mut diags)
         } else {
@@ -459,7 +458,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
 #[cfg(any(test, feature = "testing"))]
 pub fn strip_body(text: &str) -> Result<String, Reason> {
     let (yaml, _) = source::split_frontmatter("", text).map_err(|_| Reason::Schema)?;
-    Ok(format!("---\n{yaml}\n---\n"))
+    Ok(format!("{yaml}\n---\n"))
 }
 
 #[cfg(test)]
