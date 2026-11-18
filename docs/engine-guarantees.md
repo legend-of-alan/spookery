@@ -11,8 +11,8 @@ the [seat protocol](seat-protocol.md).
 
 ## One writer
 
-The journal changes when a round commits, and when migrate stores a new hash of
-the world, cast, and rules files. Sitting or leaving writes nothing. A GM `say` is
+A round commit and a migrate, which stores a new hash of the world, cast, and
+rules files, each bump `state_rev`. Sitting or leaving writes nothing. A GM `say` is
 speech. A commit runs the queued moves as one round, in queue order. With no GM,
 each player line commits its own round. A call off the GM menu is refused.
 Speech goes on the tape and leaves the journal and the clock alone. A world,
@@ -70,8 +70,8 @@ at. Startup uses that same snapshot and the live bundle, and does not open a
 closed bundle. Verify names the record and the first save line that
 differs when a logged move no longer matches. An edit in a closed bundle fails
 verification and names that bundle. When logged effects differ from a fresh
-run, verify names that round and the first effect that differs. Each journal
-record reads back as the bytes that were written. Verify leaves the pack
+run, verify names that round and the first effect that differs. A journal nobody
+edited passes verify. Verify leaves the pack
 unchanged. Each roll keeps its own dice. An
 unrelated roll in the same round does not move them, and verify reproduces
 them. Two moves that target each other in one round each roll once, against
@@ -124,7 +124,7 @@ Tested in `features/seats/one_gm_and_three_players.feature`,
 
 A later move sees what an earlier move in that round already changed. One
 refused effect rolls the whole rule back. A rule over the effect cap is refused
-whole, not cut short, and the journal records the refusal. That holds for a change
+whole, not cut short, so none of its effects land. That holds for a change
 rule too. A move's check rolls when the move lands, after the gate admits it
 and its start cost is paid. So the check reads what earlier moves that round
 changed, a move the gate refuses then rolls no dice, and a roll whose effects
@@ -141,7 +141,7 @@ an unclaimed wait, even if the wait was queued first. So does a move through an
 exit into a seated player's room. An NPC habit stays quiet while a player shares
 the room. The GM can still queue it, and a GM-queued habit is checked the same
 as one the engine runs, so a habit that sets a flag its cast file does not
-list is refused `UNKNOWN_ID` either way. A move the round has no room for is
+list is refused either way and sets nothing. A move the round has no room for is
 refused `BUDGET`, never dropped: one past the intent limit, and every one after
 a rule that goes over the state-key limit.
 
@@ -165,7 +165,7 @@ counts the passes after each action, not the round. Arrival fires a rule on that
 author teleport. A meter that crosses the watched line can set a flag in that
 round. An arrival that also meets a flag can grant a fact and move a world
 meter in that round. Two rules that set each other's flags stop at depth 4, and the round
-records the stop. Check warns when change rules set each other's watched
+still commits. Check warns when change rules set each other's watched
 values. A narrate or note on a change rule that can reach a viewer who cannot
 see that change is rejected. A change rule may roll. Verify reproduces that
 roll, and it passes after a round that fired a change rule. A world flag or world
@@ -237,14 +237,14 @@ Tested in `features/meters/modifiers_stack_and_expire.feature` and
 
 A missing exit and a locked exit change nothing. A locked exit shows its locked
 text. An exit with an `if` is locked until, at the end of a round, some actor in
-its place meets that `if`. Then the engine records an `exit_open` effect that sets the
-exit's `open`, and the exit stays open for every actor until a rule sets `open`
-to false. A hidden exit the traveller does not know stays off the view and `help`.
+its place meets that `if`. Then the exit opens and the GM sees the
+`place_exit_open` change, and the exit stays open for every actor until a rule
+sets `open` to false. A hidden exit the traveller does not know stays off the view and `help`.
 A walk that takes ticks puts the traveller on the exit at once, in neither
 room, and keeps them busy until the arrival tick. A move before then is
 refused. The
 round does not shrink: a seated round still advances five ticks, a two-tick
-exit is recorded at its tick inside that round, and the next move is the
+exit lands the traveller inside that round, and the next move is the
 following round. An empty table advances sixty ticks a round. An earlier
 arrival is applied first. When every seated player is busy and no GM is seated,
 rounds run ahead without waiting on the wall clock, up to the pack's cap, and

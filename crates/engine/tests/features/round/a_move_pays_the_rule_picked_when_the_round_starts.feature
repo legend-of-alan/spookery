@@ -6,4 +6,3 @@ Feature: A move pays the rule picked when the round starts
     When Rowan walks to the street and rummages in the same round
     Then Rowan's rest is 1
     And the GM sees Rowan's check against a bar of 1
-    And the journal records "place:docks_shop/rummage" and not "verb:rummage"

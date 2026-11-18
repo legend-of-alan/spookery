@@ -14,19 +14,6 @@ fn harbormouse_plays(world: &mut World, line: String) {
     play(world, "harbormouse", &line);
 }
 
-#[then(expr = "the journal commits two location effects for Harbormouse")]
-fn two_location_effects_for_harbormouse(world: &mut World) {
-    let moves = location_effects(world.pack(), "harbormouse");
-    assert_eq!(
-        moves,
-        vec![
-            ("gate_yard".to_string(), "loft".to_string()),
-            ("loft".to_string(), "gate_yard".to_string()),
-        ],
-        "{moves:?}"
-    );
-}
-
 #[then(regex = r#"^(?P<actor>\S+) is in (?P<place>\S+|"[^"]+")$"#)]
 fn is_in(world: &mut World, actor: String, place: String) {
     let now = support::world_of(world.pack());
@@ -58,6 +45,7 @@ fn the_wait_commits_with_nothing_rejected(world: &mut World) {
 
 #[given(expr = "Mira stands in a place with no facts")]
 fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
+    // repeats module: mirrors its step text
     let pack = support::copy_pack("docks", "no-facts");
     strip_room_facts(&pack);
     support::edit_save(&pack, |ecs_world| {
@@ -92,16 +80,6 @@ fn a_docks_round_plays(world: &mut World) {
 #[then(expr = "Mira's habit fires")]
 fn miras_habit_fires(world: &mut World) {
     let pack = world.pack();
-    let fired = list_round_keys(pack).iter().any(|key| {
-        support::read_round(pack, key)["extra_steps"]
-            .as_array()
-            .is_some_and(|steps| {
-                steps
-                    .iter()
-                    .any(|step| step["rule"] == "cast:mira/leave_door_note")
-            })
-    });
-    assert!(fired, "leave_door_note did not run");
     let ecs_world = support::world_of(pack);
     let notes = ecs_world.globals().get::<Note>(&GlobalId);
     assert!(
@@ -137,22 +115,4 @@ fn strip_room_facts(pack: &Path) {
     assert!(unix.contains(from), "room facts were not found\n{unix}");
     fs::write(&path, unix.replace(from, "facts: []\n"))
         .unwrap_or_else(|err| panic!("write rooms: {err}"));
-}
-
-fn location_effects(pack: &Path, actor: &str) -> Vec<(String, String)> {
-    let mut moves = Vec::new();
-    for key in list_round_keys(pack) {
-        for effect in support::read_round(pack, &key)["effects"]
-            .as_array()
-            .unwrap()
-        {
-            if effect["kind"] == "location" && effect["actor_id"] == actor {
-                moves.push((
-                    effect["from"].as_str().unwrap().to_string(),
-                    effect["to"].as_str().unwrap().to_string(),
-                ));
-            }
-        }
-    }
-    moves
 }

@@ -41,11 +41,11 @@ Feature: Travel follows the map
     Given rounds are 5 ticks while seated and the stairs exit costs 2 ticks
     When rowan travels via stairs in the round starting at tick 1290
     Then the round still ends at tick 1295
-    And rowan's arrival is recorded with arrived_at 1292 in that round's line
+    And Rowan is in mira_rooms
     And a move from rowan is accepted from the round starting at tick 1295
 
   Scenario: Rounds never shorten
-    Then every round line shows world_time_after minus world_time_before equal to 5 seated or 60 unseated
+    Then a seated round advances world_time by 5 and an empty one by 60
 
   Scenario: Fast-forward when all seated PCs are busy
     Given rowan and nell are seated and both busy, with no GM

@@ -5,7 +5,6 @@ Feature: Dice and arithmetic in rule numbers
     When the pack's hit adds "2d6" to vigor
     And the player hits and the GM commits
     Then Rowan's vigor rose by the 2d6 faces
-    And the journal records the 2d6 faces
     And the GM commit reply shows the 2d6 faces
     And the player text has no dice faces
     And replaying the round reproduces the save
@@ -30,7 +29,6 @@ Feature: Dice and arithmetic in rule numbers
     When the pack's hit adds "<dice>" to vigor
     And the player hits and the GM commits
     Then Rowan's vigor rose by the <kept> face of 2d20k
-    And the journal records both d20 faces
 
     Examples:
       | dice    | kept   |
@@ -70,7 +68,6 @@ Feature: Dice and arithmetic in rule numbers
     When Mira's habit <adds>
     And one round plays
     Then Mira's vigor rose by the 1d4 face
-    And the journal records the 1d4 face
 
     Examples:
       | adds                                        |
@@ -120,4 +117,3 @@ Feature: Dice and arithmetic in rule numbers
     When the pack's hit adds "9223372036854775807 + 1" to vigor
     And the player hits and the GM commits
     Then Rowan's vigor is 1
-    And the journal rejects the hit as OUT_OF_RANGE

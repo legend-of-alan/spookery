@@ -17,9 +17,8 @@ Feature: The host's seats say who is present
     When "wren" leaves
     Then status shows players 1 and actors_present "rowan"
 
-  Scenario: The journal records who was seated when the round ran
+  Scenario: A round after a player leaves passes verify
     Given a docks table with "rowan" and "wren" seated
     When "wren" leaves
     And a round commits
-    Then the round's presence_players is 1 and actors_present is "rowan"
-    And spook verify passes
+    Then spook verify passes

@@ -24,7 +24,7 @@ Feature: A player knows where they are and what they can do
     And help shows "ask Aldric" and not "ask <actor>: Aldric"
     And help shows "travel <exit>: Docks Street, stairs" and not "Exits:"
     And play does not show the line "claim"
-    And no round record was written
+    And no round was played
     When I type "travel docks_street"
     And I type "help"
     Then help shows "travel <exit>: Docks Shop, Gate Yard" and not "ask Aldric"
@@ -95,7 +95,7 @@ Feature: A player knows where they are and what they can do
     And play shows "travel <exit>: Mill Lane, Loft, Wheel Shed, Docks Street"
     When play types "travel Mill Lane"
     Then play's error shows "The lane is shut."
-    And no round record was written
+    And no round was played
     When play types "ask briar"
     Then play shows "Briar steps aside."
     When play types "travel Wheel Shed"
@@ -115,7 +115,7 @@ Feature: A player knows where they are and what they can do
     When play joins the table as "harbormouse"
     And play types "ask Briar"
     Then play's error shows "More than one thing here is called Briar: bram, briar."
-    And no round record was written
+    And no round was played
     When play types "say briar hello"
     Then play's error shows "More than one thing here is called briar: bram, briar."
 

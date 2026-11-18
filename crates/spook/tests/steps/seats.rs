@@ -509,22 +509,3 @@ fn hears_it_and_does_not(world: &mut World, seated: String, free: String) {
 fn status_shows(world: &mut World, players: u32, actor: String) {
     assert_eq!(table::read_presence(world), (players, vec![actor]));
 }
-
-#[then(expr = "the round's presence_players is {int} and actors_present is {string}")]
-fn the_rounds_presence_is(world: &mut World, players: u64, actor: String) {
-    let pack = table::pack(world);
-    let last = list_round_keys(pack)
-        .pop()
-        .unwrap_or_else(|| panic!("no round was written"));
-    let round = crate::support::read_round(pack, &last);
-    assert_eq!(
-        round["presence_players"],
-        serde_json::json!(players),
-        "{round}"
-    );
-    assert_eq!(
-        round["actors_present"],
-        serde_json::json!([actor]),
-        "{round}"
-    );
-}

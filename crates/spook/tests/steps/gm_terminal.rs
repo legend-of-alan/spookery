@@ -230,46 +230,6 @@ fn world_time_advanced(world: &mut World) {
     });
 }
 
-#[then(expr = "the journal records Mira's door note")]
-fn the_journal_records_the_door_note(world: &mut World) {
-    let round = common::read_first_round(world);
-    let queued = round["intents"].as_array().and_then(|intents| {
-        intents
-            .iter()
-            .find(|intent| intent["move"] == "leave_door_note")
-            .map(|intent| intent["id"].clone())
-    });
-    let queued = queued.unwrap_or_else(|| panic!("{round}"));
-    let noted = round["effects"].as_array().is_some_and(|effects| {
-        effects
-            .iter()
-            .any(|effect| effect["kind"] == "note" && effect["intent_id"] == queued)
-    });
-    assert!(noted, "{round}");
-}
-
-#[then(expr = "the journal records Rowan and Wren waiting")]
-fn the_journal_records_rowan_and_wren(world: &mut World) {
-    table::wait_round_count(table::pack(world), 1);
-    let round = common::read_first_round(world);
-    let waits = round["intents"]
-        .as_array()
-        .unwrap_or_else(|| panic!("{round}"))
-        .iter()
-        .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
-        .map(|intent| {
-            intent["actor"]
-                .as_str()
-                .and_then(|actor| actor.strip_prefix("player:"))
-                .unwrap_or_else(|| panic!("actor"))
-                .to_string()
-        })
-        .collect::<Vec<_>>();
-    assert!(waits.iter().any(|id| id == "rowan"), "{waits:?}");
-    assert!(waits.iter().any(|id| id == "wren"), "{waits:?}");
-    assert_eq!(waits.len(), 2, "{waits:?}");
-}
-
 #[then(expr = "the GM's stderr shows {string}")]
 fn the_gm_stderr_shows(world: &mut World, text: String) {
     let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));

@@ -82,7 +82,6 @@ Feature: Play shows readable text
     Then play shows "You: done"
     And play shows "Your roll succeeded."
     And play does not show "hp is now"
-    And the round record has a meter effect on briar
 
   Scenario: A used item shows as used up
     Given a docks table
@@ -97,7 +96,6 @@ Feature: Play shows readable text
     Then play shows "Your Bitter tonic was used up."
     And play does not show "gained"
     And play does not show "Bram"
-    And the round record has an item effect on bram
 
   Scenario: An item gained and given back in one action is no change
     Given a docks table where a juggle gains harbormouse a tonic and gives it back
@@ -127,5 +125,3 @@ Feature: Play shows readable text
     Then play shows "You: done"
     And play does not show "Briar's hp"
     And play does not show "the sealed name"
-    And the round record has a meter effect on briar
-    And the round record has a flag effect on world

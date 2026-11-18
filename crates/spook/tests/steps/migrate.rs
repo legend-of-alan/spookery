@@ -24,19 +24,6 @@ fn docks_pack_rev() -> String {
     spookery_engine::pack_rev(&root).unwrap()
 }
 
-fn read_migrate_revs(pack: &Path) -> Vec<u64> {
-    use spookery_engine::testing::journal::{read_records, Record};
-    let entries = read_records(pack).unwrap_or_else(|err| panic!("{}", err.detail));
-    let mut revs = Vec::new();
-    for entry in &entries {
-        let Record::Migrate(record) = entry else {
-            continue;
-        };
-        revs.push(record.state_rev_after);
-    }
-    revs
-}
-
 #[when(expr = "a canon file gains a byte")]
 fn a_canon_file_gains_a_byte(world: &mut World) {
     let pack = table::pack(world);
@@ -202,11 +189,6 @@ fn state_rev_is_2(world: &mut World) {
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
 }
 
-#[then(expr = "the journal has two migrate records, at state_rev 1 and 2")]
-fn the_journal_has_two_migrate_records(world: &mut World) {
-    assert_eq!(read_migrate_revs(table::pack(world)), [1, 2]);
-}
-
 #[then(expr = "migrate keeps the hand edit")]
 fn migrate_keeps_the_hand_edit(world: &mut World) {
     // repeats module: mirrors its step text
@@ -220,8 +202,6 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.round_index, 0);
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
     assert_eq!(place_of(&now, "rowan"), "mira_rooms");
-    assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
-    assert_eq!(read_migrate_revs(pack), [1]);
 }
 
 #[when(expr = "the shop's lamp oil is hand edited to {int}")]

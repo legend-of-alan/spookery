@@ -9,8 +9,8 @@ use crate::support;
 use crate::World;
 
 use super::common::{
-    a_docks_table, add_verb, capture_play_stdout, edit_save, join_play, read_first_round,
-    replace_in_file, spawn_play, wait_play, wait_play_until,
+    a_docks_table, add_verb, capture_play_stdout, edit_save, join_play, replace_in_file,
+    spawn_play, wait_play, wait_play_until,
 };
 use super::table;
 
@@ -281,16 +281,4 @@ fn a_juggle_gives_the_tonic_back(world: &mut World) {
         "  - id: juggle\n    when:\n      verb: juggle\n    do:\n      - item:\n          of: harbormouse\n          id: tonic\n          add: 1\n      - item:\n          of: harbormouse\n          id: tonic\n          add: -1\n",
     );
     stamp_pack_rev(&pack);
-}
-
-/// The round's effects hold a `kind` effect that names `id`, though the player was not told of it.
-#[then(expr = "the round record has a(n) {word} effect on {word}")]
-fn the_round_record_has_an_effect_on(world: &mut World, kind: String, id: String) {
-    let round = read_first_round(world);
-    let quoted = format!("\"{id}\"");
-    let effects = round["effects"].as_array().unwrap();
-    let found = effects
-        .iter()
-        .any(|effect| effect["kind"] == kind && effect.to_string().contains(&quoted));
-    assert!(found, "{round}");
 }

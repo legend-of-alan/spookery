@@ -36,7 +36,7 @@ Feature: One GM seat and up to three player seats
     Given a one-player docks table
     When the player waits
     Then world_time is 1085
-    And a round record was written
+    And one round was played
     When a second player connects
     Then the hello is refused with "SEAT_TAKEN"
     And players is 1

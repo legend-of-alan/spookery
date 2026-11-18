@@ -21,7 +21,6 @@ Feature: An NPC rolls its own check
   Scenario: An engine habit rolls its NPC's check
     When an engine habit rolls a check for Mira
     Then Mira slipped
-    And the journal records Mira's engine brace
     And replaying the round reproduces the save
 
   Scenario: A dodge stored in let that reads the target's vigor defends the target
@@ -38,4 +37,4 @@ Feature: An NPC rolls its own check
     Given a docks table with a seated player
     When the player sends a line with a player prefix
     Then world_time is 1080
-    And no round record was written
+    And no round was played

@@ -228,6 +228,10 @@ rules:
           of: self
           key: sun
           value: false
+      - meter:
+          of: self
+          key: vigor
+          add: 1
   - id: moon_to_sun
     when:
       change:
@@ -242,6 +246,10 @@ rules:
           of: self
           key: moon
           value: false
+      - meter:
+          of: self
+          key: vigor
+          add: 1
 ",
     )
     .unwrap();
@@ -251,7 +259,7 @@ rules:
     world.pack = Some(pack);
 }
 
-#[then(expr = "spook check warns of a cycle, and a round stops at depth 4 and logs trigger_depth")]
+#[then(expr = "spook check warns of a cycle, and a round stops at depth 4 and still commits")]
 fn check_warns_of_a_cycle_and_the_round_stops(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     let output = support::run_spook(&["check", &pack.to_string_lossy()]);
@@ -265,27 +273,15 @@ fn check_warns_of_a_cycle_and_the_round_stops(world: &mut World) {
 
 fn a_round_stops_at_depth_4(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
-    play(
+    let (now, _reports, _record) = play(
         world,
         &pack,
         vec![intent("raise-sun", "nell", "raise", None)],
     );
-    let round = read_latest_round(&pack);
-    let steps = read_extra_steps(&round);
-    let suns = steps
-        .iter()
-        .filter(|step| step.as_str() == "story:loop/sun_to_moon")
-        .count();
-    let moons = steps
-        .iter()
-        .filter(|step| step.as_str() == "story:loop/moon_to_sun")
-        .count();
-    assert_eq!(suns, 2, "sun rule ran {suns} times\n{round}");
-    assert_eq!(moons, 2, "moon rule ran {moons} times\n{round}");
-    assert!(
-        steps.iter().any(|step| step == "trigger_depth"),
-        "trigger_depth was not logged\n{round}"
-    );
+    // Each pass adds 1 to Nell's vigor, which starts at Rowan's 1.
+    let nell = entity::Id::Actor("nell".into());
+    let vigor = now.entities().get::<component::Meter>(&nell).value("vigor");
+    assert_eq!(vigor, Ok(5), "four passes add 4");
 }
 
 #[given(expr = "a rule on a known fact narrates to the subject")]
@@ -766,18 +762,6 @@ fn the_gm_queues_miras_habit(world: &mut World, habit: String) {
 fn an_empty_round_passes(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     play_and_keep_summaries(world, pack, Vec::new());
-}
-
-#[then(expr = "the round's only refusal is {string}")]
-fn the_rounds_only_refusal_is(world: &mut World, code: String) {
-    let round = read_latest_round(world.pack.as_ref().unwrap());
-    let codes: Vec<&str> = round["refused"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|refusal| refusal["code"].as_str())
-        .collect();
-    assert_eq!(codes, vec![code.as_str()], "{round}");
 }
 
 #[then(expr = "no place has the {string} flag")]

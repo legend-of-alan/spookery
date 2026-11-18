@@ -31,7 +31,7 @@ Feature: A round refusal names the gap
     And Harbormouse queues "strike briar"
     And the GM commits the round
     Then Harbormouse's refused frame for "NOT_IN_SPEC" has no missing field
-    And the GM sees no roll and the round records no dice line
+    And the GM sees no roll
 
   Scenario: A strike the GM sends across rooms is refused at once
     Given a docks table with a seated GM

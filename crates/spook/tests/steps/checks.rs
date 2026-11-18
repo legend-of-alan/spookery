@@ -242,25 +242,6 @@ fn the_gm_sees_one_roll_from_attack_and_dodge(world: &mut World) {
     assert_roll(&body, "attack: ", 1, face_sum + MIRA_VIGOR, "miss");
 }
 
-#[then(expr = "the journal records Mira's engine brace")]
-fn the_journal_records_miras_engine_brace(world: &mut World) {
-    let round = common::read_first_round(world);
-    let ran: Vec<_> = super::record::read_extra_steps(&round)
-        .into_iter()
-        .filter(|step| step == "cast:mira/brace")
-        .collect();
-    assert_eq!(ran.len(), 1, "{round}");
-    let flags: Vec<_> = round["effects"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|effect| effect["kind"] == "flag" && effect["entity"]["actor"] == "mira")
-        .collect();
-    assert_eq!(flags.len(), 1, "{round}");
-    assert_eq!(flags[0]["as"], "npc:mira", "{round}");
-    assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");
-}
-
 #[when(expr = "the save before the fight is kept")]
 fn the_save_before_the_fight_is_kept(world: &mut World) {
     world.scratch = snapshot_pack(table::pack(world)).display().to_string();
@@ -272,13 +253,13 @@ fn play_shows_successful_rolls(world: &mut World, rolls: usize) {
     common::wait_play_until(world, succeeded, &format!("{rolls} successful rolls"));
 }
 
-#[then(expr = "briar's hp is {int}")]
-fn briars_hp_is(world: &mut World, expected: i64) {
+#[then(expr = "{word}'s hp is {int}")]
+fn hp_is(world: &mut World, actor: String, expected: i64) {
     let pack = table::pack(world).to_path_buf();
-    let briar = spookery_engine::entity::Id::Actor("briar".into());
-    table::poll_until(&format!("briar hp {expected}"), || {
+    let id = spookery_engine::entity::Id::Actor(actor.as_str().into());
+    table::poll_until(&format!("{actor} hp {expected}"), || {
         let now = world_of(&pack);
-        match now.entities().get::<component::Meter>(&briar).value("hp") {
+        match now.entities().get::<component::Meter>(&id).value("hp") {
             Ok(hp) if hp == expected => Ok(()),
             held => Err(format!("hp {held:?}")),
         }

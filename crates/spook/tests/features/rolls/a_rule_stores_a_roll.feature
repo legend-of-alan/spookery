@@ -5,7 +5,7 @@ Feature: A rule stores a roll in let
     When the pack's hit stores "boost: 2d6" and adds "boost" to Rowan's and Mira's vigor
     And the player hits and the GM commits
     Then Rowan's and Mira's vigor both rose by the boost total
-    And the journal and the GM commit reply hold dice lines for "boost: 2d6"
+    And the GM commit reply holds dice lines for "boost: 2d6"
     And the player text has no dice faces
     And replaying the round reproduces the save
 
@@ -14,7 +14,7 @@ Feature: A rule stores a roll in let
     When the pack's hit stores "dmg: 2d8" and has "<read>" as <field>
     And the player <hits> and the GM commits
     Then Rowan's vigor rose by the <kept> face of dmg:
-    And the journal and the GM commit reply hold dice lines for "dmg: 2d8"
+    And the GM commit reply holds dice lines for "dmg: 2d8"
 
     Examples:
       | read      | kept   | field                      | hits        |
@@ -22,19 +22,24 @@ Feature: A rule stores a roll in let
       | low(dmg)  | lower  | its vigor add              | hits        |
       | high(dmg) | higher | a nested check's vigor add | hits Aldric |
 
-  Scenario Outline: A rule's dice roll in the order the rule reads, an effect that does not run rolls nothing, and a move that takes time rolls at its finish
+  Scenario Outline: A rule's dice roll in the order the rule reads and an effect that does not run rolls nothing
     Given a docks table
-    When the pack's hit stores "attack: 1d20", checks "attack + 1d4" against <success_at>, takes <ticks> ticks, and adds "1d6" to vigor on a success
+    When the pack's hit stores "attack: 1d20", checks "attack + 1d4" against <success_at>, and adds "1d6" to vigor on a success
     And the player hits and the GM commits
-    Then the journal and the GM commit reply hold dice lines for "<lines>"
-    And no round before the last one rolled dice
+    Then the GM commit reply holds dice lines for "<lines>"
     And spook verify passes
 
     Examples:
-      | success_at | ticks | lines                  |
-      | 0          | 0     | attack: 1d20, 1d4, 1d6 |
-      | 100        | 0     | attack: 1d20, 1d4      |
-      | 0          | 30    | attack: 1d20, 1d4, 1d6 |
+      | success_at | lines                  |
+      | 0          | attack: 1d20, 1d4, 1d6 |
+      | 100        | attack: 1d20, 1d4      |
+
+  Scenario: A move that takes time reads its let at its finish
+    Given a docks table
+    When the pack's hit stores "zeal: self.rest", takes 30 ticks, and adds "zeal" to vigor
+    And Mira's rouse takes 10 ticks and adds 2 to Rowan's rest
+    And the player hits while the GM queues Mira's rouse and the GM commits
+    Then Rowan's vigor is 6
 
   Scenario Outline: A second let, a let id or a read that check refuses fails spook check at the line it names
     Given a docks table

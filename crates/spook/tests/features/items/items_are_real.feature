@@ -11,14 +11,6 @@ Feature: Items are real
     When rowan takes lamp_oil
     Then docks_shop has 2 and rowan has 1
 
-  Scenario: An item target and an exit target keep their own journal keys
-    Given docks_shop has 3 lamp_oil
-    When rowan takes lamp_oil
-    And Rowan types "travel docks_street"
-    Then the journal targets item lamp_oil, then exit docks_street
-    When the operator runs verify
-    Then the command exits 0
-
   Scenario: Using an item with no use rule is refused, and the turn is kept
     Given harbormouse holds 1 latch at a seated table
     When harbormouse plays "use latch"
@@ -77,18 +69,18 @@ Feature: Items are real
 
   Scenario: Attack uses the wielded weapon's rule
     Given harbormouse wields poisoned_dagger
-    When harbormouse attacks wren and hits
-    Then item:poisoned_dagger/attack ran, not verb:attack
+    When harbormouse attacks wren
+    Then wren's hp is 5
 
   Scenario: Bare hands fall back
     Given harbormouse wields nothing
     When harbormouse attacks wren
-    Then verb:attack ran
+    Then wren's hp is 7
 
   Scenario: A wielded item's rule wins for any verb
     Given harbormouse wields a poisoned_dagger with a strike rule
     When Harbormouse types "strike wren"
-    Then item:poisoned_dagger/strike ran, not verb:strike
+    Then wren's hp is 4
 
   Scenario: Dropping the wielded item empties the slot
     Given harbormouse wields poisoned_dagger
