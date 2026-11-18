@@ -301,6 +301,20 @@ fn rowans_look_shows(world: &mut World, line: String) {
     assert_eq!(view.busy, line);
 }
 
+#[then(
+    expr = "the street exit shows {int} ticks to Rowan and {int} to Wren, who carries no assassination_debt"
+)]
+fn the_street_exit_shows(world: &mut World, rowan_ticks: u64, wren_ticks: u64) {
+    let opened = open(world.pack.as_ref().unwrap());
+    let street_ticks = |viewer_id| {
+        let view = opened.perceive(&seated(), viewer_id).unwrap();
+        let street = (view.exits.iter()).find(|exit| exit.exit_id == "docks_street");
+        street.unwrap().ticks
+    };
+    assert_eq!(street_ticks("rowan"), rowan_ticks);
+    assert_eq!(street_ticks("wren"), wren_ticks);
+}
+
 #[then(expr = "Rowan's {string} is refused {word} at once")]
 fn refused_at_once(world: &mut World, line: String, code: String) {
     let mut opened = open(world.pack.as_ref().unwrap());

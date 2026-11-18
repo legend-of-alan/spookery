@@ -32,6 +32,7 @@ Feature: spook check explains a broken pack
       | meter base outside its range | rules/meters.yaml          | SCHEMA            | base outside min and base_cap      |
       | pack_rev mismatch            | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                           |
       | an actor the cast lacks      | state/save.yaml            | SCHEMA            | is not a cast member               |
+      | a control type with two keys | state/save.yaml            | SCHEMA            | two keys where one belongs         |
       | exit to an unknown place     | world/places/docks_shop.md | SCHEMA            | not a place                        |
       | duplicate exit               | world/places/docks_shop.md | SCHEMA            | listed twice                       |
       | a target alias               | rules/verbs.yaml           | SCHEMA            | not a target kind                  |
@@ -50,6 +51,7 @@ Feature: spook check explains a broken pack
       | target on a move with none   | rules/verbs.yaml           | SCHEMA            | in of:, but its target is none     |
       | owner target on an item move | rules/verbs.yaml           | SCHEMA            | in of:, but its target is item     |
       | id: target with no target    | rules/verbs.yaml           | SCHEMA            | in id:, but its target is none     |
+      | target on an exit            | world/places/gate_yard.md  | SCHEMA            | but an exit has no target          |
 
   Scenario: Two problems in two files are both reported
     Given a docks table

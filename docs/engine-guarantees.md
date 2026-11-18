@@ -121,11 +121,12 @@ A later move sees what an earlier move in that round already changed. One
 refused effect rolls the whole rule back. A rule over the effect cap is refused
 whole, not cut short, and the journal records the refusal. That holds for a change
 rule too. A move's check rolls when the move lands, after the gate admits it
-and its start cost is paid, so a move the gate refuses then rolls no dice, and a
-roll whose effects are refused is not reported as a success. A check's
-`success_at` that fails to evaluate refuses that move with its error, and the rest of the
-round lands and commits. A move pays the cost of the rule resolve picked for it,
-even when an earlier move that round changed which rule its verb would pick. A place's verb rule beats the shared rule. A cast
+and its start cost is paid. So the check reads what earlier moves that round
+changed, a move the gate refuses then rolls no dice, and a roll whose effects
+are refused is not reported as a success. A check's `success_at`
+that fails to evaluate refuses that move with its error, and the rest of the
+round lands and commits. A move pays the cost of the rule picked for it when the
+round starts, even when an earlier move that round changed which rule its verb would pick. A place's verb rule beats the shared rule. A cast
 member's verb rule is picked by naming them while they share the actor's place,
 and a bare verb never reaches it. A wielded item's rule for any verb beats the
 target's, the place's and the shared rule, so a wielded weapon's attack beats the
@@ -142,7 +143,7 @@ a rule that goes over the state-key limit.
 Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/round/an_intent_the_round_has_no_room_for_is_refused_budget.feature`,
 `features/round/a_broken_success_at_refuses_one_move.feature`,
-`features/round/apply_pays_the_rule_resolve_picked.feature`,
+`features/round/a_move_pays_the_rule_picked_when_the_round_starts.feature`,
 `features/seats/a_round_refusal_names_the_gap.feature`,
 `features/rules/rules_live_with_their_owner.feature`,
 `features/rules/a_gm_queued_habit_is_judged_like_the_engines.feature`,
