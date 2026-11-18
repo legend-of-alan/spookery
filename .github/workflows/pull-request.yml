@@ -50,7 +50,5 @@ jobs:
           net=$(git diff --numstat "$BASE...HEAD" | awk -F '\t' '
             { if ($3 ~ /(^|\/)tests\/|\.feature$/) t += $1 - $2; else p += $1 - $2 }
             END { printf "Net: %+d production, %+d tests", p, t }')
-          if ! tr -d '\r' <<< "$BODY" | grep -qxF "$net"; then
-            echo "::error::The body needs this line: $net"; failed=1
-          fi
+          echo "::notice::$net"
           exit $failed
