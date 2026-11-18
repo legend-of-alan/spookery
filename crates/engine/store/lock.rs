@@ -37,8 +37,13 @@ mod locked {
             Ok(Self(file))
         }
 
-        /// Wait for a shared lock.
-        pub(super) fn lock_shared(file: File) -> Result<Self, Reason> {
+        /// Take a shared lock, calling `on_wait` first when a writer holds the file.
+        pub(super) fn lock_shared(file: File, on_wait: impl FnOnce()) -> Result<Self, Reason> {
+            match file.try_lock_shared() {
+                Ok(()) => return Ok(Self(file)),
+                Err(TryLockError::WouldBlock) => on_wait(),
+                Err(TryLockError::Error(_)) => return Err(Reason::NotInSpec),
+            }
             file.lock_shared().map_err(|_| Reason::NotInSpec)?;
             Ok(Self(file))
         }
@@ -110,8 +115,38 @@ pub(crate) fn take_read(root: &Path) -> Result<ReadGuard, Reason> {
         Err(_) => open_file(root, RW_LOCK)?,
     };
     Ok(ReadGuard {
-        _file: LockedFile::lock_shared(file)?,
+        _file: LockedFile::lock_shared(file, || {
+            #[cfg(feature = "testing")]
+            run_read_wait_hook(root);
+        })?,
     })
+}
+
+#[cfg(feature = "testing")]
+type ReadWaitHook = Box<dyn FnOnce() + Send>;
+
+/// Hooks a test set with `call_when_read_waits`, each with the pack root it watches.
+#[cfg(feature = "testing")]
+static READ_WAIT_HOOKS: std::sync::Mutex<Vec<(std::path::PathBuf, ReadWaitHook)>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// Call `hook` once, the next time a read of `root` finds the write guard held,
+/// just before it waits for the guard to drop.
+#[cfg(feature = "testing")]
+pub fn call_when_read_waits(root: &Path, hook: impl FnOnce() + Send + 'static) {
+    let mut hooks = READ_WAIT_HOOKS.lock().unwrap();
+    hooks.push((root.to_path_buf(), Box::new(hook)));
+}
+
+#[cfg(feature = "testing")]
+fn run_read_wait_hook(root: &Path) {
+    let mut hooks = READ_WAIT_HOOKS.lock().unwrap();
+    let Some(index) = hooks.iter().position(|(watched, _)| watched == root) else {
+        return;
+    };
+    let (_, hook) = hooks.swap_remove(index);
+    drop(hooks);
+    hook();
 }
 
 fn open_file(root: &Path, rel: &str) -> Result<File, Reason> {
