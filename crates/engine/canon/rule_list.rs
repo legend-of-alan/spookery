@@ -20,18 +20,6 @@ use crate::rules::rule::{
     Phase, Rule, TargetKind, When,
 };
 
-const MOVES_REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
-
-pub(super) fn replaced_moves_file() -> Diagnostic {
-    schema_error(
-        "rules/moves.yaml",
-        MOVES_REPLACED,
-        "delete rules/moves.yaml and write the rules in rules/verbs.yaml or in the owner's file",
-    )
-    .at_path("schema")
-    .at_line(1, Some(1))
-}
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VerbsDoc {

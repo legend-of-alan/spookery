@@ -30,7 +30,6 @@ mod rule_list;
 mod source;
 mod story;
 
-use budget::load_budget;
 pub(crate) use budget::Budget;
 use fact::Facts;
 use item::add_item;
@@ -373,22 +372,18 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
             .keep(read_text(root, MODIFIERS_FILE).and_then(|text| modifiers::load(&text, meters))),
         _ => Some(BTreeMap::new()),
     };
-    // 4. rules/moves.yaml is refused.
-    if root.join("rules/moves.yaml").is_file() {
-        diags.push(rule_list::replaced_moves_file());
-    }
-    // 5. The other two rule files are read in this order; a missing one is reported here.
+    // 4. The other two rule files are read in this order; a missing one is reported here.
     let [verbs, budget] = ["rules/verbs.yaml", "rules/budget.yaml"]
         .map(|rel| diags.keep(read_text(root, rel)).map(|text| (rel, text)));
-    // 6. Verbs.
+    // 5. Verbs.
     if let Some((rel, text)) = &verbs {
         loaded.extend(diags.keep(load_verbs(rel, text)).unwrap_or_default());
     }
-    // 7. story/, which adds each story file's own meters.
+    // 6. story/, which adds each story file's own meters.
     let (story_rules, stories) =
         load_stories(root, meters.as_mut(), world_meters.as_ref(), &mut diags);
     loaded.extend(story_rules);
-    // 8. Rule ids across files.
+    // 7. Rule ids across files.
     let mut seen_ids = BTreeSet::new();
     for rule in &loaded {
         let twice = ("rule", "is already defined", "keep one rule with this id");
@@ -397,9 +392,9 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.extend(taken.then(|| source.refuse_duplicate(&rule.id, "", Locator::Nowhere, twice)));
     }
     let rules = rule::Table::new(loaded);
-    // 9. Budget.
-    let budget = budget.and_then(|(rel, text)| diags.keep(load_budget(rel, &text)));
-    // 10. Lints across files.
+    // 8. Budget.
+    let budget = budget.and_then(|(rel, text)| diags.keep(budget::load(rel, &text)));
+    // 9. Lints across files.
     if let (Some(meters), Some(world_meters)) = (&meters, &world_meters) {
         let scope = EntityScope {
             meters,
@@ -417,7 +412,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     diags.extend(unknown_rule_items(&rules, &items));
     diags.extend(reveal_problems(&rules, &facts.0));
     diags.extend(broken_exits(&places, &facts.0, &items));
-    // 11. checkpoint_every.
+    // 10. checkpoint_every.
     let checkpoint_every = pack
         .as_ref()
         .and_then(|pack| diags.keep(pack.checkpoint_every()));

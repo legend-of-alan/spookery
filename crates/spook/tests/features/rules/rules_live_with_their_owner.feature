@@ -19,10 +19,6 @@ Feature: Rules live with their owner
     When harbormouse attacks with a seeded total of 21
     Then the outcome is a miss
 
-  Scenario: A pack with rules/moves.yaml fails check
-    Given a pack with rules/moves.yaml
-    Then spook check says moves.yaml was replaced by rules/verbs.yaml
-
   Scenario: An unknown effect key is reported on that key
     Given a verb file where the word bogus appears in earlier text
     When an effect key later in that file is bogus

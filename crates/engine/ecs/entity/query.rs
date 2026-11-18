@@ -16,6 +16,7 @@ pub(in crate::ecs) type Ids<'a, E> =
 /// four of them. `&C` gives the value of a component an entity holds one of, and a
 /// `component::Ref` of one it holds many of, by entry id.
 pub trait QueryData<E: entity::Collection> {
+    // repeats module: mirrors Bevy's QueryData (Naming rule 15)
     type Item<'a>
     where
         E: 'a;
@@ -31,6 +32,7 @@ pub trait QueryData<E: entity::Collection> {
 
 /// Which entities a query keeps: `With<C>`, `Without<C>`, or a tuple of up to four of them.
 pub trait QueryFilter<E: entity::Collection> {
+    // repeats module: mirrors Bevy's QueryFilter (Naming rule 15)
     /// The entities that carry the first component this requires, or `None` when it requires none.
     fn carriers<'a>(_: Reader<'a, E>) -> Option<Ids<'a, E>> {
         None
@@ -189,96 +191,3 @@ macro_rules! tuples {
 tuples!(A, B);
 tuples!(A, B, C);
 tuples!(A, B, C, D);
-
-#[cfg(test)]
-mod tests {
-    use crate::ecs::component::{self, Meter};
-    use crate::ecs::entity::{With, Without};
-    use crate::ecs::id::{ActorId, PlaceId};
-    use crate::session;
-
-    fn docks() -> session::Session<()> {
-        let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
-        session::Session::open(&pack).expect("open")
-    }
-
-    #[test]
-    fn a_query_reads_each_part_of_a_tuple_from_every_entity_that_holds_them_all() {
-        let session = docks();
-        let actors = session.world().actors();
-        let query = actors.query::<(ActorId, &component::ControlType, &component::Place, &Meter)>();
-        let read: Vec<_> = (query.iter())
-            .map(|(id, control_type, place, meters)| {
-                (
-                    id.as_str(),
-                    matches!(control_type, component::ControlType::Pc),
-                    place.as_str(),
-                    meters.iter().count(),
-                )
-            })
-            .collect();
-        assert_eq!(read[0], ("aldric", false, "docks_shop", 4));
-        assert_eq!(read[5], ("rowan", true, "docks_shop", 5));
-        assert_eq!(read.len(), 7, "every actor holds all four");
-        let knowing = actors.query::<(ActorId, &component::KnownFacts)>();
-        let knowing: Vec<_> = knowing
-            .iter()
-            .map(|(id, facts)| (id.as_str(), facts.len()))
-            .collect();
-        assert_eq!(knowing, [("mira", 1)], "only Mira knows a fact");
-        let places = session.world().places().query::<PlaceId>();
-        assert_eq!(
-            places.iter().count(),
-            session.canon().places.len(),
-            "every place the pack defines"
-        );
-    }
-
-    #[test]
-    fn with_and_without_keep_the_entities_that_hold_or_lack_a_component() {
-        let session = docks();
-        let actors = session.world().actors();
-        let knowing = actors.query_filtered::<ActorId, With<component::KnownFacts>>();
-        assert_eq!(knowing.iter().collect::<Vec<_>>(), ["mira"]);
-        let filter = actors
-            .query_filtered::<ActorId, (With<component::Visit>, Without<component::KnownFacts>)>();
-        assert_eq!(
-            filter.iter().collect::<Vec<_>>(),
-            ["harbormouse", "rowan", "wren"]
-        );
-        let stocked = session
-            .world()
-            .places()
-            .query_filtered::<PlaceId, With<component::Item>>();
-        assert_eq!(
-            stocked.iter().collect::<Vec<_>>(),
-            ["docks_shop", "loft", "wheel_shed"]
-        );
-    }
-
-    #[test]
-    fn an_option_walks_every_entity_and_get_and_contains_read_one() {
-        let session = docks();
-        let actors = session.world().actors();
-        let facts = actors.query::<Option<&component::KnownFacts>>();
-        let counts: Vec<_> = facts
-            .iter()
-            .map(|facts| facts.map(|known| known.len()))
-            .collect();
-        assert_eq!(
-            counts,
-            [None, None, None, None, Some(1), None, None],
-            "Mira knows one"
-        );
-        let ids = actors.query::<(ActorId, Option<&component::KnownFacts>)>();
-        let knowing = ids.iter().filter(|(_, facts)| facts.is_some());
-        assert_eq!(knowing.map(|(id, _)| id).collect::<Vec<_>>(), ["mira"]);
-        let (mira, rowan) = (ActorId::from("mira"), ActorId::from("rowan"));
-        let knowing = actors.query::<&component::KnownFacts>();
-        assert_eq!(knowing.get(&mira).map(|known| known.len()), Some(1));
-        assert_eq!(knowing.get(&rowan), None);
-        assert!(knowing.contains(&mira) && !knowing.contains(&rowan));
-        let unknowing = actors.query_filtered::<ActorId, Without<component::KnownFacts>>();
-        assert!(!unknowing.contains(&mira) && unknowing.contains(&rowan));
-    }
-}

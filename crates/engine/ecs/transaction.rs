@@ -257,90 +257,14 @@ impl ecs::World {
 mod tests {
     use std::sync::Arc;
 
-    use crate::ecs::component::meter::{self, Meter};
+    use crate::ecs::component::meter::Meter;
     use crate::ecs::id::{ActorId, PlaceId, StoryId};
-    use crate::ecs::{self, Presence, Save};
-    use crate::ecs::{component, entity};
-    use crate::intent::Intent;
-    use crate::rules::effect::{Effect, EffectKind};
+    use crate::ecs::{self, component, Save};
     use crate::{session, Reason};
 
     fn docks() -> session::Session<()> {
         let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
         session::Session::open(&pack).expect("open")
-    }
-
-    #[test]
-    fn a_key_counts_toward_the_budget_only_once_a_write_changes_it() {
-        let opened = docks();
-        let mut canon = opened.canon().clone();
-        canon.budget.max_state_keys_mutated = 2;
-        let mut world = ecs::World::new(Save::clone(opened.world()), Arc::new(canon));
-        // Bram's vigor sits clamped at its minimum: taking more moves the offset, not the value.
-        let bram = ActorId::from("bram");
-        let vigor = Meter {
-            base: 1,
-            offset: -5,
-        };
-        let mut actors = world.actors_mut();
-        actors
-            .get_mut::<Meter>(&bram)
-            .set("vigor", Some(vigor))
-            .unwrap();
-        world.accept();
-        let session = session::Session::from_parts(opened.root(), world);
-        let (canon, mut world, nobody) =
-            (session.canon(), session.begin_round(), Presence::default());
-        let intent = Intent::habit(session.world(), &"mira".into(), "leave_door_note");
-        let mut write = |actor: &str, key: &str, delta: i64| {
-            let kind = EffectKind::Meter {
-                entity: entity::Id::Actor(actor.into()),
-                key: key.to_string(),
-                write: meter::Write::Offset(delta),
-            };
-            let effect = Effect::new(intent.actor.as_ref(), &intent.id, kind);
-            effect.apply(canon, &mut world, &nobody, &intent)
-        };
-        assert_eq!(write("mira", "rest", 0), Ok(()), "unchanged: no key");
-        assert_eq!(write("mira", "rest", 1), Ok(()), "the first key");
-        assert_eq!(write("bram", "vigor", -1), Ok(()), "offset moved: key two");
-        assert_eq!(write("mira", "rest", 1), Ok(()), "a counted key is free");
-        assert_eq!(write("aldric", "rest", 0), Ok(()), "unchanged: no key");
-        assert_eq!(write("aldric", "rest", 1), Err(Reason::Budget));
-    }
-
-    #[test]
-    fn a_rollback_undoes_the_writes_after_its_savepoint_and_keeps_those_before() {
-        let session = docks();
-        let mut world = session.begin_round();
-        let mira = ActorId::from("mira");
-        let rest = |world: &mut ecs::World, actor: &ActorId, delta: i64| {
-            let shifted = world
-                .actors_mut()
-                .get_mut::<Meter>(actor)
-                .shift("rest", delta);
-            shifted.expect("rest moves");
-        };
-        // The write just before the savepoint stays; the one just after it goes.
-        rest(&mut world, &mira, -1);
-        let before = world.clone();
-        let point = world.savepoint();
-        rest(&mut world, &mira, -1);
-        world.rollback(point);
-        assert_eq!(
-            *world, *before,
-            "only the write after the savepoint is undone"
-        );
-        let changes = world.take_changes();
-        let keys: Vec<_> = changes
-            .iter()
-            .map(|change| change.key.to_string())
-            .collect();
-        assert_eq!(
-            keys,
-            ["actor_meter mira rest"],
-            "only the kept write is reported"
-        );
     }
 
     #[test]

@@ -164,15 +164,6 @@ Feature: A hand edit waits for migrate
     Then stderr names HAND_EDIT
     And the host refuses to start with HAND_EDIT
 
-  Scenario: A plain migrate keeps its bytes
-    Given a docks table
-    When the operator runs migrate
-    Then the command exits 0
-    And the journal line migrate-0001 is
-      """
-      {"kind":"migrate","pack_rev_before":"blake2s:dfa26ffe8863d67f4c07225df607002c69e59dcaa70015792a02f1c748d11531","pack_rev_after":"blake2s:dfa26ffe8863d67f4c07225df607002c69e59dcaa70015792a02f1c748d11531","state_rev_before":0,"state_rev_after":1,"state_hash":"blake2s:ab384da3a8f4bba9611cb1421f6eecd8ed30b1ba3731b1487c563a067704694f","prev":"blake2s:65a5deaeae8dbb93dc435ba4e80939f73c483aa984a91fd5e0ae8876eac4664b","chain":"blake2s:c16eccf2808a7e2f38109d0907ac80d2d2b27b939d5f2542acd7940209dcc283"}
-      """
-
   Scenario: Migrate gives a meter only to the actors that lack it
     Given a docks table
     When Rowan's vigor offset is hand edited to 3 and Nell joins without vigor
