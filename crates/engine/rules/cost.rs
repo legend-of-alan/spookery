@@ -1,11 +1,11 @@
-//! Whether an actor can pay a cost, and paying it.
+//! Whether an actor can pay a cost, paying it, and how long it takes.
 
 use crate::canon::Canon;
 use crate::ecs::component::{self, modifier, Component, Meter};
 use crate::ecs::{self, change, entity, Presence};
 use crate::intent::Intent;
 use crate::rules::context::Context;
-use crate::rules::expr::{self, Dice};
+use crate::rules::expr;
 use crate::rules::gate;
 use crate::rules::rule::Cost;
 use crate::Reason;
@@ -22,9 +22,6 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         detail: Some(missing.to_string()),
     };
     for (key, expr) in &cost.meters {
-        if expr.needs_dice() {
-            continue;
-        }
         let amount = expr::eval(context, expr).map_err(|_| cant_afford(key))?;
         if amount < 0 {
             return Err(cant_afford(key));
@@ -36,9 +33,6 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         }
     }
     for (id, expr) in &cost.items {
-        if expr.needs_dice() {
-            continue;
-        }
         let amount = expr::eval(context, expr).map_err(|_| cant_afford(id))?;
         let count = item_count(amount).map_err(|_| cant_afford(id))?;
         let held = world.actors().get::<component::Item>(actor_id);
@@ -53,6 +47,11 @@ fn item_count(amount: i64) -> Result<u32, Reason> {
     u32::try_from(amount).map_err(|_| Reason::CantAfford)
 }
 
+/// The ticks `cost` takes, read for the intent's actor. A negative count is `OUT_OF_RANGE`.
+pub(crate) fn read_ticks(context: &Context, cost: &Cost) -> Result<u64, Reason> {
+    u64::try_from(expr::eval(context, &cost.ticks)?).map_err(|_| Reason::OutOfRange)
+}
+
 /// Meters and items are paid at the start. Time is a duration for later completion.
 pub(crate) fn pay(
     canon: &Canon,
@@ -60,12 +59,11 @@ pub(crate) fn pay(
     presence: &Presence,
     intent: &Intent,
     cost: &Cost,
-    dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
     for (key, expr) in &cost.meters {
         let context = Context::new(canon, world, presence, intent);
-        let amount = expr::eval_with_dice(&context, expr, dice)?;
+        let amount = expr::eval(&context, expr)?;
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
@@ -81,7 +79,7 @@ pub(crate) fn pay(
     }
     for (id, expr) in &cost.items {
         let context = Context::new(canon, world, presence, intent);
-        let count = item_count(expr::eval_with_dice(&context, expr, dice)?)?;
+        let count = item_count(expr::eval(&context, expr)?)?;
         // The key budget keeps its own code; any other refusal of the take is a shortfall.
         let taken = -i64::from(count);
         match (world.actors_mut().get_mut::<component::Item>(actor_id)).shift(id, taken, None) {

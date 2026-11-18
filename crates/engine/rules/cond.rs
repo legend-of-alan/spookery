@@ -62,7 +62,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let actor = expr::resolve_actor(context, subject)?;
             let id = expr::resolve_item_id(context, id)?;
             let held = world.actors().get::<component::Item>(actor);
-            Ok(held.get(&id).copied().unwrap_or(0) >= *count)
+            Ok(i64::from(held.get(&id).copied().unwrap_or(0)) >= expr::eval(context, count)?)
         }
         Cond::Wielding { subject, id } => {
             let actor = expr::resolve_actor(context, subject)?;
@@ -97,11 +97,18 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             Ok(known.is_some_and(|facts| facts.iter().any(|id| id == fact)))
         }
         Cond::Cycle { id, from, to } => {
-            let length = context.canon.budget.cycles.get(id);
-            let tick = world.world_time % length.ok_or(Reason::UnknownId)?;
-            Ok(is_in_window(*from, *to, tick))
+            let cycles = &context.canon.budget.cycles;
+            let length = *cycles.get(id).ok_or(Reason::UnknownId)?;
+            let read_tick = |expr| -> Result<u64, Reason> {
+                cycle_tick_of(expr::eval(context, expr)?, length).ok_or(Reason::OutOfRange)
+            };
+            let tick = world.world_time % length;
+            Ok(is_in_window(read_tick(from)?, read_tick(to)?, tick))
         }
-        Cond::Players { op, value } => Ok(op.holds(i64::from(context.presence.players), *value)),
+        Cond::Players { op, value } => {
+            let players = i64::from(context.presence.players);
+            Ok(op.holds(players, expr::eval(context, value)?))
+        }
         Cond::NoteExists(id) => Ok(world.globals().get::<Note>(&GlobalId).contains(id)),
         Cond::All(inner) => {
             for cond in inner {
@@ -121,6 +128,12 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         }
         Cond::Not(inner) => Ok(!holds(context, inner)?),
     }
+}
+
+/// `bound` as a tick of a cycle `length` ticks long, when it is not negative and below the
+/// length. Load checks a constant bound with it, and play a bound read from a meter.
+pub(crate) fn cycle_tick_of(bound: i64, length: u64) -> Option<u64> {
+    u64::try_from(bound).ok().filter(|tick| *tick < length)
 }
 
 fn is_in_window(start: u64, end: u64, tick: u64) -> bool {

@@ -72,13 +72,42 @@ Feature: Dice and arithmetic in rule numbers
     Then Mira's vigor rose by the 1d4 face
     And the journal records the 1d4 face
 
-  Scenario: Dice in a condition fail spook check
+  Scenario Outline: Dice in a condition or a cost fail spook check
     Given a docks table
-    When the pack's hit requires vigor of at least "1d6"
+    When the pack's hit has "1d6" as <field>
     And the operator runs spook check
     Then the check exits 1
     And the report says "cannot roll dice"
     And the report names the line holding "1d6"
+
+    Examples:
+      | field             |
+      | a condition value |
+      | a cost amount     |
+      | a cost item count |
+      | its cost ticks    |
+
+  Scenario: Every number in a rule line can read a meter, and an exit's ticks are read for each viewer
+    Given a docks table with Rowan and Wren seated in the shop
+    And the rule "stock" reads Rowan's rest of 3 in every number
+    And the pack has "self.assassination_debt + 3" as the street exit's ticks
+    When Rowan plays "stock"
+    Then Rowan's look shows "stocking until tick 1090"
+    When rounds pass until tick 1090
+    Then Rowan holds 4 chock
+    And the fatigue has 5 ticks left
+    And the street exit shows 5 ticks to Rowan and 0 to Wren, who carries no assassination_debt
+
+  Scenario Outline: A number read out of range at play refuses the move OUT_OF_RANGE
+    Given a docks table with Rowan and Wren seated in the shop
+    And the pack has "<number>" as <field>
+    Then Rowan's "<move>" is refused OUT_OF_RANGE
+
+    Examples:
+      | field                       | number          | move                |
+      | the street exit's ticks     | self.rest - 4   | travel docks_street |
+      | the strain's modifier ticks | self.rest - 3   | strain              |
+      | the strain's cycle bound    | self.rest * 500 | strain              |
 
   Scenario: Overflow refuses the effect and changes nothing
     Given a docks table

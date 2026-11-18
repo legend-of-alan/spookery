@@ -504,12 +504,11 @@ fn the_lane_script_is_played_with_the_stub_gm(world: &mut World) {
 #[then(expr = "Harbormouse reaches the lane at the exit's cost in ticks and hears the ending")]
 fn harbormouse_reaches_the_lane_and_hears_the_ending(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let canon =
-        spookery_engine::load_canon(&pack).unwrap_or_else(|err| panic!("load canon: {err:?}"));
-    let yard = canon.places.get("gate_yard").unwrap();
-    let cost = yard.exits.iter().find(|exit| exit.id == "mill_lane");
-    let cost = cost.unwrap().cost.ticks;
-    assert!(cost > 0);
+    let session = spookery_engine::Session::peek(&pack).unwrap();
+    let map = session.map(&ActorId::from("harbormouse")).unwrap();
+    let lane = (map.iter().flat_map(|place| &place.exits)).find(|exit| exit.exit_id == "mill_lane");
+    let lane_ticks = lane.unwrap().ticks;
+    assert!(lane_ticks > 0);
     let now = world_of(&pack);
     assert_eq!(place_of(&now, "harbormouse"), "mill_lane");
     let rounds: Vec<_> = (list_round_keys(&pack).iter())
@@ -521,7 +520,7 @@ fn harbormouse_reaches_the_lane_and_hears_the_ending(world: &mut World) {
     let arrived_at = arrival.unwrap_or_else(|| panic!("no arrival on mill lane"))["arrived_at"]
         .as_u64()
         .unwrap();
-    assert_eq!(arrived_at.saturating_sub(world.start_ticks), cost);
+    assert_eq!(arrived_at.saturating_sub(world.start_ticks), lane_ticks);
     assert!(
         rounds.iter().any(|round| round["fast_forward"] == true),
         "the journey did not fast-forward"

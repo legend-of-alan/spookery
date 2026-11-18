@@ -183,19 +183,40 @@ pub(crate) fn exits_at(
         .exits
         .iter()
         .filter(|exit| is_revealed(canon, world, actor_id, exit))
-        .map(|exit| exit_view(canon, world, exit))
+        .map(|exit| exit_view(canon, world, actor_id, exit))
         .collect()
 }
 
-/// `exit` as it is now: where it goes, its ticks, and whether it is locked.
-pub(crate) fn exit_view(canon: &Canon, world: &ecs::World, exit: &Exit) -> ExitView {
+/// `exit` as `actor_id` sees it now: where it goes, its ticks read for their walk (0 when they
+/// cannot be read), and whether it is locked. The ticks are read against a probe with no id,
+/// with no one seated, since a number reads no presence.
+pub(crate) fn exit_view(
+    canon: &Canon,
+    world: &ecs::World,
+    actor_id: &ActorId,
+    exit: &Exit,
+) -> ExitView {
+    let viewer = (world.actors().get::<component::ControlType>(actor_id)).viewer();
+    let ticks = viewer.and_then(|viewer| {
+        let probe = Intent::new(
+            String::new(),
+            world.round_index,
+            Some(viewer),
+            Source::Player,
+            "travel",
+            Target::Exit(exit.id.clone()),
+        );
+        let presence = Presence::default();
+        let context = Context::new(canon, world, &presence, &probe);
+        cost::read_ticks(&context, &exit.cost).ok()
+    });
     ExitView {
         exit_id: exit.id.clone(),
         name: exit.name.clone(),
         place_id: exit.to.clone(),
         // Load refuses an exit whose `to` is not a place, so the place has a name.
         place_name: find_place_name(canon, &exit.to).unwrap_or_default(),
-        ticks: exit.cost.ticks,
+        ticks: ticks.unwrap_or(0),
         locked: is_locked(world, exit),
     }
 }
@@ -233,13 +254,15 @@ pub(crate) fn visible_exits(
     }
 }
 
-/// Ticks until the rule and its exit finish. Zero means it finishes now.
-pub(crate) fn span(context: &Context, rule: &Rule) -> u64 {
-    let mut ticks = rule.start.cost.as_ref().map_or(0, |cost| cost.ticks);
+/// Ticks until the rule and its exit finish, read for the acting actor. Zero means it
+/// finishes now. A negative count is `OUT_OF_RANGE`.
+pub(crate) fn span(context: &Context, rule: &Rule) -> Result<u64, Reason> {
+    let start = rule.start.cost.as_ref();
+    let mut ticks = start.map_or(Ok(0), |cost| cost::read_ticks(context, cost))?;
     if let Ok(Some(exit)) = exit_of(context, rule) {
-        ticks = ticks.saturating_add(exit.cost.ticks);
+        ticks = ticks.saturating_add(cost::read_ticks(context, &exit.cost)?);
     }
-    ticks
+    Ok(ticks)
 }
 
 /// One action whose finish tick has been reached. The actor is no longer busy.

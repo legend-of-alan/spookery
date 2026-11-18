@@ -2,16 +2,16 @@
 
 A rule number is an expression. The pack loads it once. Play evaluates that tree. It does not parse text again.
 
-These fields take an expression:
+Every number in a rule line is an expression:
 
 - `roll.threshold` and `roll.partial_at`
-- a condition's `meter.value` (no dice; dice fail `spook check` on that line)
-- a meter effect's `add` and `set`
-- a modifier effect's `add`
+- a meter effect's `add` and `set`, and an item effect's `add` and `max`
+- a modifier effect's `add` and `ticks`
 - a resist roll's `threshold`
-- a cost's meter amounts and item counts
+- a condition's numbers: `has_item.count`, `meter.value`, `players.value`, and `cycle.from` and `cycle.to`
+- a cost's `ticks`, meter amounts and item counts, on a rule or an exit
 
-An integer is still an integer. `{ meter: { of, key }, plus: N }` is still that meter plus `N`.
+A number in a condition or a cost cannot roll dice; dice there fail `spook check` on that line. An integer is still an integer.
 
 ## Forms
 

@@ -101,16 +101,19 @@ fn start(
 ) -> Landing {
     let context = Context::new(canon, world, presence, intent);
     let exit = travel::exit_of(&context, rule).ok().flatten().cloned();
-    let ticks = travel::span(&context, rule);
-    let mut roller = dice.roller(ledger, &rule.id, intent.actor_id());
+    let ticks = match travel::span(&context, rule) {
+        Ok(ticks) => ticks,
+        Err(code) => {
+            refuse(ledger, intent, gate::Refusal::new(intent, code), false);
+            return landing_of(code);
+        }
+    };
     let mut costs = rule
         .start
         .cost
         .iter()
         .chain(exit.as_ref().map(|exit| &exit.cost));
-    let mut started =
-        costs.try_for_each(|cost| cost::pay(canon, world, presence, intent, cost, &mut roller));
-    drop(roller);
+    let mut started = costs.try_for_each(|cost| cost::pay(canon, world, presence, intent, cost));
     if rule.start.counts_as_act {
         started = started.and_then(|()| count_act(world, presence, intent));
     }
@@ -231,12 +234,10 @@ pub(crate) fn finish(
         }
     }
     let point = world.savepoint();
-    let mut roller = dice.roller(ledger, &rule.id, intent.actor_id());
     let mut finished = match &rule.finish.cost {
-        Some(cost) => cost::pay(canon, world, presence, intent, cost, &mut roller),
+        Some(cost) => cost::pay(canon, world, presence, intent, cost),
         None => Ok(()),
     };
-    drop(roller);
     if rule.finish.counts_as_act {
         finished = finished.and_then(|()| count_act(world, presence, intent));
     }

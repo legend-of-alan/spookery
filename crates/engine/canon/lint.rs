@@ -9,6 +9,7 @@ use crate::ecs::component::meter;
 use crate::ecs::component::modifier;
 use crate::ecs::id::{ActorId, PlaceId, StoryId};
 use crate::entity;
+use crate::rules::cond;
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
 use crate::rules::roll::Check;
@@ -523,11 +524,11 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
         for cond in conds {
             cond.visit(|cond| {
                 if let Cond::Cycle { id, from, to } = cond {
-                    cycles.push((id.as_str(), *from, *to));
+                    cycles.push((id.as_str(), [from.constant(), to.constant()]));
                 }
             });
         }
-        for (id, from, to) in cycles {
+        for (id, constant_bounds) in cycles {
             let Some(&length) = canon.budget.cycles.get(id) else {
                 diags.push(
                     schema_error(
@@ -539,7 +540,8 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
                 );
                 continue;
             };
-            if from.max(to) >= length {
+            let is_outside = |bound| cond::cycle_tick_of(bound, length).is_none();
+            if constant_bounds.into_iter().flatten().any(is_outside) {
                 diags.push(
                     schema_error(
                         file,
@@ -726,16 +728,14 @@ fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<Write>) {
         }
         EffectTemplate::Meter { key, .. } => out.push(Write::Meter(key.clone())),
         EffectTemplate::Item { id, add, .. } => {
-            if *add > 0 {
-                out.push(Write::Item {
-                    id: id.clone(),
-                    gained: true,
-                });
-            } else if *add < 0 {
-                out.push(Write::Item {
-                    id: id.clone(),
-                    gained: false,
-                });
+            let constant_sign = add.constant().map(i64::signum);
+            for (gained, sign) in [(true, 1), (false, -1)] {
+                if constant_sign.is_none_or(|constant| constant == sign) {
+                    out.push(Write::Item {
+                        id: id.clone(),
+                        gained,
+                    });
+                }
             }
         }
         EffectTemplate::Location {

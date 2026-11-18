@@ -4,7 +4,7 @@ use spookery_engine::component;
 use spookery_engine::testing::world_of;
 use std::fs;
 
-use cucumber::{then, when};
+use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::journal::list_round_keys;
 
@@ -44,15 +44,73 @@ fn one_round_plays(world: &mut World) {
     spookery_engine::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
 }
 
-#[when(expr = "the pack's hit requires vigor of at least {string}")]
-fn the_packs_hit_requires(world: &mut World, value: String) {
+#[when(
+    regex = r#"^the pack's hit has "(.+)" as (a condition value|a cost amount|a cost item count|its cost ticks)$"#
+)]
+fn the_packs_hit_has(world: &mut World, dice: String, field: String) {
+    let line = match field.as_str() {
+        "a condition value" => {
+            format!("if: [meter: {{ of: self, id: vigor, op: \">=\", value: \"{dice}\" }}]")
+        }
+        "a cost amount" => format!("cost: {{ meters: {{ vigor: \"{dice}\" }} }}"),
+        "a cost item count" => format!("cost: {{ items: {{ chock: \"{dice}\" }} }}"),
+        _ => format!("cost: {{ ticks: \"{dice}\" }}"),
+    };
     let pack = table::pack(world).to_path_buf();
-    let path = pack.join("rules/verbs.yaml");
-    let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
-    text.push_str(&format!(
-        "\n  - id: hit\n    when:\n      verb: hit\n    if:\n      - meter:\n          of: self\n          id: vigor\n          op: \">=\"\n          value: \"{value}\"\n    do:\n      - meter:\n          of: self\n          key: vigor\n          add: 1\n"
-    ));
-    fs::write(&path, text).unwrap_or_else(|err| panic!("write verbs: {err}"));
+    let rule = format!("\n  - id: hit\n    when: {{ verb: hit }}\n    {line}\n    do: []\n");
+    crate::support::append(&pack.join("rules/verbs.yaml"), &rule);
+}
+
+#[given(expr = "the rule \"stock\" reads Rowan's rest of 3 in every number")]
+fn stock_reads_rest(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    super::modifiers::add_modifier(&pack, "fatigue", "vigor", "");
+    crate::support::append(
+        &pack.join("rules/verbs.yaml"),
+        r#"
+  - id: stock
+    when: { verb: stock }
+    if:
+      - has_item: { subject: self, id: lamp_oil, count: "self.rest - 3" }
+      - players: { op: ">=", value: "self.rest - 1" }
+      - cycle: { id: day, from: "self.rest * 300", to: "self.rest * 400" }
+    cost: { ticks: "self.rest + 7" }
+    do:
+      - item: { of: self, id: chock, add: "self.rest * 2", max: "self.rest + 1" }
+      - modifier: { to: self, id: fatigue, add: -1, ticks: "self.rest + 2" }
+"#,
+    );
+    crate::support::stamp_pack_rev(&pack);
+}
+
+#[given(
+    regex = r#"^the pack has "(.+)" as (the street exit's ticks|the strain's modifier ticks|the strain's cycle bound)$"#
+)]
+fn the_pack_has(world: &mut World, number: String, field: String) {
+    let pack = world.pack.clone().unwrap();
+    let verbs = pack.join("rules/verbs.yaml");
+    let strain = "\n  - id: strain\n    when: { verb: strain }\n";
+    match field.as_str() {
+        "the street exit's ticks" => {
+            let path = pack.join("world/places/docks_shop.md");
+            let text = fs::read_to_string(&path).unwrap();
+            let cost = format!("    id: docks_street\n    cost: {{ ticks: \"{number}\" }}\n");
+            fs::write(&path, text.replace("    id: docks_street\n", &cost)).unwrap();
+        }
+        "the strain's modifier ticks" => {
+            super::modifiers::add_modifier(&pack, "fatigue", "vigor", "");
+            let modifier = format!("{{ to: self, id: fatigue, add: -1, ticks: \"{number}\" }}");
+            crate::support::append(&verbs, &format!("{strain}    do: [modifier: {modifier}]\n"));
+        }
+        _ => {
+            let cycle = format!("{{ id: day, from: \"{number}\", to: 0 }}");
+            crate::support::append(
+                &verbs,
+                &format!("{strain}    if: [cycle: {cycle}]\n    do: []\n"),
+            );
+        }
+    }
+    crate::support::stamp_pack_rev(&pack);
 }
 
 #[when(expr = "the player hits and the GM commits")]

@@ -74,12 +74,12 @@ pub(crate) fn run<'a>(
         .iter()
         .map(|intent| Candidate {
             intent,
-            resolution: resolve_intent(&mut resolver, intent),
+            resolution: resolve(&mut resolver, intent),
         })
         .collect()
 }
 
-fn resolve_intent<'a>(resolver: &mut Resolver<'a, '_, '_>, intent: &'a Intent) -> Resolution<'a> {
+fn resolve<'a>(resolver: &mut Resolver<'a, '_, '_>, intent: &'a Intent) -> Resolution<'a> {
     if gate::is_cancel(intent) {
         return Resolution::Cancel;
     }
@@ -89,7 +89,7 @@ fn resolve_intent<'a>(resolver: &mut Resolver<'a, '_, '_>, intent: &'a Intent) -
         Err(refusal) => return Resolution::Refused(refusal),
     };
     match &rule.roll {
-        Some(roll) if crate::rules::travel::span(&context, rule) == 0 => {
+        Some(roll) if crate::rules::travel::span(&context, rule) == Ok(0) => {
             resolver.ledger.extra_steps.push(Step::CheckRolled);
             match roll_check(resolver, &context, &rule.id, roll) {
                 Ok(rolled) => Resolution::Ready {

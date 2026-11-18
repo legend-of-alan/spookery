@@ -3,9 +3,9 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::{component, entity, Presence};
+use spookery_engine::{component, entity, MoveReport, Presence};
 
-use super::common::{give_key, resolve_id};
+use super::common::{give_key, resolve_id, split_line};
 use super::rules::open;
 use super::triggers::world_flags;
 use crate::support::{act_of, append, copy_pack, edit_save, read_round, stamp_pack_rev, world_of};
@@ -18,11 +18,11 @@ fn seated() -> Presence {
     }
 }
 
-fn play(opened: &mut spookery_engine::Session) {
+fn play(opened: &mut spookery_engine::Session) -> spookery_engine::round::Output {
     let wall = opened.world().last_round_at.clone();
     opened
         .play(&seated(), &wall)
-        .unwrap_or_else(|err| panic!("round: {err}"));
+        .unwrap_or_else(|err| panic!("round: {err}"))
 }
 
 /// Queue Rowan's `line`, or panic with its refusal.
@@ -263,12 +263,12 @@ fn the_gm_queues_miras(world: &mut World, habit: String) {
     };
 }
 
-#[then(expr = "Rowan holds lamp_oil")]
-fn rowan_holds_lamp_oil(world: &mut World) {
+#[then(expr = "Rowan holds {int} {word}")]
+fn rowan_holds(world: &mut World, count: u32, id: String) {
     let now = world_of(world.pack.as_ref().unwrap());
     let rowan = "rowan".into();
-    let oil = now.actors().get::<component::Item>(&rowan).get("lamp_oil");
-    assert_eq!(oil.copied().unwrap_or(0), 1);
+    let held = now.actors().get::<component::Item>(&rowan).get(&id);
+    assert_eq!(held.copied().unwrap_or(0), count);
 }
 
 #[then(expr = "Rowan has used no act")]
@@ -301,6 +301,20 @@ fn rowans_look_shows(world: &mut World, line: String) {
     assert_eq!(view.busy, line);
 }
 
+#[then(
+    expr = "the street exit shows {int} ticks to Rowan and {int} to Wren, who carries no assassination_debt"
+)]
+fn the_street_exit_shows(world: &mut World, rowan_ticks: u64, wren_ticks: u64) {
+    let opened = open(world.pack.as_ref().unwrap());
+    let street_ticks = |viewer_id| {
+        let view = opened.perceive(&seated(), viewer_id).unwrap();
+        let street = (view.exits.iter()).find(|exit| exit.exit_id == "docks_street");
+        street.unwrap().ticks
+    };
+    assert_eq!(street_ticks("rowan"), rowan_ticks);
+    assert_eq!(street_ticks("wren"), wren_ticks);
+}
+
 #[then(expr = "Rowan's {string} is refused {word} at once")]
 fn refused_at_once(world: &mut World, line: String, code: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
@@ -309,6 +323,27 @@ fn refused_at_once(world: &mut World, line: String, code: String) {
         .expect_err("the line is refused");
     assert_eq!(refusal.code.as_str(), code);
     assert!(opened.queued_intents().is_empty());
+}
+
+/// The code Rowan's player is refused with, when the move is queued or when its round runs.
+#[then(expr = "Rowan's {string} is refused {word}")]
+fn rowans_line_is_refused(world: &mut World, line: String, code: String) {
+    let mut opened = open(world.pack.as_ref().unwrap());
+    let (verb, target) = split_line(&line);
+    let refused = match opened.queue_player_move(&seated(), &"rowan".into(), verb, target) {
+        Err(refusal) => refusal.code,
+        Ok(_) => {
+            let output = play(&mut opened);
+            let refused = output.reports.iter().find_map(|report| match report {
+                MoveReport::Refused { actor_id, refusal } if actor_id == "rowan" => {
+                    Some(refusal.code)
+                }
+                _ => None,
+            });
+            refused.unwrap_or_else(|| panic!("{line} was not refused"))
+        }
+    };
+    assert_eq!(refused.as_str(), code);
 }
 
 #[then(expr = "Rowan's {string} lands")]

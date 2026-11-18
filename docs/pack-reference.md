@@ -56,11 +56,11 @@ A place file is Markdown. The header between the `---` lines is the frontmatter.
 
 Only places own facts. A fact has `id`, `text`, and optional `hidden`, which defaults to false. A player in the place sees every fact that is not hidden. A hidden fact is seen only by an actor whose `known_facts` lists it.
 
-An exit has `to` and `id`. It may have `name`, `cost`, `if`, `locked_text`, and `hidden` together with `revealed_by`. `to` is a place id. Two exits on one place with the same id are rejected. `name` is what a player reads and types for the exit. Left out, it is the name of the place the exit goes to when the exit's id is that place's id, or else the exit's id. A hidden exit needs `revealed_by`, and that value is a fact id from this pack. A place no path reaches from the start, counting hidden and locked exits, is a warning. A player's `map` shows each place's exits as they last saw them: at the end of each round, every actor notes the exits they can see where they stand. A hidden exit revealed while they are elsewhere shows on the map only after they go back. Where an exit goes and whether it is locked are read when `map` prints.
+An exit has `to` and `id`. It may have `name`, `cost`, `if`, `locked_text`, and `hidden` together with `revealed_by`. `to` is a place id. Two exits on one place with the same id are rejected. `name` is what a player reads and types for the exit. Left out, it is the name of the place the exit goes to when the exit's id is that place's id, or else the exit's id. A hidden exit needs `revealed_by`, and that value is a fact id from this pack. A place no path reaches from the start, counting hidden and locked exits, is a warning. A player's `map` shows each place's exits as they last saw them: at the end of each round, every actor notes the exits they can see where they stand. A hidden exit revealed while they are elsewhere shows on the map only after they go back. Where an exit goes, its ticks and whether it is locked are read when `map` prints.
 
 `flags` lists the flags an effect may set on this place, and `meters` lists the meters only this place carries, in the shape of `rules/meters.yaml`. A rule names them with `of: place:<id>`, or `of: here` for the actor's own place. `world/places/loft.md` declares both.
 
-`cost.ticks` is the game time the cost takes, a whole number of ticks. Omitted means 0. An exit with an `if` is a door, and the `if`, in the same conditions as a rule, is what it takes to open it. A door starts locked: travel through it shows `locked_text` and changes nothing.
+`cost.ticks` is the game time the walk takes, read for the walker like a rule's `cost.ticks`. Omitted means 0. An exit with an `if` is a door, and the `if`, in the same conditions as a rule, is what it takes to open it. A door starts locked: travel through it shows `locked_text` and changes nothing.
 
 To start a door already open, list its exit id under that place in `places.open_exits` in the starting save. Meeting its `if` alone opens it only at the end of each round, after change rules, when any actor in its place meets that `if`, and it stays open for everyone, whoever holds the key after. The engine opens it with an `exit_open` effect it records in the journal.
 
@@ -319,11 +319,7 @@ rules:
           of: ada
           id: nerve
           op: ">"
-          value:
-            meter:
-              of: self
-              key: nerve
-            plus: 1
+          value: "self.nerve + 1"
     do:
       - flag:
           of: self
@@ -471,7 +467,7 @@ reads as *while the day is from tick 480 to tick 960, add 4 lamp_oil of place:do
 
 In the `shrug` rule below, `resist: { subject: target, check: nerve, threshold: 4 }` on a nerve loss of self reads as *unless the target resists: the target rolls nerve against 4.* In `resist`, `subject` is the actor who rolls to resist, not the subject of the outer line; omitted, it is the move's `target`.
 
-In the `give_oil` rule below, the resist's `threshold: { meter: { of: self, key: nerve }, plus: 2 }` reads as *nerve of self, plus 2*; in an [expression](spec.md) the owner comes first instead, as in `self.nerve`.
+In the `give_oil` rule below, the resist's `threshold: "self.nerve + 2"` reads as *nerve of self, plus 2*: in an [expression](spec.md) the owner comes first, then its meter.
 
 A roll's total is its check's dice plus the rolling actor's stat meter, compared to `threshold` (`crates/engine/rules/roll.rs`):
 
@@ -502,15 +498,15 @@ A change rule has no `cost`, `start`, `finish`, `cooldown`, or `cancellable`. Ch
 
 Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. The subject is the actor whose value changed. A flag or meter of the world, a place, a story or an exit has no subject, so a rule watching one runs once per change, whoever is seated, and check refuses `self`, `here`, `location`, and `roll` in it: name the actor, or `world`. A flag counts as the world's when a rule sets it with `of: world`; a world flag only the save sets is not checked, and a `self` there is refused when the rule runs. A key the world and an actor both carry fires the rule for each, and `TRIGGER_LEAK` reads it as an actor's change. Change rules run right after each action starts and right after each one finishes, so a rule sees every action's change and can change the world before the next action in the round. A walk fires `leave` at its start and `arrive` at its finish. Two changes to one key inside one action count as one. They run once more at the end of the round, after doors open. `max_trigger_depth` in `rules/budget.yaml` caps the passes each time they run. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
 
-`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `subject` on `has_item`, `at`, `knows`, and `wielding` is the subject of that verb: `has_item: { subject: self, id: key }` reads as *self has the key*. It is an actor: `self`, `target`, or an actor id; check refuses any other owner on that word's line. `of` on a meter, flag, or item is the owner whose value or count the line reads or changes: `self`, `target`, `here`, `world`, `place:<id>`, `story:<id>`, `exit:<place>.<exit>`, or an actor id. An exit holds only its flag `open`. An owner `target`, in a slot or a number such as `target.hp`, is the move's target, and check refuses it unless the rule targets an actor. On `has_item`, `wielding`, an item effect, `wield`, and a cost's `items`, `id: target` is the intent's target, and check refuses it unless the rule targets an item. A habit and a change rule target nothing, and an exit's `if` and `cost` cannot say `target`. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `id`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are integers below the cycle's length and they differ.
+`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `subject` on `has_item`, `at`, `knows`, and `wielding` is the subject of that verb: `has_item: { subject: self, id: key }` reads as *self has the key*. It is an actor: `self`, `target`, or an actor id; check refuses any other owner on that word's line. `of` on a meter, flag, or item is the owner whose value or count the line reads or changes: `self`, `target`, `here`, `world`, `place:<id>`, `story:<id>`, `exit:<place>.<exit>`, or an actor id. An exit holds only its flag `open`. An owner `target`, in a slot or a number such as `target.hp`, is the move's target, and check refuses it unless the rule targets an actor. On `has_item`, `wielding`, an item effect, `wield`, and a cost's `items`, `id: target` is the intent's target, and check refuses it unless the rule targets an item. A habit and a change rule target nothing, and an exit's `if` and `cost` cannot say `target`. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `id`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are ticks below the cycle's length and they differ; check compares them when they are integers, and a bound read from a meter that falls outside the cycle refuses the move `OUT_OF_RANGE`.
 
-Every move but `say` is an action that starts and finishes. `cost` is what the start costs, and it may name `ticks`, `meters`, and `items`. `cost.ticks` is how long the action takes; omitted, it finishes in the round it starts. A cost the actor cannot pay is refused when the move is played, and the world stays as it was. The start is checked again when the round runs it, since an earlier move may have changed the world.
+Every move but `say` is an action that starts and finishes. `cost` is what the start costs, and it may name `ticks`, `meters`, and `items`. `cost.ticks` is how long the action takes, read for the acting actor; omitted, it finishes in the round it starts. A count below 0 refuses the move `OUT_OF_RANGE`. An exit's ticks in a view and on `map` are read for the viewer, and show 0 when they cannot be read. A cost the actor cannot pay is refused when the move is played, and the world stays as it was. The start is checked again when the round runs it, since an earlier move may have changed the world.
 
 `start.counts_as_act` says whether the start uses the actor's act this round. Omitted, it is `true`. An NPC that has used its act sits out its habits that round, so a drink with `counts_as_act: false` leaves the act for one. `finish` may have `cost`, in `meters` and `items`, paid when the action finishes, and `counts_as_act`, which is `false` when omitted. A finish cost with `ticks` is rejected. Every effect lands at the finish, a timed walk's arrival and a timed teleport among them. `cooldown` is the ticks the actor stays busy after the finish. Omitted, it is 0. `cancellable: true` lets a player send the built-in command `cancel` while the action is under way: the action is dropped, its start cost is not refunded, and it never finishes. Omitted, it is `false`, and `cancel` is refused `INELIGIBLE`. A walk is never cancelled, whatever its rule says. The `chant` rule below takes five ticks, then three more to recover, and may be cancelled.
 
 `roll` names a `check` and a `threshold`. `partial_at` is an absolute total, strictly below a literal threshold, and it needs a `partial` list. `do` runs on every band. `success`, `partial`, and `miss` run on that band. A yield is `do: []` with no outcome lists.
 
-A number is an integer or an [expression](spec.md). A meter plus an integer still loads.
+A number is an integer or an [expression](spec.md). A number in a condition or a cost cannot roll dice: check refuses it on its line.
 
 The flag key `busy` is rejected. An actor is busy from the start of a timed action until it finishes, and then through its cooldown. A move from a busy actor is refused `BUSY`, except `cancel`.
 
@@ -713,11 +709,7 @@ rules:
           resist:
             subject: self
             check: nerve
-            threshold:
-              meter:
-                of: self
-                key: nerve
-              plus: 2
+            threshold: "self.nerve + 2"
             resisted: []
 
   - id: show_stair
@@ -797,7 +789,7 @@ meters:
 
 A modifier changes one actor meter for a while, then expires. Each row has `id` and `meter`, and may have `max_stacks` and `hidden`. `meter` is a meter in `rules/meters.yaml` or a cast file, and check refuses any other.
 
-A `modifier` effect names `to`, `id`, `add`, and `ticks`, such as `scorch` in `rules/verbs.yaml`. `ticks` is how long this application lasts, a whole number of 1 or more, and check refuses an effect without it. `add` is this application's magnitude, an integer or an expression, as on a meter. Any rule may apply any modifier, and each application keeps its own `add` as one stack. The meter's current value adds every stack of every modifier on it, so two modifiers on one meter both count. Nothing is written to the meter's offset.
+A `modifier` effect names `to`, `id`, `add`, and `ticks`, such as `scorch` in `rules/verbs.yaml`. `ticks` is how long this application lasts, 1 or more, and check refuses an effect without it. `add` and `ticks` are integers or expressions, as on a meter; a `ticks` below 1 at play refuses the effect `OUT_OF_RANGE`. Any rule may apply any modifier, and each application keeps its own `add` as one stack. The meter's current value adds every stack of every modifier on it, so two modifiers on one meter both count. Nothing is written to the meter's offset.
 
 `max_stacks` is optional. It is the most stacks one actor can hold of that modifier, from any source. The default is 1, so a modifier left without it does not stack. At `max_stacks`, an application stronger than the weakest stack, by absolute value, replaces it. A weaker or equal one changes no stack. Strength ignores sign, so use two modifiers for a buff and a debuff.
 

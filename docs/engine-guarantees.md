@@ -215,11 +215,13 @@ included. When the world reaches the end, the modifier expires and every stack
 goes at once. Different modifiers on one meter add up. A player sees a modifier
 change on their own actor only, and not one the pack hides. Replay gives the
 same journal, and migrate drops a modifier the pack no longer defines or now
-defines on another meter. Check refuses a `ticks` or `max_stacks` below 1, a
-modifier of a meter no actor carries, and an effect that names a modifier the
-pack does not define.
+defines on another meter. Check refuses an integer `ticks` or a `max_stacks`
+below 1, a modifier of a meter no actor carries, and an effect that names a
+modifier the pack does not define. A `ticks` read below 1 at play refuses the
+effect.
 
-Tested in `features/meters/modifiers_stack_and_expire.feature`.
+Tested in `features/meters/modifiers_stack_and_expire.feature` and
+`features/rules/rule_numbers.feature`.
 
 ## Travel
 
@@ -278,12 +280,14 @@ reads the tick within its named cycle, world time modulo the length, and may
 wrap past the cycle's end. Idle and live acts each have a cap per window of
 ticks, and a round that crosses the end of a window gives that count back.
 Players and the GM see plain ticks, as `until tick 1300`. Check refuses a cycle
-length or an act window of 0, a `cycle` that names no cycle in the budget, or a
-bound at or past the cycle's length.
+length or an act window of 0, a `cycle` that names no cycle in the budget, or an
+integer bound at or past the cycle's length. A bound read at play outside the
+cycle refuses the move.
 
 Tested in `features/rules/game_time_counts_in_ticks.feature`,
-`features/seats/a_player_knows_the_place.feature`, and
-`features/check/spook_check_explains_a_broken_pack.feature`.
+`features/seats/a_player_knows_the_place.feature`,
+`features/check/spook_check_explains_a_broken_pack.feature`, and
+`features/rules/rule_numbers.feature`.
 
 ## Rules version
 

@@ -21,7 +21,6 @@ const EFFECT_KEYS: &[&str] = &[
     "resist: same",
     "add:",
     "set:",
-    "plus:",
 ];
 
 const VERB_KEYS: &[&str] = &[

@@ -18,7 +18,7 @@ fn pack(world: &World) -> &Path {
 }
 
 /// Add a row to `rules/modifiers.yaml`, writing the file first when the pack has none.
-fn add_modifier(pack: &Path, id: &str, meter: &str, extra: &str) {
+pub(super) fn add_modifier(pack: &Path, id: &str, meter: &str, extra: &str) {
     let path = pack.join("rules/modifiers.yaml");
     let mut text =
         fs::read_to_string(&path).unwrap_or_else(|_| "schema: modifiers\nmodifiers:\n".into());
