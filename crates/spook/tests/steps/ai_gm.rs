@@ -257,22 +257,22 @@ fn world_time_moved_one_round(world: &mut World) {
 #[then(expr = "the GM's own speech did not call the model")]
 fn the_gms_own_speech_did_not_call_the_model(world: &mut World) {
     // A turn the GM's own speech started would show it in that turn's observation, and it
-    // would start before the AI GM reads the player's next line, so read the calls before it.
-    table::player_send(world, "say bye", "\"kind\":\"say\"");
+    // would start before the AI GM reads the player's bye, so read the calls before that one.
     let calls = table::poll_until("a model call that shows bye", || {
         let calls = world.model.calls();
-        let bye = calls
-            .iter()
-            .position(|call| format!("{call:?}").contains("bye"));
+        let bye = calls.iter().position(|call| observation_shows(call, "bye"));
         bye.map(|bye| calls[..bye].to_vec()).ok_or(calls.len())
     });
     for call in &calls {
-        for message in call {
-            if let model::Message::User { content } = message {
-                assert!(!content.contains("evening"), "{content}");
-            }
-        }
+        assert!(!observation_shows(call, "evening"), "{call:?}");
     }
+}
+
+/// Whether a user message of the model call, its observation, contains `text`.
+fn observation_shows(call: &[model::Message], text: &str) -> bool {
+    call.iter().any(
+        |message| matches!(message, model::Message::User { content } if content.contains(text)),
+    )
 }
 
 #[then(expr = "one round committed")]
