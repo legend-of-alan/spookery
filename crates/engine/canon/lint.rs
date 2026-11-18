@@ -852,11 +852,11 @@ fn narrates_to_present(rule: &Rule) -> bool {
     present
 }
 
-/// Whether `rule` needs a subject: `self` or `here` named as `of`, `subject`, `to` or in a
-/// number, a resist's `subject`, a narrate's `to`, or a location effect, which moves the
-/// subject.
+/// Whether `rule` needs a subject: `self` or `here` named as `of`, `subject` or `to`, a
+/// resist's `subject`, a narrate's `to`, a location effect, which moves the subject, or a
+/// check, which is the subject's.
 fn names_subject(rule: &Rule) -> bool {
-    let mut needs = false;
+    let mut needs = rule.check.is_some();
     rule.visit_templates(|effect| match effect {
         EffectTemplate::Narrate { to, .. } => {
             needs |= matches!(to, NarrateTo::Self_ | NarrateTo::Here);

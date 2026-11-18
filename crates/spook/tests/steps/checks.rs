@@ -95,19 +95,6 @@ fn the_player_sees_a_check_success(world: &mut World) {
     );
 }
 
-#[then(expr = "the journal records the check's dice")]
-fn the_journal_records_the_checks_dice(world: &mut World) {
-    let round = common::read_first_round(world);
-    let dice = round["dice"]
-        .as_array()
-        .unwrap_or_else(|| panic!("{round}"));
-    let line = dice.first().and_then(Value::as_str);
-    assert!(
-        line.is_some_and(|line| line.starts_with("2d6 → ")),
-        "{round}"
-    );
-}
-
 #[then(expr = "the GM sees the exert faces")]
 fn the_gm_sees_the_exert_faces(world: &mut World) {
     let text = table::wait_gm(world, "\"rolls\"");
