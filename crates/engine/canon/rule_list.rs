@@ -142,7 +142,7 @@ impl<'de> Deserialize<'de> for IfYaml {
     }
 }
 
-/// One condition under a dash; its one key names the condition.
+/// One condition; its one key names the condition.
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)]

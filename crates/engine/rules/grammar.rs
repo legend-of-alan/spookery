@@ -30,7 +30,8 @@ pub enum Object {
 
 impl Object {
     /// Reads an owner word: `self`, `target`, `here`, `world`, `place:<id>`, `story:<id>`,
-    /// `exit:<place>.<exit>` or a cast id. The error is the refusal a pack author reads.
+    /// `exit:<place>.<exit>` or a cast id. It refuses `subject`, an empty word and the selector
+    /// words retired packs wrote as owners; the error is the refusal a pack author reads.
     pub(crate) fn parse(word: &str) -> Result<Object, String> {
         if let Some(place) = word.strip_prefix("place:") {
             if place.is_empty() {
@@ -61,7 +62,6 @@ impl Object {
             "subject" => Err(
                 "'subject' is not an owner; use self, or target for the move's target".to_string(),
             ),
-            // Empty, or a selector word that retired packs used as an owner.
             "" | "token" | "first_rate" | "rate" | "first_drift" | "toward_target"
             | "first_known" | "first_listener" | "keep" | "first_due_note" | "first_owned" => {
                 Err(format!("'{word}' is not an owner"))

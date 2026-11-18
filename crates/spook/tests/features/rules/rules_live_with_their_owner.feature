@@ -30,7 +30,7 @@ Feature: Rules live with their owner
 
   Scenario Outline: Two keys in one condition or effect are refused at the second key
     Given a verb whose <list> holds two keys in one line
-    Then spook check reports two keys under one dash at the second key
+    Then spook check reports two keys in one condition or effect at the second key
 
     Examples:
       | list    |
