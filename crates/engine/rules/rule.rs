@@ -56,26 +56,10 @@ impl Rule {
     }
 
     pub(crate) fn visit_templates<'a>(&'a self, mut visit: impl FnMut(&'a EffectTemplate)) {
-        fn walk<'a>(effects: &'a [EffectTemplate], visit: &mut impl FnMut(&'a EffectTemplate)) {
-            for effect in effects {
-                visit(effect);
-                if let EffectTemplate::Check {
-                    success,
-                    partial,
-                    miss,
-                    ..
-                } = effect
-                {
-                    walk(success, visit);
-                    walk(partial, visit);
-                    walk(miss, visit);
-                }
-            }
+        let lists = [&self.do_, &self.success, &self.partial, &self.miss];
+        for effect in lists.into_iter().flatten() {
+            effect.visit(&mut visit);
         }
-        walk(&self.do_, &mut visit);
-        walk(&self.success, &mut visit);
-        walk(&self.partial, &mut visit);
-        walk(&self.miss, &mut visit);
     }
 
     /// Every number the rule holds: its check's total, success_at and partial_at, its costs, its
@@ -526,6 +510,28 @@ pub enum EffectTemplate {
         partial: Vec<EffectTemplate>,
         miss: Vec<EffectTemplate>,
     },
+}
+
+impl EffectTemplate {
+    /// Calls `visit` on this effect, then on every effect in a nested check's lists, walking
+    /// into the nested checks they hold.
+    pub(crate) fn visit<'a>(&'a self, mut visit: impl FnMut(&'a EffectTemplate)) {
+        fn walk<'a>(effect: &'a EffectTemplate, visit: &mut impl FnMut(&'a EffectTemplate)) {
+            visit(effect);
+            if let EffectTemplate::Check {
+                success,
+                partial,
+                miss,
+                ..
+            } = effect
+            {
+                for inner in success.iter().chain(partial).chain(miss) {
+                    walk(inner, visit);
+                }
+            }
+        }
+        walk(self, &mut visit);
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
