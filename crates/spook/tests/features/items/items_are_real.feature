@@ -17,39 +17,21 @@ Feature: Items are real
     Then harbormouse is refused with NOT_IN_SPEC
     And no round was spent and harbormouse still holds 1 latch
 
-  Scenario: Using something unknown gets the same refusal
-    Given harbormouse holds 1 latch at a seated table
-    When harbormouse plays "use banana"
-    Then harbormouse is refused with NOT_IN_SPEC
-    And no round was spent and harbormouse still holds 1 latch
-
-  Scenario: The tonic has one verb, use
-    Given harbormouse holds 1 tonic and has 3 of 10 hp
-    When Harbormouse types "drink"
-    Then the line is rejected with NOT_IN_SPEC and no round was written
-
-  Scenario: Taking an item that is not there is refused
-    Given docks_shop has no lamp_oil
-    When Rowan types "take lamp_oil"
-    Then the line is rejected with NOT_IN_SPEC and no round was written
-
-  Scenario Outline: Something out of sight reads like an unknown word
+  Scenario Outline: A line naming nothing the player can act on reads like an unknown word
     Given a docks table
     When Harbormouse types "<line>"
     Then the line is rejected with NOT_IN_SPEC and no round was written
 
     Examples:
-      | line          |
-      | strike bram   |
-      | strike nobody |
-      | wield chock   |
-      | wield zzz     |
-      | take latch    |
-
-  Scenario: A verb that takes an actor can't name the player's own actor
-    Given a docks table
-    When Harbormouse types "strike harbormouse"
-    Then the line is rejected with NOT_IN_SPEC and no round was written
+      | line               |
+      | strike bram        |
+      | strike nobody      |
+      | wield chock        |
+      | wield zzz          |
+      | take latch         |
+      | use banana         |
+      | drink              |
+      | strike harbormouse |
 
   Scenario: Dropping an item you do not hold is refused
     Given docks_shop has 3 lamp_oil

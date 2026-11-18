@@ -1,13 +1,19 @@
 Feature: Speech appends to the tape and does not play a round
 
-  Scenario: A seated player says a line to the table
+  Scenario Outline: A seated player's line goes to the actor it is said to, or else to the table
     Given a docks table with a seated player
-    When the player says "hello"
-    Then the tape contains the text "hello"
-    And the tape line is said to the table
+    When the player says <line>
+    Then the tape contains the text "<text>"
+    And the tape line is said to <audience>
     And save.yaml is unchanged since the seat
     And state_rev is unchanged
     And no round was played
+
+    Examples:
+      | line                     | text              | audience           |
+      | "hello"                  | hello             | the table          |
+      | "good evening" to aldric | good evening      | the actor "aldric" |
+      | "good evening mira"      | good evening mira | the table          |
 
   Scenario: A seated player says a line to the room
     Given a docks table with a seated player
@@ -15,22 +21,6 @@ Feature: Speech appends to the tape and does not play a round
     Then the tape contains the text "the lamp is lit"
     And the tape line is said to the place "docks_shop"
     And the tape recipients are "rowan"
-    And save.yaml is unchanged since the seat
-    And no round was played
-
-  Scenario: A seated player says a line to aldric
-    Given a docks table with a seated player
-    When the player says "good evening" to aldric
-    Then the tape contains the text "good evening"
-    And the tape line is said to the actor "aldric"
-    And save.yaml is unchanged since the seat
-    And no round was played
-
-  Scenario: A sentence that does not name an actor stays at the table
-    Given a docks table with a seated player
-    When the player says "good evening mira"
-    Then the tape contains the text "good evening mira"
-    And the tape line is said to the table
     And save.yaml is unchanged since the seat
     And no round was played
 

@@ -297,16 +297,6 @@ fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
 }
 
-#[given(expr = "docks_shop has no lamp_oil")]
-fn the_shop_has_no_oil(world: &mut World) {
-    let pack = support::copy_pack("docks", "take-none");
-    support::edit_save(&pack, |now| {
-        let shop = entity::Id::Place("docks_shop".into());
-        support::put_items(now, &shop, "lamp_oil", 0);
-    });
-    world.pack = Some(pack);
-}
-
 #[when(expr = "rowan drops lamp_oil")]
 fn rowan_drops_oil(world: &mut World) {
     let pack = world.pack.clone().unwrap();

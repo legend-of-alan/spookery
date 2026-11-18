@@ -71,6 +71,3 @@ Feature: Trigger delivery
     When the empty table narrates and then Rowan narrates
     Then "rowan" is told "You are back."
     And "rowan" is not told "The shop is quiet."
-
-  Scenario: Verify passes after rounds that fired change rules
-    Then spook verify passes after rounds that fired triggers

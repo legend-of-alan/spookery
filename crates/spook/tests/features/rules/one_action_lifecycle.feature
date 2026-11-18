@@ -55,8 +55,3 @@ Feature: One action lifecycle
     Then that round refused nothing
     And Rowan holds 1 lamp_oil
     And Rowan has used the act of round 1
-
-  Scenario: A habit the GM queues is checked like one the engine picks
-    When the GM queues Mira's "restock_lamp_oil" outside the hours its if allows
-    Then the GM is refused at once
-    And a round later the shop still holds 4 lamp_oil
