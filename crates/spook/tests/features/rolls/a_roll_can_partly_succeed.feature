@@ -56,22 +56,3 @@ Feature: A roll can partly succeed
     And the GM sees outcome "partial" and the faces
     And the player sees no check frame
     And replaying the round reproduces the save
-
-  Scenario Outline: A partial band that does not fit is refused
-    Given a docks table
-    When the verbs file gains "<fault>"
-    And the operator runs spook check
-    Then the check exits 1
-    And the report names "rules/verbs.yaml"
-    And the report names "SCHEMA"
-    And the report says "<phrase>"
-    And the report has a location for "rules/verbs.yaml"
-    And stdout is empty
-
-    Examples:
-      | fault                               | phrase                                              |
-      | partial_at without partial          | without a partial                                   |
-      | partial without partial_at          | without partial_at                                  |
-      | partial_at above success_at         | at or above success_at                              |
-      | partial without a check             | outcome without a check                             |
-      | a nested partial_at without partial | rule 'press' sets partial_at without a partial list |

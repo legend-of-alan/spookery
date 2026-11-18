@@ -211,22 +211,6 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
     add_modifier_verb(&pack, "weather", "self", &[(&rain, -1), (&fog, -2)]);
 }
 
-#[given(expr = "{string} modifies warmth, which is not a meter")]
-fn modifier_of_no_meter(world: &mut World, id: String) {
-    add_modifier(pack(world), &id, "warmth", "");
-}
-
-#[given(expr = "{string} modifies vigor and a verb applies it for 0 ticks")]
-fn modifier_of_no_ticks(world: &mut World, id: String) {
-    add_modifier(pack(world), &id, "vigor", "");
-    add_timed_verb(pack(world), "numbing", "self", &[(&id, -1)], 0);
-}
-
-#[given(expr = "a verb applies {string}, which is not a modifier")]
-fn verb_applies_an_undefined_modifier(world: &mut World, id: String) {
-    add_modifier_verb(pack(world), "scorch", "self", &[(&id, -1)]);
-}
-
 #[when(expr = "rowan is hit by the jab and then the slam in one round")]
 fn rowan_is_jabbed_and_slammed(world: &mut World) {
     hit_rowan(world, &[("wren", "jab"), ("harbormouse", "slam")]);
@@ -452,37 +436,6 @@ fn wren_sees_neither(world: &mut World) {
         seen.iter().all(|key| !key.starts_with("actor_modifier ")),
         "{seen:?}"
     );
-}
-
-#[then(expr = "it refuses max_stacks 0, ticks 0 and the warmth meter")]
-fn it_refuses_the_bad_rows(world: &mut World) {
-    assert_eq!(world.code, Some(1), "{}", world.stderr);
-    for needle in [
-        "rules/modifiers.yaml",
-        "max_stacks below 1",
-        "a modifier effect has ticks below 1",
-        "meter 'warmth'",
-    ] {
-        assert!(
-            world.stderr.contains(needle),
-            "missing {needle}\n{}",
-            world.stderr
-        );
-    }
-}
-
-#[then(expr = "it refuses fatigue as listed twice at line {int}")]
-fn it_refuses_the_second_fatigue(world: &mut World, line: u32) {
-    assert_eq!(world.code, Some(1), "{}", world.stderr);
-    let needle = format!("rules/modifiers.yaml:{line}: modifier 'fatigue' is listed twice");
-    assert!(world.stderr.contains(&needle), "{}", world.stderr);
-}
-
-#[then(expr = "it refuses the scorch verb, saying scorch is not a modifier")]
-fn it_refuses_the_scorch_verb(world: &mut World) {
-    assert_eq!(world.code, Some(1), "{}", world.stderr);
-    let needle = "applies modifier 'scorch', which is not in rules/modifiers.yaml";
-    assert!(world.stderr.contains(needle), "{}", world.stderr);
 }
 
 #[then(expr = "spook verify reproduces the journal")]

@@ -21,38 +21,68 @@ Feature: spook check explains a broken pack
     And the pack bytes are unchanged
 
     Examples:
-      | fault                        | file                       | code              | phrase                             |
-      | missing when                 | rules/verbs.yaml           | SCHEMA            | missing field 'when'               |
-      | unknown field                | rules/verbs.yaml           | SCHEMA            | unknown field                      |
-      | duplicate move               | rules/verbs.yaml           | SCHEMA            | listed twice                       |
-      | unknown format tag           | rules/verbs.yaml           | SCHEMA            | does not use                       |
-      | missing meters               | rules/meters.yaml          | NOT_IN_SPEC       | missing                            |
-      | meter min above base_cap     | rules/meters.yaml          | SCHEMA            | min above base_cap                 |
-      | meter base_cap above max     | rules/meters.yaml          | SCHEMA            | base_cap above max                 |
-      | meter base outside its range | rules/meters.yaml          | SCHEMA            | base outside min and base_cap      |
-      | pack_rev mismatch            | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                           |
-      | an actor the cast lacks      | state/save.yaml            | SCHEMA            | is not a cast member               |
-      | a control type with two keys | state/save.yaml            | SCHEMA            | two keys where one belongs         |
-      | exit to an unknown place     | world/places/docks_shop.md | SCHEMA            | not a place                        |
-      | duplicate exit               | world/places/docks_shop.md | SCHEMA            | listed twice                       |
-      | a target alias               | rules/verbs.yaml           | SCHEMA            | not a target kind                  |
-      | a verb named look            | rules/verbs.yaml           | SCHEMA            | 'look' is a built-in command       |
-      | a verb named say             | rules/verbs.yaml           | SCHEMA            | 'say' is a built-in command        |
-      | flags under idle             | cast/pc-rowan.md           | SCHEMA            | unknown field                      |
-      | a cast role named kind       | cast/pc-rowan.md           | SCHEMA            | unknown field 'kind'               |
-      | idle maybe                   | rules/budget.yaml          | SCHEMA            | not on or off                      |
-      | zero round interval          | rules/budget.yaml          | SCHEMA            | round_every_real_seconds           |
-      | zero idle ticks              | rules/budget.yaml          | SCHEMA            | idle_ticks_per_round               |
-      | zero idle window             | rules/budget.yaml          | SCHEMA            | idle_act_window_ticks              |
-      | a zero-tick cycle            | rules/budget.yaml          | SCHEMA            | cycle day is 0                     |
-      | a cycle past its length      | cast/mira.md               | SCHEMA            | cycle bound is not below cycle day |
-      | an unknown cycle             | cast/mira.md               | SCHEMA            | no cycle tide                      |
-      | world as an actor            | world/places/gate_yard.md  | SCHEMA            | 'world' is not an actor            |
-      | target on a move with none   | rules/verbs.yaml           | SCHEMA            | in of:, but its target is none     |
-      | owner target on an item move | rules/verbs.yaml           | SCHEMA            | in of:, but its target is item     |
-      | id: target with no target    | rules/verbs.yaml           | SCHEMA            | in id:, but its target is none     |
-      | a save by target with none   | rules/verbs.yaml           | SCHEMA            | in by:, but its target is none     |
-      | target on an exit            | world/places/gate_yard.md  | SCHEMA            | but an exit has no target          |
+      | fault                               | file                       | code              | phrase                                                   |
+      | missing when                        | rules/verbs.yaml           | SCHEMA            | missing field 'when'                                     |
+      | unknown field                       | rules/verbs.yaml           | SCHEMA            | unknown field                                            |
+      | duplicate move                      | rules/verbs.yaml           | SCHEMA            | listed twice                                             |
+      | unknown format tag                  | rules/verbs.yaml           | SCHEMA            | does not use                                             |
+      | missing meters                      | rules/meters.yaml          | NOT_IN_SPEC       | missing                                                  |
+      | meter min above base_cap            | rules/meters.yaml          | SCHEMA            | min above base_cap                                       |
+      | meter base_cap above max            | rules/meters.yaml          | SCHEMA            | base_cap above max                                       |
+      | meter base outside its range        | rules/meters.yaml          | SCHEMA            | base outside min and base_cap                            |
+      | pack_rev mismatch                   | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                                                 |
+      | an actor the cast lacks             | state/save.yaml            | SCHEMA            | is not a cast member                                     |
+      | a control type with two keys        | state/save.yaml            | SCHEMA            | two keys where one belongs                               |
+      | exit to an unknown place            | world/places/docks_shop.md | SCHEMA            | not a place                                              |
+      | duplicate exit                      | world/places/docks_shop.md | SCHEMA            | listed twice                                             |
+      | a target alias                      | rules/verbs.yaml           | SCHEMA            | not a target kind                                        |
+      | a verb named look                   | rules/verbs.yaml           | SCHEMA            | 'look' is a built-in command                             |
+      | a verb named say                    | rules/verbs.yaml           | SCHEMA            | 'say' is a built-in command                              |
+      | flags under idle                    | cast/pc-rowan.md           | SCHEMA            | unknown field                                            |
+      | a cast role named kind              | cast/pc-rowan.md           | SCHEMA            | unknown field 'kind'                                     |
+      | idle maybe                          | rules/budget.yaml          | SCHEMA            | not on or off                                            |
+      | zero round interval                 | rules/budget.yaml          | SCHEMA            | round_every_real_seconds                                 |
+      | zero idle ticks                     | rules/budget.yaml          | SCHEMA            | idle_ticks_per_round                                     |
+      | zero idle window                    | rules/budget.yaml          | SCHEMA            | idle_act_window_ticks                                    |
+      | a zero-tick cycle                   | rules/budget.yaml          | SCHEMA            | cycle day is 0                                           |
+      | a cycle past its length             | cast/mira.md               | SCHEMA            | cycle bound is not below cycle day                       |
+      | an unknown cycle                    | cast/mira.md               | SCHEMA            | no cycle tide                                            |
+      | world as an actor                   | world/places/gate_yard.md  | SCHEMA            | 'world' is not an actor                                  |
+      | target on a move with none          | rules/verbs.yaml           | SCHEMA            | in of:, but its target is none                           |
+      | owner target on an item move        | rules/verbs.yaml           | SCHEMA            | in of:, but its target is item                           |
+      | id: target with no target           | rules/verbs.yaml           | SCHEMA            | in id:, but its target is none                           |
+      | a save by target with none          | rules/verbs.yaml           | SCHEMA            | in by:, but its target is none                           |
+      | target on an exit                   | world/places/gate_yard.md  | SCHEMA            | but an exit has no target                                |
+      | a meter on the wrong actor          | cast/bram.md               | SCHEMA            | only mira carries meter 'shop_day'                       |
+      | a cast meter that is global         | cast/mira.md               | SCHEMA            | meter 'vigor' is already in rules/meters.yaml            |
+      | a meter its actor lacks             | cast/mira.md               | SCHEMA            | mira carries no meter 'dawn'                             |
+      | self in a world change rule         | story/tide.yaml            | SCHEMA            | rule 'mark' watches a world change, which has no self    |
+      | a check in a world change rule      | story/tide.yaml            | SCHEMA            | rule 'mark' watches a world change, which has no self    |
+      | a narrate with no to                | rules/verbs.yaml           | SCHEMA            | rule 'ring' has a narrate with no to                     |
+      | a room narrate of a known fact      | story/secret.yaml          | TRIGGER_LEAK      | leak                                                     |
+      | max_stacks 0                        | rules/modifiers.yaml       | SCHEMA            | max_stacks below 1                                       |
+      | a modifier of no meter              | rules/modifiers.yaml       | SCHEMA            | meter 'warmth'                                           |
+      | a modifier for 0 ticks              | rules/verbs.yaml           | SCHEMA            | a modifier effect has ticks below 1                      |
+      | a modifier listed twice             | rules/modifiers.yaml       | SCHEMA            | modifiers.yaml:6: modifier 'fatigue' is listed twice     |
+      | an undefined modifier               | rules/verbs.yaml           | SCHEMA            | modifier 'scorch', which is not in rules/modifiers.yaml  |
+      | an undeclared story flag            | rules/verbs.yaml           | SCHEMA            | 'walls_breached', but story:siege does not declare it    |
+      | a story meter the world declares    | story/ending.yaml          | SCHEMA            | meter 'dawn' is already in world/meters.yaml             |
+      | a story meter a cast declares       | story/ending.yaml          | SCHEMA            | already declared in another cast, place or story file    |
+      | a story meter on the wrong story    | story/prologue.yaml        | SCHEMA            | but only story:ending carries meter 'dread'              |
+      | an undeclared place meter           | rules/verbs.yaml           | SCHEMA            | place:docks_street carries no meter 'light'              |
+      | a repeated story id                 | story/later.yaml           | SCHEMA            | story 'ending' is already defined                        |
+      | an empty story id                   | story/ending.yaml          | SCHEMA            | id is empty                                              |
+      | a walker on a missing exit          | state/save.yaml            | SCHEMA            | 'exit:docks_shop.ladder', which the pack does not define |
+      | a verb named cancel                 | rules/verbs.yaml           | SCHEMA            | 'cancel' is a built-in command                           |
+      | a saved item with no definition     | state/save.yaml            | SCHEMA            | unknown item 'ghost'                                     |
+      | partial_at without partial          | rules/verbs.yaml           | SCHEMA            | without a partial                                        |
+      | partial without partial_at          | rules/verbs.yaml           | SCHEMA            | without partial_at                                       |
+      | partial_at above success_at         | rules/verbs.yaml           | SCHEMA            | at or above success_at                                   |
+      | partial without a check             | rules/verbs.yaml           | SCHEMA            | outcome without a check                                  |
+      | a nested partial_at without partial | rules/verbs.yaml           | SCHEMA            | rule 'press' sets partial_at without a partial list      |
+      | a cast id world                     | cast/world.md              | SCHEMA            | rename this cast member                                  |
+      | a saved actor world                 | state/save.yaml            | SCHEMA            | actor id world is reserved                               |
+      | a reveal of a missing fact          | rules/verbs.yaml           | SCHEMA            | not a fact                                               |
 
   Scenario: Two problems in two files are both reported
     Given a docks table
@@ -75,8 +105,8 @@ Feature: spook check explains a broken pack
     And the pack bytes are unchanged
 
     Examples:
-      | fault                  | file                       | line |
-      | duplicate place fact   | world/places/docks_shop.md | 8    |
+      | fault                | file                       | line |
+      | duplicate place fact | world/places/docks_shop.md | 8    |
 
   Scenario: A cast page cannot own facts
     Given a docks table

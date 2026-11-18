@@ -27,10 +27,6 @@ Feature: One action lifecycle
     Then Rowan is at exit:docks_shop.docks_street
     And Rowan's look shows "on the Docks Street until tick 1090"
 
-  Scenario: A save with a walker on an exit the pack lacks is refused
-    Given Rowan stands on exit:docks_shop.ladder in the save
-    Then spook check refuses Rowan's place
-
   Scenario: A timed teleport lands like travel
     Given the rule "blink" teleports Rowan to mira_rooms and takes 10 ticks
     When Rowan plays "blink"

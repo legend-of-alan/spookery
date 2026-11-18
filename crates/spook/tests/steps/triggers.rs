@@ -5,11 +5,11 @@ use std::sync::Arc;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery::protocol::{self, ChangeView};
-use spookery_engine::testing::{stamp_pack_rev, world_of};
+use spookery_engine::testing::world_of;
 use spookery_engine::{component, emit_save, parse_save};
 use spookery_engine::{ecs, entity, Presence};
 
-use super::common::{add_verb, flags_of, replace_in_file};
+use super::common::{add_verb, flags_of, replace_in_file, write_tide_story};
 use super::meters::write_world_meter_rows;
 use super::record::read_extra_steps;
 use crate::support::{self, copy_pack};
@@ -288,25 +288,13 @@ fn a_round_stops_at_depth_4(world: &mut World) {
     );
 }
 
-#[given(expr = "a rule on a known fact narrates to the room")]
-fn a_known_fact_narrates_to_the_room(world: &mut World) {
-    let pack = write_secret_pack(world, "trigger-leak-room", "here");
-    world.pack = Some(pack);
-}
-
 #[given(expr = "a rule on a known fact narrates to the subject")]
 fn a_known_fact_narrates_to_the_subject(world: &mut World) {
-    let pack = write_secret_pack(world, "trigger-leak-self", "self");
-    world.pack = Some(pack);
-}
-
-fn write_secret_pack(world: &mut World, label: &str, to: &str) -> std::path::PathBuf {
-    let pack = copy_pack("docks", label);
+    let pack = copy_pack("docks", "trigger-leak-self");
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(
         pack.join("story/secret.yaml"),
-        format!(
-            "\
+        "\
 schema: story
 id: secret
 rules:
@@ -316,14 +304,13 @@ rules:
         knows: fact_ledger
     do:
       - narrate:
-          to: {to}
+          to: self
           text: A secret moved.
-"
-        ),
+",
     )
     .unwrap();
     edit_table(world, &pack, |_, _| {});
-    pack
+    world.pack = Some(pack);
 }
 
 #[then(expr = "spook verify passes after rounds that fired triggers")]
@@ -601,51 +588,6 @@ fn a_rule_counts_tides(world: &mut World, of: String) {
     );
 }
 
-#[given(expr = "a change rule watches world flag tide_turned and sets flag saw_tide of {string}")]
-fn a_world_rule_marks_self(world: &mut World, of: String) {
-    a_verb_sets_the_tide(world);
-    let fields = format!(
-        "    do:
-      - flag:
-          of: {of}
-          key: saw_tide
-          value: true
-"
-    );
-    write_tide_story(world.pack.as_ref().unwrap(), &fields);
-}
-
-#[given(expr = "a change rule watches world flag tide_turned and rolls a 2d6 check")]
-fn a_world_rule_rolls_a_check(world: &mut World) {
-    a_verb_sets_the_tide(world);
-    let fields = "    check:
-      total: 2d6
-      success_at: 7
-";
-    write_tide_story(world.pack.as_ref().unwrap(), fields);
-}
-
-/// `story/tide.yaml`: one rule, `mark`, that watches the world's tide turn, with `fields`
-/// written after its `when`.
-fn write_tide_story(pack: &Path, fields: &str) {
-    fs::create_dir_all(pack.join("story")).unwrap();
-    fs::write(
-        pack.join("story/tide.yaml"),
-        format!(
-            "schema: story
-id: tide
-rules:
-  - id: mark
-    when:
-      change:
-        flag: tide_turned
-        becomes: true
-{fields}"
-        ),
-    )
-    .unwrap();
-}
-
 /// Add nell on the street beside rowan in the shop, seat both, and migrate the save.
 #[given(expr = "rowan and nell are seated")]
 fn rowan_and_nell_are_seated(world: &mut World) {
@@ -920,35 +862,6 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         .chain(back.lines)
         .map(|line| (line.to.into(), line.text))
         .collect();
-    world.pack = Some(pack);
-}
-
-#[given(expr = "a cast id world, a saved actor world and a reveal of a missing fact")]
-fn a_cast_id_world_and_a_bad_reveal(world: &mut World) {
-    let pack = copy_pack("docks", "trigger-check-reveal");
-    crate::support::edit_save(&pack, |now| {
-        (now.actors_mut()).add_actor(&"world".into(), component::ControlType::Npc, "docks_shop");
-    });
-    fs::write(
-        pack.join("cast/world.md"),
-        "\
----
-schema: cast
-id: world
-control_type: npc
-name: World
-idle:
-  eligible: false
----
-Reserved.
-",
-    )
-    .unwrap();
-    add_verb(
-        &pack,
-        "\n  - id: bad\n    when:\n      verb: bad\n    do:\n      - reveal:\n          to: self\n          fact: missing_fact\n",
-    );
-    stamp_pack_rev(&pack);
     world.pack = Some(pack);
 }
 
