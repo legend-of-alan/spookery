@@ -48,8 +48,10 @@ impl Object {
         if let Some(exit) = word.strip_prefix("exit:") {
             return match exit.split_once('.') {
                 Some((place, exit_id)) if !place.is_empty() && !exit_id.is_empty() => {
-                    let (place, exit) = (place.into(), exit_id.to_string());
-                    Ok(Object::Exit(ExitId { place, exit }))
+                    Ok(Object::Exit(ExitId {
+                        place: place.into(),
+                        exit: exit_id.to_string(),
+                    }))
                 }
                 _ => Err("exit: needs <place>.<exit>".to_string()),
             };

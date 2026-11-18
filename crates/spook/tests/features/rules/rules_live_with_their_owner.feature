@@ -29,11 +29,11 @@ Feature: Rules live with their owner
     Then spook check reports that key at its own line and column
 
   Scenario Outline: Two keys in one condition or effect are refused at the second key
-    Given a verb whose <list> holds two keys in one line
+    Given a verb whose <field> holds two keys in one line
     Then spook check reports two keys in one condition or effect at the second key
 
     Examples:
-      | list    |
+      | field   |
       | if list |
       | do list |
       | if map  |
