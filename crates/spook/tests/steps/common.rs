@@ -125,6 +125,10 @@ pub(crate) fn write_tide_story(pack: &Path, fields: &str) {
     write_file(pack, "story/tide.yaml", &text);
 }
 
+/// The body of a verb rule that sets the world flag `tide_turned`, which makes `mark` in
+/// `story/tide.yaml` a world change rule.
+const TURN_TIDE: &str = "    do:\n      - flag: { of: world, key: tide_turned, value: true }\n";
+
 /// Writes `rules/modifiers.yaml` with these rows.
 fn write_modifiers(pack: &Path, rows: &str) {
     let text = format!("schema: modifiers\nmodifiers:\n{rows}");
@@ -352,15 +356,14 @@ fn break_pack(pack: &Path, fault: &str) {
                 "rules:\n  - id: bump_dawn\n    when: habit\n    do:\n      - meter: { of: self, key: dawn, add: 1 }\n",
             );
         }
-        "self in a world change rule" | "a check in a world change rule" => {
-            let turn = "    do:\n      - flag: { of: world, key: tide_turned, value: true }\n";
-            add_verb_rule(pack, "turn_tide", turn);
-            let fields = if fault.starts_with("self") {
-                "    do:\n      - flag: { of: self, key: saw_tide, value: true }\n"
-            } else {
-                "    check:\n      total: 2d6\n      success_at: 7\n"
-            };
+        "self in a world change rule" => {
+            add_verb_rule(pack, "turn_tide", TURN_TIDE);
+            let fields = "    do:\n      - flag: { of: self, key: saw_tide, value: true }\n";
             write_tide_story(pack, fields);
+        }
+        "a check in a world change rule" => {
+            add_verb_rule(pack, "turn_tide", TURN_TIDE);
+            write_tide_story(pack, "    check:\n      total: 2d6\n      success_at: 7\n");
         }
         "a narrate with no to" => add_verb_rule(
             pack,

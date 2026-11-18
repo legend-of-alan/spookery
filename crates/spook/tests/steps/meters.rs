@@ -274,11 +274,6 @@ fn world_meters_declares_at(world: &mut World, key: String, base: i64) {
     world.pack = Some(pack);
 }
 
-#[given(expr = "world\\/meters.yaml declares a {string} meter")]
-fn world_meters_declares(world: &mut World, key: String) {
-    world_meters_declares_at(world, key, 6);
-}
-
 /// A story change rule that adds -1 to the world's dawn each time rowan gains lamp oil.
 fn write_dawn_story(pack: &Path, story: &str, more: &str) {
     fs::create_dir_all(pack.join("story")).unwrap();
