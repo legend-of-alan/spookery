@@ -1,6 +1,6 @@
 Feature: Speech appends to the tape and does not play a round
 
-  Scenario Outline: A seated player's line goes to the actor it names, or else to the table
+  Scenario Outline: A seated player's line goes to the actor it is said to, or else to the table
     Given a docks table with a seated player
     When the player says <line>
     Then the tape contains the text "<text>"

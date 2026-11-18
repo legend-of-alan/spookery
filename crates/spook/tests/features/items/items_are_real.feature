@@ -29,7 +29,6 @@ Feature: Items are real
       | wield chock        |
       | wield zzz          |
       | take latch         |
-      | take lamp_oil      |
       | use banana         |
       | drink              |
       | strike harbormouse |

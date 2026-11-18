@@ -59,6 +59,7 @@ Feature: Travel follows the map
   Scenario: Fast-forward is capped
     Given busy_until is 200 rounds away and max_fastforward_rounds is 12
     Then 12 rounds run and the rest continues on the next action
+    And spook verify passes
 
   Scenario: A player map lists the places rowan visited, across sittings
     Given rowan visited the shop and mira_rooms in an earlier sitting
