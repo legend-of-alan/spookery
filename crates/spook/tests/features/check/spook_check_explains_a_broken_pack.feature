@@ -50,6 +50,7 @@ Feature: spook check explains a broken pack
       | target on a move with none   | rules/verbs.yaml           | SCHEMA            | in of:, but its target is none     |
       | owner target on an item move | rules/verbs.yaml           | SCHEMA            | in of:, but its target is item     |
       | id: target with no target    | rules/verbs.yaml           | SCHEMA            | in id:, but its target is none     |
+      | a save by target with none   | rules/verbs.yaml           | SCHEMA            | in by:, but its target is none     |
 
   Scenario: Two problems in two files are both reported
     Given a docks table

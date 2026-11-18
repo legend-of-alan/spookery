@@ -39,7 +39,7 @@ pub enum MoveReport {
     },
 }
 
-/// Identifies one roll. A later `resist:` roll uses the same shape: subject plus index.
+/// Identifies one roll: the rule, the actor it runs for, and the roll's index in that sequence.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Key {
     /// The save's dice seed.

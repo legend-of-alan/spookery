@@ -505,16 +505,16 @@ fn the_slot_clears_in_the_round(world: &mut World) {
     );
 }
 
-#[given(expr = "wren resists the poison with a seeded Constitution roll of 15 vs 12")]
-fn wren_resists_on_a_seeded_roll(world: &mut World) {
-    let pack = support::copy_pack("docks", "resist");
+#[given(expr = "wren saves against the poison with a seeded Constitution roll of 15 vs 12")]
+fn wren_saves_on_a_seeded_roll(world: &mut World) {
+    let pack = support::copy_pack("docks", "save");
     let face = roll::faces(
         &roll::Key {
             seed: "docks-001".to_string(),
             round_index: 1,
             rule_id: "item:poisoned_dagger/attack".to_string(),
-            subject_id: Some("wren".into()),
-            index: 0,
+            subject_id: Some("harbormouse".into()),
+            index: 1,
         },
         0,
         1,
@@ -556,23 +556,23 @@ fn wren_resists_on_a_seeded_roll(world: &mut World) {
           of: target
           key: hp
           add: -3
-      - meter:
-          of: target
-          key: hp
-          add: -2
-          resist:
-            subject: target
-            total: 1d20 + target.constitution
-            success_at: 12
-            resisted:
-              - narrate:
-                  to: here
-                  text: The poison burns, then fades.
-      - flag:
-          of: target
-          key: poisoned
-          value: true
-          resist: same
+      - check:
+          by: target
+          total: 1d20 + target.constitution
+          success_at: 12
+          success:
+            - narrate:
+                to: here
+                text: The poison burns, then fades.
+          miss:
+            - meter:
+                of: target
+                key: hp
+                add: -2
+            - flag:
+                of: target
+                key: poisoned
+                value: true
 ",
     );
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();

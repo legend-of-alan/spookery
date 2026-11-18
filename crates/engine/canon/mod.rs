@@ -35,8 +35,8 @@ pub(crate) use budget::Budget;
 use fact::Facts;
 use item::add_item;
 use lint::{
-    broken_exits, resist_same_without_roll, reveal_problems, unknown_carriers, unknown_modifiers,
-    unknown_reads, unknown_rule_items, EntityScope,
+    broken_exits, reveal_problems, unknown_carriers, unknown_modifiers, unknown_reads,
+    unknown_rule_items, EntityScope,
 };
 pub(crate) use lint::{check_canon, unknown_item};
 use modifiers::MODIFIERS_FILE;
@@ -416,7 +416,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     }
     diags.extend(unknown_rule_items(&rules, &items));
     diags.extend(reveal_problems(&rules, &facts.0));
-    diags.extend(resist_same_without_roll(&rules));
     diags.extend(broken_exits(&places, &facts.0, &items));
     // 11. checkpoint_every.
     let checkpoint_every = pack

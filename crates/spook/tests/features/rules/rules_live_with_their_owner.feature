@@ -54,16 +54,8 @@ Feature: Rules live with their owner
     Then the queued target is that item and the save is unchanged
 
   Scenario: A time cost is quiet at check
-    Given a verb with a time cost and a resist roll
-    Then spook check is quiet about the time and the resist
-
-  Scenario: A bare resist same is reported at check
-    Given a verb whose only resist is same
-    Then spook check reports resist: same with no earlier roll
-
-  Scenario: Resist same after a roll is quiet
-    Given a verb whose resist same follows a roll
-    Then spook check does not report a bare resist same
+    Given a verb with a time cost and a save
+    Then spook check is quiet about the time and the save
 
   Scenario: A cast member's rule is at hand while they share the room
     Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage, and Mira's door note is not due

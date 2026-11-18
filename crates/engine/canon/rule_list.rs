@@ -17,7 +17,7 @@ use crate::rules::expr::{stamp_spots, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
     self, ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner,
-    Phase, ResistSpec, Rule, TargetKind, When,
+    Phase, Rule, TargetKind, When,
 };
 
 const MOVES_REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
@@ -284,6 +284,7 @@ pub enum EffectYaml {
     Reveal(RevealYaml),
     Wield(WieldYaml),
     Unwield(UnwieldYaml),
+    Check(CheckEffectYaml),
 }
 
 #[derive(Deserialize)]
@@ -293,7 +294,6 @@ pub struct MeterEffectYaml {
     pub key: String,
     pub add: Option<Spanned<ExprYaml>>,
     pub set: Option<Spanned<ExprYaml>>,
-    pub resist: Option<ResistYaml>,
 }
 
 #[derive(Deserialize)]
@@ -302,7 +302,6 @@ pub struct FlagEffectYaml {
     pub of: Spanned<String>,
     pub key: String,
     pub value: bool,
-    pub resist: Option<ResistYaml>,
 }
 
 #[derive(Deserialize)]
@@ -343,7 +342,6 @@ pub struct NarrateYaml {
     pub text: String,
     #[serde(default)]
     pub fact_ids: Vec<String>,
-    pub resist: Option<ResistYaml>,
 }
 
 #[derive(Deserialize)]
@@ -362,7 +360,6 @@ pub struct ItemEffectYaml {
     pub id: String,
     pub add: Spanned<ExprYaml>,
     pub max: Option<Spanned<ExprYaml>>,
-    pub resist: Option<ResistYaml>,
 }
 
 #[derive(Deserialize)]
@@ -385,21 +382,21 @@ pub struct UnwieldYaml {
     pub subject: Spanned<String>,
 }
 
-#[derive(Deserialize)]
-#[serde(untagged)]
-pub enum ResistYaml {
-    Word(String),
-    Roll(Box<ResistRollYaml>),
-}
-
+/// A nested `check:`: `by` (`self` when left out) rolls `total` against `success_at`, and the
+/// outcome picks one of the lists, any of which may be left out.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ResistRollYaml {
-    pub subject: Option<Spanned<String>>,
+pub struct CheckEffectYaml {
+    pub by: Option<Spanned<String>>,
     pub total: Spanned<ExprYaml>,
     pub success_at: Spanned<ExprYaml>,
+    pub partial_at: Option<Spanned<ExprYaml>>,
     #[serde(default)]
-    pub resisted: Vec<EffectYaml>,
+    pub success: Vec<EffectYaml>,
+    #[serde(default)]
+    pub partial: Vec<EffectYaml>,
+    #[serde(default)]
+    pub miss: Vec<EffectYaml>,
 }
 
 pub(crate) fn compile(
@@ -542,35 +539,15 @@ fn compile_one(
                 "add success",
             ));
         }
-        match &check {
-            Some(spec) if spec.partial_at.is_some() && partial.is_empty() => {
-                diags.push(schema_error(
-                    file,
-                    &format!("rule '{local}' sets partial_at without a partial list"),
-                    "add a partial list or remove partial_at",
-                ))
-            }
-            Some(spec) if spec.partial_at.is_none() && !partial.is_empty() => {
-                diags.push(schema_error(
-                    file,
-                    &format!("rule '{local}' lists partial without partial_at"),
-                    "set partial_at under check",
-                ))
-            }
-            Some(spec)
-                if spec.partial_at.as_ref().is_some_and(|band| {
-                    band.constant()
-                        .zip(spec.success_at.constant())
-                        .is_some_and(|(band, success_at)| band >= success_at)
-                }) =>
-            {
-                diags.push(schema_error(
-                    file,
-                    &format!("rule '{local}' sets partial_at at or above success_at"),
-                    "set partial_at strictly below success_at",
-                ));
-            }
-            _ => {}
+        let band = check
+            .as_ref()
+            .and_then(|check| find_partial_band_problem(check, &partial));
+        if let Some((problem, hint)) = band {
+            diags.push(schema_error(
+                file,
+                &format!("rule '{local}' {problem}"),
+                hint,
+            ));
         }
     }
     if !diags.is_empty() {
@@ -884,7 +861,6 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             key: meter.key.clone(),
             add: meter.add.as_ref().map(expr_of).transpose()?,
             set: meter.set.as_ref().map(expr_of).transpose()?,
-            resist: resist_of(meter.resist.as_ref())?,
         },
         EffectYaml::Flag(flag) if flag.key == "busy" => {
             return Err("flag key busy is not a flag".into());
@@ -893,7 +869,6 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             of: object_of(&flag.of)?,
             key: flag.key.clone(),
             value: flag.value,
-            resist: resist_of(flag.resist.as_ref())?,
         },
         EffectYaml::Modifier(modifier) => {
             let ticks = expr_of(&modifier.ticks)?;
@@ -939,7 +914,6 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             },
             text: narrate.text.clone(),
             fact_ids: narrate.fact_ids.clone(),
-            resist: resist_of(narrate.resist.as_ref())?,
         },
         EffectYaml::Memory(memory) => EffectTemplate::Memory {
             to: actor_of(&memory.to)?,
@@ -951,7 +925,6 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             id: item.id.clone(),
             add: expr_of(&item.add)?,
             max: item.max.as_ref().map(expr_of).transpose()?,
-            resist: resist_of(item.resist.as_ref())?,
         },
         EffectYaml::Reveal(reveal) => EffectTemplate::Reveal {
             to: actor_of(&reveal.to)?,
@@ -964,33 +937,61 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
         EffectYaml::Unwield(unwield) => EffectTemplate::Unwield {
             subject: actor_of(&unwield.subject)?,
         },
+        EffectYaml::Check(nested) => {
+            let check = rule::Check {
+                total: expr_of(&nested.total)?,
+                success_at: expr_of(&nested.success_at)?,
+                partial_at: nested.partial_at.as_ref().map(expr_of).transpose()?,
+            };
+            let list_of =
+                |list: &[EffectYaml]| list.iter().map(effect_of).collect::<Result<Vec<_>, _>>();
+            let partial = list_of(&nested.partial)?;
+            if let Some((problem, hint)) = find_partial_band_problem(&check, &partial) {
+                return Err(format!("a nested check {problem}, so {hint}").into());
+            }
+            EffectTemplate::Check {
+                by: match &nested.by {
+                    Some(by) => actor_of(by)?,
+                    None => grammar::Actor::Self_,
+                },
+                check,
+                success: list_of(&nested.success)?,
+                partial,
+                miss: list_of(&nested.miss)?,
+            }
+        }
     })
 }
 
-fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {
-    let Some(yaml) = yaml else {
-        return Ok(None);
-    };
-    match yaml {
-        ResistYaml::Word(word) if word == "same" => Ok(Some(ResistSpec::Same)),
-        ResistYaml::Word(word) => Err(format!("resist '{word}' is not same").into()),
-        ResistYaml::Roll(roll) => Ok(Some(ResistSpec::Roll {
-            subject: match &roll.subject {
-                Some(subject) => actor_of(subject)?,
-                None => grammar::Actor::Target,
-            },
-            check: Box::new(rule::Check {
-                total: expr_of(&roll.total)?,
-                success_at: expr_of(&roll.success_at)?,
-                partial_at: None,
-            }),
-            resisted: roll
-                .resisted
-                .iter()
-                .map(effect_of)
-                .collect::<Result<Vec<_>, _>>()?,
-        })),
+/// What is wrong with `check`'s partial band, given the `partial` list it picks, as the words
+/// after the check's name and the hint: a `partial_at` with no list, a list with no
+/// `partial_at`, or a constant `partial_at` at or above a constant `success_at`.
+fn find_partial_band_problem(
+    check: &rule::Check,
+    partial: &[EffectTemplate],
+) -> Option<(&'static str, &'static str)> {
+    let band = check.partial_at.as_ref();
+    if band.is_some() && partial.is_empty() {
+        return Some((
+            "sets partial_at without a partial list",
+            "add a partial list or remove partial_at",
+        ));
     }
+    if band.is_none() && !partial.is_empty() {
+        return Some((
+            "lists partial without partial_at",
+            "set partial_at under check",
+        ));
+    }
+    let constants = band
+        .and_then(Expr::constant)
+        .zip(check.success_at.constant());
+    constants
+        .is_some_and(|(band, success_at)| band >= success_at)
+        .then_some((
+            "sets partial_at at or above success_at",
+            "set partial_at strictly below success_at",
+        ))
 }
 
 fn object_of(yaml: &Spanned<String>) -> Result<grammar::Object, Fault> {

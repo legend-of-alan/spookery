@@ -297,7 +297,7 @@ pub(crate) fn land(
     }
     ledger.effects.extend(expansion.effects);
     ledger.report_roll(expansion.rolled, intent.actor_id());
-    ledger.reports.extend(expansion.resisted);
+    ledger.reports.extend(expansion.reports);
     ledger.extra_steps.push(Step::Rule(rule.id.clone()));
     Landing::Landed
 }

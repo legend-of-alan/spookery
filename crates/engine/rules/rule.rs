@@ -1,8 +1,11 @@
 //! One rule shape. The id is namespaced by the file that owns it.
 
 use crate::ecs::id::{ActorId, PlaceId};
-use crate::rules::expr::Expr;
+use crate::rules::context::Context;
+use crate::rules::expr::{self, Expr};
 use crate::rules::grammar;
+use crate::rules::roll::{classify, Roll};
+use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rule {
@@ -56,8 +59,16 @@ impl Rule {
         fn walk<'a>(effects: &'a [EffectTemplate], visit: &mut impl FnMut(&'a EffectTemplate)) {
             for effect in effects {
                 visit(effect);
-                if let Some(ResistSpec::Roll { resisted, .. }) = effect.resist() {
-                    walk(resisted, visit);
+                if let EffectTemplate::Check {
+                    success,
+                    partial,
+                    miss,
+                    ..
+                } = effect
+                {
+                    walk(success, visit);
+                    walk(partial, visit);
+                    walk(miss, visit);
                 }
             }
         }
@@ -68,7 +79,7 @@ impl Rule {
     }
 
     /// Every number the rule holds: its check's total and bands, its costs, its conditions'
-    /// numbers, and its effects' amounts, caps, ticks and resist checks.
+    /// numbers, and its effects' amounts, caps, ticks and nested checks.
     pub(crate) fn exprs(&self) -> Vec<&Expr> {
         let mut exprs = Vec::new();
         exprs.extend(self.check.iter().flat_map(Check::exprs));
@@ -76,29 +87,21 @@ impl Rule {
             exprs.extend(cost.exprs());
         }
         exprs.extend(self.if_.iter().flat_map(Cond::exprs));
-        self.visit_templates(|effect| {
-            match effect {
-                EffectTemplate::Modifier { add, ticks, .. } => exprs.extend([add, ticks]),
-                EffectTemplate::Meter { add, set, .. } => exprs.extend(add.iter().chain(set)),
-                EffectTemplate::Item { add, max, .. } => exprs.extend([add].into_iter().chain(max)),
-                _ => {}
-            }
-            if let Some(ResistSpec::Roll { check, .. }) = effect.resist() {
-                exprs.extend(check.exprs());
-            }
+        self.visit_templates(|effect| match effect {
+            EffectTemplate::Modifier { add, ticks, .. } => exprs.extend([add, ticks]),
+            EffectTemplate::Meter { add, set, .. } => exprs.extend(add.iter().chain(set)),
+            EffectTemplate::Item { add, max, .. } => exprs.extend([add].into_iter().chain(max)),
+            EffectTemplate::Check { check, .. } => exprs.extend(check.exprs()),
+            _ => {}
         });
         exprs
     }
 
     /// Every owner the rule names, with the slot it sits in: `of:`, `subject:`, `to:`, a
-    /// resist's `subject:`, or a number that reads one of its meters.
+    /// nested check's `by:`, or a number that reads one of its meters.
     pub(crate) fn objects(&self) -> Vec<(&'static str, grammar::Object)> {
         let mut objects = collect_objects(&self.if_, self.exprs());
         self.visit_templates(|effect| {
-            if let Some(ResistSpec::Roll { subject, .. }) = effect.resist() {
-                let subject = grammar::Object::Actor(subject.clone());
-                objects.push(("a resist's subject:", subject));
-            }
             let (slot, object) = match effect {
                 EffectTemplate::Meter { of, .. }
                 | EffectTemplate::Flag { of, .. }
@@ -109,6 +112,7 @@ impl Rule {
                 EffectTemplate::Wield { subject, .. } | EffectTemplate::Unwield { subject } => {
                     ("subject:", grammar::Object::Actor(subject.clone()))
                 }
+                EffectTemplate::Check { by, .. } => ("by:", grammar::Object::Actor(by.clone())),
                 EffectTemplate::Location { .. }
                 | EffectTemplate::Note { .. }
                 | EffectTemplate::Narrate { .. } => return,
@@ -275,7 +279,8 @@ pub enum ChangeWatch {
     },
 }
 
-/// A rule's `check:`: `total` against `success_at`, with an optional lower `partial_at` band.
+/// A `check:`, a rule's or a nested one: `total` against `success_at`, with an optional lower
+/// `partial_at` band.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Check {
     pub total: Expr,
@@ -289,6 +294,25 @@ impl Check {
         [&self.total, &self.success_at]
             .into_iter()
             .chain(&self.partial_at)
+    }
+
+    /// Evaluate `total`, then `success_at`, then `partial_at` on `dice`, each writing its own
+    /// dice line, and classify the total.
+    pub(crate) fn roll(
+        &self,
+        context: &Context,
+        dice: &mut dyn expr::Dice,
+    ) -> Result<Roll, Reason> {
+        let total = expr::eval_with_dice(context, &self.total, dice)?;
+        let success_at = expr::eval_with_dice(context, &self.success_at, dice)?;
+        let partial_at = (self.partial_at.as_ref())
+            .map(|expr| expr::eval_with_dice(context, expr, dice))
+            .transpose()?;
+        Ok(Roll {
+            total,
+            success_at,
+            outcome: classify(total, success_at, partial_at),
+        })
     }
 }
 
@@ -431,13 +455,11 @@ pub enum EffectTemplate {
         key: String,
         add: Option<Expr>,
         set: Option<Expr>,
-        resist: Option<ResistSpec>,
     },
     Flag {
         of: grammar::Object,
         key: String,
         value: bool,
-        resist: Option<ResistSpec>,
     },
     /// One application of modifier `id` to an actor, with magnitude `add`, lasting `ticks`.
     Modifier {
@@ -461,7 +483,6 @@ pub enum EffectTemplate {
         to: NarrateTo,
         text: String,
         fact_ids: Vec<String>,
-        resist: Option<ResistSpec>,
     },
     Memory {
         to: grammar::Actor,
@@ -473,7 +494,6 @@ pub enum EffectTemplate {
         id: String,
         add: Expr,
         max: Option<Expr>,
-        resist: Option<ResistSpec>,
     },
     Reveal {
         to: grammar::Actor,
@@ -486,18 +506,15 @@ pub enum EffectTemplate {
     Unwield {
         subject: grammar::Actor,
     },
-}
-
-impl EffectTemplate {
-    pub(crate) fn resist(&self) -> Option<&ResistSpec> {
-        match self {
-            EffectTemplate::Meter { resist, .. }
-            | EffectTemplate::Flag { resist, .. }
-            | EffectTemplate::Narrate { resist, .. }
-            | EffectTemplate::Item { resist, .. } => resist.as_ref(),
-            _ => None,
-        }
-    }
+    /// A save with its own outcome: `check` rolls on the rule's dice and is told to `by`, and
+    /// its outcome picks the one list whose effects run. `self` is still the rule's actor.
+    Check {
+        by: grammar::Actor,
+        check: Check,
+        success: Vec<EffectTemplate>,
+        partial: Vec<EffectTemplate>,
+        miss: Vec<EffectTemplate>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -514,18 +531,6 @@ pub enum NarrateTo {
     Actors(Vec<ActorId>),
     /// No `to`: every seated player.
     Present,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ResistSpec {
-    Same,
-    /// `subject` rolls `check`; a success applies `resisted` in place of the effect. The check
-    /// has no partial band.
-    Roll {
-        subject: grammar::Actor,
-        check: Box<Check>,
-        resisted: Vec<EffectTemplate>,
-    },
 }
 
 #[derive(Clone, Debug)]

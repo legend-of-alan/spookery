@@ -383,7 +383,7 @@ A pack line reads as a clause. Each word keeps one part of speech and one role:
 
 | Word | Part of speech | Role |
 |---|---|---|
-| `subject` | subject | the actor the verb is about: who plays the move or resists, or who has, is at, knows or wields in a condition |
+| `subject` | subject | the actor the verb is about: who plays the move, or who has, is at, knows or wields in a condition |
 | verb | verb | the action |
 | `target` | direct object | the thing the verb acts on, and nothing else |
 | `of` | preposition | the owner of the meter, flag or item count the line names, e.g. `meter: hp, of: target` reads as "hp of the target" |
@@ -391,8 +391,9 @@ A pack line reads as a clause. Each word keeps one part of speech and one role:
 | `from` | preposition | where something starts: a time or a place |
 | `at` | preposition | when or where: a time or a place |
 | `via` | preposition | the way through |
+| `by` | preposition | who makes a nested check's save and is told its outcome |
 
-**One role per preposition.** A preposition is used only for the role it fits, and a word never changes role from one line to the next. `for` and `by` are not used. The number a check has to reach is `success_at`, never `target`, because `target` is only ever the thing the verb acts on. `grammar::Object` in Rust is any grammatical object a line names, including but not limited to a direct object, an indirect object or the object of a preposition.
+**One role per preposition.** A preposition is used only for the role it fits, and a word never changes role from one line to the next. `for` is not used, and `by` names only who makes a nested check. The number a check has to reach is `success_at`, never `target`, because `target` is only ever the thing the verb acts on. `grammar::Object` in Rust is any grammatical object a line names, including but not limited to a direct object, an indirect object or the object of a preposition.
 
 The arrival in `tests/packs/docks/story/ending.yaml`:
 
@@ -464,9 +465,9 @@ Mira's restock in `tests/packs/docks/cast/mira.md`:
 
 reads as *while the day is from tick 480 to tick 960, add 4 lamp_oil of place:docks_shop.* A cycle window is `from` inclusive and `to` exclusive: tick 480 is inside it and tick 960 is not.
 
-In the `shrug` rule below, `resist: { subject: target, total: 2d6 + target.nerve, success_at: 4 }` on a nerve loss of self reads as *unless the target resists: the target rolls 2d6 plus its nerve, and succeeds at 4.* In `resist`, `subject` is the actor who rolls to resist, not the subject of the outer line; omitted, it is the move's `target`.
+In the `shrug` rule below, `check: { by: target, total: 2d6 + target.nerve, success_at: 4 }` reads as *the target saves: it rolls 2d6 plus its nerve, and succeeds at 4.* Its `success` list runs when the save succeeds and its `miss` list, the nerve loss of self, when it fails. `by` is the actor who makes the save; omitted, it is `self`. `self` inside it is still the rule's actor.
 
-In the `give_oil` rule below, the resist's `success_at: "self.nerve + 2"` reads as *nerve of self, plus 2*: in an [expression](spec.md) the owner comes first, then its meter.
+In the `give_oil` rule below, the nested check's `success_at: "self.nerve + 2"` reads as *nerve of self, plus 2*: in an [expression](spec.md) the owner comes first, then its meter.
 
 A check's `total`, `success_at` and `partial_at` are each a number, and each may roll dice (`crates/engine/rules/roll.rs`):
 
@@ -474,7 +475,7 @@ A check's `total`, `success_at` and `partial_at` are each a number, and each may
 - `partial_at <= total < success_at` is a partial, only when the check sets `partial_at`.
 - Any lower total is a miss. A check without `partial_at` is a success or a miss.
 
-The check rolls when the move lands, after the gate admits it and its start cost is paid: `total`, then `success_at`, then `partial_at`, each writing its own dice line. A defense is written in the rule: a `success_at` such as `"2d6 + target.vigor"` rolls its own dice and reads the target's meters. A resist roll has no partial band: on a success the effect is shrugged off and its `resisted` list runs in its place, and on a miss the effect lands.
+The check rolls when the move lands, after the gate admits it and its start cost is paid: `total`, then `success_at`, then `partial_at`, each writing its own dice line. A contested defense is a number in the rule that reads the target's stats, not a nested check: a `success_at` such as `"2d6 + target.vigor"` rolls its own dice and reads the target's meters. A nested check is a save with its own outcome: it rolls when the effects reach it, on the rule's own dice, and may have a partial band.
 
 ### Rule fields
 
@@ -628,24 +629,24 @@ rules:
       verb: shrug
       target: actor
     do:
-      - meter:
-          of: self
-          key: nerve
-          add: -1
-          resist:
-            subject: target
-            total: 2d6 + target.nerve
-            success_at: 4
-            resisted:
-              - narrate:
-                  to: self
-                  text: The hit glances off.
-                  fact_ids: []
-      - flag:
-          of: self
-          key: shrugged
-          value: true
-          resist: same
+      - check:
+          by: target
+          total: 2d6 + target.nerve
+          success_at: 4
+          success:
+            - narrate:
+                to: self
+                text: The hit glances off.
+                fact_ids: []
+          miss:
+            - meter:
+                of: self
+                key: nerve
+                add: -1
+            - flag:
+                of: self
+                key: shrugged
+                value: true
 
   - id: leave_note
     when:
@@ -700,16 +701,15 @@ rules:
     when:
       verb: give_oil
     do:
-      - item:
-          of: here
-          id: oil
-          add: 1
-          max: 4
-          resist:
-            subject: self
-            total: 2d6 + self.nerve
-            success_at: "self.nerve + 2"
-            resisted: []
+      - check:
+          total: 2d6 + self.nerve
+          success_at: "self.nerve + 2"
+          miss:
+            - item:
+                of: here
+                id: oil
+                add: 1
+                max: 4
 
   - id: show_stair
     when:
@@ -838,7 +838,7 @@ max_trigger_depth: 4
 
 One effect under each dash. The rules in `rules/verbs.yaml` are the examples. `step_through` on the yard is the `location.to` example.
 
-`resist` on `meter`, `flag`, `item`, or `narrate` names `subject`, `total`, `success_at`, and `resisted`, and rolls as a check with no partial band. `subject` is an actor, as on a condition. An omitted `subject` is the move's `target`, so check refuses it unless the rule targets an actor. `resist: same` reuses the previous resist roll in that list. `do` counts for the lists after it. Check rejects `resist: same` when no earlier effect in that run has rolled a resist.
+`check` under a dash is a nested check: a save with its own outcome. It has `total`, `success_at`, an optional `partial_at`, and `success`, `partial` and `miss` lists, any of which may be left out. Its outcome runs one list, which may hold further nested checks. `by` is the actor who makes the save and is told its outcome; omitted, it is `self`, and check refuses `by: target` unless the rule targets an actor. `self` inside it is still the rule's actor, and its dice are the rule's own, taken in order. `partial_at` and a `partial` list need each other, and a constant `partial_at` is below a constant `success_at`, as on a rule's check. A contested defense is not a nested check: it is a `success_at` that reads the target's stats.
 
 `location.via` names an exit from the actor's current place. `travel` uses `via: target`, which needs a rule that targets an exit. `location.to` names a place, or `target`, which needs a rule that targets a place. Playing `to` without `teleport: true` is refused. `teleport: true` in `rules/verbs.yaml` is a warning.
 

@@ -99,8 +99,8 @@ Feature: Items are real
     When harbormouse drops poisoned_dagger
     Then harbormouse's wielded slot is empty in the same round
 
-  Scenario: Resist is an outcome, not a refusal
-    Given wren resists the poison with a seeded Constitution roll of 15 vs 12
+  Scenario: A save is an outcome, not a refusal
+    Given wren saves against the poison with a seeded Constitution roll of 15 vs 12
     When harbormouse hits wren with poisoned_dagger
     Then wren loses 3 hp, is not poisoned, sees "The poison burns, then fades.", and the round shows no refusal
     And spook verify reproduces both rolls
