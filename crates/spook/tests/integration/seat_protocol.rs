@@ -230,7 +230,7 @@ fn listen() -> Table {
         .arg("run")
         .arg(crate::support::pack_arg(&pack))
         .args(["--addr", "127.0.0.1:0"])
-        .current_dir(std::env::temp_dir())
+        .current_dir(env!("CARGO_TARGET_TMPDIR"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

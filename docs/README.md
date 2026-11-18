@@ -172,7 +172,7 @@ A view does include the Markdown body of its place and of the viewer and each ca
 
 It never sends `save.yaml` or the tape file. Those stay on disk in the pack. A new `spook ai-gm` process starts fresh and remembers nothing from the last one.
 
-Logs carry no table text. `spook run` and `spook ai-gm` write them to `logs/<command>-<time>.log` in the directory they start in, never inside `state/`, and other commands write them to stderr. By default those files hold seat and round events and each model call's model id, attempts, time and token counts, never the prompt or the reply. The exception is `rmcp` at `debug` or `trace`, which logs whole MCP messages.
+Logs carry no table text. `spook run` and `spook ai-gm` write them to `logs/<command>-<time>-<pid>.log` in the directory they start in, never inside `state/`, and other commands write them to stderr. By default those files hold seat and round events and each model call's model id, attempts, time and token counts, never the prompt or the reply. The exception is `rmcp` at `debug` or `trace`, which logs whole MCP messages.
 
 ## License
 
