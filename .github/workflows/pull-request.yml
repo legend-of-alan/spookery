@@ -9,7 +9,6 @@ on:
 permissions:
   contents: read
   issues: read
-  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -31,7 +30,6 @@ jobs:
           TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body }}
           BASE: ${{ github.event.pull_request.base.sha }}
-          PR: ${{ github.event.pull_request.number }}
         run: |
           failed=0
           # The title takes the first letter of the closed issue's area label and its size label.
@@ -52,14 +50,5 @@ jobs:
           net=$(git diff --numstat "$BASE...HEAD" | awk -F '\t' '
             { if ($3 ~ /(^|\/)tests\/|\.feature$/) t += $1 - $2; else p += $1 - $2 }
             END { printf "Net: %+d production, %+d tests", p, t }')
-          # One comment per PR shows the net lines, edited in place on every push.
-          # A fork's token can't comment, so there the line goes to the log instead.
-          marker="<!-- net-lines -->"
-          comment=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
-            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | endswith(\"$marker\"))) | .id" | head -1)
-          if [ -n "$comment" ]; then
-            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment" -f body="$net $marker" > /dev/null || echo "::notice::$net"
-          else
-            gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$net $marker" > /dev/null || echo "::notice::$net"
-          fi
+          echo "::notice::$net"
           exit $failed
