@@ -43,6 +43,19 @@ async fn the_operator_runs_verify_from_that_copy(world: &mut World) {
     let _ = fs::remove_dir_all(&from);
 }
 
+#[given(expr = "a docks table that has played {int} rounds")]
+fn a_docks_table_that_has_played_n_rounds(world: &mut World, count: usize) {
+    let pack = crate::support::copy_pack("docks", "played");
+    let mut session = spookery_engine::testing::resume(&pack);
+    for _ in 0..count {
+        let wall = session.world().last_round_at.clone();
+        session
+            .play(&spookery_engine::Presence::default(), &wall)
+            .unwrap_or_else(|err| panic!("round: {err}"));
+    }
+    world.pack = Some(pack);
+}
+
 #[when(expr = "the operator plays {int} rounds")]
 async fn the_operator_plays_n_rounds(world: &mut World, count: usize) {
     let pack = table::pack(world).to_path_buf();
