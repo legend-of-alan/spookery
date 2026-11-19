@@ -4,9 +4,10 @@ Feature: A claim comes back with its token
     Given a docks table with a seated GM
     And a player claimed rowan and got token t1
     When the connection drops without release and 100 server messages pass
+    And the GM commits a round of Aldric's wait
     And the player reconnects with token t1
     Then it holds rowan again and receives the messages after its last seq
-    And both claims said round 0 at tick 1080
+    And the pick said round 0 at tick 1080 and the token claim round 1 at tick 1085
     And a GM intent for rowan is refused while it is held
 
   Scenario: A dropped claim keeps rowan from another player

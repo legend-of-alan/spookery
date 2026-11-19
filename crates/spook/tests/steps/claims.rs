@@ -56,6 +56,15 @@ async fn the_connection_drops_and_messages_pass(world: &mut World, count: usize)
     }
 }
 
+#[when(expr = "the GM commits a round of Aldric's wait")]
+async fn the_gm_commits_aldrics_wait(world: &mut World) {
+    let wait = r#"{"actor_id":"aldric","move":"wait"}"#;
+    let queued = table::call_gm_tool(world, "queue", wait).await;
+    assert_eq!(queued["kind"], "queued", "{queued}");
+    let committed = table::call_gm_tool(world, "commit", r#"{"include_round":true}"#).await;
+    assert_eq!(committed["kind"], "committed", "{committed}");
+}
+
 #[when(expr = "the player releases rowan")]
 async fn the_player_releases_rowan(world: &mut World) {
     table::close_actor(world, "rowan").await;
@@ -87,10 +96,22 @@ async fn it_holds_rowan_and_catches_up(world: &mut World) {
     assert_eq!(looked["body"]["kind"], "view", "{looked}");
 }
 
-/// The pick and the claim by token each name the round and tick the table is at.
-#[then(expr = "both claims said round {int} at tick {int}")]
-fn both_claims_said_the_clock(world: &mut World, round_index: u64, world_time: u64) {
-    for reply in [&world.claimed, &parse(&world.player_added)] {
+/// The pick and the claim by token each name the round and tick the table was at then.
+#[then(
+    expr = "the pick said round {int} at tick {int} and the token claim round {int} at tick {int}"
+)]
+fn each_claim_said_the_clock(
+    world: &mut World,
+    pick_round: u64,
+    pick_tick: u64,
+    token_round: u64,
+    token_tick: u64,
+) {
+    let clocks = [
+        (&world.claimed, pick_round, pick_tick),
+        (&parse(&world.player_added), token_round, token_tick),
+    ];
+    for (reply, round_index, world_time) in clocks {
         assert_eq!(reply["body"]["round_index"], round_index, "{reply}");
         assert_eq!(reply["body"]["world_time"], world_time, "{reply}");
     }
@@ -143,17 +164,13 @@ fn held_again(world: &World, gap: bool) -> Vec<Value> {
     missed
 }
 
+/// The text of each `say` among `missed`, in order.
 fn texts_in(missed: &[Value]) -> Vec<String> {
-    missed
+    let says = missed
         .iter()
-        .map(|message| {
-            assert_eq!(message["body"]["kind"], "say", "{message}");
-            message["body"]["text"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string()
-        })
-        .collect()
+        .filter(|message| message["body"]["kind"] == "say");
+    let texts = says.map(|message| message["body"]["text"].as_str().unwrap_or_default());
+    texts.map(str::to_string).collect()
 }
 
 async fn queue_rowan_wait(world: &mut World) -> Value {
