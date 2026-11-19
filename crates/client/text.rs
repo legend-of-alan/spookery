@@ -216,10 +216,7 @@ fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
                 as_number(change.after.as_ref()),
             ) {
                 ("meter", Some(after)) => {
-                    let name = match change.entry_name.as_str() {
-                        "" => &change.entry_id,
-                        name => name,
-                    };
+                    let name = meter_name(&change.entry_id, &change.entry_name);
                     Some(format!("{whose} {name} is now {after}."))
                 }
                 ("item", Some(_)) => render_item_change(viewer, change, changes),
@@ -348,14 +345,19 @@ fn item_line(item: &ItemStack, wielded: Option<&str>) -> String {
     }
 }
 
-/// `Health: 8/16` by the meter's name, or by its id made readable when it has none.
+/// `Health: 8/16`.
 fn meter_line(meter: &MeterView) -> String {
-    let name = if meter.name.is_empty() {
-        humanize(&meter.id)
-    } else {
-        meter.name.clone()
-    };
+    let name = meter_name(&meter.id, &meter.name);
     format!("{name}: {}/{}", meter.value, meter.max)
+}
+
+/// The meter's `name`, or its `id` made readable when the pack gives it none.
+fn meter_name(id: &str, name: &str) -> String {
+    if name.is_empty() {
+        humanize(id)
+    } else {
+        name.to_string()
+    }
 }
 
 /// `docks_shop` becomes "Docks shop".

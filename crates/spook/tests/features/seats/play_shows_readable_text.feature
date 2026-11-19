@@ -83,11 +83,16 @@ Feature: Play shows readable text
     And play shows "Your roll succeeded."
     And play does not show "Health is now"
 
-  Scenario: A used item shows as used up
-    Given a docks table
+  Scenario Outline: A used item shows as used up, and the meter reads by its name or its id
+    Given <table>
     When play joins the table as "harbormouse"
     And play types "use Bitter tonic"
-    Then play shows "Your Bitter tonic was used up. Your Health is now 12."
+    Then play shows "Your Bitter tonic was used up. Your <meter> is now 12."
+
+    Examples:
+      | table                              | meter  |
+      | a docks table                      | Health |
+      | a docks table where hp has no name | Hp     |
 
   Scenario: An unseen gain does not turn a use into a move
     Given a docks table where a sip costs harbormouse a tonic and gives Bram one

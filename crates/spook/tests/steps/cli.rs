@@ -246,6 +246,14 @@ fn harbormouses_might_is_40(world: &mut World) {
     });
 }
 
+#[given(expr = "a docks table where hp has no name")]
+fn hp_has_no_name(world: &mut World) {
+    a_docks_table(world);
+    let meters = table::pack(world).join("rules/meters.yaml");
+    replace_in_file(&meters, "    name: Health\n", "");
+    spookery_engine::migrate_pack(table::pack(world)).unwrap_or_else(|err| panic!("{err}"));
+}
+
 #[given(expr = "a docks table where a spill reveals a hidden fact to Briar and costs Briar 1 hp")]
 fn a_spill_reveals_a_hidden_fact(world: &mut World) {
     a_docks_table(world);
