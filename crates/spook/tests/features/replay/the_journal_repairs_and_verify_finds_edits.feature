@@ -94,8 +94,7 @@ Feature: Startup repairs the journal and verify finds any edit
     Then the command exits 0
 
   Scenario: A pack that does not set checkpoint_every checkpoints every 100 rounds
-    Given a docks table
-    When the operator plays 99 rounds
+    Given a docks table that has played 99 rounds
     Then the live bundle is bundle-0000.jsonl
     When the operator plays a round
     Then bundle-0000.jsonl is closed
