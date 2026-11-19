@@ -7,18 +7,18 @@ use crate::World;
 use super::table;
 
 #[given(expr = "a docks table with a GM and a seated player")]
-fn a_docks_table_with_a_gm_and_a_seated_player(world: &mut World) {
+async fn a_docks_table_with_a_gm_and_a_seated_player(world: &mut World) {
     let pack = copy_pack("docks", "round");
-    table::listen(world, &pack);
-    table::seat_gm(world);
-    table::seat_rowan(world, &pack);
+    table::listen(world, &pack).await;
+    table::seat_gm(world).await;
+    table::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "the operator runs spook round")]
-fn the_operator_runs_spook_round(world: &mut World) {
+async fn the_operator_runs_spook_round(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::run(world, &["round", pack.to_str().unwrap()]);
+    table::run(world, &["round", pack.to_str().unwrap()]).await;
 }
 
 #[then(expr = "round index is {int}")]

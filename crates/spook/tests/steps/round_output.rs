@@ -10,19 +10,19 @@ use crate::support::{self, copy_pack};
 use crate::World;
 
 #[given(expr = "a docks table with a GM and wren seated")]
-fn a_docks_table_with_a_gm_and_one_pc(world: &mut World) {
-    listen_with_wren(world, false);
+async fn a_docks_table_with_a_gm_and_one_pc(world: &mut World) {
+    listen_with_wren(world, false).await;
 }
 
 /// Wren is busy in Mira's rooms, so a commit fast-forwards, and Rowan's travel to the street
 /// touches no seated player, so his moves keep queue order. Rowan has no player, so the GM
 /// drives him.
 #[given(expr = "a docks table with a GM and a travelling wren seated")]
-fn a_docks_table_with_a_gm_and_a_busy_pc(world: &mut World) {
-    listen_with_wren(world, true);
+async fn a_docks_table_with_a_gm_and_a_busy_pc(world: &mut World) {
+    listen_with_wren(world, true).await;
 }
 
-fn listen_with_wren(world: &mut World, travelling: bool) {
+async fn listen_with_wren(world: &mut World, travelling: bool) {
     let pack = copy_pack("docks", "round-output");
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read shop: {err}"));
@@ -43,23 +43,23 @@ fn listen_with_wren(world: &mut World, travelling: bool) {
             set_busy(now, "wren", until, "docks_shop.stairs");
         });
     }
-    table::listen(world, &pack);
-    table::seat_gm(world);
-    table::seat_actor(world, &pack, "wren");
+    table::listen(world, &pack).await;
+    table::seat_gm(world).await;
+    table::seat_actor(world, &pack, "wren").await;
     world.pack = Some(pack);
 }
 
 #[given(expr = "a docks table with rowan and wren seated and no GM")]
-fn a_docks_table_with_two_players_and_no_gm(world: &mut World) {
+async fn a_docks_table_with_two_players_and_no_gm(world: &mut World) {
     let pack = copy_pack("docks", "round-output-busy");
     edit_save(&pack, |now| {
         let until = now.world_time + 10;
         set_busy(now, "rowan", until, "docks_shop.docks_street");
         set_busy(now, "wren", until, "docks_street.docks_shop");
     });
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, "rowan");
-    table::seat_actor(world, &pack, "wren");
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, "rowan").await;
+    table::seat_actor(world, &pack, "wren").await;
     world.pack = Some(pack);
 }
 
@@ -72,20 +72,21 @@ fn both_players_are_travelling(world: &mut World) {
 }
 
 #[when(expr = "the GM queues {string} for {string}")]
-fn the_gm_queues_a_move(world: &mut World, move_id: String, actor: String) {
-    queue_move(world, &actor, &move_id, None);
+async fn the_gm_queues_a_move(world: &mut World, move_id: String, actor: String) {
+    queue_move(world, &actor, &move_id, None).await;
 }
 
 #[when(expr = "the GM queues a 10-tick travel for {string}")]
-fn the_gm_queues_a_ten_tick_travel(world: &mut World, actor: String) {
-    queue_move(world, &actor, "travel", Some("docks_street"));
+async fn the_gm_queues_a_ten_tick_travel(world: &mut World, actor: String) {
+    queue_move(world, &actor, "travel", Some("docks_street")).await;
 }
 
 #[when(expr = "{string} sends a move")]
-fn the_player_sends_a_move(world: &mut World, actor: String) {
+async fn the_player_sends_a_move(world: &mut World, actor: String) {
     table::wait_host_until(world, "both seats printed", |text| {
         text.matches(STATUS_LINE).count() >= 2
-    });
+    })
+    .await;
     let host = table::host_stdout(world).len();
     let rowan = table::actor_text(world, &actor).len();
     let wren = table::actor_text(world, "wren").len();
@@ -119,14 +120,14 @@ fn the_commit_reply_lists_the_dice(world: &mut World) {
 }
 
 #[then(expr = "{string} gets a refused line with code {word}")]
-fn the_player_is_refused(world: &mut World, actor: String, code: String) {
-    let added = table::wait_actor_from(world, &actor, world.mark, &code);
+async fn the_player_is_refused(world: &mut World, actor: String, code: String) {
+    let added = table::wait_actor_from(world, &actor, world.mark, &code).await;
     assert!(added.contains(&format!("\"code\":\"{code}\"")), "{added}");
 }
 
 #[then(expr = "each seated player then gets a resume line and a perceive line")]
-fn each_player_gets_one_refresh(world: &mut World) {
-    let rowan = table::wait_actor_from(world, "rowan", world.mark, "\"kind\":\"view\"");
+async fn each_player_gets_one_refresh(world: &mut World) {
+    let rowan = table::wait_actor_from(world, "rowan", world.mark, "\"kind\":\"view\"").await;
     let busy = rowan
         .find("\"code\":\"BUSY\"")
         .unwrap_or_else(|| panic!("no refusal\n{rowan}"));
@@ -140,17 +141,18 @@ fn each_player_gets_one_refresh(world: &mut World) {
     assert_eq!(rowan.matches("\"kind\":\"resume\"").count(), 1, "{rowan}");
     assert_eq!(rowan.matches("\"kind\":\"view\"").count(), 1, "{rowan}");
     let wren_mark = world.wren_mark;
-    let wren = table::wait_actor_from(world, "wren", wren_mark, "\"kind\":\"view\"");
+    let wren = table::wait_actor_from(world, "wren", wren_mark, "\"kind\":\"view\"").await;
     assert_eq!(wren.matches("\"kind\":\"resume\"").count(), 1, "{wren}");
     assert_eq!(wren.matches("\"kind\":\"view\"").count(), 1, "{wren}");
 }
 
 #[then(expr = "the host prints its status once")]
-fn the_host_prints_its_status_once(world: &mut World) {
+async fn the_host_prints_its_status_once(world: &mut World) {
     let host_mark = world.host_mark;
     let text = table::wait_host_until(world, "one status", |text| {
         text.len() > host_mark && text[host_mark..].contains(STATUS_LINE)
-    });
+    })
+    .await;
     let added = &text[host_mark..];
     assert_eq!(
         added.matches(STATUS_LINE).count(),
@@ -161,13 +163,13 @@ fn the_host_prints_its_status_once(world: &mut World) {
 
 const STATUS_LINE: &str = "meter mira shop_day 1 1";
 
-fn queue_move(world: &mut World, actor: &str, move_id: &str, place: Option<&str>) {
+async fn queue_move(world: &mut World, actor: &str, move_id: &str, place: Option<&str>) {
     let target = match place {
         Some(place) => format!(r#","target":"{place}""#),
         None => String::new(),
     };
     let args = format!(r#"{{"actor_id":"{actor}","move":"{move_id}"{target}}}"#);
-    let text = table::gm_tool_call(world, 4, "queue", &args);
+    let text = table::gm_tool_call(world, 4, "queue", &args).await;
     assert_eq!(
         table::read_reply(&text)["kind"],
         "queued",

@@ -79,19 +79,20 @@ const CONTESTED_MARK_ROW: &str = "
 const MIRA_VIGOR: i64 = 100;
 
 #[when(expr = "the player rolls exert")]
-fn the_player_rolls_exert(world: &mut World) {
-    let (mark, added) = table::player_send(world, "exert", "\"kind\":");
+async fn the_player_rolls_exert(world: &mut World) {
+    let (mark, added) = table::player_send(world, "exert", "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
 }
 
 #[then(expr = "the player sees a check success")]
-fn the_player_sees_a_check_success(world: &mut World) {
+async fn the_player_sees_a_check_success(world: &mut World) {
     world.player_added = table::wait_player_from(
         world,
         world.mark,
         "{\"kind\":\"check\",\"outcome\":\"success\"}",
-    );
+    )
+    .await;
     assert!(
         !world.player_added.contains("\"dice\""),
         "{}",
@@ -105,14 +106,15 @@ fn the_player_sees_a_check_success(world: &mut World) {
 }
 
 #[then(expr = "the GM sees the exert faces")]
-fn the_gm_sees_the_exert_faces(world: &mut World) {
-    let text = table::wait_gm(world, "\"rolls\"");
+async fn the_gm_sees_the_exert_faces(world: &mut World) {
+    let text = table::wait_gm(world, "\"rolls\"").await;
     assert_roll(&read_committed(&text), "", 1, 0, "success");
 }
 
 #[then(expr = "the player sees a check result without faces")]
-fn the_player_sees_a_check_result_without_faces(world: &mut World) {
-    let added = table::wait_player_from(world, world.mark, "{\"kind\":\"check\",\"outcome\":");
+async fn the_player_sees_a_check_result_without_faces(world: &mut World) {
+    let added =
+        table::wait_player_from(world, world.mark, "{\"kind\":\"check\",\"outcome\":").await;
     assert!(
         added.contains("{\"kind\":\"check\",\"outcome\":\"success\"}")
             || added.contains("{\"kind\":\"check\",\"outcome\":\"partial\"}")
@@ -124,18 +126,18 @@ fn the_player_sees_a_check_result_without_faces(world: &mut World) {
 }
 
 #[given(expr = "a docks table where Mira can notice")]
-fn a_docks_table_where_mira_can_notice(world: &mut World) {
+async fn a_docks_table_where_mira_can_notice(world: &mut World) {
     let pack = copy_pack("docks", "npc-notice");
     world.pack = Some(pack.clone());
     common::add_verb(&pack, NOTICE_ROWS);
     insert_mira_flags(&pack, "    - braced\n    - slipped\n");
     support::stamp_pack_rev(&pack);
-    listen_and_seat_both(world, &pack);
+    listen_and_seat_both(world, &pack).await;
     world.mark = table::player_mark(world);
 }
 
 #[given(expr = "a docks table where Mira's vigor contests a mark")]
-fn a_docks_table_where_miras_vigor_contests_a_mark(world: &mut World) {
+async fn a_docks_table_where_miras_vigor_contests_a_mark(world: &mut World) {
     let pack = copy_pack("docks", "contested-mark");
     world.pack = Some(pack.clone());
     common::add_verb(&pack, CONTESTED_MARK_ROW);
@@ -147,17 +149,17 @@ fn a_docks_table_where_miras_vigor_contests_a_mark(world: &mut World) {
             .set("docks_shop")
             .unwrap();
     });
-    listen_and_seat_both(world, &pack);
+    listen_and_seat_both(world, &pack).await;
 }
 
 #[when(expr = "the GM queues Mira's sure notice")]
-fn the_gm_queues_miras_sure_notice(world: &mut World) {
-    queue_mira(world, "notice_sure");
+async fn the_gm_queues_miras_sure_notice(world: &mut World) {
+    queue_mira(world, "notice_sure").await;
 }
 
 #[when(expr = "the GM queues Mira's hard notice")]
-fn the_gm_queues_miras_hard_notice(world: &mut World) {
-    queue_mira(world, "notice_hard");
+async fn the_gm_queues_miras_hard_notice(world: &mut World) {
+    queue_mira(world, "notice_hard").await;
 }
 
 #[when(expr = "an engine habit rolls a check for Mira")]
@@ -171,8 +173,9 @@ fn an_engine_habit_rolls_a_check_for_mira(world: &mut World) {
 }
 
 #[when(expr = "the player sends a line with a player prefix")]
-fn the_player_sends_a_line_with_a_player_prefix(world: &mut World) {
-    let (mark, added) = table::player_send(world, "player:nell exert", "\"kind\":\"refused\"");
+async fn the_player_sends_a_line_with_a_player_prefix(world: &mut World) {
+    let (mark, added) =
+        table::player_send(world, "player:nell exert", "\"kind\":\"refused\"").await;
     world.mark = mark;
     world.player_added = added;
 }
@@ -193,28 +196,29 @@ fn the_mark_missed_mira(world: &mut World) {
 }
 
 #[then(expr = "the GM sees Mira's sure notice")]
-fn the_gm_sees_miras_sure_notice(world: &mut World) {
-    assert_one_roll(world, 1, 3, "success");
+async fn the_gm_sees_miras_sure_notice(world: &mut World) {
+    assert_one_roll(world, 1, 3, "success").await;
 }
 
 #[then(expr = "the GM sees Mira's failed notice")]
-fn the_gm_sees_miras_failed_notice(world: &mut World) {
-    assert_one_roll(world, 1, 14, "miss");
+async fn the_gm_sees_miras_failed_notice(world: &mut World) {
+    assert_one_roll(world, 1, 14, "miss").await;
 }
 
 #[then(expr = "the player sees no check frame")]
-fn the_player_sees_no_check_frame(world: &mut World) {
-    let added = table::wait_player_from(world, world.mark, "\"kind\":\"view\"");
+async fn the_player_sees_no_check_frame(world: &mut World) {
+    let added = table::wait_player_from(world, world.mark, "\"kind\":\"view\"").await;
     assert!(!added.contains("\"kind\":\"check\""), "{added}");
 }
 
 #[then(expr = "the player sees only their own check")]
-fn the_player_sees_only_their_own_check(world: &mut World) {
+async fn the_player_sees_only_their_own_check(world: &mut World) {
     let added = table::wait_player_from(
         world,
         world.mark,
         "{\"kind\":\"check\",\"outcome\":\"miss\"}",
-    );
+    )
+    .await;
     assert_eq!(added.matches("\"kind\":\"check\"").count(), 1, "{added}");
     assert!(!added.contains("\"dice\""), "{added}");
     assert!(!added.contains("\"success\":"), "{added}");
@@ -239,33 +243,34 @@ fn the_gm_sees_one_roll_from_attack_and_dodge(world: &mut World) {
 }
 
 #[then(expr = "play shows {int} successful rolls")]
-fn play_shows_successful_rolls(world: &mut World, rolls: usize) {
+async fn play_shows_successful_rolls(world: &mut World, rolls: usize) {
     let succeeded = |stdout: &str| stdout.matches("Your roll succeeded.").count() >= rolls;
-    common::wait_play_until(world, succeeded, &format!("{rolls} successful rolls"));
+    common::wait_play_until(world, succeeded, &format!("{rolls} successful rolls")).await;
 }
 
 #[then(expr = "{word}'s hp is {int}")]
-fn hp_is(world: &mut World, actor: String, expected: i64) {
+async fn hp_is(world: &mut World, actor: String, expected: i64) {
     let pack = table::pack(world).to_path_buf();
     let id = spookery_engine::entity::Id::Actor(actor.as_str().into());
-    table::poll_until(&format!("{actor} hp {expected}"), || {
+    table::poll_until(&format!("{actor} hp {expected}"), async || {
         let now = world_of(&pack);
         match now.entities().get::<component::Meter>(&id).value("hp") {
             Ok(hp) if hp == expected => Ok(()),
             held => Err(format!("hp {held:?}")),
         }
-    });
+    })
+    .await;
 }
 
-fn listen_and_seat_both(world: &mut World, pack: &Path) {
-    table::listen(world, pack);
-    table::seat_gm(world);
-    table::seat_rowan(world, pack);
+async fn listen_and_seat_both(world: &mut World, pack: &Path) {
+    table::listen(world, pack).await;
+    table::seat_gm(world).await;
+    table::seat_rowan(world, pack).await;
 }
 
-fn queue_mira(world: &mut World, move_id: &str) {
+async fn queue_mira(world: &mut World, move_id: &str) {
     let args = format!(r#"{{"actor_id":"mira","move":"{move_id}"}}"#);
-    let text = table::gm_tool_call(world, 4, "queue", &args);
+    let text = table::gm_tool_call(world, 4, "queue", &args).await;
     assert!(text.contains("\"id\""), "{text}");
     assert!(!text.contains("UNKNOWN_ID"), "{text}");
 }
@@ -309,8 +314,8 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
     flags.iter().map(|(flag, ())| flag.to_string()).collect()
 }
 
-fn assert_one_roll(world: &mut World, vigor: i64, success_at: i64, outcome: &str) {
-    let text = table::wait_gm(world, "\"rolls\"");
+async fn assert_one_roll(world: &mut World, vigor: i64, success_at: i64, outcome: &str) {
+    let text = table::wait_gm(world, "\"rolls\"").await;
     assert_roll(&read_committed(&text), "", vigor, success_at, outcome);
 }
 
@@ -431,37 +436,37 @@ const NOTICE_PARTIAL_ROW: &str = "
 const PRESS_FLAGS: &str = "    - touched\n    - clean\n    - halfway\n    - missed\n";
 
 #[given(expr = "a docks table where press vigor base is {int}")]
-fn a_docks_table_where_press_vigor_base_is(world: &mut World, base: usize) {
-    prepare_press(world, base as i64, true);
+async fn a_docks_table_where_press_vigor_base_is(world: &mut World, base: usize) {
+    prepare_press(world, base as i64, true).await;
 }
 
 #[given(expr = "a docks copy where press vigor base is {int}")]
-fn a_docks_copy_where_press_vigor_base_is(world: &mut World, base: usize) {
-    prepare_press(world, base as i64, false);
+async fn a_docks_copy_where_press_vigor_base_is(world: &mut World, base: usize) {
+    prepare_press(world, base as i64, false).await;
 }
 
 #[given(expr = "a docks table where Mira can partly notice")]
-fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
+async fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
     let pack = copy_pack("docks", "press-notice");
     world.pack = Some(pack.clone());
     common::add_verb(&pack, NOTICE_PARTIAL_ROW);
     insert_mira_flags(&pack, PRESS_FLAGS);
     set_vigor(&pack, "mira", 6);
     support::stamp_pack_rev(&pack);
-    listen_and_seat_both(world, &pack);
+    listen_and_seat_both(world, &pack).await;
     world.mark = table::player_mark(world);
 }
 
 #[when(expr = "the player presses Mira")]
-fn the_player_presses_mira(world: &mut World) {
-    let (mark, added) = table::player_send(world, "press mira", "\"kind\":");
+async fn the_player_presses_mira(world: &mut World) {
+    let (mark, added) = table::player_send(world, "press mira", "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
 }
 
 #[when(expr = "the GM queues Mira's partial notice")]
-fn the_gm_queues_miras_partial_notice(world: &mut World) {
-    queue_mira(world, "notice_partial");
+async fn the_gm_queues_miras_partial_notice(world: &mut World) {
+    queue_mira(world, "notice_partial").await;
 }
 
 #[then(expr = "Mira is touched and clean")]
@@ -489,9 +494,9 @@ fn mira_is_touched_and_missed(world: &mut World) {
 }
 
 #[then(expr = "the player sees outcome {string} and no faces")]
-fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String) {
+async fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String) {
     let needle = format!("{{\"kind\":\"check\",\"outcome\":\"{outcome}\"}}");
-    let added = table::wait_player_from(world, world.mark, &needle);
+    let added = table::wait_player_from(world, world.mark, &needle).await;
     world.player_added = added;
     assert!(
         !world.player_added.contains("\"dice\""),
@@ -512,24 +517,24 @@ fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String) {
 }
 
 #[then(expr = "the GM sees outcome {string} and the faces")]
-fn the_gm_sees_outcome_and_the_faces(world: &mut World, outcome: String) {
-    let text = table::wait_gm(world, "\"rolls\"");
+async fn the_gm_sees_outcome_and_the_faces(world: &mut World, outcome: String) {
+    let text = table::wait_gm(world, "\"rolls\"").await;
     assert_outcome_dice(&read_committed(&text), &outcome);
 }
 
 #[then(expr = "the check outcome is not {string}")]
-fn the_check_outcome_is_not(world: &mut World, outcome: String) {
+async fn the_check_outcome_is_not(world: &mut World, outcome: String) {
     let word = format!("\"outcome\":\"{outcome}\"");
     assert!(
         !world.player_added.contains(&word),
         "{}",
         world.player_added
     );
-    let text = table::wait_gm(world, "\"rolls\"");
+    let text = table::wait_gm(world, "\"rolls\"").await;
     assert!(!text.contains(&word), "{text}");
 }
 
-fn prepare_press(world: &mut World, base: i64, sit: bool) {
+async fn prepare_press(world: &mut World, base: i64, sit: bool) {
     let pack = copy_pack("docks", "press");
     world.pack = Some(pack.clone());
     common::add_verb(&pack, PRESS_ROW);
@@ -542,7 +547,7 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
             .unwrap();
     });
     if sit {
-        listen_and_seat_both(world, &pack);
+        listen_and_seat_both(world, &pack).await;
     }
 }
 

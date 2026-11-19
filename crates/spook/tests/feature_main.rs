@@ -140,7 +140,7 @@ fn tear_down(world: &mut World) {
 
 async fn run_dir(dir: &Path) -> bool {
     let writer = World::cucumber()
-        .max_concurrent_scenarios(1)
+        .max_concurrent_scenarios(4)
         .fail_on_skipped()
         .after(|_, _, _, _, world| {
             if let Some(world) = world {
@@ -163,7 +163,7 @@ fn main() {
         for _ in 0..workers {
             scope.spawn(|| {
                 let runtime = tokio::runtime::Builder::new_multi_thread()
-                    .worker_threads(1)
+                    .worker_threads(4)
                     .enable_all()
                     .build()
                     .unwrap_or_else(|err| panic!("runtime: {err}"));

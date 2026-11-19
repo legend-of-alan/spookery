@@ -9,36 +9,36 @@ use crate::World;
 use super::table;
 
 #[when(expr = "a second player connects")]
-fn a_second_player_connects(world: &mut World) {
-    world.scratch = table::claim(world, "rowan");
+async fn a_second_player_connects(world: &mut World) {
+    world.scratch = table::claim(world, "rowan").await;
 }
 
 #[when(expr = "a second GM connects on the game port")]
-fn a_second_gm_connects_on_the_game_port(world: &mut World) {
-    let seat = table::Seat::open(table::live_mut(world).game_port, "gm");
-    world.scratch = table::wait_suffix(&seat.text, 0, "\"kind\":\"refused\"");
-    seat.wait_closed();
+async fn a_second_gm_connects_on_the_game_port(world: &mut World) {
+    let seat = table::Seat::open(table::live_mut(world).game_port, "gm").await;
+    world.scratch = table::wait_suffix(&seat.text, 0, "\"kind\":\"refused\"").await;
+    seat.wait_closed().await;
 }
 
 #[when(expr = "an unclaimed player waits")]
-fn an_unclaimed_player_waits(world: &mut World) {
+async fn an_unclaimed_player_waits(world: &mut World) {
     if world.live.is_none() {
-        listen_pack(world);
+        listen_pack(world).await;
     }
-    let seat = table::Seat::open(table::live_mut(world).game_port, "player");
+    let seat = table::Seat::open(table::live_mut(world).game_port, "player").await;
     let id = seat.send("wait", serde_json::json!({}));
-    world.scratch = seat.wait_reply(&id);
+    world.scratch = seat.wait_reply(&id).await;
 }
 
 #[when(expr = "a player claims an empty id")]
-fn a_player_claims_an_empty_id(world: &mut World) {
-    world.scratch = table::claim(world, "");
+async fn a_player_claims_an_empty_id(world: &mut World) {
+    world.scratch = table::claim(world, "").await;
 }
 
 #[when(expr = "a player claims {word}")]
-fn a_player_claims(world: &mut World, actor: String) {
-    listen_pack(world);
-    world.scratch = table::claim(world, &actor);
+async fn a_player_claims(world: &mut World, actor: String) {
+    listen_pack(world).await;
+    world.scratch = table::claim(world, &actor).await;
 }
 
 #[then(expr = "the hello reply does not contain {string}")]
@@ -47,9 +47,9 @@ fn the_hello_reply_does_not_contain(world: &mut World, needle: String) {
 }
 
 #[when(expr = "the operator runs play on that table")]
-fn the_operator_runs_play_on_that_table(world: &mut World) {
+async fn the_operator_runs_play_on_that_table(world: &mut World) {
     let addr = table::game_addr(world);
-    table::run(world, &["play", "--addr", &addr]);
+    table::run(world, &["play", "--addr", &addr]).await;
 }
 
 #[then(expr = "save.yaml is unchanged since the table opened")]
@@ -61,13 +61,13 @@ fn save_unchanged_since_open(world: &mut World) {
 }
 
 #[then(expr = "players is {int}")]
-fn players_is(world: &mut World, count: u32) {
-    assert_eq!(table::read_presence(world).0, count);
+async fn players_is(world: &mut World, count: u32) {
+    assert_eq!(table::read_presence(world).await.0, count);
 }
 
 #[then(expr = "the present actor is {word}")]
-fn the_present_actor_is(world: &mut World, actor: String) {
-    assert_eq!(table::read_presence(world).1, vec![actor]);
+async fn the_present_actor_is(world: &mut World, actor: String) {
+    assert_eq!(table::read_presence(world).await.1, vec![actor]);
 }
 
 #[then(expr = "state_rev is 0")]
@@ -89,28 +89,28 @@ fn the_state_directory_is_unchanged(world: &mut World) {
 }
 
 #[when(expr = "a player sits")]
-fn a_player_sits(world: &mut World) {
+async fn a_player_sits(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, "rowan");
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, "rowan").await;
 }
 
 #[when(expr = "the player leaves")]
-fn the_player_leaves(world: &mut World) {
-    table::close_actor(world, "rowan");
-    table::wait_players(world, 0);
+async fn the_player_leaves(world: &mut World) {
+    table::close_actor(world, "rowan").await;
+    table::wait_players(world, 0).await;
 }
 
 #[when(expr = "the host restarts")]
-fn the_host_restarts(world: &mut World) {
+async fn the_host_restarts(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::stop_host(world);
-    table::listen(world, &pack);
+    table::listen(world, &pack).await;
 }
 
 #[then(expr = "nobody is present")]
-fn nobody_is_present(world: &mut World) {
-    let (players, actors) = table::read_presence(world);
+async fn nobody_is_present(world: &mut World) {
+    let (players, actors) = table::read_presence(world).await;
     assert_eq!(players, 0);
     assert!(actors.is_empty(), "{actors:?}");
 }
@@ -120,11 +120,11 @@ const HIDDEN_FACT: &str = "fact_wren_channel";
 const HIDDEN_TEXT: &str = "The tide chart marks a private channel.";
 
 #[when(expr = "three players and a GM sit")]
-fn three_players_and_a_gm_sit(world: &mut World) {
-    listen_pack(world);
-    table::seat_gm(world);
+async fn three_players_and_a_gm_sit(world: &mut World) {
+    listen_pack(world).await;
+    table::seat_gm(world).await;
     let pack = table::pack(world).to_path_buf();
-    seat_three(world, &pack);
+    seat_three(world, &pack).await;
 }
 
 #[given(expr = "a docks table whose pack defines four PCs")]
@@ -152,10 +152,10 @@ Lark watches the street from a dry doorway.
 }
 
 #[when(expr = "three players sit")]
-fn three_players_sit(world: &mut World) {
-    listen_pack(world);
+async fn three_players_sit(world: &mut World) {
+    listen_pack(world).await;
     let pack = table::pack(world).to_path_buf();
-    seat_three(world, &pack);
+    seat_three(world, &pack).await;
 }
 
 #[then(expr = "the hello is refused with {string}")]
@@ -170,15 +170,15 @@ fn the_hello_is_refused_with(world: &mut World, code: String) {
 }
 
 #[then(expr = "the present actors are the three docks PCs")]
-fn the_present_actors_are_the_three_docks_pcs(world: &mut World) {
+async fn the_present_actors_are_the_three_docks_pcs(world: &mut World) {
     assert_eq!(
-        table::read_presence(world).1,
+        table::read_presence(world).await.1,
         DOCKS_PCS.map(str::to_string).to_vec()
     );
 }
 
 #[given(expr = "a one-player docks table")]
-fn a_one_player_docks_table(world: &mut World) {
+async fn a_one_player_docks_table(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "one-pc");
     fs::remove_file(pack.join("cast/pc-harbormouse.md"))
         .unwrap_or_else(|err| panic!("remove harbormouse: {err}"));
@@ -190,29 +190,29 @@ fn a_one_player_docks_table(world: &mut World) {
         actors.remove_actor(&"wren".into()).unwrap();
     });
     spookery_engine::Session::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, "rowan");
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, "rowan").await;
     world.pack = Some(pack);
 }
 
 #[given(expr = "a docks table with three seated players")]
-fn a_docks_table_with_three_seated_players(world: &mut World) {
+async fn a_docks_table_with_three_seated_players(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "three-players");
-    table::listen(world, &pack);
-    seat_three(world, &pack);
+    table::listen(world, &pack).await;
+    seat_three(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "the first player drops")]
-fn the_first_player_drops(world: &mut World) {
-    table::close_actor(world, "rowan");
-    table::wait_players(world, 2);
+async fn the_first_player_drops(world: &mut World) {
+    table::close_actor(world, "rowan").await;
+    table::wait_players(world, 2).await;
 }
 
 #[then(expr = "the present actors are harbormouse and wren")]
-fn the_present_actors_are_harbormouse_and_wren(world: &mut World) {
+async fn the_present_actors_are_harbormouse_and_wren(world: &mut World) {
     assert_eq!(
-        table::read_presence(world).1,
+        table::read_presence(world).await.1,
         vec!["harbormouse".to_string(), "wren".to_string()]
     );
 }
@@ -252,28 +252,28 @@ fn only_that_pcs_perceive_shows_the_hidden_fact(world: &mut World) {
 }
 
 #[when(expr = "that PC says the hidden fact and another PC waits")]
-fn that_pc_says_the_hidden_fact(world: &mut World) {
+async fn that_pc_says_the_hidden_fact(world: &mut World) {
     let marks = ["rowan", "harbormouse"].map(|id| (id, table::actor_text(world, id).len()));
     let say = format!("say {HIDDEN_TEXT}");
-    table::actor_send(world, "wren", &say, "\"kind\":\"say\"");
-    table::actor_send(world, "rowan", "wait", "\"kind\":\"view\"");
+    table::actor_send(world, "wren", &say, "\"kind\":\"say\"").await;
+    table::actor_send(world, "rowan", "wait", "\"kind\":\"view\"").await;
     for (id, mark) in marks {
-        let heard = table::wait_actor_from(world, id, mark, "\"kind\":\"view\"");
+        let heard = table::wait_actor_from(world, id, mark, "\"kind\":\"view\"").await;
         assert!(heard.contains(HIDDEN_TEXT), "{id} did not hear it\n{heard}");
     }
 }
 
 #[given(expr = "a docks table with two seated players")]
-fn a_docks_table_with_two_seated_players(world: &mut World) {
+async fn a_docks_table_with_two_seated_players(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "two-live");
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, "rowan");
-    table::seat_actor(world, &pack, "harbormouse");
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, "rowan").await;
+    table::seat_actor(world, &pack, "harbormouse").await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "both players wait")]
-fn both_players_wait(world: &mut World) {
+async fn both_players_wait(world: &mut World) {
     let ids: Vec<String> = table::live_mut(world)
         .players
         .iter()
@@ -281,13 +281,13 @@ fn both_players_wait(world: &mut World) {
         .collect();
     assert_eq!(ids.len(), 2, "{ids:?}");
     for id in ids {
-        world.player_added = table::actor_send(world, &id, "wait", "\"kind\":");
+        world.player_added = table::actor_send(world, &id, "wait", "\"kind\":").await;
     }
 }
 
 #[then(expr = "each wait committed its own round")]
-fn each_wait_committed_its_own_round(world: &mut World) {
-    table::wait_round(world, 1090);
+async fn each_wait_committed_its_own_round(world: &mut World) {
+    table::wait_round(world, 1090).await;
     let now = world_of(table::pack(world));
     assert_eq!(now.round_index, 2);
     assert_eq!(act_of(&now, "rowan").last_act_round, 1);
@@ -295,7 +295,7 @@ fn each_wait_committed_its_own_round(world: &mut World) {
 }
 
 #[given(expr = "a docks table with two PCs in the shop")]
-fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
+async fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "two-shop");
     crate::support::edit_save(&pack, |now| {
         let mut actors = now.actors_mut();
@@ -304,56 +304,57 @@ fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
             .set("docks_shop")
             .unwrap();
     });
-    table::listen(world, &pack);
-    seat_three(world, &pack);
+    table::listen(world, &pack).await;
+    seat_three(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "the shop player speaks to the place")]
-fn the_shop_player_speaks_to_the_place(world: &mut World) {
+async fn the_shop_player_speaks_to_the_place(world: &mut World) {
     let rowan = &table::player_client(world, "rowan").seat;
     let say = serde_json::json!({
         "to": { "place": "docks_shop" },
         "text": "the blue rope is tied",
     });
     let id = rowan.send("say", say);
-    rowan.wait_reply(&id);
-    table::poll_until("harbormouse to hear the speech in the place", || {
+    rowan.wait_reply(&id).await;
+    table::poll_until("harbormouse to hear the speech in the place", async || {
         let heard = table::actor_text(world, "harbormouse");
         if heard.contains("the blue rope is tied") {
             Ok(())
         } else {
             Err(heard)
         }
-    });
+    })
+    .await;
 }
 
 #[then(expr = "only the shop players receive the speech")]
-fn only_the_shop_players_receive_the_speech(world: &mut World) {
+async fn only_the_shop_players_receive_the_speech(world: &mut World) {
     assert!(table::actor_text(world, "rowan").contains("the blue rope is tied"));
     assert!(table::actor_text(world, "harbormouse").contains("the blue rope is tied"));
     let wren = &table::player_client(world, "wren").seat;
     let id = wren.send("look", serde_json::json!({}));
-    wren.wait_reply(&id);
+    wren.wait_reply(&id).await;
     let wren = table::actor_text(world, "wren");
     assert!(!wren.contains("the blue rope is tied"), "{wren}");
 }
 
-fn listen_pack(world: &mut World) {
+async fn listen_pack(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
+    table::listen(world, &pack).await;
 }
 
-fn seat_three(world: &mut World, pack: &std::path::Path) {
+async fn seat_three(world: &mut World, pack: &std::path::Path) {
     for id in ["rowan", "harbormouse", "wren"] {
-        table::seat_actor(world, pack, id);
+        table::seat_actor(world, pack, id).await;
     }
 }
 
 const HUMMED_OIL: &str = "lamp_oil";
 
 #[given(expr = "a pack with a habit rule that requires players == 0")]
-fn a_pack_with_a_players_habit(world: &mut World) {
+async fn a_pack_with_a_players_habit(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "players-habit");
     let path = pack.join("cast/bram.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read bram: {err}"));
@@ -380,29 +381,30 @@ rules:
     assert_ne!(text, next, "bram's cast did not take the habit");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write bram: {err}"));
     crate::support::stamp_pack_rev(&pack);
-    table::listen(world, &pack);
+    table::listen(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "{string} sits and a round commits")]
-fn sits_and_a_round_commits(world: &mut World, actor: String) {
+async fn sits_and_a_round_commits(world: &mut World, actor: String) {
     let pack = table::pack(world).to_path_buf();
-    table::seat_actor(world, &pack, &actor);
-    a_round_commits(world);
+    table::seat_actor(world, &pack, &actor).await;
+    a_round_commits(world).await;
 }
 
 #[when(expr = "{string} leaves and a round commits")]
-fn leaves_and_a_round_commits(world: &mut World, actor: String) {
-    leaves(world, actor);
-    a_round_commits(world);
+async fn leaves_and_a_round_commits(world: &mut World, actor: String) {
+    leaves(world, actor).await;
+    a_round_commits(world).await;
 }
 
 #[when(expr = "{string} leaves")]
-fn leaves(world: &mut World, actor: String) {
-    table::close_actor(world, &actor);
+async fn leaves(world: &mut World, actor: String) {
+    table::close_actor(world, &actor).await;
     table::wait_presence(world, &format!("{actor} gone"), |_, actors| {
         !actors.contains(&actor)
-    });
+    })
+    .await;
     table::live_mut(world)
         .players
         .retain(|player| player.actor_id != actor);
@@ -410,15 +412,16 @@ fn leaves(world: &mut World, actor: String) {
 
 /// The GM queues one NPC wait and commits, so a round runs whoever is seated.
 #[when(expr = "a round commits")]
-fn a_round_commits(world: &mut World) {
+async fn a_round_commits(world: &mut World) {
     if table::live_mut(world).gm.is_none() {
-        table::seat_gm(world);
+        table::seat_gm(world).await;
     }
     let pack = table::pack(world).to_path_buf();
     let before = world_of(&pack).round_index;
-    let queued = table::gm_tool_call(world, 5, "queue", r#"{"actor_id":"aldric","move":"wait"}"#);
+    let queued =
+        table::gm_tool_call(world, 5, "queue", r#"{"actor_id":"aldric","move":"wait"}"#).await;
     assert!(queued.contains("\"id\""), "{queued}");
-    let committed = table::gm_tool_call(world, 6, "commit", r#"{"include_round":true}"#);
+    let committed = table::gm_tool_call(world, 6, "commit", r#"{"include_round":true}"#).await;
     assert_eq!(world_of(&pack).round_index, before + 1, "{committed}");
 }
 
@@ -444,39 +447,43 @@ fn the_habit_fires(world: &mut World) {
 const TABLE_LINE: &str = "the tide turns at the quay";
 
 #[given(expr = "a docks table with {string} seated and {string} not seated")]
-fn a_docks_table_with_one_seated_and_one_not(world: &mut World, seated: String, free: String) {
+async fn a_docks_table_with_one_seated_and_one_not(
+    world: &mut World,
+    seated: String,
+    free: String,
+) {
     let pack = crate::support::copy_pack("docks", "say-seated");
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, &seated);
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, &seated).await;
     world.pack = Some(pack);
-    assert!(!table::read_presence(world).1.contains(&free));
+    assert!(!table::read_presence(world).await.1.contains(&free));
 }
 
 #[when(expr = "the GM says a line to the table")]
-fn the_gm_says_a_line_to_the_table(world: &mut World) {
+async fn the_gm_says_a_line_to_the_table(world: &mut World) {
     if table::live_mut(world).gm.is_none() {
-        table::seat_gm(world);
+        table::seat_gm(world).await;
     }
     let args = format!(r#"{{"to":"table","text":"{TABLE_LINE}"}}"#);
-    world.scratch = table::gm_tool_call(world, 3, "say", &args);
+    world.scratch = table::gm_tool_call(world, 3, "say", &args).await;
 }
 
 #[then(expr = "{string} hears it and {string} does not")]
-fn hears_it_and_does_not(world: &mut World, seated: String, free: String) {
+async fn hears_it_and_does_not(world: &mut World, seated: String, free: String) {
     let speech = table::read_reply(&world.scratch);
     assert_eq!(
         speech["recipient_ids"],
         serde_json::json!([seated]),
         "{speech}"
     );
-    let _ = table::wait_actor_from(world, &seated, 0, TABLE_LINE);
+    let _ = table::wait_actor_from(world, &seated, 0, TABLE_LINE).await;
     let pack = table::pack(world).to_path_buf();
-    table::seat_actor(world, &pack, &free);
+    table::seat_actor(world, &pack, &free).await;
     let text = table::actor_text(world, &free);
     assert!(!text.contains(TABLE_LINE), "{free} heard the line\n{text}");
 }
 
 #[then(expr = "status shows players {int} and actors_present {string}")]
-fn status_shows(world: &mut World, players: u32, actor: String) {
-    assert_eq!(table::read_presence(world), (players, vec![actor]));
+async fn status_shows(world: &mut World, players: u32, actor: String) {
+    assert_eq!(table::read_presence(world).await, (players, vec![actor]));
 }

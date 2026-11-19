@@ -57,12 +57,13 @@ pub(crate) fn add_trapdoor(pack: &Path) {
     .unwrap();
 }
 
-pub(crate) fn run_check_json(world: &mut World) {
+pub(crate) async fn run_check_json(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::run(
         world,
         &["check", "--json", &crate::support::pack_arg(&pack)],
-    );
+    )
+    .await;
 }
 
 /// Appends `yaml`, one or more verb rules, to the pack's `rules/verbs.yaml`.
@@ -471,9 +472,9 @@ fn break_pack(pack: &Path, fault: &str) {
 }
 
 /// Hosts the pack and runs play on it, picking `pc`, with `--raw` when `raw` is set.
-pub(crate) fn join_play(world: &mut World, pc: &str, raw: bool) {
+pub(crate) async fn join_play(world: &mut World, pc: &str, raw: bool) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
+    table::listen(world, &pack).await;
     let addr = table::game_addr(world);
     let flags: &[&str] = if raw { &["--raw"] } else { &[] };
     world.play = Some(spawn_play(&addr, pc, flags));
@@ -482,7 +483,7 @@ pub(crate) fn join_play(world: &mut World, pc: &str, raw: bool) {
     } else {
         "You are in"
     };
-    wait_play(world, needle);
+    wait_play(world, needle).await;
 }
 
 /// Starts `spook play` on `addr` with `flags`, and types `pc` at its picker the way a player
@@ -500,24 +501,24 @@ pub(crate) fn spawn_play(addr: &str, pc: &str, flags: &[&str]) -> support::Proce
     play
 }
 
-pub(crate) fn wait_play(world: &mut World, needle: &str) {
-    wait_play_until(world, |stdout| stdout.contains(needle), needle);
+pub(crate) async fn wait_play(world: &mut World, needle: &str) {
+    wait_play_until(world, |stdout| stdout.contains(needle), needle).await;
 }
 
 /// Waits until play's stdout satisfies `ready`, and keeps it in `world.stdout`.
-pub(crate) fn wait_play_until(world: &mut World, ready: impl Fn(&str) -> bool, label: &str) {
+pub(crate) async fn wait_play_until(world: &mut World, ready: impl Fn(&str) -> bool, label: &str) {
     let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
-    world.stdout = wait_proc_until(play, ready, label);
+    world.stdout = wait_proc_until(play, ready, label).await;
 }
 
 /// Waits until `proc`'s stdout satisfies `ready`, and returns it. Panics if the
 /// process exits first.
-pub(crate) fn wait_proc_until(
+pub(crate) async fn wait_proc_until(
     proc: &mut support::Process,
     ready: impl Fn(&str) -> bool,
     label: &str,
 ) -> String {
-    table::poll_until(label, || {
+    table::poll_until(label, async || {
         let stdout = support::text_of(&proc.stdout);
         if ready(&stdout) {
             return Ok(stdout);
@@ -532,6 +533,7 @@ pub(crate) fn wait_proc_until(
         }
         Err(format!("stdout:\n{stdout}\nstderr:\n{stderr}"))
     })
+    .await
 }
 
 pub(crate) fn capture_play_stdout(world: &mut World) -> String {
@@ -588,36 +590,36 @@ fn the_pack_bytes_are_unchanged(world: &mut World) {
 }
 
 #[given(expr = "a docks table with a seated GM")]
-fn a_docks_table_with_a_seated_gm(world: &mut World) {
+async fn a_docks_table_with_a_seated_gm(world: &mut World) {
     let pack = copy_pack("docks", "gm-seat");
     let opened = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    table::listen(world, &pack);
-    table::seat_gm(world);
+    table::listen(world, &pack).await;
+    table::seat_gm(world).await;
     table::live_mut(world).opened_save = opened;
     world.pack = Some(pack);
 }
 
 #[given(expr = "a docks table with a seated player")]
-fn a_docks_table_with_a_seated_player(world: &mut World) {
+async fn a_docks_table_with_a_seated_player(world: &mut World) {
     let pack = copy_pack("docks", "speech");
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
+    table::listen(world, &pack).await;
+    table::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "the operator runs spook check")]
-fn the_operator_runs_spook_check(world: &mut World) {
+async fn the_operator_runs_spook_check(world: &mut World) {
     let pack = table::pack(world);
-    let output = support::run_spook(&["check", &crate::support::pack_arg(pack)]);
+    let output = support::run_spook(&["check", &crate::support::pack_arg(pack)]).await;
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 }
 
 #[when(expr = "the operator runs spook check --json")]
-fn the_operator_runs_spook_check_json(world: &mut World) {
-    run_check_json(world);
+async fn the_operator_runs_spook_check_json(world: &mut World) {
+    run_check_json(world).await;
 }
 
 #[when(expr = "the copy is broken by {string}")]
@@ -647,13 +649,13 @@ fn the_report_says(world: &mut World, text: String) {
 }
 
 #[when(expr = "play joins the table on a free loopback address")]
-fn play_joins_the_table_on_a_free_loopback_address(world: &mut World) {
-    join_play(world, "rowan", false);
+async fn play_joins_the_table_on_a_free_loopback_address(world: &mut World) {
+    join_play(world, "rowan", false).await;
 }
 
 #[when(expr = "play joins the table as {string}")]
-fn play_joins_the_table_as(world: &mut World, pick: String) {
-    join_play(world, &pick, false);
+async fn play_joins_the_table_as(world: &mut World, pick: String) {
+    join_play(world, &pick, false).await;
 }
 
 #[when(expr = "play types {string}")]
@@ -672,8 +674,8 @@ pub(crate) fn write_play(world: &mut World, line: &str) {
 }
 
 #[then(expr = "play shows {string}")]
-fn play_shows(world: &mut World, text: String) {
-    wait_play(world, &text);
+async fn play_shows(world: &mut World, text: String) {
+    wait_play(world, &text).await;
 }
 
 #[then(expr = "play shows no protocol JSON")]
@@ -715,8 +717,8 @@ fn world_time_is_1080(world: &mut World) {
 }
 
 #[then(expr = "world_time is 1085")]
-fn world_time_is_1085(world: &mut World) {
-    table::wait_round(world, 1085);
+async fn world_time_is_1085(world: &mut World) {
+    table::wait_round(world, 1085).await;
 }
 
 /// The id of the cast member or place in `canon` whose name is `text`; any other text, such as
@@ -746,32 +748,32 @@ fn has_flag(world: &mut World, actor: String, has: String, flag: String) {
 }
 
 #[when(regex = r"^the player marks (?P<actor>\S+)$")]
-fn the_player_marks(world: &mut World, actor: String) {
+async fn the_player_marks(world: &mut World, actor: String) {
     let canon = spookery_engine::load_canon(table::pack(world))
         .unwrap_or_else(|err| panic!("load: {err:?}"));
     let line = format!("mark {}", resolve_id(&canon, &actor));
-    let (mark, added) = table::player_send(world, &line, "\"kind\":");
+    let (mark, added) = table::player_send(world, &line, "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
 }
 
 #[when(expr = "the player waits")]
-fn the_player_waits(world: &mut World) {
-    let (mark, added) = table::player_send(world, "wait", "\"kind\":");
+async fn the_player_waits(world: &mut World) {
+    let (mark, added) = table::player_send(world, "wait", "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
 }
 
 #[when(expr = "the player travels to {string}")]
-fn the_player_travels_to(world: &mut World, place: String) {
-    let (mark, added) = table::player_send(world, &format!("travel {place}"), "\"kind\":");
+async fn the_player_travels_to(world: &mut World, place: String) {
+    let (mark, added) = table::player_send(world, &format!("travel {place}"), "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
 }
 
 #[when(expr = "the GM commits the round")]
-fn the_gm_commits_the_round(world: &mut World) {
-    world.stdout = table::gm_tool_call(world, 2, "commit", r#"{"include_round":true}"#);
+async fn the_gm_commits_the_round(world: &mut World) {
+    world.stdout = table::gm_tool_call(world, 2, "commit", r#"{"include_round":true}"#).await;
 }
 
 #[then(expr = "one round was played")]
@@ -793,9 +795,9 @@ fn save_is_unchanged_since_the_seat(world: &mut World) {
 }
 
 #[then(expr = "spook verify passes")]
-fn spook_verify_passes(world: &mut World) {
+async fn spook_verify_passes(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::run(world, &["verify", pack.to_str().unwrap()]);
+    table::run(world, &["verify", pack.to_str().unwrap()]).await;
     assert_eq!(
         world.code,
         Some(0),
@@ -806,18 +808,18 @@ fn spook_verify_passes(world: &mut World) {
 }
 
 #[when(expr = "the operator runs verify")]
-fn the_operator_runs_verify(world: &mut World) {
+async fn the_operator_runs_verify(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::run(world, &["verify", pack.to_str().unwrap()]);
+    table::run(world, &["verify", pack.to_str().unwrap()]).await;
 }
 
 #[given(expr = "the trapdoor is hidden and rowan does not know fact_trapdoor")]
-fn the_trapdoor_is_hidden(world: &mut World) {
+async fn the_trapdoor_is_hidden(world: &mut World) {
     let pack = copy_pack("docks", "trapdoor");
     add_trapdoor(&pack);
     edit_save(&pack, |_| {});
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
+    table::listen(world, &pack).await;
+    table::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
     world.player_added = table::player_text(world);
 }
@@ -831,7 +833,7 @@ fn the_view_hides_the_trapdoor(world: &mut World) {
 }
 
 #[given(expr = "the stairs exit costs 10 ticks")]
-fn the_stairs_cost_ten_ticks(world: &mut World) {
+async fn the_stairs_cost_ten_ticks(world: &mut World) {
     let pack = copy_pack("docks", "ten-ticks");
     replace_in_file(
         &pack.join("world/places/docks_shop.md"),
@@ -842,15 +844,15 @@ fn the_stairs_cost_ten_ticks(world: &mut World) {
         give_key(now);
         now.world_time = EVENING;
     });
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
+    table::listen(world, &pack).await;
+    table::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "rowan travels via stairs at tick {int}")]
-fn rowan_travels_via_stairs(world: &mut World, tick: u64) {
+async fn rowan_travels_via_stairs(world: &mut World, tick: u64) {
     assert_eq!(world_of(table::pack(world)).world_time, tick);
-    let (mark, added) = table::player_send(world, "travel stairs", "\"kind\":");
+    let (mark, added) = table::player_send(world, "travel stairs", "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
 }

@@ -204,9 +204,9 @@ rules:
 }
 
 #[then(expr = "spook check warns of a cycle, and a round stops at depth 4 and still commits")]
-fn check_warns_of_a_cycle_and_the_round_stops(world: &mut World) {
+async fn check_warns_of_a_cycle_and_the_round_stops(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
-    let output = support::run_spook(&["check", &pack.to_string_lossy()]);
+    let output = support::run_spook(&["check", &pack.to_string_lossy()]).await;
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "check failed\n{stdout}{stderr}");
@@ -311,7 +311,7 @@ The ground gives.
 }
 
 #[then(expr = "that arrival rolled stamina and spook verify reproduces it")]
-fn the_bog_roll_reproduces(world: &mut World) {
+async fn the_bog_roll_reproduces(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = world_of(pack);
     let nell = "nell".into();
@@ -321,7 +321,7 @@ fn the_bog_roll_reproduces(world: &mut World) {
         .get("vigor")
         .unwrap();
     assert_eq!(vigor.offset, -1, "the miss band did not spend vigor");
-    let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
+    let output = support::run_spook(&["verify", &pack.to_string_lossy()]).await;
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "verify failed\n{stdout}{stderr}");
@@ -709,9 +709,9 @@ fn a_message_hidden_from_wren_is_written(world: &mut World) {
 }
 
 #[then(expr = "spook verify passes on this pack")]
-fn verify_passes_on_this_pack(world: &mut World) {
+async fn verify_passes_on_this_pack(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
+    let output = support::run_spook(&["verify", &pack.to_string_lossy()]).await;
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "verify failed\n{stdout}{stderr}");

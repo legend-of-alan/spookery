@@ -14,6 +14,8 @@ use serde_json::Value;
 use spookery::protocol::{ServerBody, ServerMessage, ToolResult};
 use tokio::sync::mpsc;
 
+use crate::support;
+
 /// One item on the event channel: an event, or the line for one that could not be read.
 type EventItem = Result<ServerMessage, String>;
 
@@ -57,8 +59,7 @@ impl GmClient {
         let (tx, rx) = mpsc::unbounded_channel();
         let transport = StreamableHttpClientTransport::from_uri(url);
         let sender = EventSender { tx };
-        let service = sender
-            .serve(transport)
+        let service = support::expect_within_limit("the MCP handshake", sender.serve(transport))
             .await
             .map_err(|err| err.to_string())?;
         let mut gm = GmClient {
@@ -87,8 +88,7 @@ impl GmClient {
 
     /// The tools the seat lists.
     pub(crate) async fn list_tools(&self) -> Result<Vec<Tool>, String> {
-        self.service
-            .list_all_tools()
+        support::expect_within_limit("tools/list", self.service.list_all_tools())
             .await
             .map_err(|err| err.to_string())
     }
@@ -104,9 +104,7 @@ impl GmClient {
             return Err(format!("{command} arguments: {args}"));
         };
         let params = CallToolRequestParams::new(command.to_string()).with_arguments(arguments);
-        let result = self
-            .service
-            .call_tool(params)
+        let result = support::expect_within_limit(command, self.service.call_tool(params))
             .await
             .map_err(|err| err.to_string())?;
         while let Ok(item) = self.rx.try_recv() {
@@ -134,8 +132,7 @@ impl GmClient {
         if let Some(item) = self.buffered.pop_front() {
             return item;
         }
-        self.rx
-            .recv()
+        support::expect_within_limit("a GM event", self.rx.recv())
             .await
             .unwrap_or_else(|| Err("the event channel closed".to_string()))
     }
@@ -151,7 +148,7 @@ impl GmClient {
 
     /// Give the seat back. The host has freed it when this returns.
     pub(crate) async fn close(self) {
-        let _ = self.service.cancel().await;
+        let _ = support::expect_within_limit("closing the GM session", self.service.cancel()).await;
     }
 }
 

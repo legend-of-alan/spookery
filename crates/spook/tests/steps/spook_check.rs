@@ -13,9 +13,9 @@ use super::table;
 const DIAGNOSTIC_KEYS: [&str; 7] = ["file", "line", "column", "path", "code", "message", "hint"];
 
 #[when(expr = "the operator runs spook check --json again")]
-fn the_operator_runs_spook_check_json_again(world: &mut World) {
+async fn the_operator_runs_spook_check_json_again(world: &mut World) {
     world.scratch = world.stdout.clone();
-    super::common::run_check_json(world);
+    super::common::run_check_json(world).await;
 }
 
 #[when(expr = "the street exit is removed")]

@@ -25,8 +25,8 @@ fn the_live_journal_bundle_cannot_be_read(world: &mut World) {
 }
 
 #[when(expr = "the player tries to say {string}")]
-fn the_player_tries_to_say(world: &mut World, text: String) {
-    let (mark, added) = table::player_send(world, &format!("say {text}"), "\"kind\":");
+async fn the_player_tries_to_say(world: &mut World, text: String) {
+    let (mark, added) = table::player_send(world, &format!("say {text}"), "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
 }

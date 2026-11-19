@@ -91,8 +91,8 @@ fn keep(world: &mut World, played: PlayedRound) {
     world.told.extend(played.lines);
 }
 
-pub(crate) fn run_check(world: &mut World) {
-    let output = support::run_spook(&["check", &support::pack_arg(pack(world))]);
+pub(crate) async fn run_check(world: &mut World) {
+    let output = support::run_spook(&["check", &support::pack_arg(pack(world))]).await;
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -511,10 +511,10 @@ fn dawn_has_fallen(world: &mut World, value: i64) {
 }
 
 #[when(expr = "the player reconnects and claims rowan")]
-fn the_player_reconnects(world: &mut World) {
+async fn the_player_reconnects(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, "rowan");
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, "rowan").await;
 }
 
 /// The `world_meters` of the view rowan's seat got after its claim.

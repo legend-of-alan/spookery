@@ -13,19 +13,20 @@ use crate::support::{self, text_of};
 use crate::World;
 
 #[then(expr = "play's error shows {string} once")]
-fn play_error_shows_once(world: &mut World, text: String) {
+async fn play_error_shows_once(world: &mut World, text: String) {
     let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
-    table::poll_until(&text, || {
+    table::poll_until(&text, async || {
         let stderr = text_of(&play.stderr);
         match stderr.matches(&text).count() {
             0 => Err(stderr),
             1 => Ok(()),
             count => panic!("saw {text} {count} times\n{stderr}"),
         }
-    });
+    })
+    .await;
     let mark = capture_play_stdout(world).len();
     write_play(world, "look");
-    wait_play_until(world, |stdout| stdout[mark..].contains("Exits:"), "look");
+    wait_play_until(world, |stdout| stdout[mark..].contains("Exits:"), "look").await;
     let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
     let stderr = text_of(&play.stderr);
     let count = stderr.matches(&text).count();
@@ -33,7 +34,7 @@ fn play_error_shows_once(world: &mut World, text: String) {
 }
 
 #[given(expr = "Bram's habit takes a tonic that is not there")]
-fn brams_habit_takes_a_missing_tonic(world: &mut World) {
+async fn brams_habit_takes_a_missing_tonic(world: &mut World) {
     let pack = support::copy_pack("docks", "bram-habit");
     let path = pack.join("cast/bram.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read bram: {err}"));
@@ -60,14 +61,14 @@ rules:
     );
     fs::write(&path, next).unwrap_or_else(|err| panic!("write bram: {err}"));
     edit_save(&pack, |_| {});
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, "harbormouse");
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, "harbormouse").await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "the player waits for the resume")]
-fn the_player_waits_for_the_resume(world: &mut World) {
-    let (mark, added) = table::player_send(world, "wait", "\"kind\":\"resume\"");
+async fn the_player_waits_for_the_resume(world: &mut World) {
+    let (mark, added) = table::player_send(world, "wait", "\"kind\":\"resume\"").await;
     world.mark = mark;
     world.player_added = added;
 }
@@ -150,15 +151,15 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
 }
 
 #[given(expr = "a docks table with a stub GM and Harbormouse seated")]
-fn a_docks_table_with_a_stub_gm_and_harbormouse_seated(world: &mut World) {
+async fn a_docks_table_with_a_stub_gm_and_harbormouse_seated(world: &mut World) {
     let pack = support::copy_pack("docks", "named-gap");
-    seat_gm_and_harbormouse(world, pack);
+    seat_gm_and_harbormouse(world, pack).await;
 }
 
 #[given(
     expr = "a docks table with a stub GM, Harbormouse seated and a strike success_at of {string}"
 )]
-fn a_docks_table_with_a_strike_success_at_of(world: &mut World, success_at: String) {
+async fn a_docks_table_with_a_strike_success_at_of(world: &mut World, success_at: String) {
     let pack = support::copy_pack("docks", "rolling-gap");
     let path = pack.join("rules/verbs.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
@@ -168,7 +169,7 @@ fn a_docks_table_with_a_strike_success_at_of(world: &mut World, success_at: Stri
     fs::write(&path, text.replacen(from, &to, 1))
         .unwrap_or_else(|err| panic!("write verbs: {err}"));
     support::stamp_pack_rev(&pack);
-    seat_gm_and_harbormouse(world, pack);
+    seat_gm_and_harbormouse(world, pack).await;
 }
 
 #[then(expr = "the GM sees no roll")]
@@ -179,7 +180,7 @@ fn the_gm_sees_no_roll(world: &mut World) {
 }
 
 #[given(expr = "a docks table where one effect is over budget and the GM is seated")]
-fn one_effect_is_over_budget(world: &mut World) {
+async fn one_effect_is_over_budget(world: &mut World) {
     let pack = support::copy_pack("docks", "over-budget");
     let path = pack.join("rules/budget.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read budget: {err}"));
@@ -204,21 +205,21 @@ fn one_effect_is_over_budget(world: &mut World) {
 ",
     );
     edit_save(&pack, |_| {});
-    seat_gm_and_harbormouse(world, pack);
+    seat_gm_and_harbormouse(world, pack).await;
 }
 
 #[when(expr = "the GM is seated and play joins")]
-fn the_gm_is_seated_and_play_joins(world: &mut World) {
+async fn the_gm_is_seated_and_play_joins(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    table::seat_gm(world);
+    table::listen(world, &pack).await;
+    table::seat_gm(world).await;
     let addr = table::game_addr(world);
     world.play = Some(spawn_play(&addr, "harbormouse", &[]));
-    wait_play(world, "You are in");
+    wait_play(world, "You are in").await;
 }
 
 #[when(expr = "play queues {string}")]
-fn play_queues(world: &mut World, line: String) {
+async fn play_queues(world: &mut World, line: String) {
     let before = capture_play_stdout(world)
         .matches("Your action is queued.")
         .count();
@@ -227,20 +228,21 @@ fn play_queues(world: &mut World, line: String) {
         world,
         |stdout| stdout.matches("Your action is queued.").count() > before,
         "Your action is queued.",
-    );
+    )
+    .await;
 }
 
 #[when(expr = "Harbormouse queues {string}")]
-fn harbormouse_queues(world: &mut World, line: String) {
-    let (mark, added) = table::player_send(world, &line, "\"kind\":\"queued\"");
+async fn harbormouse_queues(world: &mut World, line: String) {
+    let (mark, added) = table::player_send(world, &line, "\"kind\":\"queued\"").await;
     world.mark = mark;
     world.player_added = added;
 }
 
 #[when(expr = "the GM sends Harbormouse's strike on {word}")]
-fn the_gm_sends_harbormouses_strike(world: &mut World, target: String) {
+async fn the_gm_sends_harbormouses_strike(world: &mut World, target: String) {
     let args = format!(r#"{{"actor_id":"harbormouse","move":"strike","target":"{target}"}}"#);
-    world.scratch = table::gm_tool_call(world, 4, "queue", &args);
+    world.scratch = table::gm_tool_call(world, 4, "queue", &args).await;
 }
 
 #[then(expr = "the GM's queue is refused {string}")]
@@ -251,9 +253,9 @@ fn the_gms_queue_is_refused(world: &mut World, code: String) {
 }
 
 #[then(expr = "Harbormouse's refused frame for {string} has no missing field")]
-fn harbormouses_refused_frame_has_no_missing_field(world: &mut World, code: String) {
+async fn harbormouses_refused_frame_has_no_missing_field(world: &mut World, code: String) {
     let body = serde_json::json!({ "kind": "refused", "code": code });
-    let added = table::wait_player_from(world, world.mark, &format!("\"code\":\"{code}\""));
+    let added = table::wait_player_from(world, world.mark, &format!("\"code\":\"{code}\"")).await;
     let refusals: Vec<serde_json::Value> = added
         .lines()
         .filter_map(|row| serde_json::from_str::<serde_json::Value>(row).ok())
@@ -274,7 +276,7 @@ fn harbormouses_refused_frame_has_no_missing_field(world: &mut World, code: Stri
 }
 
 #[given(expr = "Bram can pay for a habit until Harbormouse spends Bram's vigor")]
-fn bram_can_pay_until_harbormouse_spends_brams_vigor(world: &mut World) {
+async fn bram_can_pay_until_harbormouse_spends_brams_vigor(world: &mut World) {
     let pack = support::copy_pack("docks", "bram-vigor");
     let path = pack.join("cast/bram.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read bram: {err}"));
@@ -313,14 +315,14 @@ rules:
 ",
     );
     edit_save(&pack, |_| {});
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, "harbormouse");
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, "harbormouse").await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "Harbormouse saps Bram")]
-fn harbormouse_saps_bram(world: &mut World) {
-    let (mark, added) = table::player_send(world, "sap", "\"kind\":\"resume\"");
+async fn harbormouse_saps_bram(world: &mut World) {
+    let (mark, added) = table::player_send(world, "sap", "\"kind\":\"resume\"").await;
     world.mark = mark;
     world.player_added = added;
 }
@@ -342,10 +344,10 @@ fn play_does_not_show_the_intent_ids(world: &mut World) {
     }
 }
 
-fn seat_gm_and_harbormouse(world: &mut World, pack: std::path::PathBuf) {
-    table::listen(world, &pack);
-    table::seat_gm(world);
-    table::seat_actor(world, &pack, "harbormouse");
+async fn seat_gm_and_harbormouse(world: &mut World, pack: std::path::PathBuf) {
+    table::listen(world, &pack).await;
+    table::seat_gm(world).await;
+    table::seat_actor(world, &pack, "harbormouse").await;
     world.pack = Some(pack);
 }
 

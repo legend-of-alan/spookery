@@ -16,8 +16,6 @@ use spookery::protocol::{Addrs, ClientMessage, ServerBody, ServerMessage, ToolRe
 use tungstenite::protocol::Role;
 use tungstenite::{Message, WebSocket};
 
-use crate::support;
-
 /// A seat that never answers still has to fail the test. The line itself
 /// unblocks the wait.
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
@@ -59,7 +57,7 @@ impl Drop for Table {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_seat_page_matches_a_live_table() {
-    let captured = capture();
+    let captured = capture().await;
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/seat-protocol.md");
     let doc = std::fs::read_to_string(&path).unwrap_or_default();
     let documented = examples_in(&doc);
@@ -95,7 +93,7 @@ async fn the_seat_page_matches_a_live_table() {
     );
 }
 
-fn capture() -> BTreeMap<String, Example> {
+async fn capture() -> BTreeMap<String, Example> {
     let mut out = BTreeMap::new();
     let table = listen();
     let addrs = serde_json::from_str(&table.addrs_line)
@@ -200,14 +198,19 @@ fn capture() -> BTreeMap<String, Example> {
     next_kind(&gm, "released");
 
     let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], table.mcp_port));
-    let mut mcp = support::block_on(GmClient::connect(mcp_addr))
+    let mut mcp = GmClient::connect(mcp_addr)
+        .await
         .unwrap_or_else(|err| panic!("MCP GM: {err}"));
     let queue_args = json!({"actor_id": "aldric", "move": "wait", "id": "mcp-wait"});
     insert_json(&mut out, "mcp-call", tool_call(1, "queue", &queue_args));
-    insert_json(&mut out, "mcp-result", call(&mut mcp, "queue", queue_args));
+    insert_json(
+        &mut out,
+        "mcp-result",
+        call(&mut mcp, "queue", queue_args).await,
+    );
     send(&mut back, "exert", json!({}));
     next_kind(&back, "queued");
-    insert_json(&mut out, "mcp-event", one_event(&mut mcp));
+    insert_json(&mut out, "mcp-event", one_event(&mut mcp).await);
     let mut newcomer = RawSession::open(table.mcp_port);
     let refused = newcomer.open_event_stream();
     insert_json(&mut out, "mcp-table-full", read_event(&refused));
@@ -359,19 +362,21 @@ fn open_unclaimed(port: u16) -> SeatClient {
 }
 
 /// One tool call. Returns its structured content.
-fn call(gm: &mut GmClient, command: &str, arguments: Value) -> Value {
-    let messages = support::block_on(gm.call(command, &arguments))
+async fn call(gm: &mut GmClient, command: &str, arguments: Value) -> Value {
+    let messages = gm
+        .call(command, &arguments)
+        .await
         .unwrap_or_else(|err| panic!("{command}: {err}"));
     json!(ToolResult { messages })
 }
 
 /// The next GM event after the hello.
-fn one_event(gm: &mut GmClient) -> Value {
+async fn one_event(gm: &mut GmClient) -> Value {
     let is_hello = |event: &ServerMessage| matches!(event.body, ServerBody::Hello { .. });
     let mut ready = gm.drain_events();
     ready.retain(|event| !is_hello(event));
     while ready.is_empty() {
-        match support::block_on(gm.recv()) {
+        match gm.recv().await {
             Ok(event) if is_hello(&event) => {}
             Ok(event) => ready.push(event),
             other => panic!("expected a GM event, got {other:?}"),

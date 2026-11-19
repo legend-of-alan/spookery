@@ -12,47 +12,47 @@ use crate::World;
 use super::table;
 
 #[when(expr = "the player says {string}")]
-fn the_player_says(world: &mut World, text: String) {
-    let _ = table::player_send(world, &format!("say {text}"), "\"kind\":\"say\"");
+async fn the_player_says(world: &mut World, text: String) {
+    let _ = table::player_send(world, &format!("say {text}"), "\"kind\":\"say\"").await;
 }
 
 #[when(expr = "the player says {string} to the place")]
-fn the_player_says_to_the_place(world: &mut World, text: String) {
+async fn the_player_says_to_the_place(world: &mut World, text: String) {
     let place = place_of(&world_of(table::pack(world)), "rowan");
     let args = serde_json::json!({ "to": { "place": place }, "text": text });
-    say_as_rowan(world, args);
+    say_as_rowan(world, args).await;
 }
 
 #[when(expr = "the player says {string} to {word}")]
-fn the_player_says_to(world: &mut World, text: String, actor: String) {
+async fn the_player_says_to(world: &mut World, text: String, actor: String) {
     let args = serde_json::json!({ "to": { "actor": actor }, "text": text });
-    say_as_rowan(world, args);
+    say_as_rowan(world, args).await;
 }
 
-fn say_as_rowan(world: &World, args: Value) {
+async fn say_as_rowan(world: &World, args: Value) {
     let seat = &table::player_client(world, "rowan").seat;
     let id = seat.send("say", args);
-    let reply = seat.wait_reply(&id);
+    let reply = seat.wait_reply(&id).await;
     assert!(reply.contains("\"kind\":\"say\""), "{reply}");
 }
 
 #[when(expr = "the GM says {string} to the place {string} as {string}")]
-fn the_gm_says_as(world: &mut World, text: String, place: String, speaker: String) {
+async fn the_gm_says_as(world: &mut World, text: String, place: String, speaker: String) {
     if table::live_mut(world).gm.is_none() {
-        table::seat_gm(world);
+        table::seat_gm(world).await;
     }
     world.before = table::read_files(table::pack(world));
     let args = serde_json::json!({ "to": { "place": place }, "text": text, "as": speaker });
-    world.scratch = table::gm_tool_call(world, 1, "say", &args.to_string());
+    world.scratch = table::gm_tool_call(world, 1, "say", &args.to_string()).await;
 }
 
 #[when(expr = "{string} says {string} to the table as {string}")]
-fn says_to_the_table_as(world: &mut World, actor: String, text: String, speaker: String) {
+async fn says_to_the_table_as(world: &mut World, actor: String, text: String, speaker: String) {
     world.before = table::read_files(table::pack(world));
     let seat = &table::player_client(world, &actor).seat;
     let args = serde_json::json!({ "to": "table", "text": text, "as": speaker });
     let id = seat.send("say", args);
-    world.scratch = seat.wait_reply(&id);
+    world.scratch = seat.wait_reply(&id).await;
 }
 
 #[then(expr = "that say is refused SCHEMA and nothing was written")]
@@ -66,21 +66,26 @@ fn that_say_is_refused(world: &mut World) {
 }
 
 #[then(expr = "{string} reads {string} under the GM's seq")]
-fn reads_under_the_gms_seq(world: &mut World, actor: String, line: String) {
+async fn reads_under_the_gms_seq(world: &mut World, actor: String, line: String) {
     let result: Value = serde_json::from_str(&world.scratch)
         .unwrap_or_else(|err| panic!("result json: {err}\n{}", world.scratch));
     let reply = result["result"]["structuredContent"]["messages"]
         .as_array()
         .and_then(|messages| messages.last())
         .unwrap_or_else(|| panic!("no reply\n{result}"));
-    let speech = wait_for_line(world, &actor, 0, &line);
+    let speech = wait_for_line(world, &actor, 0, &line).await;
     assert_eq!(speech.seq, reply["seq"].as_u64(), "{reply}");
 }
 
 /// The first speech after `mark` that `actor`'s client writes as `line`.
-pub(super) fn wait_for_line(world: &World, actor: &str, mark: usize, line: &str) -> ServerMessage {
+pub(super) async fn wait_for_line(
+    world: &World,
+    actor: &str,
+    mark: usize,
+    line: &str,
+) -> ServerMessage {
     let seen = table::player_client(world, actor).text();
-    table::poll_until(line, || {
+    table::poll_until(line, async || {
         let added = support::text_of(seen)
             .get(mark..)
             .unwrap_or_default()
@@ -93,6 +98,7 @@ pub(super) fn wait_for_line(world: &World, actor: &str, mark: usize, line: &str)
             });
         speech.ok_or(added)
     })
+    .await
 }
 
 #[then(expr = "the tape line is from {string}")]
@@ -188,51 +194,52 @@ fn save_matches_the_bytes_from_before_the_line(world: &mut World) {
 }
 
 #[given(expr = "a docks table with {string} seated")]
-fn a_docks_table_with_one_seated(world: &mut World, actor: String) {
+async fn a_docks_table_with_one_seated(world: &mut World, actor: String) {
     let pack = copy_pack("docks", "speech");
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, &actor);
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, &actor).await;
     world.pack = Some(pack);
 }
 
 #[given(expr = "a docks table with {string} and {string} seated")]
-fn a_docks_table_with_two_seated(world: &mut World, first: String, second: String) {
+async fn a_docks_table_with_two_seated(world: &mut World, first: String, second: String) {
     let pack = copy_pack("docks", "speech");
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, &first);
-    table::seat_actor(world, &pack, &second);
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, &first).await;
+    table::seat_actor(world, &pack, &second).await;
     world.pack = Some(pack);
 }
 
 #[given(expr = "the GM has said {int} numbered lines to {string}")]
-fn the_gm_has_said_numbered_lines(world: &mut World, count: usize, actor: String) {
-    say_lines(world, &actor, count);
+async fn the_gm_has_said_numbered_lines(world: &mut World, count: usize, actor: String) {
+    say_lines(world, &actor, count).await;
 }
 
 #[given(expr = "the GM has said {int} lines to {string} and then {int} lines to {string}")]
-fn the_gm_has_said_lines_then_more(
+async fn the_gm_has_said_lines_then_more(
     world: &mut World,
     first_count: usize,
     first: String,
     second_count: usize,
     second: String,
 ) {
-    say_lines(world, &first, first_count);
-    let lines = say_lines(world, &second, second_count);
+    say_lines(world, &first, first_count).await;
+    let lines = say_lines(world, &second, second_count).await;
     world.scratch = lines.join("\n");
 }
 
 #[when(expr = "{string} leaves and sits again")]
-fn leaves_and_sits_again(world: &mut World, actor: String) {
-    table::close_actor(world, &actor);
+async fn leaves_and_sits_again(world: &mut World, actor: String) {
+    table::close_actor(world, &actor).await;
     table::wait_presence(world, &format!("{actor} gone"), |_, actors| {
         !actors.contains(&actor)
-    });
+    })
+    .await;
     table::live_mut(world)
         .players
         .retain(|player| player.actor_id != actor);
     let pack = table::pack(world).to_path_buf();
-    table::seat_actor(world, &pack, &actor);
+    table::seat_actor(world, &pack, &actor).await;
 }
 
 #[then(expr = "the replayed lines are {string} through {string}, in order")]
@@ -269,15 +276,15 @@ fn gets_exactly_those_lines(world: &mut World, actor: String, count: usize) {
     assert_eq!(replay_texts(world, &actor), expected);
 }
 
-fn say_lines(world: &mut World, actor: &str, count: usize) -> Vec<String> {
+async fn say_lines(world: &mut World, actor: &str, count: usize) -> Vec<String> {
     if table::live_mut(world).gm.is_none() {
-        table::seat_gm(world);
+        table::seat_gm(world).await;
     }
     let mut texts = Vec::with_capacity(count);
     for index in 0..count {
         let text = format!("line{index}");
         let args = format!(r#"{{"to":{{"actor":"{actor}"}},"text":"{text}"}}"#);
-        let body = table::call_gm_tool(world, "say", &args);
+        let body = table::call_gm_tool(world, "say", &args).await;
         let addressed = body
             .get("recipient_ids")
             .and_then(Value::as_array)

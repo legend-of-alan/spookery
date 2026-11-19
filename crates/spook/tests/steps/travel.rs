@@ -25,7 +25,7 @@ fn add_toll(pack: &Path) {
 }
 
 #[given(expr = "docks_street has no exit to mira_rooms")]
-fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
+async fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
     let pack = copy_pack("docks", "no-exit");
     edit_save(&pack, |now| {
         now.actors_mut()
@@ -33,14 +33,14 @@ fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
             .set("docks_street")
             .unwrap();
     });
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
+    table::listen(world, &pack).await;
+    table::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "rowan travels to mira_rooms from docks_street")]
-fn rowan_travels_to_mira_rooms(world: &mut World) {
-    let (mark, added) = table::player_send(world, "travel mira_rooms", "NO_EXIT");
+async fn rowan_travels_to_mira_rooms(world: &mut World) {
+    let (mark, added) = table::player_send(world, "travel mira_rooms", "NO_EXIT").await;
     world.mark = mark;
     world.player_added = added;
 }
@@ -60,7 +60,7 @@ fn refused_no_exit_and_stays(world: &mut World) {
 #[given(
     regex = r"^the stairs exit needs brass_key, rowan has none, and travel walks (at once|inside a nested check)$"
 )]
-fn stairs_need_a_key(world: &mut World, walk: String) {
+async fn stairs_need_a_key(world: &mut World, walk: String) {
     let pack = copy_pack("docks", "locked");
     if walk == "inside a nested check" {
         super::common::replace_in_file(
@@ -70,13 +70,13 @@ fn stairs_need_a_key(world: &mut World, walk: String) {
         );
         support::stamp_pack_rev(&pack);
     }
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
+    table::listen(world, &pack).await;
+    table::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "rowan travels via stairs")]
-fn rowan_travels_via_stairs(world: &mut World) {
+async fn rowan_travels_via_stairs(world: &mut World) {
     let before = world_of(table::pack(world));
     world.scratch = format!(
         "{} {} {}",
@@ -84,7 +84,7 @@ fn rowan_travels_via_stairs(world: &mut World) {
         before.round_index,
         place_of(&before, "rowan")
     );
-    let (_mark, added) = table::player_send(world, "travel stairs", "locked");
+    let (_mark, added) = table::player_send(world, "travel stairs", "locked").await;
     world.player_added = added;
 }
 
@@ -107,7 +107,7 @@ fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
 }
 
 #[given(expr = "a place rule with location to cellar, teleport true")]
-fn a_place_rule_teleports(world: &mut World) {
+async fn a_place_rule_teleports(world: &mut World) {
     let pack = copy_pack("docks", "teleport");
     add_trapdoor(&pack);
     let path = pack.join("world/places/docks_shop.md");
@@ -117,14 +117,14 @@ fn a_place_rule_teleports(world: &mut World) {
     assert!(text.contains("id: slip"), "{text}");
     fs::write(&path, text).unwrap();
     edit_save(&pack, |_| {});
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
+    table::listen(world, &pack).await;
+    table::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[then(expr = "the PC reaches cellar with no exit")]
-fn the_pc_reaches_the_cellar(world: &mut World) {
-    let (_mark, added) = table::player_send(world, "slip", "cellar");
+async fn the_pc_reaches_the_cellar(world: &mut World) {
+    let (_mark, added) = table::player_send(world, "slip", "cellar").await;
     assert_eq!(
         place_of(&world_of(table::pack(world)), "rowan"),
         "cellar",
@@ -140,9 +140,9 @@ fn rowan_is_in_mira_rooms_at_tick_1300(world: &mut World) {
 }
 
 #[then(expr = "rowan's line shows {string}")]
-fn rowans_line_shows(world: &mut World, text: String) {
+async fn rowans_line_shows(world: &mut World, text: String) {
     let needle = format!("\"place\":\"{text}\"");
-    let added = table::wait_player_from(world, world.mark, &needle);
+    let added = table::wait_player_from(world, world.mark, &needle).await;
     assert!(added.contains(&needle), "{added}");
 }
 
@@ -164,20 +164,20 @@ fn add_nell(now: &mut ecs::World, place: &str) {
 }
 
 #[given(expr = "rounds are 5 ticks while seated and the stairs exit costs 2 ticks")]
-fn seated_rounds_are_five_ticks(world: &mut World) {
+async fn seated_rounds_are_five_ticks(world: &mut World) {
     let pack = copy_pack("docks", "exact-tick");
     edit_save(&pack, |now| {
         give_key(now);
         now.world_time = EVENING;
     });
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
+    table::listen(world, &pack).await;
+    table::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "rowan travels via stairs in the round starting at tick 1290")]
-fn rowan_travels_in_the_evening_round(world: &mut World) {
-    let (_mark, added) = table::player_send(world, "travel stairs", "mira_rooms");
+async fn rowan_travels_in_the_evening_round(world: &mut World) {
+    let (_mark, added) = table::player_send(world, "travel stairs", "mira_rooms").await;
     world.player_added = added;
 }
 
@@ -187,8 +187,8 @@ fn the_round_still_ends_at_tick_1295(world: &mut World) {
 }
 
 #[then(expr = "a move from rowan is accepted from the round starting at tick 1295")]
-fn the_next_round_accepts_a_move(world: &mut World) {
-    let (_mark, added) = table::player_send(world, "wait", "\"kind\":");
+async fn the_next_round_accepts_a_move(world: &mut World) {
+    let (_mark, added) = table::player_send(world, "wait", "\"kind\":").await;
     assert!(!added.contains("BUSY"), "{added}");
     let now = world_of(table::pack(world));
     assert_eq!(now.world_time, EVENING + 10);
@@ -214,7 +214,7 @@ fn rounds_never_shorten(_world: &mut World) {
 }
 
 #[given(expr = "rowan and nell are seated and both busy, with no GM")]
-fn both_busy_without_a_gm(world: &mut World) {
+async fn both_busy_without_a_gm(world: &mut World) {
     let pack = copy_pack("docks", "fast-forward");
     add_toll(&pack);
     edit_save(&pack, |now| {
@@ -230,18 +230,18 @@ fn both_busy_without_a_gm(world: &mut World) {
         add_nell(now, "docks_shop");
         set_busy(now, "nell", EVENING + 5, "docks_shop.docks_street");
     });
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
-    table::seat_actor(world, &pack, "nell");
+    table::listen(world, &pack).await;
+    table::seat_rowan(world, &pack).await;
+    table::seat_actor(world, &pack, "nell").await;
     world.pack = Some(pack);
 }
 
 #[then(
     expr = "the table plays rounds to tick 1295 then tick 1300 without waiting on the wall clock"
 )]
-fn the_table_plays_rounds_through_both_arrivals(world: &mut World) {
-    let (mark, _added) = table::player_send(world, "wait", "BUSY");
-    let rounds = table::wait_rounds_to_view(world, mark);
+async fn the_table_plays_rounds_through_both_arrivals(world: &mut World) {
+    let (mark, _added) = table::player_send(world, "wait", "BUSY").await;
+    let rounds = table::wait_rounds_to_view(world, mark).await;
     assert_eq!(rounds, [EVENING + 5, EVENING + 10]);
     let now = world_of(table::pack(world));
     assert_eq!(place_of(&now, "nell"), "docks_street");
@@ -249,51 +249,51 @@ fn the_table_plays_rounds_through_both_arrivals(world: &mut World) {
 }
 
 #[given(expr = "a GM is seated and both PCs are busy")]
-fn a_gm_and_two_busy_pcs(world: &mut World) {
-    both_busy_without_a_gm(world);
-    table::seat_gm(world);
+async fn a_gm_and_two_busy_pcs(world: &mut World) {
+    both_busy_without_a_gm(world).await;
+    table::seat_gm(world).await;
 }
 
 #[then(expr = "nothing advances until the GM commits")]
-fn nothing_advances_until_commit(world: &mut World) {
+async fn nothing_advances_until_commit(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let before = world_of(&pack).world_time;
-    let (_mark, added) = table::player_send(world, "wait", "BUSY");
+    let (_mark, added) = table::player_send(world, "wait", "BUSY").await;
     assert!(added.contains("BUSY"), "{added}");
     assert_eq!(world_of(&pack).world_time, before);
-    let _ = table::gm_tool_call(world, 9, "commit", r#"{"include_round":true}"#);
+    let _ = table::gm_tool_call(world, 9, "commit", r#"{"include_round":true}"#).await;
     assert!(world_of(&pack).world_time > before);
 }
 
 #[given(expr = "busy_until is 200 rounds away and max_fastforward_rounds is 12")]
-fn a_long_journey_and_the_cap(world: &mut World) {
+async fn a_long_journey_and_the_cap(world: &mut World) {
     let pack = copy_pack("docks", "cap");
     edit_save(&pack, |now| {
         now.world_time = EVENING;
         set_busy(now, "rowan", EVENING + 200 * 5, "docks_shop.stairs");
     });
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
+    table::listen(world, &pack).await;
+    table::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[then(expr = "12 rounds run and the rest continues on the next action")]
-fn twelve_rounds_then_more(world: &mut World) {
+async fn twelve_rounds_then_more(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let (mark, added) = table::player_send(world, "wait", "BUSY");
+    let (mark, added) = table::player_send(world, "wait", "BUSY").await;
     assert!(added.contains("BUSY"), "{added}");
     assert_eq!(
-        table::wait_rounds_to_view(world, mark).len(),
+        table::wait_rounds_to_view(world, mark).await.len(),
         12,
         "first burst"
     );
     let mid = world_of(&pack).world_time;
     assert_eq!(mid, EVENING + 12 * 5);
     assert!(is_busy(&world_of(&pack), "rowan"));
-    let (mark, added) = table::player_send(world, "wait", "BUSY");
+    let (mark, added) = table::player_send(world, "wait", "BUSY").await;
     assert!(added.contains("BUSY"), "{added}");
     assert_eq!(
-        table::wait_rounds_to_view(world, mark).len(),
+        table::wait_rounds_to_view(world, mark).await.len(),
         12,
         "second burst"
     );
@@ -316,21 +316,22 @@ fn rowan_visited_both_rooms(world: &mut World) {
 }
 
 #[when(expr = "play joins the table again")]
-fn play_joins_again(world: &mut World) {
-    join_play(world, "rowan", false);
+async fn play_joins_again(world: &mut World) {
+    join_play(world, "rowan", false).await;
 }
 
 /// The map is the table's: each place rowan's save says they visited, with the exits
 /// rowan saw there last.
 #[then(expr = "play's map lists the shop and mira_rooms and not the trapdoor")]
-fn plays_map_lists_both_rooms(world: &mut World) {
+async fn plays_map_lists_both_rooms(world: &mut World) {
     let mark = capture_play_stdout(world).len();
     write_play(world, "map");
     wait_play_until(
         world,
         |stdout| stdout[mark..].contains("Mira's Rooms\n  ") && stdout.ends_with('\n'),
         "the map",
-    );
+    )
+    .await;
     let after = &capture_play_stdout(world)[mark..];
     let map = &after[after.find("Docks Shop\n  ").unwrap_or_default()..];
     assert!(map.starts_with("Docks Shop\n  "), "{map}");
@@ -349,22 +350,22 @@ const LANE_SCRIPT: &[&str] = &[
 ];
 
 #[when(expr = "the lane script is played with the stub GM")]
-fn the_lane_script_is_played_with_the_stub_gm(world: &mut World) {
+async fn the_lane_script_is_played_with_the_stub_gm(world: &mut World) {
     let pack = copy_pack("docks", "lane-script");
-    table::listen(world, &pack);
-    table::seat_gm(world);
-    table::seat_actor(world, &pack, "harbormouse");
+    table::listen(world, &pack).await;
+    table::seat_gm(world).await;
+    table::seat_actor(world, &pack, "harbormouse").await;
     world.pack = Some(pack.clone());
     let (lane, way) = LANE_SCRIPT.split_last().unwrap();
     for line in way {
-        commit_line(world, line);
+        commit_line(world, line).await;
     }
     world.start_ticks = world_of(&pack).world_time;
-    commit_line(world, lane);
+    commit_line(world, lane).await;
 }
 
 #[then(expr = "Harbormouse reaches the lane at the exit's cost in ticks and hears the ending")]
-fn harbormouse_reaches_the_lane_and_hears_the_ending(world: &mut World) {
+async fn harbormouse_reaches_the_lane_and_hears_the_ending(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let session = spookery_engine::Session::peek(&pack).unwrap();
     let map = session.map(&ActorId::from("harbormouse")).unwrap();
@@ -382,12 +383,13 @@ fn harbormouse_reaches_the_lane_and_hears_the_ending(world: &mut World) {
         world,
         0,
         "The cart rolls out onto the lane. That is the end.",
-    );
+    )
+    .await;
 }
 
 /// The player sends `line`, then the GM commits its round.
-fn commit_line(world: &mut World, line: &str) {
+async fn commit_line(world: &mut World, line: &str) {
     let mark = table::player_write(world, line);
-    table::wait_player_from(world, mark, "\"kind\":\"queued\"");
-    table::gm_tool_call(world, 2, "commit", r#"{"include_round":true}"#);
+    table::wait_player_from(world, mark, "\"kind\":\"queued\"").await;
+    table::gm_tool_call(world, 2, "commit", r#"{"include_round":true}"#).await;
 }

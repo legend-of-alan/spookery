@@ -13,20 +13,20 @@ use super::table;
 
 /// The table starts in a directory of its own, where it writes its log file.
 #[when(expr = "the table listens on port 0")]
-fn the_table_listens_on_port_0(world: &mut World) {
+async fn the_table_listens_on_port_0(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let dir = support::fresh_dir("host-start");
-    table::run_with_flags(world, &dir, &pack, &["--addr", "127.0.0.1:0"]);
+    table::run_with_flags(world, &dir, &pack, &["--addr", "127.0.0.1:0"]).await;
     world.scratch = dir.to_string_lossy().into_owned();
 }
 
 #[then(
     expr = "the host names its log file in the directory it started in, and the file says the pack opened"
 )]
-fn the_host_names_its_log_file(world: &mut World) {
+async fn the_host_names_its_log_file(world: &mut World) {
     let host = table::live(world).host.as_ref();
     let host = host.unwrap_or_else(|| panic!("no host"));
-    let file = wait_for_log_file(&host.stderr);
+    let file = wait_for_log_file(&host.stderr).await;
     let logs = fs::canonicalize(Path::new(&world.scratch).join("logs"))
         .unwrap_or_else(|err| panic!("no logs/ where the host started: {err}"));
     assert_eq!(file.parent(), Some(logs.as_path()), "{}", file.display());
@@ -40,15 +40,16 @@ fn the_host_names_its_log_file(world: &mut World) {
 }
 
 /// Waits for the host's `logging to <path>` line on stderr and returns that file.
-fn wait_for_log_file(stderr: &Arc<Mutex<String>>) -> PathBuf {
-    let stderr = table::poll_until("the log file's path", || {
+async fn wait_for_log_file(stderr: &Arc<Mutex<String>>) -> PathBuf {
+    let stderr = table::poll_until("the log file's path", async || {
         let stderr = support::text_of(stderr);
         if stderr.ends_with('\n') {
             Ok(stderr)
         } else {
             Err(stderr)
         }
-    });
+    })
+    .await;
     let named = stderr
         .strip_prefix("logging to ")
         .and_then(|rest| rest.strip_suffix('\n'))
@@ -93,7 +94,7 @@ fn the_host_reports_the_game_port_and_the_mcp_addr(world: &mut World) {
 }
 
 #[when(expr = "two tables listen on port 0 at the same time")]
-fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
+async fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
     let first = table::pack(world).to_path_buf();
     let second = copy_pack("docks", "ports-other");
     world.scratch = second.to_string_lossy().into_owned();
@@ -101,8 +102,8 @@ fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
     let flags = ["--addr", "127.0.0.1:0"];
     let started_first = table::spawn(dir, &first, &flags);
     let started_second = table::spawn(dir, &second, &flags);
-    let first = table::wait_addrs(started_first);
-    let second = table::wait_addrs(started_second);
+    let first = table::wait_addrs(started_first).await;
+    let second = table::wait_addrs(started_second).await;
     world.stdout = format!(
         "{} {} {} {}",
         first.game, first.mcp_addr, second.game, second.mcp_addr
@@ -128,12 +129,11 @@ fn the_tables_report_distinct_ports(world: &mut World) {
 }
 
 #[then(expr = "the tables name different log files")]
-fn the_tables_name_different_log_files(world: &mut World) {
-    let files: Vec<PathBuf> = world
-        .plays
-        .iter()
-        .map(|host| wait_for_log_file(&host.stderr))
-        .collect();
+async fn the_tables_name_different_log_files(world: &mut World) {
+    let mut files: Vec<PathBuf> = Vec::new();
+    for host in &world.plays {
+        files.push(wait_for_log_file(&host.stderr).await);
+    }
     assert_ne!(files[0], files[1]);
     for file in &files {
         let text =

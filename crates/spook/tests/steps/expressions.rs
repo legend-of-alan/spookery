@@ -47,12 +47,12 @@ fn insert_miras_habit(world: &World, lets: &str, add: &str) {
 }
 
 #[when(expr = "the GM queues Aldric's wait and commits")]
-fn the_gm_queues_aldrics_wait_and_commits(world: &mut World) {
+async fn the_gm_queues_aldrics_wait_and_commits(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    table::seat_gm(world);
-    table::gm_tool_call(world, 6, "queue", r#"{"actor_id":"aldric","move":"wait"}"#);
-    world.stdout = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#);
+    table::listen(world, &pack).await;
+    table::seat_gm(world).await;
+    table::gm_tool_call(world, 6, "queue", r#"{"actor_id":"aldric","move":"wait"}"#).await;
+    world.stdout = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#).await;
 }
 
 #[when(
@@ -168,24 +168,24 @@ fn the_pack_has(world: &mut World, number: String, field: String) {
 #[when(
     regex = r"^the player (hits|hits Aldric|hits while the GM queues Mira's rouse) and the GM commits$"
 )]
-fn the_player_hits_and_the_gm_commits(world: &mut World, hits: String) {
+async fn the_player_hits_and_the_gm_commits(world: &mut World, hits: String) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
-    table::seat_gm(world);
+    table::listen(world, &pack).await;
+    table::seat_rowan(world, &pack).await;
+    table::seat_gm(world).await;
     let line = if hits == "hits Aldric" {
         "hit aldric"
     } else {
         "hit"
     };
-    let _ = table::player_send(world, line, "\"kind\":\"queued\"");
+    let _ = table::player_send(world, line, "\"kind\":\"queued\"").await;
     if hits.ends_with("rouse") {
         let queued =
-            table::gm_tool_call(world, 6, "queue", r#"{"actor_id":"mira","move":"rouse"}"#);
+            table::gm_tool_call(world, 6, "queue", r#"{"actor_id":"mira","move":"rouse"}"#).await;
         assert!(!queued.contains("\"refused\""), "{queued}");
     }
     world.mark = table::player_mark(world);
-    world.stdout = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#);
+    world.stdout = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#).await;
 }
 
 #[then(expr = "Rowan's vigor is {int}")]
@@ -279,8 +279,8 @@ fn the_gm_commit_reply_holds_dice_lines(world: &mut World, expected: String) {
 }
 
 #[then(expr = "the player text has no dice faces")]
-fn the_player_text_has_no_dice_faces(world: &mut World) {
-    let added = table::wait_player_from(world, world.mark, "\"kind\":");
+async fn the_player_text_has_no_dice_faces(world: &mut World) {
+    let added = table::wait_player_from(world, world.mark, "\"kind\":").await;
     assert!(!added.contains('→'), "{added}");
     assert!(!added.contains("2d6"), "{added}");
 }

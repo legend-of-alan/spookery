@@ -328,14 +328,14 @@ fn the_pack_drops_luck_and_tide(world: &mut World) {
 }
 
 #[when(expr = "spook check reports rowan holds {word}")]
-fn check_reports_rowan_holds(world: &mut World, id: String) {
-    run_check(world);
+async fn check_reports_rowan_holds(world: &mut World, id: String) {
+    run_check(world).await;
     assert_refused(world, &[&format!("actor 'rowan' holds modifier '{id}'")]);
 }
 
 #[when(expr = "spook check reports the world lists meter {word}")]
-fn check_reports_the_world_lists(world: &mut World, id: String) {
-    run_check(world);
+async fn check_reports_the_world_lists(world: &mut World, id: String) {
+    run_check(world).await;
     assert_refused(world, &[&format!("the world lists meter '{id}'")]);
 }
 

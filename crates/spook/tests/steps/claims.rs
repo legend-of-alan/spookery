@@ -13,16 +13,16 @@ use super::table::{self, PlayerClient, Seat};
 /// Opens a player connection and claims Rowan. `scratch` keeps the token and `mark` the
 /// `seq` of the view that ends the welcome.
 #[given(expr = "a player claimed rowan and got token t1")]
-fn a_player_claimed_rowan(world: &mut World) {
+async fn a_player_claimed_rowan(world: &mut World) {
     if world.live.is_none() {
         let pack = table::pack(world).to_path_buf();
-        table::listen(world, &pack);
+        table::listen(world, &pack).await;
     }
-    let seat = Seat::open(table::live_mut(world).game_port, "player");
+    let seat = Seat::open(table::live_mut(world).game_port, "player").await;
     let id = seat.send("claim", json!({ "actor": "rowan" }));
-    let reply = parse(&seat.wait_reply(&id));
+    let reply = parse(&seat.wait_reply(&id).await);
     assert_eq!(reply["body"]["kind"], "claimed", "{reply}");
-    let view = table::wait_suffix(&seat.text, 0, "\"kind\":\"view\"");
+    let view = table::wait_suffix(&seat.text, 0, "\"kind\":\"view\"").await;
     let view = parse(view.lines().last().unwrap_or_default());
     world.scratch = reply["body"]["token"]
         .as_str()
@@ -43,32 +43,32 @@ fn the_connection_drops(world: &mut World) {
 }
 
 #[when(expr = "the connection drops without release and {int} server messages pass")]
-fn the_connection_drops_and_messages_pass(world: &mut World, count: usize) {
+async fn the_connection_drops_and_messages_pass(world: &mut World, count: usize) {
     the_connection_drops(world);
     if table::live_mut(world).gm.is_none() {
-        table::seat_gm(world);
+        table::seat_gm(world).await;
     }
     for index in 1..=count {
         let args = json!({ "to": "table", "text": format!("line {index}") });
-        let speech = table::call_gm_tool(world, "say", &args.to_string());
+        let speech = table::call_gm_tool(world, "say", &args.to_string()).await;
         assert!(speech.get("code").is_none(), "{speech}");
     }
 }
 
 #[when(expr = "the player releases rowan")]
-fn the_player_releases_rowan(world: &mut World) {
-    table::close_actor(world, "rowan");
+async fn the_player_releases_rowan(world: &mut World) {
+    table::close_actor(world, "rowan").await;
     the_connection_drops(world);
 }
 
 /// A new connection claims by token, after the last `seq` the old one read. The reply
 /// goes to `player_added`.
 #[when(expr = "the player reconnects with token t1")]
-fn the_player_reconnects(world: &mut World) {
-    let seat = Seat::open(table::live_mut(world).game_port, "player");
+async fn the_player_reconnects(world: &mut World) {
+    let seat = Seat::open(table::live_mut(world).game_port, "player").await;
     let args = json!({ "token": world.scratch, "last_seq": world.mark });
     let id = seat.send("claim", args);
-    world.player_added = seat.wait_reply(&id);
+    world.player_added = seat.wait_reply(&id).await;
     table::live_mut(world).players.push(PlayerClient {
         actor_id: "rowan".to_string(),
         seat,
@@ -76,13 +76,13 @@ fn the_player_reconnects(world: &mut World) {
 }
 
 #[then(expr = "it holds rowan again and receives the messages after its last seq")]
-fn it_holds_rowan_and_catches_up(world: &mut World) {
+async fn it_holds_rowan_and_catches_up(world: &mut World) {
     let missed = held_again(world, false);
     let texts: Vec<String> = (1..=100).map(|index| format!("line {index}")).collect();
     assert_eq!(texts_in(&missed), texts);
     let player = table::player_client(world, "rowan");
     let id = player.seat.send("look", json!({}));
-    let looked = parse(&player.seat.wait_reply(&id));
+    let looked = parse(&player.seat.wait_reply(&id).await);
     assert_eq!(looked["body"]["kind"], "view", "{looked}");
 }
 
@@ -94,19 +94,19 @@ fn it_holds_rowan_with_a_gap(world: &mut World) {
 }
 
 #[then(expr = "a GM intent for rowan is refused while it is held")]
-fn a_gm_intent_for_rowan_is_refused(world: &mut World) {
-    assert_eq!(queue_rowan_wait(world)["code"], "ACTOR_MISMATCH");
+async fn a_gm_intent_for_rowan_is_refused(world: &mut World) {
+    assert_eq!(queue_rowan_wait(world).await["code"], "ACTOR_MISMATCH");
 }
 
 #[then(expr = "a GM intent for rowan is accepted")]
-fn a_gm_intent_for_rowan_is_accepted(world: &mut World) {
-    let queued = queue_rowan_wait(world);
+async fn a_gm_intent_for_rowan_is_accepted(world: &mut World) {
+    let queued = queue_rowan_wait(world).await;
     assert_eq!(queued["kind"], "queued", "{queued}");
 }
 
 #[then(expr = "another player's claim on rowan is refused with {string}")]
-fn another_claim_is_refused(world: &mut World, code: String) {
-    let reply = parse(&table::claim(world, "rowan"));
+async fn another_claim_is_refused(world: &mut World, code: String) {
+    let reply = parse(&table::claim(world, "rowan").await);
     assert_eq!(reply["body"]["code"], code.as_str(), "{reply}");
 }
 
@@ -146,11 +146,11 @@ fn texts_in(missed: &[Value]) -> Vec<String> {
         .collect()
 }
 
-fn queue_rowan_wait(world: &mut World) -> Value {
+async fn queue_rowan_wait(world: &mut World) -> Value {
     if table::live_mut(world).gm.is_none() {
-        table::seat_gm(world);
+        table::seat_gm(world).await;
     }
-    table::call_gm_tool(world, "queue", r#"{"actor_id":"rowan","move":"wait"}"#)
+    table::call_gm_tool(world, "queue", r#"{"actor_id":"rowan","move":"wait"}"#).await
 }
 
 fn parse(line: &str) -> Value {
@@ -180,8 +180,8 @@ fn play_exits_0(world: &mut World) {
 }
 
 #[then(expr = "a new player can claim rowan")]
-fn a_new_player_can_claim_rowan(world: &mut World) {
-    let reply = parse(&table::claim(world, "rowan"));
+async fn a_new_player_can_claim_rowan(world: &mut World) {
+    let reply = parse(&table::claim(world, "rowan").await);
     assert_eq!(reply["body"]["kind"], "claimed", "{reply}");
 }
 
@@ -198,7 +198,7 @@ fn play_says_a_line_over_the_cap(world: &mut World) {
 }
 
 #[then(expr = "play shows the shop again as rowan")]
-fn play_shows_the_shop_again(world: &mut World) {
+async fn play_shows_the_shop_again(world: &mut World) {
     let shown = |stdout: &str| stdout.matches("You are in").count() >= 2;
-    common::wait_play_until(world, shown, "a second view");
+    common::wait_play_until(world, shown, "a second view").await;
 }

@@ -30,11 +30,11 @@ meter mira shop_day 1 1
 ";
 
 #[when(expr = "thirteen rounds pass")]
-fn thirteen_rounds_pass(world: &mut World) {
+async fn thirteen_rounds_pass(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
     for round in 1..=13 {
-        let output = run_spook(&["round", arg]);
+        let output = run_spook(&["round", arg]).await;
         assert!(
             output.status.success(),
             "round {round}\nstdout:\n{}\nstderr:\n{}",
@@ -71,42 +71,45 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
 }
 
 #[given(expr = "a docks table with {string} seated and no GM")]
-fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
+async fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
     let pack = crate::support::copy_pack("docks", "host-round");
-    table::listen(world, &pack);
+    table::listen(world, &pack).await;
     let printed = table::host_stdout(world).matches(PRINTOUT_END).count();
-    table::seat_actor(world, &pack, &actor);
+    table::seat_actor(world, &pack, &actor).await;
     table::wait_host_until(world, "the seat's printout", |text| {
         text.matches(PRINTOUT_END).count() > printed
-    });
+    })
+    .await;
     world.pack = Some(pack);
 }
 
 #[given(expr = "{string} has waited once")]
-fn has_waited_once(world: &mut World, actor: String) {
+async fn has_waited_once(world: &mut World, actor: String) {
     let printed = table::host_stdout(world).matches(PRINTOUT_END).count();
-    table::actor_send(world, &actor, "wait", "\"kind\":");
+    table::actor_send(world, &actor, "wait", "\"kind\":").await;
     table::wait_host_until(world, "the wait's printout", |text| {
         text.matches(PRINTOUT_END).count() > printed
-    });
+    })
+    .await;
 }
 
 #[when(expr = "{string} waits three times")]
-fn waits_three_times(world: &mut World, actor: String) {
+async fn waits_three_times(world: &mut World, actor: String) {
     for _ in 0..3 {
-        table::actor_send(world, &actor, "wait", "\"kind\":");
+        table::actor_send(world, &actor, "wait", "\"kind\":").await;
     }
 }
 
 #[when(expr = "{string} closes the seat")]
-fn closes_the_seat(world: &mut World, actor: String) {
+async fn closes_the_seat(world: &mut World, actor: String) {
     let mark = table::host_stdout(world).len();
     world.host_mark = mark;
-    table::close_actor(world, &actor);
+    table::close_actor(world, &actor).await;
     table::wait_host_until(world, "seat close", |text| {
         text.get(mark..)
             .is_some_and(|added| added.contains("meter "))
-    });
+    })
+    .await;
 }
 
 #[then(expr = "the status lists the door note")]
@@ -175,8 +178,8 @@ fn the_docks_pack_where_miras_door_note_carries(world: &mut World, fact_id: Stri
 }
 
 #[then(expr = "the player resume lists the door message")]
-fn the_player_resume_lists_the_door_message(world: &mut World) {
-    let resume = read_player_resume(world, "rowan");
+async fn the_player_resume_lists_the_door_message(world: &mut World) {
+    let resume = read_player_resume(world, "rowan").await;
     assert_eq!(
         resume,
         serde_json::json!({
@@ -198,12 +201,12 @@ fn the_player_resume_lists_the_door_message(world: &mut World) {
 }
 
 #[then(expr = "the player resume for {string} does not list {string}")]
-fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: String) {
+async fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: String) {
     let pack = table::pack(world);
     let now = world_of(pack);
     let notes = now.globals().get::<Note>(&GlobalId);
     assert!(notes.contains(&note), "the save has no {note}");
-    let resume = read_player_resume(world, &actor);
+    let resume = read_player_resume(world, &actor).await;
     assert!(!resume.contains(&note), "resume listed {note}:\n{resume}");
 }
 
@@ -253,10 +256,10 @@ fn view_has_fact(world: &World, actor: &str, fact_id: &str) -> bool {
 }
 
 /// The resume frame the host sends when `actor` sits at a table on this pack.
-fn read_player_resume(world: &mut World, actor: &str) -> String {
+async fn read_player_resume(world: &mut World, actor: &str) -> String {
     let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, actor);
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, actor).await;
     let text = table::actor_text(world, actor);
     table::stop_host(world);
     text.lines()

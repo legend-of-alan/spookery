@@ -10,13 +10,13 @@ use crate::World;
 use super::table;
 
 #[given(expr = "a docks table where mark needs a knife")]
-fn mark_needs_a_knife(world: &mut World) {
+async fn mark_needs_a_knife(world: &mut World) {
     let pack = copy_pack("docks", "item");
     add_knife_and_mark_rule(&pack);
     insert_nell(&pack);
     stamp_pack_rev(&pack);
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
+    table::listen(world, &pack).await;
+    table::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 

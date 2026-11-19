@@ -21,18 +21,18 @@ pub(crate) fn split_blocks(step: &Step) -> Vec<&str> {
 }
 
 #[when(expr = "the operator asks spook for help")]
-fn the_operator_asks_spook_for_help(world: &mut World) {
-    table::run(world, &["--help"]);
+async fn the_operator_asks_spook_for_help(world: &mut World) {
+    table::run(world, &["--help"]).await;
 }
 
 #[when(expr = "the operator asks the {string} command for help")]
-fn the_operator_asks_a_command_for_help(world: &mut World, command: String) {
-    table::run(world, &[&command, "--help"]);
+async fn the_operator_asks_a_command_for_help(world: &mut World, command: String) {
+    table::run(world, &[&command, "--help"]).await;
 }
 
 #[when(expr = "the operator runs the arguments {string} and {string}")]
-fn the_operator_runs_two_arguments(world: &mut World, first: String, second: String) {
-    table::run(world, &[&first, &second]);
+async fn the_operator_runs_two_arguments(world: &mut World, first: String, second: String) {
+    table::run(world, &[&first, &second]).await;
 }
 
 #[then(expr = "stdout shows usage")]
@@ -52,8 +52,8 @@ fn stdout_names_the_default_loopback_address(world: &mut World) {
 }
 
 #[when(expr = "play joins the table with raw frames")]
-fn play_joins_the_table_with_raw_frames(world: &mut World) {
-    join_play(world, "rowan", true);
+async fn play_joins_the_table_with_raw_frames(world: &mut World) {
+    join_play(world, "rowan", true).await;
 }
 
 #[when(expr = "play says {string}")]
@@ -68,20 +68,20 @@ fn play_says(world: &mut World, text: String) {
 }
 
 #[when(expr = "another play picks {word} on that table")]
-fn another_play_picks_on_that_table(world: &mut World, pc: String) {
+async fn another_play_picks_on_that_table(world: &mut World, pc: String) {
     let port = table::live_mut(world).game_port;
     let addr = format!("127.0.0.1:{port}");
     let mut play = spawn_play(&addr, &pc, &[]);
-    let (status, stdout, stderr) = play.wait_with_output();
+    let (status, stdout, stderr) = play.wait_with_output().await;
     world.code = status.code();
     world.stdout = stdout;
     world.stderr = stderr;
 }
 
 #[then(expr = "play shows each of these blocks:")]
-fn play_shows_each_block(world: &mut World, step: &Step) {
+async fn play_shows_each_block(world: &mut World, step: &Step) {
     for block in split_blocks(step) {
-        wait_play(world, block);
+        wait_play(world, block).await;
     }
 }
 
@@ -98,58 +98,61 @@ fn play_does_not_show_the_line(world: &mut World, text: String) {
 }
 
 #[then(expr = "play's error shows {string}")]
-fn play_error_shows(world: &mut World, text: String) {
+async fn play_error_shows(world: &mut World, text: String) {
     let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
-    world.stderr = table::poll_until(&text, || {
+    world.stderr = table::poll_until(&text, async || {
         let stderr = support::text_of(&play.stderr);
         if stderr.contains(&text) {
             Ok(stderr)
         } else {
             Err(stderr)
         }
-    });
+    })
+    .await;
 }
 
 #[then(expr = "play shows protocol frames")]
-fn play_shows_protocol_frames(world: &mut World) {
-    wait_play(world, "\"kind\":\"view\"");
+async fn play_shows_protocol_frames(world: &mut World) {
+    wait_play(world, "\"kind\":\"view\"").await;
     let stdout = capture_play_stdout(world);
     assert!(stdout.contains("\"kind\":\"resume\""), "{stdout}");
     assert!(stdout.contains('{'), "{stdout}");
 }
 
 #[then(expr = "play shows the door note as a sentence")]
-fn play_shows_the_readable_resume(world: &mut World) {
+async fn play_shows_the_readable_resume(world: &mut World) {
     let away = "\
 While you were away:
 Back at dusk. Oil on the shelf.
 ";
-    wait_play(world, away);
+    wait_play(world, away).await;
     let stdout = capture_play_stdout(world);
     assert!(!stdout.contains("note_mira_door"), "{stdout}");
     assert!(!stdout.contains("note "), "{stdout}");
 }
 
 #[then(expr = "the round shows no away heading")]
-fn the_round_shows_no_away_heading(world: &mut World) {
+async fn the_round_shows_no_away_heading(world: &mut World) {
     wait_play_until(
         world,
         |stdout| stdout.matches("You are in").count() >= 2,
         "a second You are in",
-    );
+    )
+    .await;
     let stdout = capture_play_stdout(world);
     let after = stdout.split_once("You are in").unwrap().1;
     assert!(!after.contains("While you were away:"), "{stdout}");
 }
 
 #[then(expr = "the round's update shows the door note only under Notes")]
-fn the_rounds_update_shows_the_door_note_only_under_notes(world: &mut World) {
+async fn the_rounds_update_shows_the_door_note_only_under_notes(world: &mut World) {
     let note = "Back at dusk. Oil on the shelf.";
     wait_play_until(
         world,
         |stdout| stdout.matches("You are in").count() >= 2,
         "a second You are in",
-    );
+    )
+    .await;
     let stdout = capture_play_stdout(world);
     let second = stdout
         .match_indices("You are in")
@@ -188,8 +191,8 @@ You: hello Briar
 }
 
 #[then(expr = "play shows the raw resume digest")]
-fn play_shows_the_raw_resume_digest(world: &mut World) {
-    wait_play(world, "\"kind\":\"view\"");
+async fn play_shows_the_raw_resume_digest(world: &mut World) {
+    wait_play(world, "\"kind\":\"view\"").await;
     let stdout = capture_play_stdout(world);
     let resume = stdout
         .lines()
