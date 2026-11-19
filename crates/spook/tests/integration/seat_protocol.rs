@@ -372,8 +372,8 @@ fn one_event(gm: &mut GmClient) -> Value {
     ready.retain(|event| !is_hello(event));
     while ready.is_empty() {
         match support::block_on(gm.recv()) {
-            Some(Ok(event)) if is_hello(&event) => {}
-            Some(Ok(event)) => ready.push(event),
+            Ok(event) if is_hello(&event) => {}
+            Ok(event) => ready.push(event),
             other => panic!("expected a GM event, got {other:?}"),
         }
     }
