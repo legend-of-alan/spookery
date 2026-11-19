@@ -35,9 +35,9 @@ fn a_canon_file_gains_a_byte(world: &mut World) {
 }
 
 #[given(expr = "one round has committed")]
-fn one_round_has_committed(world: &mut World) {
+async fn one_round_has_committed(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::run(world, &["round", pack.to_str().unwrap()]);
+    table::run(world, &["round", pack.to_str().unwrap()]).await;
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     assert!(
         !spookery_engine::testing::journal::list_round_keys(&pack).is_empty(),
@@ -46,25 +46,25 @@ fn one_round_has_committed(world: &mut World) {
 }
 
 #[when(expr = "the operator tries a round")]
-fn the_operator_tries_a_round(world: &mut World) {
+async fn the_operator_tries_a_round(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     world.state_files = read_state_files(&pack);
-    table::run(world, &["round", pack.to_str().unwrap()]);
+    table::run(world, &["round", pack.to_str().unwrap()]).await;
 }
 
 #[when(expr = "the operator runs migrate")]
-fn the_operator_runs_migrate(world: &mut World) {
+async fn the_operator_runs_migrate(world: &mut World) {
     // repeats module: mirrors its step text
     let pack = table::pack(world).to_path_buf();
-    table::run(world, &["migrate", pack.to_str().unwrap()]);
+    table::run(world, &["migrate", pack.to_str().unwrap()]).await;
 }
 
 #[when(expr = "the operator migrates twice")]
-fn the_operator_migrates_twice(world: &mut World) {
+async fn the_operator_migrates_twice(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
     for _ in 0..2 {
-        table::run(world, &["migrate", arg]);
+        table::run(world, &["migrate", arg]).await;
         assert_eq!(world.code, Some(0), "{}", world.stderr);
         assert!(world.stdout.is_empty(), "{}", world.stdout);
         assert!(world.stderr.is_empty(), "{}", world.stderr);
@@ -154,19 +154,19 @@ fn the_save_drops_meter(world: &mut World, id: String) {
 }
 
 #[then(expr = "spook check reports {word}")]
-fn spook_check_reports(world: &mut World, code: String) {
+async fn spook_check_reports(world: &mut World, code: String) {
     let pack = table::pack(world).to_path_buf();
-    table::run(world, &["check", pack.to_str().unwrap()]);
+    table::run(world, &["check", pack.to_str().unwrap()]).await;
     assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
     assert!(world.stderr.contains(&code), "{}", world.stderr);
 }
 
 #[then(expr = "the host refuses to start with {word}")]
-fn the_host_refuses_to_start(world: &mut World, code: String) {
+async fn the_host_refuses_to_start(world: &mut World, code: String) {
     let pack = table::pack(world).to_path_buf();
     let arg = support::pack_arg(&pack);
     let mut proc = support::spawn(&["run", &arg, "--addr", "127.0.0.1:0"]);
-    let (status, _, stderr) = proc.wait_with_output();
+    let (status, _, stderr) = proc.wait_with_output().await;
     world.code = status.code();
     world.stderr = stderr;
     assert_eq!(world.code, Some(1), "{}", world.stderr);
@@ -228,9 +228,9 @@ fn the_shop_has_lamp_oil(world: &mut World, count: u32) {
 }
 
 #[then(expr = "verify trusts the operator edit at state_rev {int}")]
-fn verify_trusts_the_operator_edit(world: &mut World, rev: u64) {
+async fn verify_trusts_the_operator_edit(world: &mut World, rev: u64) {
     let pack = table::pack(world).to_path_buf();
-    table::run(world, &["verify", pack.to_str().unwrap()]);
+    table::run(world, &["verify", pack.to_str().unwrap()]).await;
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let line = format!("operator edit trusted at state_rev {rev}");
     assert!(world.stdout.contains(&line), "{}", world.stdout);

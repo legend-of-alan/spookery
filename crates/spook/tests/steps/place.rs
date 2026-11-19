@@ -37,7 +37,7 @@ fn the_world_shows_dawn_and_the_street_exits_are_hidden(world: &mut World) {
 
 /// The view of Docks Street ends `Exits:` `none`, with no `Items:` heading for its empty floor.
 #[then(expr = "the Docks Street view shows no exits and no Items heading")]
-fn the_docks_street_view_shows_no_exits(world: &mut World) {
+async fn the_docks_street_view_shows_no_exits(world: &mut World) {
     let find_street_view = |stdout: &str| {
         let start = stdout.rfind("You are in Docks Street.")?;
         let exits = stdout[start..].find("Exits:\n")? + "Exits:\n".len();
@@ -48,32 +48,33 @@ fn the_docks_street_view_shows_no_exits(world: &mut World) {
         world,
         |stdout| find_street_view(stdout).is_some(),
         "Docks Street",
-    );
+    )
+    .await;
     let view = find_street_view(&world.stdout).unwrap();
     assert!(view.ends_with("Exits:\nnone"), "{view}");
     assert!(!view.contains("Items:"), "{view}");
 }
 
 #[given(expr = "wren is seated and not travelling")]
-fn wren_is_seated(world: &mut World) {
+async fn wren_is_seated(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    table::seat_actor(world, &pack, "wren");
+    table::seat_actor(world, &pack, "wren").await;
 }
 
 #[then(expr = "the seated player sees {string}")]
-fn the_seated_player_sees(world: &mut World, text: String) {
+async fn the_seated_player_sees(world: &mut World, text: String) {
     let added = if world.player_added.contains(&text) {
         world.player_added.clone()
     } else {
-        table::wait_player_from(world, world.mark, &text)
+        table::wait_player_from(world, world.mark, &text).await
     };
     assert!(added.contains(&text), "{added}");
 }
 
 #[given(expr = "the CLI is connected as a player holding rowan")]
-fn the_cli_holds_rowan(world: &mut World) {
+async fn the_cli_holds_rowan(world: &mut World) {
     world.pack = Some(crate::support::copy_pack("docks", "cli"));
-    common::join_play(world, "rowan", false);
+    common::join_play(world, "rowan", false).await;
 }
 
 #[when(expr = "I type {string}")]
@@ -84,7 +85,8 @@ fn i_type(world: &mut World, line: String) {
 
 /// `You are in` and `Here:` are the client's words for a view, not engine prose.
 #[then(expr = "I see the place name, exits and who is here, built from server messages")]
-fn i_see_the_place(world: &mut World) {
+async fn i_see_the_place(world: &mut World) {
+    // repeats module: mirrors its step text
     let shown = [
         "You are in Docks Shop.",
         "The shop faces the water. Tins sit in a row.",
@@ -96,11 +98,12 @@ fn i_see_the_place(world: &mut World) {
         world,
         |stdout| shown.iter().all(|text| stdout[mark..].contains(text)),
         "the look",
-    );
+    )
+    .await;
 }
 
 #[then(expr = "I see the lines {string}, {string} and {string}")]
-fn i_see_the_lines(world: &mut World, first: String, second: String, third: String) {
+async fn i_see_the_lines(world: &mut World, first: String, second: String, third: String) {
     let mark = world.mark;
     common::wait_play_until(
         world,
@@ -111,12 +114,13 @@ fn i_see_the_lines(world: &mut World, first: String, second: String, third: Stri
                 .all(|text| lines.contains(&text.as_str()))
         },
         "the lines",
-    );
+    )
+    .await;
 }
 
 /// Writes `rules` into the frontmatter of the docks page at `page`, in place of `from`, then
 /// seats play as rowan.
-fn add_rule_and_join(world: &mut World, label: &str, page: &str, from: &str, rules: &str) {
+async fn add_rule_and_join(world: &mut World, label: &str, page: &str, from: &str, rules: &str) {
     let pack = crate::support::copy_pack("docks", label);
     let path = pack.join(page);
     let text = fs::read_to_string(&path).unwrap();
@@ -125,18 +129,18 @@ fn add_rule_and_join(world: &mut World, label: &str, page: &str, from: &str, rul
     fs::write(&path, next).unwrap();
     crate::support::stamp_pack_rev(&pack);
     world.pack = Some(pack);
-    common::join_play(world, "rowan", false);
+    common::join_play(world, "rowan", false).await;
 }
 
 #[given(expr = "Aldric has an ask verb and the CLI holds rowan in the shop")]
-fn aldric_has_an_ask_verb(world: &mut World) {
+async fn aldric_has_an_ask_verb(world: &mut World) {
     let from = "  eligible: false\n";
     let rules = "  eligible: false\nrules:\n  - id: ask\n    when:\n      verb: ask\n      target: actor\n    do: []\n";
-    add_rule_and_join(world, "help-cast", "cast/aldric.md", from, rules);
+    add_rule_and_join(world, "help-cast", "cast/aldric.md", from, rules).await;
 }
 
 #[given(expr = "the docks have a greet verb that takes an actor, and the CLI holds rowan")]
-fn the_docks_have_a_greet_verb(world: &mut World) {
+async fn the_docks_have_a_greet_verb(world: &mut World) {
     let from = "  - id: wait
 ";
     let rules = "  - id: greet
@@ -147,18 +151,18 @@ fn the_docks_have_a_greet_verb(world: &mut World) {
 
   - id: wait
 ";
-    add_rule_and_join(world, "help-actor", "rules/verbs.yaml", from, rules);
+    add_rule_and_join(world, "help-actor", "rules/verbs.yaml", from, rules).await;
 }
 
 #[given(expr = "the shop has a pray verb if rowan holds lamp_oil, and the CLI holds rowan")]
-fn the_shop_has_a_pray_verb(world: &mut World) {
+async fn the_shop_has_a_pray_verb(world: &mut World) {
     let from = "    locked_text: The stair door is locked.\n";
     let rules = "    locked_text: The stair door is locked.\nrules:\n  - id: pray\n    when:\n      verb: pray\n    if:\n      - has_item:\n          subject: self\n          id: lamp_oil\n    do: []\n";
-    add_rule_and_join(world, "help-if", "world/places/docks_shop.md", from, rules);
+    add_rule_and_join(world, "help-if", "world/places/docks_shop.md", from, rules).await;
 }
 
 #[given(expr = "lamp_oil has a sniff verb, and the CLI holds rowan")]
-fn lamp_oil_has_a_sniff_verb(world: &mut World) {
+async fn lamp_oil_has_a_sniff_verb(world: &mut World) {
     let rules =
         "rules:\n  - id: sniff\n    when:\n      verb: sniff\n      target: item\n    do: []\n";
     add_rule_and_join(
@@ -167,18 +171,20 @@ fn lamp_oil_has_a_sniff_verb(world: &mut World) {
         "world/items/lamp_oil.md",
         "rules: []\n",
         rules,
-    );
+    )
+    .await;
 }
 
 /// Waits for the help reply after the mark, then checks a line it must not hold.
 #[then(expr = "help shows {string} and not {string}")]
-fn help_shows_and_not(world: &mut World, shown: String, hidden: String) {
+async fn help_shows_and_not(world: &mut World, shown: String, hidden: String) {
     let mark = world.mark;
     common::wait_play_until(
         world,
         |stdout| stdout[mark..].lines().any(|line| line == shown),
         "the help",
-    );
+    )
+    .await;
     let help = &world.stdout[mark..];
     assert!(help.lines().all(|line| line != hidden), "{help}");
 }

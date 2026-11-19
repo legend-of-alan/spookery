@@ -61,22 +61,22 @@ pub(crate) fn put_items(now: &mut ecs::World, id: &entity::Id, item: &str, count
     put.unwrap();
 }
 
-/// Run async work from a sync step on the test runtime.
-pub(crate) fn block_on<T: Send>(work: impl std::future::Future<Output = T> + Send) -> T {
-    tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(async move {
-            tokio::time::timeout(std::time::Duration::from_secs(20), work)
-                .await
-                .unwrap_or_else(|_| panic!("async work timed out"))
-        })
-    })
+/// Runs blocking `work` on tokio's blocking pool, so other scenarios run meanwhile. A panic in
+/// `work` panics here.
+pub(crate) async fn run_blocking<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> T {
+    tokio::task::spawn_blocking(work)
+        .await
+        .unwrap_or_else(|err| std::panic::resume_unwind(err.into_panic()))
 }
 
-pub(crate) fn run_spook(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_spook"))
+pub(crate) async fn run_spook(args: &[&str]) -> std::process::Output {
+    tokio::process::Command::new(env!("CARGO_BIN_EXE_spook"))
         .args(args)
         .current_dir(env!("CARGO_TARGET_TMPDIR"))
         .output()
+        .await
         .unwrap_or_else(|err| panic!("spawn spook: {err}"))
 }
 
@@ -91,18 +91,23 @@ pub(crate) struct Process {
 }
 
 impl Process {
-    /// Waits for the child to exit and both pipes to reach EOF, then returns its status,
-    /// stdout and stderr. Stdin stays open, so the child decides when it is done.
-    pub(crate) fn wait_with_output(&mut self) -> (ExitStatus, String, String) {
+    /// Waits for both pipes to reach EOF and the child to exit, then returns its status,
+    /// stdout and stderr. Stdin stays open, so the child decides when it is done. The pipes
+    /// close when the child exits, so the wait for its status after them is short.
+    pub(crate) async fn wait_with_output(&mut self) -> (ExitStatus, String, String) {
+        let drains = std::mem::take(&mut self.drains);
+        run_blocking(move || {
+            for drain in drains {
+                drain
+                    .join()
+                    .unwrap_or_else(|_| panic!("a drain thread panicked"));
+            }
+        })
+        .await;
         let status = self
             .child
             .wait()
             .unwrap_or_else(|err| panic!("wait: {err}"));
-        for drain in std::mem::take(&mut self.drains) {
-            drain
-                .join()
-                .unwrap_or_else(|_| panic!("a drain thread panicked"));
-        }
         (status, text_of(&self.stdout), text_of(&self.stderr))
     }
 }

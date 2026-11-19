@@ -37,11 +37,11 @@ fn a_save_from_older_rules(world: &mut World) {
 }
 
 #[when(expr = "spook run or spook verify opens it")]
-fn spook_run_or_spook_verify_opens_it(world: &mut World) {
+async fn spook_run_or_spook_verify_opens_it(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
-    let run = crate::support::run_spook(&["run", arg, "--addr", "127.0.0.1:0"]);
-    let verify = crate::support::run_spook(&["verify", arg]);
+    let run = crate::support::run_spook(&["run", arg, "--addr", "127.0.0.1:0"]).await;
+    let verify = crate::support::run_spook(&["verify", arg]).await;
     let run_err = String::from_utf8_lossy(&run.stderr);
     let verify_err = String::from_utf8_lossy(&verify.stderr);
     world.code = if run.status.code() == Some(1) && verify.status.code() == Some(1) {
@@ -80,10 +80,10 @@ fn it_refuses_with_rules_rev_and_says_to_start_a_fresh_save(world: &mut World) {
 }
 
 #[given(expr = "logged effects that differ from the re-run")]
-fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
+async fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "rules-diverge");
     world.pack = Some(pack.clone());
-    table::run(world, &["round", pack.to_str().unwrap()]);
+    table::run(world, &["round", pack.to_str().unwrap()]).await;
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let path = spookery_engine::testing::journal::locate(&pack, "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
@@ -109,9 +109,9 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
 }
 
 #[then(expr = "spook verify names the round and the first differing effect")]
-fn spook_verify_names_the_round_and_the_first_differing_effect(world: &mut World) {
+async fn spook_verify_names_the_round_and_the_first_differing_effect(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::run(world, &["verify", pack.to_str().unwrap()]);
+    table::run(world, &["verify", pack.to_str().unwrap()]).await;
     assert_eq!(world.code, Some(1), "{}", world.stderr);
     assert!(
         world.stderr.contains(world.scratch.trim()),
@@ -175,8 +175,8 @@ rules:
 }
 
 #[then(expr = "spook check --rules lists place:docks_shop\\/bell and story:smuggler\\/bell")]
-fn check_rules_lists_both_bells(world: &mut World) {
-    run(world, &["check", "--rules"]);
+async fn check_rules_lists_both_bells(world: &mut World) {
+    run(world, &["check", "--rules"]).await;
     assert_eq!(world.code, Some(0), "{}\n{}", world.stdout, world.stderr);
     let lines: Vec<&str> = world.stdout.lines().collect();
     let at = |id: &str| {
@@ -571,7 +571,7 @@ fn an_effect_key_is_bogus(world: &mut World) {
 }
 
 #[then(expr = "spook check reports that key at its own line and column")]
-fn check_reports_the_key(world: &mut World) {
+async fn check_reports_the_key(world: &mut World) {
     let text = fs::read_to_string(world.pack.as_ref().unwrap().join("rules/verbs.yaml")).unwrap();
     let (line, column) = locate_key(&text, "bogus:");
     let rumor = text
@@ -580,7 +580,7 @@ fn check_reports_the_key(world: &mut World) {
         .unwrap()
         + 1;
     assert_ne!(line as usize, rumor);
-    run(world, &["check", "--json"]);
+    run(world, &["check", "--json"]).await;
     assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
     let items: Vec<Value> = serde_json::from_str(world.stdout.trim())
         .unwrap_or_else(|err| panic!("{err}: {}\n{}", world.stdout, world.stderr));
@@ -622,10 +622,10 @@ fn two_keys_in_one_line(world: &mut World, field: String, form: String) {
 }
 
 #[then(expr = "spook check reports two keys in one condition or effect at the second key")]
-fn check_reports_two_keys(world: &mut World) {
+async fn check_reports_two_keys(world: &mut World) {
     let text = fs::read_to_string(world.pack.as_ref().unwrap().join("rules/verbs.yaml")).unwrap();
     let (line, _) = locate_key(&text, SECOND_KEY);
-    run(world, &["check"]);
+    run(world, &["check"]).await;
     assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
     let want = format!(
         "rules/verbs.yaml:{line}: two keys in one condition or effect; give each condition or effect its own dash; combine conditions with all:, any: or not: (SCHEMA)"
@@ -838,10 +838,10 @@ fn a_verb_with_time_and_a_nested_check(world: &mut World) {
 }
 
 #[then(expr = "spook check is quiet about the time and the nested check")]
-fn check_is_quiet_about_time_and_the_nested_check(world: &mut World) {
+async fn check_is_quiet_about_time_and_the_nested_check(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     open(&pack);
-    run(world, &["check"]);
+    run(world, &["check"]).await;
     assert_eq!(world.code, Some(0), "{}\n{}", world.stdout, world.stderr);
     assert!(!world.stderr.contains("cost time"), "{}", world.stderr);
     assert!(!world.stderr.contains("nested check"), "{}", world.stderr);
@@ -930,12 +930,12 @@ fn seated_harbormouse() -> Presence {
     }
 }
 
-fn run(world: &mut World, args: &[&str]) {
+async fn run(world: &mut World, args: &[&str]) {
     let pack = crate::support::pack_arg(world.pack.as_ref().unwrap());
     let mut full = Vec::with_capacity(args.len() + 1);
     full.extend_from_slice(args);
     full.push(pack.as_str());
-    let output = run_spook(&full);
+    let output = run_spook(&full).await;
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();

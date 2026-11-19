@@ -247,19 +247,19 @@ fn the_oil_moved(world: &mut World) {
 }
 
 #[given(expr = "harbormouse holds 1 latch at a seated table")]
-fn harbormouse_holds_a_latch_at_a_table(world: &mut World) {
+async fn harbormouse_holds_a_latch_at_a_table(world: &mut World) {
     let pack = support::copy_pack("docks", "use-latch");
     support::edit_save(&pack, |now| give(now, "harbormouse", "latch"));
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, "harbormouse");
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, "harbormouse").await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "harbormouse plays {string}")]
-fn harbormouse_plays(world: &mut World, line: String) {
+async fn harbormouse_plays(world: &mut World, line: String) {
     let before = world_of(world.pack.as_ref().unwrap());
     world.scratch = format!("{} {}", before.world_time, before.round_index);
-    let (_mark, added) = table::player_send(world, &line, "\"kind\":\"refused\"");
+    let (_mark, added) = table::player_send(world, &line, "\"kind\":\"refused\"").await;
     world.player_added = added;
 }
 
@@ -499,31 +499,31 @@ fn wren_rolls_a_nested_check_on_a_seeded_roll(world: &mut World) {
 }
 
 #[when(expr = "harbormouse hits a seated wren with poisoned_dagger")]
-fn harbormouse_hits_a_seated_wren_with_the_dagger(world: &mut World) {
+async fn harbormouse_hits_a_seated_wren_with_the_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    table::serve_in_process(world, &pack);
-    table::seat_actor(world, &pack, "harbormouse");
-    table::seat_actor(world, &pack, "wren");
+    table::serve_in_process(world, &pack).await;
+    table::seat_actor(world, &pack, "harbormouse").await;
+    table::seat_actor(world, &pack, "wren").await;
     world.wren_mark = table::player_client(world, "wren").seat.mark();
-    let _ = table::actor_send(world, "harbormouse", "attack wren", "\"kind\":\"check\"");
+    let _ = table::actor_send(world, "harbormouse", "attack wren", "\"kind\":\"check\"").await;
 }
 
 #[then(expr = "wren is told she saved")]
-fn wren_is_told_her_nested_check_succeeded(world: &mut World) {
+async fn wren_is_told_her_nested_check_succeeded(world: &mut World) {
     let needle = r#"{"kind":"check","outcome":"success"}"#;
-    let added = table::wait_actor_from(world, "wren", world.wren_mark, needle);
+    let added = table::wait_actor_from(world, "wren", world.wren_mark, needle).await;
     assert_eq!(added.matches(r#""kind":"check""#).count(), 1, "{added}");
 }
 
 #[then(expr = "wren loses 3 hp, is not poisoned and sees {string}")]
-fn the_poison_fades(world: &mut World, text: String) {
+async fn the_poison_fades(world: &mut World, text: String) {
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(hp(pack, "wren"), 7);
     assert!(!support::world_of(pack)
         .actors()
         .get::<component::Flag>(&"wren".into())
         .contains("poisoned"));
-    table::wait_actor_from(world, "wren", world.wren_mark, &text);
+    table::wait_actor_from(world, "wren", world.wren_mark, &text).await;
 }
 
 #[then(expr = "spook verify reproduces both rolls")]

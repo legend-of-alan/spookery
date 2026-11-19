@@ -13,26 +13,26 @@ use super::{common, table};
 const HELLO_JSON: &str = r#"{"body":{"kind":"hello""#;
 
 #[when(expr = "play and a human GM share a free loopback port")]
-fn play_and_a_human_gm_share_a_port(world: &mut World) {
-    let addr = sit_gm(world, false);
-    join_play_at(world, &addr, None);
+async fn play_and_a_human_gm_share_a_port(world: &mut World) {
+    let addr = sit_gm(world, false).await;
+    join_play_at(world, &addr, None).await;
 }
 
 #[when(expr = "two players and a human GM share a free loopback port")]
-fn two_players_and_a_human_gm_share_a_port(world: &mut World) {
-    let addr = sit_gm(world, false);
-    join_play_at(world, &addr, Some("rowan"));
-    join_play_at(world, &addr, Some("wren"));
+async fn two_players_and_a_human_gm_share_a_port(world: &mut World) {
+    let addr = sit_gm(world, false).await;
+    join_play_at(world, &addr, Some("rowan")).await;
+    join_play_at(world, &addr, Some("wren")).await;
 }
 
 #[when(expr = "a human GM sits on a free loopback port")]
-fn a_human_gm_sits(world: &mut World) {
-    let _ = sit_gm(world, false);
+async fn a_human_gm_sits(world: &mut World) {
+    let _ = sit_gm(world, false).await;
 }
 
 #[when(expr = "a human GM sits with raw frames on a free loopback port")]
-fn a_human_gm_sits_raw(world: &mut World) {
-    let _ = sit_gm(world, true);
+async fn a_human_gm_sits_raw(world: &mut World) {
+    let _ = sit_gm(world, true).await;
 }
 
 #[when(expr = "the player says hello to the GM")]
@@ -55,14 +55,14 @@ fn the_gm_queues_the_door_note_and_commits(world: &mut World) {
 }
 
 #[given(expr = "a docks table with a GM and {string} seated")]
-fn a_docks_table_with_a_gm_and_a_seat(world: &mut World, actor: String) {
+async fn a_docks_table_with_a_gm_and_a_seat(world: &mut World, actor: String) {
     let pack = support::copy_pack("docks", "typed-gm");
     world.pack = Some(pack.clone());
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, &actor);
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, &actor).await;
     let addr = table::game_addr(world);
     world.gm = Some(support::spawn(&["gm", "--addr", &addr]));
-    wait_gm(world, "Commands:");
+    wait_gm(world, "Commands:").await;
 }
 
 #[when(expr = "the GM queues {string} for {string} and commits")]
@@ -72,9 +72,9 @@ fn the_gm_queues_for_and_commits(world: &mut World, move_id: String, actor: Stri
 }
 
 #[then(expr = "the GM terminal shows one check line and one dice line for {string}")]
-fn the_gm_terminal_shows_one_check_and_one_dice(world: &mut World, shown: String) {
+async fn the_gm_terminal_shows_one_check_and_one_dice(world: &mut World, shown: String) {
     let queued = format!("{shown} queued:");
-    wait_gm(world, "Roll:");
+    wait_gm(world, "Roll:").await;
     let stdout = capture_gm_stdout(world);
     let checks = stdout
         .lines()
@@ -91,12 +91,12 @@ fn the_gm_terminal_shows_one_check_and_one_dice(world: &mut World, shown: String
 
 /// Play holds Rowan, so the GM drives Wren.
 #[when(expr = "the GM queues Wren's exert and commits")]
-fn the_gm_queues_exert_and_commits(world: &mut World) {
+async fn the_gm_queues_exert_and_commits(world: &mut World) {
     let before = count_gm_matches(world, "Queue:");
     write_gm(world, "queue wren exert");
     write_gm(world, "commit");
     write_gm(world, "status");
-    wait_gm_count(world, "Queue:", before + 1);
+    wait_gm_count(world, "Queue:", before + 1).await;
 }
 
 #[when(expr = "each player queues a wait")]
@@ -118,22 +118,23 @@ fn the_gm_commits(world: &mut World) {
 }
 
 #[when(expr = "another GM joins that seat")]
-fn another_gm_joins(world: &mut World) {
+async fn another_gm_joins(world: &mut World) {
     let addr = table::game_addr(world);
-    let output = support::run_spook(&["gm", "--addr", &addr]);
+    let output = support::run_spook(&["gm", "--addr", &addr]).await;
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 }
 
 #[when(expr = "the GM is killed")]
-fn the_gm_is_killed(world: &mut World) {
+async fn the_gm_is_killed(world: &mut World) {
     let mark = table::host_stdout(world).len();
     world.gm.take();
     table::wait_host_until(world, "the GM seat freed", |text| {
         text.get(mark..)
             .is_some_and(|added| added.contains("gm seat free"))
-    });
+    })
+    .await;
 }
 
 #[when(expr = "another GM sits in that seat")]
@@ -158,39 +159,40 @@ fn spook_run_stops(world: &mut World) {
 }
 
 #[then(expr = "the GM exits")]
-fn the_gm_exits(world: &mut World) {
+async fn the_gm_exits(world: &mut World) {
     let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
-    let status = table::poll_until("the gm to exit", || {
+    let status = table::poll_until("the gm to exit", async || {
         let status = gm.child.try_wait().unwrap_or_else(|err| panic!("{err}"));
         status.ok_or("still running")
-    });
+    })
+    .await;
     let stderr = support::text_of(&gm.stderr);
     assert!(status.success(), "gm exited {status:?}\n{stderr}");
 }
 
 #[when(expr = "the operator runs gm with nothing listening")]
-fn gm_with_nothing_listening(world: &mut World) {
-    let output = support::run_spook(&["gm", "--addr", "127.0.0.1:1"]);
+async fn gm_with_nothing_listening(world: &mut World) {
+    let output = support::run_spook(&["gm", "--addr", "127.0.0.1:1"]).await;
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 }
 
 #[then(expr = "the GM shows {string}")]
-fn the_gm_shows(world: &mut World, text: String) {
-    wait_gm(world, &text);
+async fn the_gm_shows(world: &mut World, text: String) {
+    wait_gm(world, &text).await;
 }
 
 #[then(expr = "the GM shows each of these blocks:")]
-fn the_gm_shows_each_block(world: &mut World, step: &Step) {
+async fn the_gm_shows_each_block(world: &mut World, step: &Step) {
     for block in super::cli::split_blocks(step) {
-        wait_gm(world, block);
+        wait_gm(world, block).await;
     }
 }
 
 #[then(expr = "the GM shows {string} twice")]
-fn the_gm_shows_twice(world: &mut World, text: String) {
-    wait_gm_count(world, &text, 2);
+async fn the_gm_shows_twice(world: &mut World, text: String) {
+    wait_gm_count(world, &text, 2).await;
 }
 
 #[then(expr = "the GM does not show {string}")]
@@ -219,18 +221,21 @@ fn the_gm_shows_no_protocol_json(world: &mut World) {
 }
 
 #[then(expr = "world time advanced one live tick")]
-fn world_time_advanced(world: &mut World) {
+async fn world_time_advanced(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::poll_until("world_time 1085", || match world_of(&pack).world_time {
-        1085 => Ok(()),
-        now => Err(now),
-    });
+    table::poll_until("world_time 1085", async || {
+        match world_of(&pack).world_time {
+            1085 => Ok(()),
+            now => Err(now),
+        }
+    })
+    .await;
 }
 
 #[then(expr = "the GM's stderr shows {string}")]
-fn the_gm_stderr_shows(world: &mut World, text: String) {
+async fn the_gm_stderr_shows(world: &mut World, text: String) {
     let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
-    table::poll_until(&text, || {
+    table::poll_until(&text, async || {
         let stderr = support::text_of(&gm.stderr);
         if stderr.contains(&text) {
             return Ok(());
@@ -239,12 +244,13 @@ fn the_gm_stderr_shows(world: &mut World, text: String) {
             panic!("gm exited {status:?}\nstderr:\n{stderr}");
         }
         Err(stderr)
-    });
+    })
+    .await;
 }
 
-fn sit_gm(world: &mut World, raw: bool) -> String {
+async fn sit_gm(world: &mut World, raw: bool) -> String {
     let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
+    table::listen(world, &pack).await;
     let addr = table::game_addr(world);
     let mut args = vec!["gm".to_string(), "--addr".to_string(), addr.clone()];
     if raw {
@@ -253,17 +259,18 @@ fn sit_gm(world: &mut World, raw: bool) -> String {
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     world.gm = Some(support::spawn(&refs));
     let needle = if raw { HELLO_JSON } else { "Commands:" };
-    wait_gm(world, needle);
+    wait_gm(world, needle).await;
     addr
 }
 
-fn join_play_at(world: &mut World, addr: &str, as_player: Option<&str>) {
+async fn join_play_at(world: &mut World, addr: &str, as_player: Option<&str>) {
     let mut play = common::spawn_play(addr, as_player.unwrap_or("rowan"), &[]);
     common::wait_proc_until(
         &mut play,
         |stdout| stdout.contains("You are in"),
         "You are in",
-    );
+    )
+    .await;
     if world.play.is_none() {
         world.play = Some(play);
     } else {
@@ -288,19 +295,19 @@ fn write_gm(world: &mut World, line: &str) {
         .unwrap_or_else(|err| panic!("flush gm: {err}"));
 }
 
-fn wait_gm(world: &mut World, needle: &str) {
+async fn wait_gm(world: &mut World, needle: &str) {
     let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
-    common::wait_proc_until(gm, |stdout| stdout.contains(needle), needle);
+    common::wait_proc_until(gm, |stdout| stdout.contains(needle), needle).await;
 }
 
 fn count_gm_matches(world: &mut World, needle: &str) -> usize {
     capture_gm_stdout(world).matches(needle).count()
 }
 
-fn wait_gm_count(world: &mut World, needle: &str, count: usize) {
+async fn wait_gm_count(world: &mut World, needle: &str, count: usize) {
     let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
     let enough = |stdout: &str| stdout.matches(needle).count() >= count;
-    world.stdout = common::wait_proc_until(gm, enough, &format!("{count} x {needle}"));
+    world.stdout = common::wait_proc_until(gm, enough, &format!("{count} x {needle}")).await;
 }
 
 fn capture_gm_stdout(world: &mut World) -> String {

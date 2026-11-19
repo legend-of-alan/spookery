@@ -14,9 +14,9 @@ fn an_empty_directory(world: &mut World) {
 }
 
 #[when(expr = "the operator runs quick verify")]
-fn the_operator_runs_quick_verify(world: &mut World) {
+async fn the_operator_runs_quick_verify(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::run(world, &["verify", "--quick", pack.to_str().unwrap()]);
+    table::run(world, &["verify", "--quick", pack.to_str().unwrap()]).await;
 }
 
 #[when(expr = "the pack is copied before the round")]
@@ -36,51 +36,51 @@ fn the_replay_base_is_removed(world: &mut World) {
 }
 
 #[when(expr = "the operator runs verify from that copy")]
-fn the_operator_runs_verify_from_that_copy(world: &mut World) {
+async fn the_operator_runs_verify_from_that_copy(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let from = world.scratch.clone();
-    table::run(world, &["verify", pack.to_str().unwrap(), "--from", &from]);
+    table::run(world, &["verify", pack.to_str().unwrap(), "--from", &from]).await;
     let _ = fs::remove_dir_all(&from);
 }
 
 #[when(expr = "the operator plays {int} rounds")]
-fn the_operator_plays_n_rounds(world: &mut World, count: usize) {
+async fn the_operator_plays_n_rounds(world: &mut World, count: usize) {
     let pack = table::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap().to_string();
     for _ in 0..count {
-        table::run(world, &["round", &arg]);
+        table::run(world, &["round", &arg]).await;
         assert_eq!(world.code, Some(0), "{}", world.stderr);
     }
 }
 
 #[when(expr = "two players play, a GM commits one round, and the players leave")]
-fn two_players_play_a_round(world: &mut World) {
+async fn two_players_play_a_round(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, "rowan");
-    table::seat_actor(world, &pack, "harbormouse");
-    let _ = table::actor_send(world, "rowan", "wait", "\"kind\":");
-    let _ = table::actor_send(world, "harbormouse", "wait", "\"kind\":");
-    table::seat_gm(world);
-    let _ = table::actor_send(world, "rowan", "wait", "\"kind\":");
-    let _ = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#);
-    table::close_actor(world, "harbormouse");
-    table::wait_players(world, 1);
-    table::close_actor(world, "rowan");
-    table::wait_players(world, 0);
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, "rowan").await;
+    table::seat_actor(world, &pack, "harbormouse").await;
+    let _ = table::actor_send(world, "rowan", "wait", "\"kind\":").await;
+    let _ = table::actor_send(world, "harbormouse", "wait", "\"kind\":").await;
+    table::seat_gm(world).await;
+    let _ = table::actor_send(world, "rowan", "wait", "\"kind\":").await;
+    let _ = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#).await;
+    table::close_actor(world, "harbormouse").await;
+    table::wait_players(world, 1).await;
+    table::close_actor(world, "rowan").await;
+    table::wait_players(world, 0).await;
     table::stop_host(world);
 }
 
 #[when(expr = "a seated player's host is killed and restarted")]
-fn a_seated_players_host_is_killed_and_restarted(world: &mut World) {
+async fn a_seated_players_host_is_killed_and_restarted(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    table::seat_actor(world, &pack, "rowan");
-    table::wait_players(world, 1);
+    table::listen(world, &pack).await;
+    table::seat_actor(world, &pack, "rowan").await;
+    table::wait_players(world, 1).await;
     table::live_mut(world).host.take();
     table::stop_host(world);
-    table::listen(world, &pack);
-    table::wait_players(world, 0);
+    table::listen(world, &pack).await;
+    table::wait_players(world, 0).await;
     table::stop_host(world);
 }
 
@@ -440,8 +440,8 @@ fn the_save_hash_matches_the_latest_checkpoint(world: &mut World) {
 }
 
 #[when(expr = "the operator plays a round")]
-fn the_operator_plays_a_round(world: &mut World) {
-    the_operator_plays_n_rounds(world, 1);
+async fn the_operator_plays_a_round(world: &mut World) {
+    the_operator_plays_n_rounds(world, 1).await;
 }
 
 #[when(expr = "the closed bundle is expanded back to plain JSONL")]

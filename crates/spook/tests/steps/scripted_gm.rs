@@ -71,8 +71,8 @@ impl ScriptedModel {
 
     /// Waits until the model was called once past its script: the turn that read the last
     /// scripted reply has asked again, and was told it is done.
-    pub fn wait_past_script(&self) -> Vec<Vec<model::Message>> {
-        table::poll_until("a model call past the script", || {
+    pub async fn wait_past_script(&self) -> Vec<Vec<model::Message>> {
+        table::poll_until("a model call past the script", async || {
             let script = self.script.lock().unwrap();
             if script.calls.len() > script.scripted {
                 Ok(script.calls.clone())
@@ -80,6 +80,7 @@ impl ScriptedModel {
                 Err(script.calls.len())
             }
         })
+        .await
     }
 }
 
@@ -163,16 +164,16 @@ pub struct AiGm {
 impl AiGm {
     /// Moves the AI GM's paused clock forward, after the AI GM has read what was ready for
     /// it. Timers due by then have fired when this returns.
-    pub fn advance(&self, by: Duration) {
+    pub async fn advance(&self, by: Duration) {
         let ended = || panic!("the AI GM ended\n{}", support::text_of(&self.err));
         let (ack, acked) = tokio::sync::oneshot::channel();
         self.advance.send((by, ack)).unwrap_or_else(|_| ended());
-        support::block_on(acked).unwrap_or_else(|_| ended());
+        acked.await.unwrap_or_else(|_| ended());
     }
 }
 
 /// Starts the AI GM with `model` and returns once it has written `listening`.
-pub(crate) fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
+pub(crate) async fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
     let addr: SocketAddr = table::game_addr(world).parse().unwrap();
     let (read, mut write) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let err = Arc::new(Mutex::new(String::new()));
@@ -213,7 +214,7 @@ pub(crate) fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
         advance,
         thread,
     };
-    table::wait_suffix(&gm.err, 0, "listening");
+    table::wait_suffix(&gm.err, 0, "listening").await;
     gm
 }
 

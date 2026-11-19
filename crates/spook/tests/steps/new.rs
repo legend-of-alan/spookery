@@ -12,9 +12,9 @@ use super::common::{flags_of, spawn_play, wait_play};
 use super::table;
 
 #[when(expr = "the operator runs spook new in a fresh directory")]
-fn the_operator_runs_spook_new_in_a_fresh_directory(world: &mut World) {
+async fn the_operator_runs_spook_new_in_a_fresh_directory(world: &mut World) {
     let pack = fresh_path("pack");
-    run_new(world, &pack);
+    run_new(world, &pack).await;
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     world.pack = Some(pack);
 }
@@ -56,16 +56,16 @@ fn a_non_empty_directory(world: &mut World) {
 }
 
 #[when(expr = "the operator runs spook new on that directory")]
-fn the_operator_runs_spook_new_on_that_directory(world: &mut World) {
+async fn the_operator_runs_spook_new_on_that_directory(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    run_new(world, &pack);
+    run_new(world, &pack).await;
 }
 
 #[when(expr = "the operator runs spook new under a missing parent")]
-fn the_operator_runs_spook_new_under_a_missing_parent(world: &mut World) {
+async fn the_operator_runs_spook_new_under_a_missing_parent(world: &mut World) {
     let parent = fresh_path("missing");
     let pack = parent.join("pack");
-    run_new(world, &pack);
+    run_new(world, &pack).await;
     world.pack = Some(parent);
 }
 
@@ -83,14 +83,14 @@ fn the_missing_parent_was_not_created(world: &mut World) {
 }
 
 #[when(expr = "the operator runs spook new beside a marker file")]
-fn the_operator_runs_spook_new_beside_a_marker_file(world: &mut World) {
+async fn the_operator_runs_spook_new_beside_a_marker_file(world: &mut World) {
     let parent = fresh_path("sandbox");
     fs::create_dir(&parent).unwrap_or_else(|err| panic!("mkdir: {err}"));
     fs::write(parent.join("keep.txt"), b"keep\n").unwrap();
     world.before = table::read_files(&template_dir());
     world.now_bytes = fs::read(parent.join("keep.txt")).unwrap();
     let pack = parent.join("pack");
-    run_new(world, &pack);
+    run_new(world, &pack).await;
     world.scratch = pack.to_str().unwrap().to_string();
     world.pack = Some(parent);
 }
@@ -124,23 +124,23 @@ fn the_starter_template_is_unchanged(world: &mut World) {
 }
 
 #[when(expr = "the operator runs spook check --json on the starter template")]
-fn the_operator_runs_spook_check_json_on_the_starter_template(world: &mut World) {
+async fn the_operator_runs_spook_check_json_on_the_starter_template(world: &mut World) {
     let pack = template_dir();
-    table::run(world, &["check", "--json", pack.to_str().unwrap()]);
+    table::run(world, &["check", "--json", pack.to_str().unwrap()]).await;
 }
 
 #[when(expr = "play joins that pack on a free loopback address")]
-fn play_joins_that_pack_on_a_free_loopback_address(world: &mut World) {
+async fn play_joins_that_pack_on_a_free_loopback_address(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
+    table::listen(world, &pack).await;
     let addr = table::game_addr(world);
     world.play = Some(spawn_play(&addr, "ada", &[]));
-    wait_play(world, "You are in Yard.");
+    wait_play(world, "You are in Yard.").await;
 }
 
 #[then(expr = "the travel committed a round")]
-fn the_travel_committed_a_round(world: &mut World) {
-    wait_play(world, "You are in Lane.");
+async fn the_travel_committed_a_round(world: &mut World) {
+    wait_play(world, "You are in Lane.").await;
     let pack = table::pack(world);
     let now = world_of(pack);
     assert_eq!(place_of(&now, "ada"), "lane");
@@ -148,20 +148,20 @@ fn the_travel_committed_a_round(world: &mut World) {
 }
 
 #[when(expr = "the operator runs spook new beside that pack")]
-fn the_operator_runs_spook_new_beside_that_pack(world: &mut World) {
+async fn the_operator_runs_spook_new_beside_that_pack(world: &mut World) {
     let pack = table::pack(world);
     let dir = pack.file_name().unwrap().to_string_lossy();
     let idle = pack.parent().unwrap().join(format!("{dir}-idle"));
     let _ = fs::remove_dir_all(&idle);
-    run_new(world, &idle);
+    run_new(world, &idle).await;
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     world.scratch = idle.to_str().unwrap().to_string();
 }
 
 #[when(expr = "the operator plays a round on that untouched pack")]
-fn the_operator_plays_a_round_on_that_untouched_pack(world: &mut World) {
+async fn the_operator_plays_a_round_on_that_untouched_pack(world: &mut World) {
     let idle = PathBuf::from(&world.scratch);
-    table::run(world, &["round", idle.to_str().unwrap()]);
+    table::run(world, &["round", idle.to_str().unwrap()]).await;
 }
 
 #[then(expr = "the keeper habit has set tended")]
@@ -180,7 +180,7 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
 }
 
 #[when(expr = "the first-pack guide steps are applied in order")]
-fn the_first_pack_guide_steps_are_applied_in_order(world: &mut World) {
+async fn the_first_pack_guide_steps_are_applied_in_order(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let edits = read_guide_edits();
     assert!(edits.len() >= 4, "the guide has {} steps", edits.len());
@@ -191,16 +191,16 @@ fn the_first_pack_guide_steps_are_applied_in_order(world: &mut World) {
         apply_edit(&pack, edit);
     }
     let arg = support::pack_arg(&pack);
-    table::run(world, &["check", "--json", &arg]);
+    table::run(world, &["check", "--json", &arg]).await;
     assert_eq!(world.code, Some(1), "{}", world.stdout);
     assert!(
         world.stdout.contains("PACK_REV_MISMATCH"),
         "{}",
         world.stdout
     );
-    table::run(world, &["migrate", &arg]);
+    table::run(world, &["migrate", &arg]).await;
     assert_eq!(world.code, Some(0), "{}", world.stderr);
-    table::run(world, &["check", "--json", &arg]);
+    table::run(world, &["check", "--json", &arg]).await;
 }
 
 struct Edit {
@@ -314,9 +314,9 @@ fn insert_before(text: &str, anchor: &str, body: &str) -> String {
     out
 }
 
-fn run_new(world: &mut World, pack: &Path) {
+async fn run_new(world: &mut World, pack: &Path) {
     // repeats module: mirrors the `spook new` command
-    table::run(world, &["new", pack.to_str().unwrap()]);
+    table::run(world, &["new", pack.to_str().unwrap()]).await;
 }
 
 fn fresh_path(label: &str) -> PathBuf {
