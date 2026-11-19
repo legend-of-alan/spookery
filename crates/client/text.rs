@@ -33,9 +33,14 @@ pub fn render(body: &ServerBody) -> String {
 }
 
 fn render_speech(speech: &Speech) -> String {
+    format!("{}: {}", speaker_for_player(speech), speech.text)
+}
+
+/// The name a player reads for who spoke: `You` for a player, else `GM` or the actor's name.
+pub(crate) fn speaker_for_player(speech: &Speech) -> &str {
     match &speech.from {
-        Speaker::Player(_) => format!("You: {}", speech.text),
-        Speaker::Gm | Speaker::Npc(_) => format!("{}: {}", speaker_name(speech), speech.text),
+        Speaker::Player(_) => "You",
+        Speaker::Gm | Speaker::Npc(_) => speaker_name(speech),
     }
 }
 
@@ -303,7 +308,7 @@ pub fn render_map(places: &[PlaceView]) -> String {
 
 /// `stairs (locked) — 2 ticks`, or `Docks Street — 0 ticks` for an exit named by where it
 /// goes.
-fn exit_phrase(exit: &ExitView) -> String {
+pub(crate) fn exit_phrase(exit: &ExitView) -> String {
     let (name, ticks) = (&exit.name, exit.ticks);
     if exit.locked {
         format!("{name} (locked) — {ticks} ticks")
@@ -332,7 +337,8 @@ fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<
     sections.push(format!("{title}\n{}", lines.join("\n")));
 }
 
-fn meter_line(meter: &MeterView) -> String {
+/// `Hp: 8/16`: the meter's name, value and max.
+pub(crate) fn meter_line(meter: &MeterView) -> String {
     format!("{}: {}/{}", humanize(&meter.id), meter.value, meter.max)
 }
 

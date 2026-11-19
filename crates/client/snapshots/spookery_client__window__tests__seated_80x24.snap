@@ -1,0 +1,28 @@
+---
+source: crates/client/window.rs
+expression: shown
+---
+ SPOOKERY                                           Rowan · round 2 · tick 1090
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+╭ Story ────────────────────────────────────────────╮╭ Docks Shop ─────────────╮
+│▌ Docks Shop                                       ││Here: Aldric, You        │
+│The shop faces the water. Tins sit in a row.       ││                         │
+│› look                                             ││Exits                    │
+│› say evening                                      ││Docks Street — 0 ticks   │
+│You: evening                                       ││stairs (locked) — 2 ticks│
+│GM: good evening                                   ││                         │
+│› exert                                            ││Items                    │
+│Your action is queued.                             ││Lamp oil: 3              │
+│── round 1 · tick 1085 ──                          ││                         │
+│◆ Your roll succeeded.                             ││Meters                   │
+│› take lamp_oil                                    ││Assassination debt: 2/6  │
+│Your action is queued.                             ││━━━───────               │
+│── round 2 · tick 1090 ──                          ││Hp: 8/16 ━━━━━─────      │
+│You picked up the Lamp oil.                        ││Might: 1/45 ──────────   │
+│                                                   ││Rest: 3/5 ━━━━━━────     │
+│                                                   ││Vigor: 1/110 ──────────  │
+╰───────────────────────────────────────────────────╯╰─────────────────────────╯
+╭──────────────────────────────────────────────────────────────────────────────╮
+│›                                                                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ Enter send  Tab complete  ↑↓ history  PgUp PgDn scroll  Ctrl+C release

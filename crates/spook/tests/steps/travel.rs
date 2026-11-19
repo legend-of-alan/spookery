@@ -317,7 +317,7 @@ fn rowan_visited_both_rooms(world: &mut World) {
 
 #[when(expr = "play joins the table again")]
 async fn play_joins_again(world: &mut World) {
-    join_play(world, "rowan", false).await;
+    join_play(world, "rowan", &[]).await;
 }
 
 /// The map is the table's: each place rowan's save says they visited, with the exits
