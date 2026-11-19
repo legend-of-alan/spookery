@@ -11,6 +11,8 @@ use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Descriptor {
+    /// What a player reads for the meter, or empty when the pack gives none.
+    pub name: String,
     pub min: i64,
     pub base_cap: i64,
     pub max: i64,
@@ -162,6 +164,7 @@ mod tests {
 
     fn vigor() -> Descriptor {
         Descriptor {
+            name: String::new(),
             min: 0,
             base_cap: 100,
             max: 110,

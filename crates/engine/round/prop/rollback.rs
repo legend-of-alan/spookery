@@ -99,6 +99,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     ];
     for (carrier, key) in &carried {
         let desc = meter::Descriptor {
+            name: String::new(),
             min: 0,
             base_cap: 10,
             max: 10,

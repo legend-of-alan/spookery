@@ -1,5 +1,6 @@
 //! Engine output as message bodies. The one place a `protocol::Refusal` is rendered.
 
+use super::seat::Claim;
 use crate::protocol::{
     self, CommitBody, PackSummary, QueuedMove, Roll, ServerBody, Speech, StatusPresence,
     TableStatus,
@@ -35,21 +36,27 @@ fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
     }
 }
 
-/// The reply to a new claim: the PC, its token, and the speech it heard before.
+/// The reply to a claim: the PC, its token and the round and tick `now` is at. A new claim
+/// gives the speech the PC heard before as `scrollback`. A claim by token gives the messages
+/// sent to it after `last_seq`, which a new claim has none of.
 pub(super) fn render_claimed(
-    actor: &ActorId,
-    token: &str,
+    now: &engine::ecs::World,
+    claim: &Claim,
     scrollback: &[TapeRecord],
+    last_seq: u64,
 ) -> ServerBody {
+    let (missed, gap) = claim.messages_after(last_seq);
     ServerBody::Claimed {
-        actor: actor.to_string(),
-        token: token.to_string(),
+        actor: claim.actor.to_string(),
+        token: claim.token.clone(),
+        round_index: now.round_index,
+        world_time: now.world_time,
         scrollback: scrollback
             .iter()
             .map(|tape| build_speech(tape, false))
             .collect(),
-        missed: Vec::new(),
-        gap: false,
+        missed,
+        gap,
     }
 }
 
@@ -104,6 +111,8 @@ pub(super) fn render_view(view: &engine::View) -> ServerBody {
         notes: view.notes.clone(),
         unknown_mentions: view.unknown_mentions.clone(),
         items: view.items.clone(),
+        carried: view.carried.clone(),
+        wielded_item_id: view.wielded_item_id.clone(),
         meters: view.meters.clone(),
         world_meters: view.world_meters.clone(),
         habits: view.habits.clone(),

@@ -29,6 +29,7 @@ async fn a_player_claimed_rowan(world: &mut World) {
         .unwrap_or_else(|| panic!("no token\n{reply}"))
         .to_string();
     world.mark = seq_of(&view) as usize;
+    world.claimed = reply;
     table::live_mut(world).players.push(PlayerClient {
         actor_id: "rowan".to_string(),
         seat,
@@ -84,6 +85,15 @@ async fn it_holds_rowan_and_catches_up(world: &mut World) {
     let id = player.seat.send("look", json!({}));
     let looked = parse(&player.seat.wait_reply(&id).await);
     assert_eq!(looked["body"]["kind"], "view", "{looked}");
+}
+
+/// The pick and the claim by token each name the round and tick the table is at.
+#[then(expr = "both claims said round {int} at tick {int}")]
+fn both_claims_said_the_clock(world: &mut World, round_index: u64, world_time: u64) {
+    for reply in [&world.claimed, &parse(&world.player_added)] {
+        assert_eq!(reply["body"]["round_index"], round_index, "{reply}");
+        assert_eq!(reply["body"]["world_time"], world_time, "{reply}");
+    }
 }
 
 #[then(expr = "it holds rowan again with a gap and the newest 256 messages")]

@@ -48,19 +48,24 @@ Feature: A player knows where they are and what they can do
     Then I see the place name, exits and who is here, built from server messages
     And world_time is 1080
 
-  Scenario: A view shows each section it has and skips the empty ones
-    Given a docks copy where the world shows dawn and the street's exits are hidden
+  Scenario: A view shows what lies here, what the player carries and each meter by its name, and skips the empty sections
+    Given a docks copy where rowan carries two tonics and wields the latch, the world shows dawn and the street's exits are hidden
     When play joins the table on a free loopback address
     Then play shows each of these blocks:
       """
       You know:
       Oil is on the shelf.
 
-      Items:
+      Items here:
       Lamp oil: 4
+
+      You carry:
+      Iron latch: 1 (in hand)
+      Bitter tonic: 2
 
       Meters:
       Assassination debt: 2/6
+      Health: 8/16
 
       The world:
       Dawn: 6/6
@@ -68,7 +73,7 @@ Feature: A player knows where they are and what they can do
     And play does not show "Notes:"
     And play does not show "docks_shop"
     When play types "travel Docks Street"
-    Then the Docks Street view shows no exits and no Items heading
+    Then the Docks Street view shows no exits and no Items here heading
 
   Scenario: A busy traveller sees where they are
     Given the stairs exit costs 10 ticks

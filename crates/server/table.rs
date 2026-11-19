@@ -349,11 +349,10 @@ impl Table {
             return Err(Reason::SeatTaken);
         }
         let scrollback = self.session.player_scrollback(&actor)?;
-        let token = uuid::Uuid::new_v4().simple().to_string();
-        let claimed = frames::render_claimed(&actor, &token, &scrollback);
-        self.seats
-            .claims
-            .push(Claim::new(token.clone(), actor.clone()));
+        let claim = Claim::new(uuid::Uuid::new_v4().simple().to_string(), actor.clone());
+        let claimed = frames::render_claimed(self.session.world(), &claim, &scrollback, 0);
+        let token = claim.token.clone();
+        self.seats.claims.push(claim);
         Ok((token, actor, claimed))
     }
 
@@ -371,14 +370,7 @@ impl Table {
             .find(|claim| claim.token == token)
             .ok_or(Reason::UnknownId)?;
         claim.conn = None;
-        let (missed, gap) = claim.messages_after(last_seq);
-        let claimed = ServerBody::Claimed {
-            actor: claim.actor.to_string(),
-            token: token.to_string(),
-            scrollback: Vec::new(),
-            missed,
-            gap,
-        };
+        let claimed = frames::render_claimed(self.session.world(), claim, &[], last_seq);
         Ok((token.to_string(), claim.actor.clone(), claimed))
     }
 

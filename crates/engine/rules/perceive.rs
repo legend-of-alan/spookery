@@ -29,7 +29,12 @@ pub struct View {
     pub known_facts: Vec<KnownFact>,
     pub notes: Vec<NoteView>,
     pub unknown_mentions: Vec<String>,
+    /// The items lying in the viewer's place.
     pub items: Vec<ItemStack>,
+    /// The items the viewer holds.
+    pub carried: Vec<ItemStack>,
+    /// Which of `carried` the viewer wields.
+    pub wielded_item_id: Option<String>,
     /// The viewer's own meters. A hidden meter is not here.
     pub meters: Vec<MeterView>,
     /// The world's meters. A hidden one is not here.
@@ -152,15 +157,10 @@ fn build_capped_view(
         });
     }
 
-    let items = (world.places().get::<component::Item>(&place_id).iter())
-        .map(|(id, count)| {
-            Ok(ItemStack {
-                id: id.to_string(),
-                count: *count,
-                name: canon.name(id).ok_or(Reason::UnknownId)?.to_string(),
-            })
-        })
-        .collect::<Result<_, Reason>>()?;
+    let (places, actors, me) = (world.places(), world.actors(), viewer.actor_id());
+    let items = item_stacks(canon, places.get::<component::Item>(&place_id).iter())?;
+    let carried = item_stacks(canon, actors.get::<component::Item>(me).iter())?;
+    let wielded_item_id = (actors.get::<component::WieldedItem>(me).get()).map(str::to_string);
 
     let meters = shown_meters(canon, world, &entity::Id::Actor(viewer.actor_id().clone()));
     let world_meters = shown_meters(canon, world, &entity::Id::Global);
@@ -191,12 +191,29 @@ fn build_capped_view(
         notes,
         unknown_mentions,
         items,
+        carried,
+        wielded_item_id,
         meters,
         world_meters,
         habits,
         exits,
         busy,
     })
+}
+
+/// Each item of `held`, with its count and name.
+fn item_stacks<'a>(
+    canon: &Canon,
+    held: impl Iterator<Item = (&'a str, &'a u32)>,
+) -> Result<Vec<ItemStack>, Reason> {
+    held.map(|(id, count)| {
+        Ok(ItemStack {
+            id: id.to_string(),
+            count: *count,
+            name: canon.name(id).ok_or(Reason::UnknownId)?.to_string(),
+        })
+    })
+    .collect()
 }
 
 /// The meters `carrier` carries that are not hidden, in id order.
@@ -215,6 +232,7 @@ fn shown_meters(canon: &Canon, world: &ecs::World, carrier: &entity::Id) -> Vec<
             let value = world.entities().get::<Meter>(carrier).value(id).ok()?;
             Some(MeterView {
                 id: id.to_string(),
+                name: desc.name.clone(),
                 value,
                 max: desc.max,
             })

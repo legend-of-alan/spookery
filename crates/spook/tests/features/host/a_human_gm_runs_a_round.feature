@@ -95,7 +95,7 @@ Feature: A human GM runs a round
       The lamp-oil ledger is short.
 
       Meters:
-      Hp: 8/16
+      Health: 8/16
       """
     And the GM does not show "The shop faces the water."
     And the GM does not show "leave_door_note"

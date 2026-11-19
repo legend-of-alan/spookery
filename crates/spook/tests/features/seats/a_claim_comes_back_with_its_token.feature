@@ -6,6 +6,7 @@ Feature: A claim comes back with its token
     When the connection drops without release and 100 server messages pass
     And the player reconnects with token t1
     Then it holds rowan again and receives the messages after its last seq
+    And both claims said round 0 at tick 1080
     And a GM intent for rowan is refused while it is held
 
   Scenario: A dropped claim keeps rowan from another player

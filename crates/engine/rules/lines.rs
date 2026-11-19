@@ -142,6 +142,7 @@ pub(crate) fn map(
     }
     let places = (world.actors().get::<component::Visit>(actor_id).iter()).map(|(id, seen)| {
         Ok(PlaceView {
+            place_id: id.to_string(),
             name: find_place_name(canon, id).ok_or(Reason::UnknownId)?,
             exits: canon
                 .places

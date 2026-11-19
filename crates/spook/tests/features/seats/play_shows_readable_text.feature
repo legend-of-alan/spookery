@@ -74,20 +74,20 @@ Feature: Play shows readable text
     When play joins the table on a free loopback address
     Then play shows earlier speech under one heading
 
-  Scenario: A strike keeps the target's hp off the player's line
+  Scenario: A strike keeps the target's health off the player's line
     Given a docks table where harbormouse's might is 40
     When play joins the table as "harbormouse"
     And play types "strike Briar"
     And play says "done"
     Then play shows "You: done"
     And play shows "Your roll succeeded."
-    And play does not show "hp is now"
+    And play does not show "Health is now"
 
   Scenario: A used item shows as used up
     Given a docks table
     When play joins the table as "harbormouse"
     And play types "use Bitter tonic"
-    Then play shows "Your Bitter tonic was used up. Your hp is now 12."
+    Then play shows "Your Bitter tonic was used up. Your Health is now 12."
 
   Scenario: An unseen gain does not turn a use into a move
     Given a docks table where a sip costs harbormouse a tonic and gives Bram one
