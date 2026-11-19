@@ -97,7 +97,6 @@ fn list_target_ids(
             .actors()
             .get::<component::Place>(actor_id)
             .get()
-            .and_then(|place| canon.places.get(place))
             .map(|place| exits_at(canon, world, actor_id, place))
             .unwrap_or_default()
             .into_iter()
@@ -143,18 +142,10 @@ pub(crate) fn map(
     let places = (world.actors().get::<component::Visit>(actor_id).iter()).map(|(id, seen)| {
         Ok(PlaceView {
             name: find_place_name(canon, id).ok_or(Reason::UnknownId)?,
-            exits: canon
-                .places
-                .get(id)
-                .map(|place| {
-                    place
-                        .exits
-                        .iter()
-                        .filter(|exit| seen.contains(&exit.id))
-                        .map(|exit| exit_view(canon, world, actor_id, exit))
-                        .collect()
-                })
-                .unwrap_or_default(),
+            exits: (canon.exits(id))
+                .filter(|exit| seen.iter().any(|seen| seen == exit.id))
+                .map(|exit| exit_view(canon, world, actor_id, exit))
+                .collect(),
         })
     });
     places.collect()
@@ -172,7 +163,7 @@ pub(crate) fn busy_line(canon: &Canon, world: &ecs::World, actor_id: &ActorId) -
     }
     let until = busy.busy_until?;
     let doing = match (&busy.pending, exit_stood_on(canon, place)) {
-        (Some(_), Some(exit)) => format!("on the {}", exit.name),
+        (Some(_), Some(exit)) => format!("on the {}", exit.name(canon)),
         (Some(pending), None) => gerund(&pending.verb),
         (None, _) => "recovering".to_string(),
     };
@@ -209,7 +200,7 @@ pub(crate) fn place_prose(canon: &Canon, world: &ecs::World, actor_id: &ActorId)
 /// on one. `None` when the pack has no such place or exit.
 pub(crate) fn find_place_name(canon: &Canon, id: &str) -> Option<String> {
     match exit_stood_on(canon, id) {
-        Some(exit) => Some(exit.name.clone()),
+        Some(exit) => Some(exit.name(canon).to_string()),
         None => canon.places.get(id).map(|place| place.name.clone()),
     }
 }

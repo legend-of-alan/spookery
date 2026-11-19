@@ -144,10 +144,8 @@ fn the_pack_has(world: &mut World, number: String, field: String) {
     }
     match field.as_str() {
         "the street exit's ticks" => {
-            let path = pack.join("world/places/docks_shop.md");
-            let text = fs::read_to_string(&path).unwrap();
-            let cost = format!("    id: docks_street\n    cost: {{ ticks: \"{number}\" }}\n");
-            fs::write(&path, text.replace("    id: docks_street\n", &cost)).unwrap();
+            let cost = format!("    cost: {{ ticks: \"{number}\" }}\n");
+            crate::support::split_path(&pack, ["docks_shop", "docks_street"], [&cost, ""]);
         }
         "the strain's modifier ticks" => {
             super::modifiers::add_modifier(&pack, "fatigue", "vigor", "");

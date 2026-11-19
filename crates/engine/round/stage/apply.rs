@@ -91,7 +91,7 @@ fn start(
     ledger: &mut Ledger,
 ) -> Landing {
     let context = Context::new(canon, world, presence, intent);
-    let exit = travel::exit_of(&context, rule).ok().flatten().cloned();
+    let exit = travel::exit_of(&context, rule).ok().flatten();
     let ticks = match travel::span(&context, rule) {
         Ok(ticks) => ticks,
         Err(code) => {
@@ -103,25 +103,15 @@ fn start(
         .start
         .cost
         .iter()
-        .chain(exit.as_ref().map(|exit| &exit.cost));
+        .chain(exit.map(|exit| &exit.path.cost));
     let mut started = costs.try_for_each(|cost| cost::pay(canon, world, presence, intent, cost));
     if rule.start.counts_as_act {
         started = started.and_then(|()| count_act(world, presence, intent));
     }
     if ticks > 0 {
         let until = at + ticks;
-        started = started.and_then(|()| {
-            pend(
-                canon,
-                world,
-                presence,
-                intent,
-                rule,
-                exit.as_ref(),
-                until,
-                ledger,
-            )
-        });
+        started =
+            started.and_then(|()| pend(canon, world, presence, intent, rule, exit, until, ledger));
     }
     if let Err(code) = started {
         refuse(ledger, intent, gate::Refusal::new(intent, code));
@@ -167,7 +157,7 @@ fn pend(
     presence: &Presence,
     intent: &Intent,
     rule: &Rule,
-    exit: Option<&Exit>,
+    exit: Option<Exit<'_>>,
     until: u64,
     ledger: &mut Ledger,
 ) -> Result<(), Reason> {

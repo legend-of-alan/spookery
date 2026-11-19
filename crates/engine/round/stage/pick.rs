@@ -12,7 +12,6 @@ use crate::rules::expand;
 use crate::rules::gate;
 use crate::rules::habits::{self, is_player_at};
 use crate::rules::rule::{Rule, TargetKind, When};
-use crate::rules::travel::find_exit;
 use crate::Reason;
 
 use crate::round::dice::shuffle_key;
@@ -182,8 +181,8 @@ fn touches_seated_player(
         Target::Exit(exit_id) => intent
             .actor_id()
             .and_then(|id| world.actors().get::<component::Place>(id).get())
-            .and_then(|place| find_exit(canon, place, exit_id))
-            .is_some_and(|exit| is_player_at(world, presence, &exit.to)),
+            .and_then(|place| canon.find_exit(place, exit_id))
+            .is_some_and(|exit| is_player_at(world, presence, exit.to.as_str())),
         _ => false,
     };
     let message_hit = intent
