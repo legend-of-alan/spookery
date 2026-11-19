@@ -280,7 +280,9 @@ pub(crate) async fn advance(world: &World, by: Duration) {
     let ended = || panic!("the host ended\n{}", support::text_of(&host.stderr));
     let (ack, acked) = tokio::sync::oneshot::channel();
     host.advance.send((by, ack)).unwrap_or_else(|_| ended());
-    acked.await.unwrap_or_else(|_| ended());
+    support::expect_within_limit("the host's clock advance", acked)
+        .await
+        .unwrap_or_else(|_| ended());
 }
 
 pub(crate) fn live_mut(world: &mut World) -> &mut Host {

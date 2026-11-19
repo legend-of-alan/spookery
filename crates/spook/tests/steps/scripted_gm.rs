@@ -168,7 +168,9 @@ impl AiGm {
         let ended = || panic!("the AI GM ended\n{}", support::text_of(&self.err));
         let (ack, acked) = tokio::sync::oneshot::channel();
         self.advance.send((by, ack)).unwrap_or_else(|_| ended());
-        acked.await.unwrap_or_else(|_| ended());
+        support::expect_within_limit("the AI GM's clock advance", acked)
+            .await
+            .unwrap_or_else(|_| ended());
     }
 }
 

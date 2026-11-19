@@ -61,6 +61,19 @@ pub(crate) fn put_items(now: &mut ecs::World, id: &entity::Id, item: &str, count
     put.unwrap();
 }
 
+/// How long one async wait without its own bound may take before the test fails.
+const WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Awaits `work`, and panics naming `what` if it takes longer than `WAIT_LIMIT`.
+pub(crate) async fn expect_within_limit<T>(
+    what: &str,
+    work: impl std::future::Future<Output = T>,
+) -> T {
+    tokio::time::timeout(WAIT_LIMIT, work)
+        .await
+        .unwrap_or_else(|_| panic!("{what} timed out"))
+}
+
 /// Runs blocking `work` on tokio's blocking pool, so other scenarios run meanwhile. A panic in
 /// `work` panics here.
 pub(crate) async fn run_blocking<T: Send + 'static>(
@@ -92,8 +105,7 @@ pub(crate) struct Process {
 
 impl Process {
     /// Waits for both pipes to reach EOF and the child to exit, then returns its status,
-    /// stdout and stderr. Stdin stays open, so the child decides when it is done. The pipes
-    /// close when the child exits, so the wait for its status after them is short.
+    /// stdout and stderr. Stdin stays open, so the child decides when it is done.
     pub(crate) async fn wait_with_output(&mut self) -> (ExitStatus, String, String) {
         let drains = std::mem::take(&mut self.drains);
         run_blocking(move || {

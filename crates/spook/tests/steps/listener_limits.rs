@@ -143,7 +143,7 @@ async fn an_http_body_over_a_mebibyte(world: &mut World) {
 #[then(expr = "a new GM can sit")]
 async fn a_new_gm_can_sit(world: &mut World) {
     let port = table::live_mut(world).mcp_port;
-    table::poll_until("a new GM to sit", async || try_sit_gm(port).await).await;
+    table::poll_until("a new GM to sit", || try_sit_gm(port)).await;
 }
 
 #[when(expr = "the player sends a binary message")]

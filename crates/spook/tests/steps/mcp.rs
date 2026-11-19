@@ -106,7 +106,7 @@ fn the_human_gm_leaves(world: &mut World) {
 #[then(expr = "a coding agent can sit at that MCP endpoint")]
 async fn a_coding_agent_can_sit_at_that_mcp_endpoint(world: &mut World) {
     let http = port(world);
-    table::poll_until("the agent to sit", async || try_sit_gm(http).await).await;
+    table::poll_until("the agent to sit", || try_sit_gm(http)).await;
 }
 
 #[when(expr = "spook run listens with no MCP flag")]
