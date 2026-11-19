@@ -51,17 +51,14 @@ fn a_seated_player_commits_a_move(world: &mut World) {
 #[when(expr = "spook run is stopped while the GM is seated")]
 fn spook_run_is_stopped_while_the_gm_is_seated(world: &mut World) {
     assert!(table::live_mut(world).gm.is_some(), "no seated GM");
-    if let Some((status, stderr)) = table::interrupt_host(world) {
-        world.code = status.code();
-        world.stderr = stderr;
-    }
+    let (status, stderr) = table::interrupt_host(world).expect("no spook run child");
+    world.code = status.code();
+    world.stderr = stderr;
 }
 
 #[then(expr = "spook run exits 0")]
 fn spook_run_exits_0(world: &mut World) {
-    if cfg!(unix) {
-        assert_eq!(world.code, Some(0), "spook run exited\n{}", world.stderr);
-    }
+    assert_eq!(world.code, Some(0), "spook run exited\n{}", world.stderr);
 }
 
 #[then(expr = "the pack can be opened again")]

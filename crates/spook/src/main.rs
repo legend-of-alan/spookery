@@ -117,6 +117,21 @@ async fn main() {
     }
 }
 
+/// Waits for Ctrl+C, or on Windows for Ctrl+C or Ctrl+Break.
+#[cfg(feature = "server")]
+async fn wait_for_interrupt() -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        let mut ctrl_break = tokio::signal::windows::ctrl_break()?;
+        tokio::select! {
+            ctrl_c = tokio::signal::ctrl_c() => ctrl_c,
+            _ = ctrl_break.recv() => Ok(()),
+        }
+    }
+    #[cfg(not(windows))]
+    tokio::signal::ctrl_c().await
+}
+
 async fn dispatch(cli: Cli) -> Result<(), String> {
     let addr = parse_loopback(&cli.addr)?;
     #[cfg_attr(not(feature = "server"), allow(unused_variables))]
@@ -134,13 +149,17 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             let mut config = spookery_server::Config::new(addr);
             config.mcp_addr = mcp_addr;
             config.out = Box::new(std::io::stdout());
-            let ctrl_c = tokio::spawn(tokio::signal::ctrl_c());
+            let interrupt = tokio::spawn(wait_for_interrupt());
             let shutdown = async {
-                if let Err(err) = ctrl_c.await.map_err(std::io::Error::from).and_then(|r| r) {
+                if let Err(err) = interrupt
+                    .await
+                    .map_err(std::io::Error::from)
+                    .and_then(|r| r)
+                {
                     eprintln!("{err}");
                 }
                 tokio::spawn(async {
-                    let _ = tokio::signal::ctrl_c().await;
+                    let _ = wait_for_interrupt().await;
                     std::process::exit(130);
                 });
             };
