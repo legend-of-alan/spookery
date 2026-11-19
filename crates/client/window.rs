@@ -175,10 +175,9 @@ struct Screen {
     recalled: Option<usize>,
 }
 
-/// The PCs a player may choose, as id and name, and the names of the ones held now.
+/// Every PC the hello lists, and the open one Enter would choose.
 struct Picker {
-    open: Vec<(String, String)>,
-    taken_names: Vec<String>,
+    rows: Vec<text::PickerRow>,
     chosen: ListState,
 }
 
@@ -229,18 +228,10 @@ impl Screen {
                 pc_names,
                 ..
             } => {
-                let name = |id: &String| pc_names.get(id).cloned().unwrap_or_else(|| id.clone());
-                let mut open: Vec<(String, String)> =
-                    open.iter().map(|id| (id.clone(), name(id))).collect();
-                open.sort_by(|a, b| a.1.cmp(&b.1));
-                let mut taken_names: Vec<String> = taken.iter().map(name).collect();
-                taken_names.sort();
-                let chosen = ListState::default().with_selected((!open.is_empty()).then_some(0));
-                self.picker = Some(Picker {
-                    open,
-                    taken_names,
-                    chosen,
-                });
+                let rows = text::picker_rows(open, taken, pc_names);
+                let first_open = rows.iter().position(|row| row.open_id.is_some());
+                let chosen = ListState::default().with_selected(first_open);
+                self.picker = Some(Picker { rows, chosen });
                 self.pc_names = pc_names.clone();
                 self.commands = commands
                     .iter()
@@ -505,25 +496,26 @@ impl Screen {
     }
 
     fn draw_picker(&mut self, frame: &mut Frame, area: Rect) {
-        let block = self.pane("Choose a character", true);
+        let block = self.pane(text::PICKER_HEADING, true);
         let highlight = self.style(GOLD).add_modifier(Modifier::BOLD);
         let (parchment, ash) = (self.style(PARCHMENT), self.style(ASH));
         let Some(picker) = &mut self.picker else {
             return;
         };
         let mut items: Vec<ListItem> = picker
-            .open
+            .rows
             .iter()
-            .map(|(_, name)| ListItem::new(name.clone()).style(parchment))
+            .map(|row| {
+                let style = if row.open_id.is_some() {
+                    parchment
+                } else {
+                    ash
+                };
+                ListItem::new(row.label()).style(style)
+            })
             .collect();
-        items.extend(
-            picker
-                .taken_names
-                .iter()
-                .map(|name| ListItem::new(format!("{name} (in use)")).style(ash)),
-        );
-        if picker.open.is_empty() {
-            items.push(ListItem::new("None is free.").style(ash));
+        if picker.chosen.selected().is_none() {
+            items.push(ListItem::new(text::NONE_FREE).style(ash));
         }
         let list = List::new(items)
             .block(block)
@@ -586,8 +578,7 @@ impl Screen {
         if !view.items.is_empty() {
             self.push_heading(&mut lines, "Items");
             for item in &view.items {
-                let line = format!("{}: {}", item.name, item.count);
-                lines.push(Line::styled(line, self.style(PARCHMENT)));
+                lines.push(Line::styled(text::item_line(item), self.style(PARCHMENT)));
             }
         }
         for (heading, meters) in [("Meters", &view.meters), ("The world", &view.world_meters)] {
@@ -669,15 +660,19 @@ impl Screen {
 }
 
 impl Picker {
-    /// Moves the choice with Up and Down. Enter chooses it and returns its PC id.
+    /// Moves the choice to the open PC above or below with Up and Down. Enter chooses it and
+    /// returns its PC id.
     fn press(&mut self, code: KeyCode) -> Option<String> {
-        let last = self.open.len().checked_sub(1)?;
-        let at = self.chosen.selected().unwrap_or(0);
-        match code {
-            KeyCode::Up => self.chosen.select(Some(at.saturating_sub(1))),
-            KeyCode::Down => self.chosen.select(Some((at + 1).min(last))),
-            KeyCode::Enter => return Some(self.open[at].0.clone()),
-            _ => {}
+        let at = self.chosen.selected()?;
+        let is_open = |index: &usize| self.rows[*index].open_id.is_some();
+        let next = match code {
+            KeyCode::Up => (0..at).rev().find(is_open),
+            KeyCode::Down => (at + 1..self.rows.len()).find(is_open),
+            KeyCode::Enter => return self.rows[at].open_id.clone(),
+            _ => None,
+        };
+        if next.is_some() {
+            self.chosen.select(next);
         }
         None
     }

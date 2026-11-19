@@ -1,9 +1,65 @@
-//! Readable text for player and GM messages, and the status and commit replies.
+//! Readable text for player and GM messages, the picker, and the status and commit replies.
+
+use std::collections::BTreeMap;
 
 use crate::protocol::{
-    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, MeterView, NoteView, Outcome,
-    PlaceView, Roll, ServerBody, Speaker, Speech, TableStatus,
+    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, ItemStack, MeterView,
+    NoteView, Outcome, PlaceView, Roll, ServerBody, Speaker, Speech, TableStatus,
 };
+
+/// The picker's heading.
+pub(crate) const PICKER_HEADING: &str = "Choose a character";
+
+/// The line under the picker when every PC is held.
+pub(crate) const NONE_FREE: &str = "None is free.";
+
+/// One PC of the picker: its name as the hello gives it, and its id while nobody holds it.
+pub(crate) struct PickerRow {
+    pub(crate) name: String,
+    pub(crate) open_id: Option<String>,
+}
+
+impl PickerRow {
+    /// `Rowan`, or `Rowan (in use)` for a PC someone holds.
+    pub(crate) fn label(&self) -> String {
+        match self.open_id {
+            Some(_) => self.name.clone(),
+            None => format!("{} (in use)", self.name),
+        }
+    }
+}
+
+/// Every PC a hello lists, open and taken, sorted by label.
+pub(crate) fn picker_rows(
+    open: &[String],
+    taken: &[String],
+    pc_names: &BTreeMap<String, String>,
+) -> Vec<PickerRow> {
+    let name = |id: &String| pc_names.get(id).cloned().unwrap_or_default();
+    let open = open.iter().map(|id| PickerRow {
+        name: name(id),
+        open_id: Some(id.clone()),
+    });
+    let taken = taken.iter().map(|id| PickerRow {
+        name: name(id),
+        open_id: None,
+    });
+    let mut rows: Vec<PickerRow> = open.chain(taken).collect();
+    rows.sort_by_key(PickerRow::label);
+    rows
+}
+
+/// The picker as lines mode prints it: the heading, each row, and `None is free.` when every
+/// PC is held.
+pub(crate) fn render_picker(rows: &[PickerRow]) -> String {
+    let labels: Vec<String> = rows.iter().map(PickerRow::label).collect();
+    let mut text = format!("{PICKER_HEADING}:\n{}", labels.join("\n"));
+    if rows.iter().all(|row| row.open_id.is_none()) {
+        text.push('\n');
+        text.push_str(NONE_FREE);
+    }
+    text
+}
 
 /// Readable text for one player body. Empty means print nothing.
 pub fn render(body: &ServerBody) -> String {
@@ -169,10 +225,7 @@ pub fn render_view(view: &protocol::View) -> String {
         notes.iter().map(|note| note.text.as_str()),
     );
     if !items.is_empty() {
-        let mut lines = Vec::new();
-        for item in items {
-            lines.push(format!("{}: {}", item.name, item.count));
-        }
+        let lines: Vec<String> = items.iter().map(item_line).collect();
         sections.push(format!("Items:\n{}", lines.join("\n")));
     }
     for (title, meters) in [("Meters:", meters), ("The world:", world_meters)] {
@@ -335,6 +388,11 @@ fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<
         return;
     }
     sections.push(format!("{title}\n{}", lines.join("\n")));
+}
+
+/// `Lamp oil: 4`: the item's name and count.
+pub(crate) fn item_line(item: &ItemStack) -> String {
+    format!("{}: {}", item.name, item.count)
 }
 
 /// `Hp: 8/16`: the meter's name, value and max.

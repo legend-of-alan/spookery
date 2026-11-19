@@ -174,11 +174,10 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "client")]
         Command::Play { raw, lines } => {
-            let at_terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
-            let mode = if raw || lines || !at_terminal {
-                spookery::play::Mode::Lines { raw }
-            } else {
+            let mode = if opens_window(raw, lines) {
                 spookery::play::Mode::Window
+            } else {
+                spookery::play::Mode::Lines { raw }
             };
             spookery::play::run(addr, mode)
                 .await
@@ -273,15 +272,17 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
     }
 }
 
-/// Installs the one log subscriber. `spook run` and `spook ai-gm` log to a new file under
-/// `logs/`, whose path this returns. Every other command logs to stderr. A `RUST_LOG` whose
-/// directives are all invalid logs warnings.
+/// Installs the one log subscriber. `spook run`, `spook ai-gm` and `spook play` in its window
+/// log to a new file under `logs/`, whose path this returns. Every other command logs to stderr.
+/// A `RUST_LOG` whose directives are all invalid logs warnings.
 fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
     let (command_id, default_directives) = match command {
         #[cfg(feature = "server")]
         Command::Run { .. } => (Some("run"), "warn,spook=info"),
         #[cfg(feature = "client")]
         Command::AiGm => (Some("ai-gm"), "warn,spook=info"),
+        #[cfg(feature = "client")]
+        Command::Play { raw, lines } if opens_window(*raw, *lines) => (Some("play"), "warn"),
         _ => (None, "warn"),
     };
     let directives = std::env::var("RUST_LOG")
@@ -306,6 +307,12 @@ fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
         .map_err(|err| format!("{}: {err}", path.display()))?;
     subscriber.with_writer(file).init();
     Ok(Some(path))
+}
+
+/// Whether `spook play` opens its window: at a terminal, without `--raw` or `--lines`.
+#[cfg(feature = "client")]
+fn opens_window(raw: bool, lines: bool) -> bool {
+    !raw && !lines && std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
 }
 
 fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {

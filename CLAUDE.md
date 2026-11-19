@@ -68,7 +68,7 @@ Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib
 ## Conventions
 
 - Follow the design principles and the issue and PR title format in `CONTRIBUTING.md`.
-- Logs and output follow `CONTRIBUTING.md`'s Logs and output: `tracing` events only, never a print outside `main.rs` and the `spook play`/`spook gm` terminals. `spook run` and `spook ai-gm` write `logs/` in the directory they start in.
+- Logs and output follow `CONTRIBUTING.md`'s Logs and output: `tracing` events only, never a print outside `main.rs` and the `spook play`/`spook gm` terminals. `spook run`, `spook ai-gm` and the `spook play` window write `logs/` in the directory they start in.
 - In PR bodies, use `Closes #N` only for the closing keyword; elsewhere write "issue #N" / "PR #N", never a bare `#N`.
 - Never merge a PR. Never force-push or rebase a pushed branch; merge `main` into it instead.
 - PR CI runs Linux only; `main` also runs macOS and Windows, and Windows runs clippy for the `cfg(windows)` code in `engine/store/durability.rs`.
