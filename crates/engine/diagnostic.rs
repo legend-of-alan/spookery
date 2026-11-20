@@ -198,7 +198,8 @@ pub(crate) fn check_tag(text: &str, expected: &str, file: &str) -> Option<Diagno
 }
 
 /// Turns a YAML read error into a `SCHEMA` diagnostic. In a file that holds rule lines, where one
-/// key names each condition or effect, a second key is refused in those words.
+/// key names each condition or effect, a second key is refused in those words. A key with nothing
+/// or a single value where a list or map belongs is told to write `[]` or `{}` for an empty one.
 pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool) -> Diagnostic {
     let err = err.without_snippet();
     let spot = err.location().and_then(|loc| {
@@ -262,6 +263,22 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool)
             };
             (None, problem.to_string(), hint.to_string())
         }
+        YamlError::Unexpected {
+            expected: "sequence start",
+            ..
+        } => (
+            None,
+            "a list belongs here".to_string(),
+            "put each item on its own dash line under the key, or write [] for none".to_string(),
+        ),
+        YamlError::Unexpected {
+            expected: "mapping start",
+            ..
+        } => (
+            None,
+            "a map belongs here".to_string(),
+            "put each key on its own line under it, or write {} for none".to_string(),
+        ),
         YamlError::DuplicateMappingKey { key: Some(key), .. } => (
             Some(key.clone()),
             format!("'{key}' is listed twice"),
