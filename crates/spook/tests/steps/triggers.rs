@@ -255,10 +255,9 @@ rules:
 #[when(expr = "nell enters the bog")]
 fn nell_enters_the_bog(world: &mut World) {
     let pack = copy_pack("docks", "trigger-bog");
-    replace_in_file(
-        &pack.join("world/places/docks_street.md"),
-        "    id: docks_shop\n",
-        "    id: docks_shop\n  - to: bog\n    id: bog\n",
+    support::append(
+        &pack.join("world/map.yaml"),
+        "  - path: docks_street -> bog\n",
     );
     fs::write(
         pack.join("world/places/bog.md"),
@@ -268,7 +267,6 @@ schema: place
 id: bog
 name: Bog
 facts: []
-exits: []
 rules:
   - id: sink
     when:
@@ -376,10 +374,9 @@ fn the_viewer_is_told(world: &mut World, viewer: String, text: String) {
 #[given(expr = "the street has a hidden trapdoor")]
 fn the_street_has_a_hidden_trapdoor(world: &mut World) {
     let pack = copy_pack("docks", "trigger-reveal");
-    replace_in_file(
-        &pack.join("world/places/docks_street.md"),
-        "    id: docks_shop\n",
-        "    id: docks_shop\n  - to: cellar\n    id: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
+    support::append(
+        &pack.join("world/map.yaml"),
+        "  - path: docks_street -> cellar\n    id: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
     );
     replace_in_file(
         &pack.join("world/places/docks_street.md"),
@@ -394,7 +391,6 @@ schema: place
 id: cellar
 name: Cellar
 facts: []
-exits: []
 ---
 Under the street.
 ",
@@ -792,10 +788,9 @@ pub(crate) fn sit(seated: &mut Presence, ids: &[&str]) {
 }
 
 fn add_bell_narrate(pack: &Path) {
-    replace_in_file(
+    support::insert_before_fence(
         &pack.join("world/places/docks_shop.md"),
-        "    locked_text: The stair door is locked.\n",
-        "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          key: heard_bell\n          value: true\n      - narrate:\n          to: here\n          text: The bell rings.\n",
+        "rules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          key: heard_bell\n          value: true\n      - narrate:\n          to: here\n          text: The bell rings.\n",
     );
 }
 
@@ -842,26 +837,19 @@ rules:
 }
 
 fn add_door(pack: &Path) {
-    replace_in_file(
-        &pack.join("world/places/docks_street.md"),
-        "    id: docks_shop\n",
-        "    id: docks_shop\n  - to: docks_shop\n    id: door\n",
-    );
+    let door = "  - path: docks_street -> docks_shop\n    id: door\n";
+    support::append(&pack.join("world/map.yaml"), door);
 }
 
 fn add_rooms(pack: &Path) {
-    replace_in_file(
-        &pack.join("world/places/docks_street.md"),
-        "    id: docks_shop\n",
-        "    id: docks_shop\n  - to: mira_rooms\n    id: rooms\n",
-    );
+    let rooms = "  - path: docks_street -> mira_rooms\n    id: rooms\n";
+    support::append(&pack.join("world/map.yaml"), rooms);
 }
 
 fn add_bell(pack: &Path) {
-    replace_in_file(
+    support::insert_before_fence(
         &pack.join("world/places/docks_shop.md"),
-        "    locked_text: The stair door is locked.\n",
-        "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          key: heard_bell\n          value: true\n",
+        "rules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          key: heard_bell\n          value: true\n",
     );
 }
 

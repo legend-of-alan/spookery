@@ -10,7 +10,7 @@ spook new /tmp/mypack
 
 The pack is a waystation with two places, so travel has somewhere to go.
 
-- `yard` is the start place. `lane` is the other place.
+- `yard` is the start place. `lane` is the other place. `world/map.yaml` joins them with one path, `yard <-> lane`, which gives each its exit to the other.
 - `ada` is the player character. The cast file `cast/pc-ada.md` is a `pc_template`, and `state/save.yaml` has a live `ada` actor. A template alone does not sit a player.
 - `keeper` is an NPC in the lane. One habit, `tend_the_yard`, runs while the table is empty and sets the flag `tended`.
 
@@ -46,18 +46,14 @@ name: Porch
 facts:
   - id: fact_porch_dry
     text: The porch is dry.
-exits:
-  - to: yard
-    id: yard
 ---
 The porch faces the yard.
 ```
 
-The yard needs an exit to the porch, or `spook check` warns that the porch cannot be reached.
+The porch needs a path to the yard, or `spook check` warns that the porch cannot be reached. One two-way line in `world/map.yaml` gives the yard an exit to the porch and the porch an exit back to the yard.
 
-```yaml path=world/places/yard.md mode=insert-before anchor=  # more-exits
-  - to: porch
-    id: porch
+```yaml path=world/map.yaml mode=append
+  - path: yard <-> porch
 ```
 
 `travel porch` follows the exit `porch`. A place with no path from the start place is a warning from `spook check`.

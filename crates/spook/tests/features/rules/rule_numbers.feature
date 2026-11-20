@@ -83,12 +83,12 @@ Feature: Dice and arithmetic in rule numbers
     And the report names the line in <file> holding "1d6"
 
     Examples:
-      | field                     | file                       |
-      | the hit's condition value | rules/verbs.yaml           |
-      | the hit's cost amount     | rules/verbs.yaml           |
-      | the hit's cost item count | rules/verbs.yaml           |
-      | the hit's cost ticks      | rules/verbs.yaml           |
-      | the street exit's ticks   | world/places/docks_shop.md |
+      | field                     | file             |
+      | the hit's condition value | rules/verbs.yaml |
+      | the hit's cost amount     | rules/verbs.yaml |
+      | the hit's cost item count | rules/verbs.yaml |
+      | the hit's cost ticks      | rules/verbs.yaml |
+      | the street exit's ticks   | world/map.yaml   |
 
   Scenario: Every number in a rule line can read a meter, and an exit's ticks are read for each viewer
     Given a docks table with Rowan and Wren seated in the shop

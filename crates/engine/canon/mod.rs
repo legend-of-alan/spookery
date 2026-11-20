@@ -22,6 +22,7 @@ mod cast;
 mod fact;
 mod item;
 mod lint;
+mod map;
 mod meters;
 mod modifiers;
 mod pack;
@@ -33,13 +34,13 @@ mod story;
 pub(crate) use budget::Budget;
 use fact::Facts;
 use lint::{
-    broken_exits, reveal_problems, unknown_carriers, unknown_modifiers, unknown_reads,
+    broken_paths, reveal_problems, unknown_carriers, unknown_modifiers, unknown_reads,
     unknown_rule_items, EntityScope,
 };
 pub(crate) use lint::{check_canon, unknown_item};
+use map::MAP_FILE;
 use modifiers::MODIFIERS_FILE;
 use pack::load_pack_yaml;
-use place::name_exits;
 use rule_list::load_verbs;
 use source::{collect_files, collect_markdown_files, read_text, Diags, FileText, Locator};
 use story::load_stories;
@@ -51,6 +52,10 @@ pub struct Canon {
     pub system: String,
     pub start_place: String,
     pub places: BTreeMap<PlaceId, PlaceDef>,
+    /// Every line under `paths:` in `world/map.yaml`, in file order.
+    pub paths: Vec<PathDef>,
+    /// Each place's exits, as rows of `paths` in file order. Built once at load.
+    exit_rows: BTreeMap<PlaceId, Vec<usize>>,
     pub cast: BTreeMap<ActorId, CastDef>,
     pub facts: BTreeMap<String, FactDef>,
     pub stories: BTreeMap<StoryId, StoryDef>,
@@ -88,45 +93,106 @@ pub struct FactDef {
 /// The one flag an exit with an `if` carries, set once someone there meets the `if`.
 pub(crate) const OPEN: &str = "open";
 
-/// One way out of a place. `cost.ticks` is the game time the walk takes.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Exit {
-    /// Unique among this place's exits.
-    pub id: String,
-    /// The name a player reads and types. Left out by the pack, it is the name of the place it
-    /// goes to when `id` is that place's id, or else `id`.
-    pub name: String,
-    /// The place this exit leaves.
-    pub from: PlaceId,
-    pub to: String,
+/// What the pack says about one path.
+#[derive(Clone, Debug)]
+pub struct PathDef {
+    /// The two places the line names, in its order.
+    pub ends: [PlaceId; 2],
+    /// The line says `<->`.
+    pub bidirectional: bool,
+    /// The word a player types at each end. Left out, the other end's place id.
+    pub id: Option<String>,
+    /// `cost.ticks` is the game time the walk takes.
     pub cost: Cost,
     pub if_: Vec<Cond>,
     pub locked_text: String,
     pub hidden: bool,
     pub revealed_by: Option<String>,
-    pub file: String,
-    pub index: usize,
 }
 
-impl Exit {
-    /// This exit's door, by its place and its id.
-    pub(crate) fn qualified_id(&self) -> ExitId {
-        ExitId {
-            place: self.from.clone(),
-            exit: self.id.clone(),
-        }
+impl PathDef {
+    /// This path as an exit from `place`: from its first end, or from its second when it goes
+    /// both ways. `None` when it does not leave `place`.
+    pub fn exit_from(&self, place: &str) -> Option<Exit<'_>> {
+        let [first, second] = &self.ends;
+        let (from, to) = if first == place {
+            (first, second)
+        } else if self.bidirectional && second == place {
+            (second, first)
+        } else {
+            return None;
+        };
+        let id = self.id.as_deref().unwrap_or(to.as_str());
+        Some(Exit {
+            id,
+            from,
+            to,
+            path: self,
+        })
     }
 
-    /// Every number the exit holds: its cost's, then its conditions'.
+    /// Every number the path holds: its cost's, then its conditions'.
     pub(crate) fn exprs(&self) -> Vec<&Expr> {
         let cond_numbers = self.if_.iter().flat_map(Cond::exprs);
         self.cost.exprs().chain(cond_numbers).collect()
     }
 
-    /// The owners, item ids and `target`s the exit's conditions, cost and numbers name.
+    /// The owners, item ids and `target`s the path's conditions, cost and numbers name.
     pub(crate) fn mentions(&self) -> rule::Mentions<'_> {
         rule::Mentions::of_lines(&self.if_, [&self.cost], self.exprs())
     }
+}
+
+/// A path as seen from a place it leaves, named by the word a player types there.
+#[derive(Clone, Copy, Debug)]
+pub struct Exit<'c> {
+    pub id: &'c str,
+    pub from: &'c PlaceId,
+    pub to: &'c PlaceId,
+    pub path: &'c PathDef,
+}
+
+impl<'c> Exit<'c> {
+    /// This exit's door, by its place and its id.
+    pub(crate) fn qualified_id(&self) -> ExitId {
+        ExitId {
+            place: self.from.clone(),
+            exit: self.id.to_string(),
+        }
+    }
+
+    /// The name a player reads: the name of the place it goes to when `id` is that place's id,
+    /// or else `id`.
+    pub(crate) fn name(&self, canon: &'c Canon) -> &'c str {
+        match canon.places.get(self.to) {
+            Some(place) if self.to == self.id => &place.name,
+            _ => self.id,
+        }
+    }
+}
+
+/// The exits of `place`, in the file order of their paths, read from the index of each place's
+/// rows of `paths`.
+fn exits_of<'c>(
+    paths: &'c [PathDef],
+    exit_rows: &'c BTreeMap<PlaceId, Vec<usize>>,
+    place: &str,
+) -> impl Iterator<Item = Exit<'c>> {
+    let rows = exit_rows.get_key_value(place).into_iter();
+    rows.flat_map(|(from, rows)| {
+        rows.iter()
+            .filter_map(|&row| paths[row].exit_from(from.as_str()))
+    })
+}
+
+/// The exit at `place` that a player names `id`.
+pub(crate) fn find_exit<'c>(
+    paths: &'c [PathDef],
+    exit_rows: &'c BTreeMap<PlaceId, Vec<usize>>,
+    place: &str,
+    id: &str,
+) -> Option<Exit<'c>> {
+    exits_of(paths, exit_rows, place).find(|exit| exit.id == id)
 }
 
 #[derive(Clone, Debug)]
@@ -134,18 +200,8 @@ pub struct PlaceDef {
     /// The name a player reads, the id when the pack gives none.
     pub name: String,
     pub body: String,
-    pub exits: Vec<Exit>,
     /// The flags an effect may set on this place.
     pub flags: Vec<String>,
-}
-
-impl PlaceDef {
-    /// Whether exit `exit_id` here is a door: it has an `if`, so it carries the flag `open`.
-    pub(crate) fn has_door(&self, exit_id: &str) -> bool {
-        self.exits
-            .iter()
-            .any(|exit| exit.id == exit_id && !exit.if_.is_empty())
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -245,9 +301,20 @@ impl Canon {
         }
     }
 
+    /// The exits of `place`, in the file order of their paths.
+    pub(crate) fn exits(&self, place: &str) -> impl Iterator<Item = Exit<'_>> {
+        exits_of(&self.paths, &self.exit_rows, place)
+    }
+
+    /// The exit at `place` that a player names `id`.
+    pub(crate) fn find_exit(&self, place: &str, id: &str) -> Option<Exit<'_>> {
+        find_exit(&self.paths, &self.exit_rows, place, id)
+    }
+
     /// Whether `exit` is a door: an exit of its place with an `if`, so it can be open or shut.
     pub(crate) fn has_door(&self, exit: &ExitId) -> bool {
-        (self.places.get(&exit.place)).is_some_and(|at| at.has_door(&exit.exit))
+        (self.find_exit(exit.place.as_str(), &exit.exit))
+            .is_some_and(|exit| !exit.path.if_.is_empty())
     }
 
     pub fn idle_profile(&self, actor_id: &ActorId) -> Option<&IdleProfile> {
@@ -312,7 +379,7 @@ pub fn pack_rev(root: &Path) -> Result<String, Reason> {
 }
 
 /// Loads a pack and reports its diagnostics in load order: `pack.yaml`; the items and places
-/// under `world/` and the optional `world/meters.yaml`; `rules/meters.yaml`, then each cast and
+/// under `world/`, `world/map.yaml` and the optional `world/meters.yaml`; `rules/meters.yaml`, then each cast and
 /// place file's own meters; the optional `rules/modifiers.yaml`; a missing `rules/verbs.yaml` or
 /// `rules/budget.yaml`; verbs; `story/` and each story's own meters; rule ids across files;
 /// the budget; lints across files; and `checkpoint_every`.
@@ -339,7 +406,8 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         };
         loaded.extend(rules.unwrap_or_default());
     }
-    name_exits(&mut places);
+    let paths = diags.keep(read_text(root, MAP_FILE).and_then(|text| map::load(&text)));
+    let exit_rows = (paths.as_deref()).and_then(|paths| diags.keep(map::index_exits(paths)));
     let world_meters = if root.join("world/meters.yaml").is_file() {
         let rel = "world/meters.yaml";
         diags.keep(
@@ -386,12 +454,16 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     }
     let rules = rule::Table::new(loaded);
     let budget = budget.and_then(|(rel, text)| diags.keep(budget::load(rel, &text)));
-    if let (Some(meters), Some(world_meters)) = (&meters, &world_meters) {
+    if let (Some(meters), Some(world_meters), Some(paths), Some(exit_rows)) =
+        (&meters, &world_meters, &paths, &exit_rows)
+    {
         let scope = EntityScope {
             meters,
             world_meters,
             cast: &cast,
             places: &places,
+            paths,
+            exit_rows,
             stories: &stories,
         };
         diags.extend(unknown_reads(&scope, &rules));
@@ -402,13 +474,17 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     }
     diags.extend(unknown_rule_items(&rules, &items));
     diags.extend(reveal_problems(&rules, &facts.0));
-    diags.extend(broken_exits(&places, &facts.0, &items));
+    if let Some(paths) = &paths {
+        diags.extend(broken_paths(paths, &places, &facts.0, &items));
+    }
     let checkpoint_every = pack
         .as_ref()
         .and_then(|pack| diags.keep(pack.checkpoint_every()));
     diags.into_result(())?;
     let (
         Some(pack),
+        Some(paths),
+        Some(exit_rows),
         Some(meters),
         Some(world_meters),
         Some(modifiers),
@@ -416,6 +492,8 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         Some(checkpoint_every),
     ) = (
         pack,
+        paths,
+        exit_rows,
         meters,
         world_meters,
         modifiers,
@@ -431,6 +509,8 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         system: pack.system,
         start_place: pack.start.place,
         places,
+        paths,
+        exit_rows,
         cast,
         facts: facts.0,
         stories,

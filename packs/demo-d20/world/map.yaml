@@ -1,0 +1,23 @@
+schema: map
+paths:
+  - path: yard -> lane
+    id: gate
+    cost:
+      ticks: 15
+    if:
+      - flag: { of: world, key: passage, is: true }
+      - not:
+          flag: { of: world, key: lost, is: true }
+    locked_text: Briar keeps the gate shut.
+  - path: yard -> lane
+    id: cart
+    cost:
+      ticks: 15
+    if:
+      - flag: { of: world, key: wheel_set, is: true }
+      - not:
+          flag: { of: world, key: lost, is: true }
+    locked_text: The cart won't move.
+  - path: lane -> yard
+  - path: yard <-> loft
+  - path: yard <-> shed

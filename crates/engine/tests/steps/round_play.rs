@@ -480,12 +480,15 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
 
 #[given(expr = "the walk to the street costs {int} rest")]
 fn the_walk_to_the_street_costs_rest(world: &mut World, rest: i64) {
-    let path = world.pack().join("world/places/docks_shop.md");
+    let path = world.pack().join("world/map.yaml");
     let text = fs::read_to_string(&path).unwrap();
-    let exit = "  - to: docks_street\n    id: docks_street\n";
-    let cost = format!("{exit}    cost: {{ meters: {{ rest: {rest} }} }}\n");
-    let next = text.replacen(exit, &cost, 1);
-    assert_ne!(next, text, "the shop has no street exit");
+    let line = "  - path: docks_shop <-> docks_street\n";
+    let cost = format!("    cost: {{ meters: {{ rest: {rest} }} }}\n");
+    let split = format!(
+        "  - path: docks_shop -> docks_street\n{cost}  - path: docks_street -> docks_shop\n"
+    );
+    let next = text.replacen(line, &split, 1);
+    assert_ne!(next, text, "the shop has no two-way street path");
     fs::write(&path, next).unwrap();
     support::stamp_pack_rev(world.pack());
 }
@@ -538,6 +541,18 @@ fn rowan_walks_to_the_street(world: &mut World) {
 #[then(expr = "neither flag is set")]
 fn neither_flag_is_set(world: &mut World) {
     assert_eq!(world.count, 0, "flags were set");
+}
+
+/// Only the shop's side of the stair door opens with the key, so this opens the rooms' side.
+#[given(expr = "the stair door stands open on Mira's side")]
+fn the_stair_door_stands_open_on_miras_side(world: &mut World) {
+    support::edit_save(world.pack(), |now| {
+        let stairs = spookery_engine::ExitId {
+            place: "mira_rooms".into(),
+            exit: "stairs".to_string(),
+        };
+        now.places_mut().set_exit_open(&stairs, true).unwrap();
+    });
 }
 
 #[when(expr = "Bram and Aldric wait and then Mira travels through the {string} exit")]
@@ -661,12 +676,13 @@ fn rowan_walks(
     (world, output)
 }
 
-/// Give `place` its own `rules:` list, written just before its exits.
-fn add_place_rules(pack: &Path, place: &str, rules: &str) {
+/// Give `place`, which has no rules, its own `rules:` list at the end of its frontmatter.
+pub(crate) fn add_place_rules(pack: &Path, place: &str, rules: &str) {
     let path = pack.join(format!("world/places/{place}.md"));
     let text = fs::read_to_string(&path).unwrap();
-    let next = text.replacen("exits:", &format!("rules:\n{rules}\nexits:"), 1);
-    assert_ne!(next, text, "{place} has no exits");
+    assert!(!text.contains("\nrules:"), "{place} has rules already");
+    let next = text.replacen("\n---\n", &format!("\nrules:\n{rules}\n---\n"), 1);
+    assert_ne!(next, text, "{place} has no closing fence");
     fs::write(&path, next).unwrap();
 }
 

@@ -193,6 +193,36 @@ pub(crate) fn text_of(slot: &Arc<Mutex<String>>) -> String {
     slot.lock().unwrap().clone()
 }
 
+/// Split the two-way line `a <-> b` in the pack's map, which has no fields, into `a -> b` and
+/// `b -> a`, each followed by its own `fields`, indented YAML lines or `""`.
+pub(crate) fn split_path(pack: &Path, [a, b]: [&str; 2], [a_fields, b_fields]: [&str; 2]) {
+    let path = pack.join("world/map.yaml");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let line = format!("  - path: {a} <-> {b}\n");
+    assert!(text.contains(&line), "no {line} in the map");
+    let split = format!("  - path: {a} -> {b}\n{a_fields}  - path: {b} -> {a}\n{b_fields}");
+    std::fs::write(&path, text.replacen(&line, &split, 1)).unwrap();
+}
+
+/// Insert `block`, whole top-level keys such as `rules:`, at the end of the frontmatter of the
+/// Markdown file at `path`.
+pub(crate) fn insert_before_fence(path: &Path, block: &str) {
+    let text = std::fs::read_to_string(path).unwrap();
+    let index = text
+        .find("\n---\n")
+        .unwrap_or_else(|| panic!("no fence in {}", path.display()));
+    let mut next = text[..index].to_string();
+    if !next.ends_with('\n') {
+        next.push('\n');
+    }
+    next.push_str(block);
+    if !block.ends_with('\n') {
+        next.push('\n');
+    }
+    next.push_str(&text[index + 1..]);
+    std::fs::write(path, next).unwrap();
+}
+
 pub(crate) fn pack_arg(pack: &Path) -> String {
     pack.to_str()
         .unwrap_or_else(|| panic!("pack path is not utf-8"))

@@ -235,8 +235,9 @@ Tested in `features/meters/modifiers_stack_and_expire.feature` and
 
 ## Travel
 
-A missing exit and a locked exit change nothing. A locked exit shows its locked
-text. An exit with an `if` is locked until, at the end of a round, some actor in
+A place's exits are the paths in `world/map.yaml` that leave it. A two-way
+path's `if`, cost and locked text hold from both ends. A missing exit and a
+locked exit change nothing. A locked exit shows its locked text. An exit with an `if` is locked until, at the end of a round, some actor in
 its place meets that `if`. Then the exit opens and the GM sees the
 `place_exit_open` change, and the exit stays open for every actor until a rule
 sets `open` to false. A hidden exit the traveller does not know stays off the view and `help`.

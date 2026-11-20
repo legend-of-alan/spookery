@@ -24,13 +24,9 @@ fn the_world_shows_dawn_and_the_street_exits_are_hidden(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "view-sections");
     let dawn = "schema: meters\nmeters:\n  - id: dawn\n    min: 0\n    base_cap: 6\n    max: 6\n    base: 6\n    hidden: false\n";
     fs::write(pack.join("world/meters.yaml"), dawn).unwrap();
-    for exit in ["docks_shop", "gate_yard"] {
-        common::replace_in_file(
-            &pack.join("world/places/docks_street.md"),
-            &format!("    id: {exit}\n"),
-            &format!("    id: {exit}\n    hidden: true\n    revealed_by: fact_ledger_short\n"),
-        );
-    }
+    let hidden = "    hidden: true\n    revealed_by: fact_ledger_short\n";
+    crate::support::split_path(&pack, ["docks_shop", "docks_street"], ["", hidden]);
+    crate::support::split_path(&pack, ["docks_street", "gate_yard"], [hidden, ""]);
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
 }
@@ -156,8 +152,8 @@ async fn the_docks_have_a_greet_verb(world: &mut World) {
 
 #[given(expr = "the shop has a pray verb if rowan holds lamp_oil, and the CLI holds rowan")]
 async fn the_shop_has_a_pray_verb(world: &mut World) {
-    let from = "    locked_text: The stair door is locked.\n";
-    let rules = "    locked_text: The stair door is locked.\nrules:\n  - id: pray\n    when:\n      verb: pray\n    if:\n      - has_item:\n          subject: self\n          id: lamp_oil\n    do: []\n";
+    let from = "    base: 2\n";
+    let rules = "    base: 2\nrules:\n  - id: pray\n    when:\n      verb: pray\n    if:\n      - has_item:\n          subject: self\n          id: lamp_oil\n    do: []\n";
     add_rule_and_join(world, "help-if", "world/places/docks_shop.md", from, rules).await;
 }
 

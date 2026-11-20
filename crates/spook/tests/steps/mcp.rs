@@ -524,12 +524,12 @@ async fn an_mcp_gm_and_a_websocket_gm(world: &mut World) {
     world.ws_table = Some((running, ws_pack));
 }
 
-/// Mira stands in her rooms. Travel needs a target, and the shop is down the stairs.
+/// Bram stands in the street. Travel needs a target, and the shop is next to it.
 const TRAVEL_THEN_COMMIT: [(&str, &str); 3] = [
-    ("queue", r#"{"actor_id":"mira","move":"travel"}"#),
+    ("queue", r#"{"actor_id":"bram","move":"travel"}"#),
     (
         "queue",
-        r#"{"actor_id":"mira","move":"travel","target":"stairs"}"#,
+        r#"{"actor_id":"bram","move":"travel","target":"docks_shop"}"#,
     ),
     ("commit", r#"{"include_round":true}"#),
 ];

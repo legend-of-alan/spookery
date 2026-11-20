@@ -56,28 +56,19 @@ fn rowan_and_wren_in_the_shop(world: &mut World) {
 #[given(expr = "the stairs take {int} ticks and Rowan holds the brass key")]
 fn the_stairs_take(world: &mut World, ticks: u64) {
     let pack = world.pack.clone().unwrap();
-    let path = pack.join("world/places/docks_shop.md");
-    let text = fs::read_to_string(&path).unwrap();
-    let next = text.replace(
+    super::common::replace_in_file(
+        &pack.join("world/map.yaml"),
         "    id: stairs\n    cost:\n      ticks: 2\n",
         &format!("    id: stairs\n    cost:\n      ticks: {ticks}\n"),
     );
-    assert_ne!(next, text, "the stairs cost moved");
-    fs::write(&path, next).unwrap();
     edit_save(&pack, give_key);
 }
 
 #[given(expr = "the shop's exit to the street takes {int} ticks")]
 fn the_street_exit_takes(world: &mut World, ticks: u64) {
     let pack = world.pack.clone().unwrap();
-    let path = pack.join("world/places/docks_shop.md");
-    let text = fs::read_to_string(&path).unwrap();
-    let next = text.replace(
-        "    id: docks_street\n",
-        &format!("    id: docks_street\n    cost:\n      ticks: {ticks}\n"),
-    );
-    assert_ne!(next, text, "the street exit cost moved");
-    fs::write(&path, next).unwrap();
+    let cost = format!("    cost:\n      ticks: {ticks}\n");
+    crate::support::split_path(&pack, ["docks_shop", "docks_street"], [&cost, ""]);
     stamp_pack_rev(&pack);
 }
 

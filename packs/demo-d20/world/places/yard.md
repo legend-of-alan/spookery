@@ -2,41 +2,6 @@
 schema: place
 id: yard
 name: Yard
-exits:
-  - to: lane
-    id: gate
-    cost:
-      ticks: 15
-    if:
-      - flag:
-          of: world
-          key: passage
-          is: true
-      - not:
-          flag:
-            of: world
-            key: lost
-            is: true
-    locked_text: Briar keeps the gate shut.
-  - to: lane
-    id: cart
-    cost:
-      ticks: 15
-    if:
-      - flag:
-          of: world
-          key: wheel_set
-          is: true
-      - not:
-          flag:
-            of: world
-            key: lost
-            is: true
-    locked_text: The cart won't move.
-  - to: loft
-    id: loft
-  - to: shed
-    id: shed
 facts:
   - id: fact_nell_waiting
     text: Nell is waiting on the lane for her flour, past the gate and the cart.

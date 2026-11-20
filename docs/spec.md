@@ -8,7 +8,7 @@ Every number in a rule line is an expression:
 - a meter effect's `add` and `set`, and an item effect's `add` and `max`
 - a modifier effect's `add` and `ticks`
 - a condition's numbers: `has_item.count`, `meter.value`, `players.value`, and `cycle.from` and `cycle.to`
-- a cost's `ticks`, meter amounts and item counts, on a rule or an exit
+- a cost's `ticks`, meter amounts and item counts, on a rule or a path
 
 A rule's `let:` numbers are expressions too, and the rule's other numbers read them by id.
 
