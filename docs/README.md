@@ -44,7 +44,7 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 | **Effect** | A checked change to the world, produced from an intent. |
 | **Expression** | A number in a rule. An integer, dice such as `2d6` or `2d20kh1`, a meter read such as `self.might`, and `+`, `-`, `*`, `/`, `min`, and `max`. A condition's value does not roll dice. |
 | **GM** | The storyteller seat. Usually an agent that talks to the MCP endpoint. `spook ai-gm` is the built-in model GM. |
-| **Log** | A `tracing` event about what `spook` did, for an operator or developer. `spook run` and `spook ai-gm` write theirs to `logs/` under the directory they start in, and `spook run` names the file on stderr. Other commands log to stderr. The journal and the tape are the game record. Neither is a log. |
+| **Log** | A `tracing` event about what `spook` did, for an operator or developer. `spook run`, `spook ai-gm` and the `spook play` window write theirs to `logs/` under the directory they start in, and `spook run` names the file on stderr. Other commands log to stderr. The journal and the tape are the game record. Neither is a log. |
 
 ## Repo layout
 
@@ -58,7 +58,7 @@ crates/
   protocol/            spookery-protocol: the message envelope, its bodies, and the command table
   engine/              spookery-engine: world model, rules, rounds, and journal
   agent/               spookery-agent: the reusable GM brain: connection, model, chat_completions, context (the observation), tool, turn and task (the turn graph)
-  client/              spookery-client: play, gm, ai_gm (the three clients), ws, http_model, text
+  client/              spookery-client: play, gm, ai_gm (the three clients), window (the play window), ws, http_model, text
   server/              spookery-server: the table, the game port's WebSocket endpoint, MCP endpoint, GM commands, seats, idle timer
   spook/               package and binary spook, library spookery
     tests/features/    BDD scenarios
@@ -88,6 +88,8 @@ spook verify /tmp/docks
 ```
 
 While `spook run` serves a pack, `round` and `migrate` on that pack exit 1 with `COMMIT_CONFLICT` and write nothing. Stop `spook run` to use them.
+
+At a terminal, `spook play` opens a game window: the story on the left, the place on the right, and the line you type at the bottom. Tab completes a command, Up and Down walk what you typed, PgUp and PgDn scroll the story, and Ctrl+C releases your character. Piped, or with `--lines`, it prints plain lines instead, which suits screen readers. `--raw` prints each protocol frame as one JSON line.
 
 If you join as a character who's already seated, `spook play` exits 1 with `That character is already taken. [SEAT_TAKEN]`. A fourth player gets `The table is full. [TABLE_FULL]`.
 
@@ -172,7 +174,7 @@ A view does include the Markdown body of its place and of the viewer and each ca
 
 It never sends `save.yaml` or the tape file. Those stay on disk in the pack. A new `spook ai-gm` process starts fresh and remembers nothing from the last one.
 
-Logs carry no table text. `spook run` and `spook ai-gm` write them to `logs/<command>-<time>-<pid>.log` in the directory they start in, never inside `state/`, and other commands write them to stderr. By default those files hold seat and round events and each model call's model id, attempts, time and token counts, never the prompt or the reply. The exception is `rmcp` at `debug` or `trace`, which logs whole MCP messages.
+Logs carry no table text. `spook run`, `spook ai-gm` and the `spook play` window write them to `logs/<command>-<time>-<pid>.log` in the directory they start in, never inside `state/`, and other commands write them to stderr. By default those files hold seat and round events and each model call's model id, attempts, time and token counts, never the prompt or the reply. The exception is `rmcp` at `debug` or `trace`, which logs whole MCP messages.
 
 ## License
 

@@ -3,6 +3,8 @@
 mod new;
 
 use std::fs;
+#[cfg(feature = "client")]
+use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
@@ -40,12 +42,15 @@ enum Command {
         #[arg(long = "mcp-addr", value_name = "127.0.0.1:<port>")]
         mcp_addr: Option<String>,
     },
-    /// Sit the player seat.
+    /// Sit the player seat. At a terminal it opens the game window; piped, it prints lines.
     #[cfg(feature = "client")]
     Play {
-        /// Print each protocol frame as one JSON line.
+        /// Print each protocol frame as one JSON line. Implies `--lines`.
         #[arg(long)]
         raw: bool,
+        /// Print plain lines even at a terminal.
+        #[arg(long)]
+        lines: bool,
     },
     /// Sit the GM seat.
     #[cfg(feature = "client")]
@@ -168,9 +173,16 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 .map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
-        Command::Play { raw } => spookery::play::run(addr, raw)
-            .await
-            .map_err(|err| err.to_string()),
+        Command::Play { raw, lines } => {
+            let mode = if opens_window(raw, lines) {
+                spookery::play::Mode::Window
+            } else {
+                spookery::play::Mode::Lines { raw }
+            };
+            spookery::play::run(addr, mode)
+                .await
+                .map_err(|err| err.to_string())
+        }
         #[cfg(feature = "client")]
         Command::Gm { raw } => spookery::gm::run(addr, raw)
             .await
@@ -260,15 +272,17 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
     }
 }
 
-/// Installs the one log subscriber. `spook run` and `spook ai-gm` log to a new file under
-/// `logs/`, whose path this returns. Every other command logs to stderr. A `RUST_LOG` whose
-/// directives are all invalid logs warnings.
+/// Installs the one log subscriber. `spook run`, `spook ai-gm` and `spook play` in its window
+/// log to a new file under `logs/`, whose path this returns. Every other command logs to stderr.
+/// A `RUST_LOG` whose directives are all invalid logs warnings.
 fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
     let (command_id, default_directives) = match command {
         #[cfg(feature = "server")]
         Command::Run { .. } => (Some("run"), "warn,spook=info"),
         #[cfg(feature = "client")]
         Command::AiGm => (Some("ai-gm"), "warn,spook=info"),
+        #[cfg(feature = "client")]
+        Command::Play { raw, lines } if opens_window(*raw, *lines) => (Some("play"), "warn"),
         _ => (None, "warn"),
     };
     let directives = std::env::var("RUST_LOG")
@@ -293,6 +307,12 @@ fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
         .map_err(|err| format!("{}: {err}", path.display()))?;
     subscriber.with_writer(file).init();
     Ok(Some(path))
+}
+
+/// Whether `spook play` opens its window: at a terminal, without `--raw` or `--lines`.
+#[cfg(feature = "client")]
+fn opens_window(raw: bool, lines: bool) -> bool {
+    !raw && !lines && std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
 }
 
 fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {
@@ -352,9 +372,23 @@ mod tests {
         ));
         assert!(Cli::try_parse_from(["spook", "gm", "--mcp-addr", "127.0.0.1:9801"]).is_err());
         let play = Cli::try_parse_from(["spook", "play"]).unwrap();
-        assert!(matches!(play.command, Command::Play { raw: false }));
+        assert!(matches!(
+            play.command,
+            Command::Play {
+                raw: false,
+                lines: false
+            }
+        ));
         let raw = Cli::try_parse_from(["spook", "play", "--raw"]).unwrap();
-        assert!(matches!(raw.command, Command::Play { raw: true }));
+        assert!(matches!(raw.command, Command::Play { raw: true, .. }));
+        let lines = Cli::try_parse_from(["spook", "play", "--lines"]).unwrap();
+        assert!(matches!(
+            lines.command,
+            Command::Play {
+                raw: false,
+                lines: true
+            }
+        ));
         let host = Cli::try_parse_from(["spook", "ai-gm"]).unwrap();
         assert!(matches!(host.command, Command::AiGm));
         let verify = Cli::try_parse_from(["spook", "verify", "--from", "snap", "pack"]).unwrap();

@@ -51,9 +51,14 @@ fn stdout_names_the_default_loopback_address(world: &mut World) {
     assert!(world.stdout.contains("127.0.0.1:9737"), "{}", world.stdout);
 }
 
+#[when(expr = "play joins the table with --lines")]
+async fn play_joins_the_table_with_lines(world: &mut World) {
+    join_play(world, "rowan", &["--lines"]).await;
+}
+
 #[when(expr = "play joins the table with raw frames")]
 async fn play_joins_the_table_with_raw_frames(world: &mut World) {
-    join_play(world, "rowan", true).await;
+    join_play(world, "rowan", &["--raw"]).await;
 }
 
 #[when(expr = "play says {string}")]

@@ -1,46 +1,60 @@
-//! The human player: claims a PC, turns typed lines into commands, and prints each message.
-//! Quitting releases the PC. A dropped connection dials again and takes it back by token.
+//! The human player: claims a PC, turns typed lines into commands, and shows each message as
+//! lines or in the game window. Quitting releases the PC. A dropped connection dials again and
+//! takes it back by token.
 
-use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::net::SocketAddr;
 
 use serde_json::{json, Value};
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::protocol::{self, Reason, Refusal, ServerBody, ServerMessage};
 use crate::text;
+use crate::window::Window;
 use crate::ws::Connection;
 use crate::Error;
 
-/// Dials a fresh connection after the PC choice, so a slow choice never trips the
-/// first-message deadline.
-pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
-    let mut printer = Printer {
-        text: text::Renderer::new(),
-        raw,
-        last_seq: 0,
-    };
-    let mut input = crate::stdin_lines();
+/// How `spook play` shows the table: plain lines, as text or with `raw` as protocol frames, or
+/// the game window.
+pub enum Mode {
+    Lines { raw: bool },
+    Window,
+}
+
+/// Plays one sitting in `mode`. Dials a fresh connection after the PC choice, so a slow choice
+/// never trips the first-message deadline.
+pub async fn run(addr: SocketAddr, mode: Mode) -> Result<(), Error> {
+    let mut output = Output::open(mode)?;
+    let closing = sit(addr, &mut output).await;
+    drop(output);
+    if let Ok(Closing::HostClosed) = closing {
+        eprintln!("host closed");
+    }
+    closing.map(drop)
+}
+
+/// How a sitting ended.
+enum Closing {
+    /// The player left, releasing their PC if they held one.
+    PlayerLeft,
+    /// `spook run` was gone when play dialed it again.
+    HostClosed,
+}
+
+async fn sit(addr: SocketAddr, output: &mut Output) -> Result<Closing, Error> {
     let (seat, hello) = Connection::open(addr, "player").await?;
-    let (commands, open, taken, pc_names) = match hello.body {
-        ServerBody::Hello {
-            commands,
-            open,
-            taken,
-            pc_names,
-            ..
-        } => (commands, open, taken, pc_names),
-        _ => Default::default(),
+    let commands = match &hello.body {
+        ServerBody::Hello { commands, .. } => commands.clone(),
+        _ => Vec::new(),
     };
+    output.show(&hello)?;
     drop(seat);
-    print_text(&list_pcs(&open, &taken, &pc_names));
-    let Some(chosen) = input.recv().await else {
-        return Ok(());
+    let Some(chosen) = output.next_line().await? else {
+        return Ok(Closing::PlayerLeft);
     };
     let actor = parse_pc_choice(&chosen)?;
     let mut seat = Connection::open(addr, "player").await?.0;
-    let (mut here, mut token) =
-        take_claim(&mut seat, json!({ "actor": actor }), &mut printer).await?;
+    let (mut here, mut token) = take_claim(&mut seat, json!({ "actor": actor }), output).await?;
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
     loop {
@@ -49,43 +63,39 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
                 let message = match message {
                     Some(Ok(message)) => message,
                     Some(Err(Error::Io(_))) | None => {
-                        let Some(back) = reconnect(addr, &token, &mut printer).await? else {
-                            return Ok(());
+                        let Some(back) = reconnect(addr, &token, output).await? else {
+                            return Ok(Closing::HostClosed);
                         };
                         (seat, here, token) = back;
                         continue;
                     }
                     Some(Err(err)) => return Err(err),
                 };
-                if let Some(shown) = printer.show(&message) {
-                    eprintln!("{shown}");
-                    let _ = io::stderr().flush();
-                }
+                output.show(&message)?;
                 if let ServerBody::View(view) = message.body {
                     here = *view;
                 }
             }
-            _ = &mut ctrl_c => return seat.release().await,
-            line = input.recv() => {
-                let Some(line) = line else {
-                    return seat.release().await;
+            _ = &mut ctrl_c => break,
+            line = output.next_line() => {
+                let Some(line) = line? else {
+                    break;
                 };
                 if line.trim() == "release" {
-                    return seat.release().await;
+                    break;
                 }
                 let Some((command, args)) = parse_command(&line, &here) else {
                     continue;
                 };
                 if !commands.iter().any(|known| known == command) {
-                    let refusal = Refusal::from(Reason::NotInSpec);
-                    eprintln!("{}", text::render_refusal(&refusal, raw));
+                    output.show_body(&ServerBody::Refused(Refusal::from(Reason::NotInSpec)))?;
                     continue;
                 }
                 match seat.send(command, args.clone()).await {
                     Ok(_) => {}
                     Err(Error::Io(_)) => {
-                        let Some(back) = reconnect(addr, &token, &mut printer).await? else {
-                            return Ok(());
+                        let Some(back) = reconnect(addr, &token, output).await? else {
+                            return Ok(Closing::HostClosed);
                         };
                         (seat, here, token) = back;
                         seat.send(command, args).await?;
@@ -95,34 +105,35 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
             }
         }
     }
+    seat.release().await?;
+    Ok(Closing::PlayerLeft)
 }
 
-/// Dials again and takes the PC back by its token, after the last `seq` read. `None` when
+/// Dials again and takes the PC back by its token, after the last `seq` shown. `None` when
 /// `spook run` is gone.
 async fn reconnect(
     addr: SocketAddr,
     token: &str,
-    printer: &mut Printer,
+    output: &mut Output,
 ) -> Result<Option<(Connection, protocol::View, String)>, Error> {
     let mut seat = match Connection::open(addr, "player").await {
         Ok((seat, _)) => seat,
         Err(error) => {
             tracing::debug!(%error, "could not dial the host again");
-            eprintln!("host closed");
             return Ok(None);
         }
     };
-    let args = json!({ "token": token, "last_seq": printer.last_seq });
-    let (here, token) = take_claim(&mut seat, args, printer).await?;
+    let args = json!({ "token": token, "last_seq": output.last_seq });
+    let (here, token) = take_claim(&mut seat, args, output).await?;
     Ok(Some((seat, here, token)))
 }
 
-/// Sends `claim` with `args` and prints its reply, what it missed, and the first view.
+/// Sends `claim` with `args` and shows its reply, what it missed, and the first view.
 /// Returns that view and the claim's token. A refused claim ends play.
 async fn take_claim(
     seat: &mut Connection,
     args: Value,
-    printer: &mut Printer,
+    output: &mut Output,
 ) -> Result<(protocol::View, String), Error> {
     let claim = seat.send("claim", args).await?;
     let mut token = String::new();
@@ -130,12 +141,12 @@ async fn take_claim(
         let Some(message) = seat.recv().await.transpose()? else {
             return Err(Error::Message("NOT_IN_SPEC".into()));
         };
-        if let Some(shown) = printer.show(&message) {
+        if let ServerBody::Refused(refusal) = &message.body {
             if message.reply_to.as_deref() == Some(claim.as_str()) {
-                return Err(Error::Message(shown));
+                return Err(Error::Message(text::render_refusal(refusal, output.raw())));
             }
-            eprintln!("{shown}");
         }
+        output.show(&message)?;
         match message.body {
             ServerBody::Claimed {
                 token: held,
@@ -144,9 +155,7 @@ async fn take_claim(
             } => {
                 token = held;
                 for missed in &missed {
-                    if let Some(shown) = printer.show(missed) {
-                        eprintln!("{shown}");
-                    }
+                    output.show(missed)?;
                 }
             }
             ServerBody::View(view) => return Ok((*view, token)),
@@ -155,49 +164,117 @@ async fn take_claim(
     }
 }
 
-/// What play prints, and the last `seq` it read, so a reconnect asks for what came after.
-struct Printer {
-    text: text::Renderer,
-    raw: bool,
+/// Where play shows each message and reads each line the player sends, and the last `seq` it
+/// showed, so a reconnect asks for what came after.
+struct Output {
+    surface: Surface,
     last_seq: u64,
 }
 
-impl Printer {
-    /// Print one message. A refusal is returned instead, as the line to show on stderr: its
-    /// code in raw mode, its sentence in text mode.
-    fn show(&mut self, message: &ServerMessage) -> Option<String> {
+/// Plain lines on stdout and stderr with lines typed on stdin, or the game window.
+enum Surface {
+    Lines {
+        printer: Printer,
+        typed: UnboundedReceiver<String>,
+    },
+    Window(Box<Window>),
+}
+
+impl Output {
+    /// Opens the window in window mode. In lines mode, starts reading stdin, which the window
+    /// leaves to its key events.
+    fn open(mode: Mode) -> Result<Self, Error> {
+        let surface = match mode {
+            Mode::Lines { raw } => Surface::Lines {
+                printer: Printer {
+                    text: text::Renderer::new(),
+                    raw,
+                },
+                typed: crate::stdin_lines(),
+            },
+            Mode::Window => Surface::Window(Box::new(Window::open()?)),
+        };
+        Ok(Self {
+            surface,
+            last_seq: 0,
+        })
+    }
+
+    fn show(&mut self, message: &ServerMessage) -> Result<(), Error> {
         self.last_seq = self.last_seq.max(message.seq.unwrap_or(0));
-        if let ServerBody::Refused(refusal) = &message.body {
-            return Some(text::render_refusal(refusal, self.raw));
+        match &mut self.surface {
+            Surface::Lines { printer, .. } if printer.raw => {
+                printer.show_raw(message);
+                Ok(())
+            }
+            _ => self.show_body(&message.body),
         }
-        let shown = if self.raw {
-            message.to_text()
-        } else {
-            self.text.render(&message.body)
+    }
+
+    fn show_body(&mut self, body: &ServerBody) -> Result<(), Error> {
+        match &mut self.surface {
+            Surface::Lines { printer, .. } => {
+                printer.show(body);
+                Ok(())
+            }
+            Surface::Window(window) => window.show(body),
+        }
+    }
+
+    /// The next line the player sends: typed on stdin, or chosen or typed in the window.
+    /// `None` when stdin ends or the player quits the window.
+    async fn next_line(&mut self) -> Result<Option<String>, Error> {
+        match &mut self.surface {
+            Surface::Lines { typed, .. } => Ok(typed.recv().await),
+            Surface::Window(window) => window.next_line().await,
+        }
+    }
+
+    /// Whether refusals show as their bare code.
+    fn raw(&self) -> bool {
+        matches!(&self.surface, Surface::Lines { printer, .. } if printer.raw)
+    }
+}
+
+/// What lines mode prints: the picker, each body as text or with `raw` each message as its
+/// frame, and refusals on stderr.
+struct Printer {
+    text: text::Renderer,
+    raw: bool,
+}
+
+impl Printer {
+    fn show(&mut self, body: &ServerBody) {
+        let shown = match body {
+            ServerBody::Hello {
+                open,
+                taken,
+                pc_names,
+                ..
+            } => text::render_picker(&text::picker_rows(open, taken, pc_names)),
+            ServerBody::Refused(refusal) => {
+                eprintln!("{}", text::render_refusal(refusal, self.raw));
+                return;
+            }
+            _ => self.text.render(body),
         };
         if !shown.is_empty() {
             print_text(&shown);
         }
-        None
+    }
+
+    /// The picker as text, a refusal as its code on stderr, and any other message as its frame.
+    fn show_raw(&mut self, message: &ServerMessage) {
+        match &message.body {
+            ServerBody::Hello { .. } | ServerBody::Refused(_) => self.show(&message.body),
+            _ => print_text(&message.to_text()),
+        }
     }
 }
 
 fn print_text(text: &str) {
     println!("{text}");
     let _ = io::stdout().flush();
-}
-
-/// The picker: every PC by the name the hello gives it, the taken ones marked in use.
-fn list_pcs(open: &[String], taken: &[String], pc_names: &BTreeMap<String, String>) -> String {
-    let name = |id: &String| pc_names.get(id).cloned().unwrap_or_default();
-    let mut pcs: Vec<String> = open.iter().map(name).collect();
-    pcs.extend(taken.iter().map(|id| format!("{} (in use)", name(id))));
-    pcs.sort();
-    let mut text = format!("Choose a character:\n{}", pcs.join("\n"));
-    if open.is_empty() {
-        text.push_str("\nNone is free.");
-    }
-    text
 }
 
 /// The PC a picker line names, by id, `player:<id>` or name.

@@ -1,5 +1,5 @@
 //! The client side of a table: the seat connection, messages as text, the `spook play` and
-//! `spook gm` terminals, and the AI GM runner.
+//! `spook gm` terminals, the `spook play` game window, and the AI GM runner.
 
 use std::fmt;
 use std::io;
@@ -10,6 +10,7 @@ pub mod http_model;
 pub mod play;
 use spookery_protocol as protocol;
 pub mod text;
+mod window;
 pub mod ws;
 
 /// A client failure: what `play::run`, `gm::run` and `ai_gm::run` return to `spook`, and what
