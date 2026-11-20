@@ -121,7 +121,7 @@ jobs:
                 n = split(terms, ands, / AND /)
                 for (i = 1; i <= n; i++) {
                   free = 0; m = split(ands[i], ors, / OR /)
-                  for (j = 1; j <= m; j++) if (ors[j] ~ /^ *(MIT|Apache-2\.0( WITH LLVM-exception)?|Unlicense|Unicode-3\.0|BSD-2-Clause|BSD-3-Clause|ISC|Zlib|BSL-1\.0) *$/) free = 1
+                  for (j = 1; j <= m; j++) if (ors[j] ~ /^ *(MIT|Apache-2\.0( WITH LLVM-exception)?|Unlicense|Unicode-3\.0|CDLA-Permissive-2\.0|BSD-2-Clause|BSD-3-Clause|ISC|Zlib|BSL-1\.0) *$/) free = 1
                   if (!free) { print crate ": " $0; bad = 1 }
                 }
               }

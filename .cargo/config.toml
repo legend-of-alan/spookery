@@ -1,0 +1,4 @@
+# aws-lc-sys, under reqwest's rustls, needs NASM on x86_64 Windows. GitHub's Windows runners
+# have none, so it uses the NASM objects it ships. An installed NASM still wins.
+[env]
+AWS_LC_SYS_PREBUILT_NASM = "1"

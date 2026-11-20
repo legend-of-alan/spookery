@@ -385,7 +385,7 @@ fn break_pack(pack: &Path, fault: &str) {
             "    do:\n      - modifier: { to: self, id: scorch, add: -1, ticks: 10 }\n",
         ),
         "an undeclared story flag" => {
-            write_file(pack, "story/siege.yaml", "schema: story\nid: siege\nrules:\n");
+            write_file(pack, "story/siege.yaml", "schema: story\nid: siege\nrules: []\n");
             add_verb_rule(
                 pack,
                 "set_mark",
@@ -411,7 +411,7 @@ fn break_pack(pack: &Path, fault: &str) {
             "    do:\n      - meter: { of: \"place:docks_street\", key: light, add: 1 }\n",
         ),
         "a repeated story id" => {
-            write_file(pack, "story/later.yaml", "schema: story\nid: ending\nrules:\n");
+            write_file(pack, "story/later.yaml", "schema: story\nid: ending\nrules: []\n");
         }
         "an empty story id" => {
             replace_in_file(&pack.join("story/ending.yaml"), "id: ending\n", "id: \"\"\n");

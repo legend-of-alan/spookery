@@ -16,6 +16,8 @@ cargo test --workspace --test features_host --test features_world
 
 `rust-toolchain.toml` pins the Rust version, and rustup installs it for you. Pull requests only run CI on Linux. Pushes to main also run it on macOS and Windows.
 
+Dependencies use normal caret versions, like `"1.4"`. An exact `=` pin needs a written reason in a comment next to it.
+
 ## Issues and PRs
 
 Issue titles are plain sentences. Every issue gets an area label and a size label.
