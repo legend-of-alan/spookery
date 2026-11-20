@@ -8,9 +8,7 @@ license = "MIT"
 [lib]
 path = "lib.rs"
 [dependencies]
-# Stays on 0.12. The 0.13 `rustls` feature builds aws-lc-rs, a C library, in place of ring,
-# and keeping ring needs a new dependency and setup code. See #736.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 spookery-agent = { path = "../agent" }
