@@ -8,12 +8,15 @@ license = "MIT"
 [lib]
 path = "lib.rs"
 [dependencies]
+# Stays on 0.12. The 0.13 `rustls` feature builds aws-lc-rs, a C library, in place of ring,
+# and keeping ring needs a new dependency and setup code. See #736.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 spookery-agent = { path = "../agent" }
 spookery-protocol = { path = "../protocol" }
 tokio = { version = "1", features = ["macros", "rt", "time", "net", "io-util", "sync", "signal"] }
+# Stays on 0.29 to match axum 0.8, so spook builds one tungstenite. See #736.
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect"] }
 tracing = "0.1.44"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
