@@ -126,7 +126,7 @@ async fn an_http_body_over_a_mebibyte(world: &mut World) {
     );
     let mut stream = connect(http);
     stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
+        .set_read_timeout(Some(support::WAIT_LIMIT))
         .unwrap_or_else(|err| panic!("timeout: {err}"));
     stream
         .write_all(request.as_bytes())
@@ -309,7 +309,7 @@ async fn one_player_stops_reading(world: &mut World) {
     let mut sent = 0usize;
     let args = format!(r#"{{"to":"table","text":"{say}"}}"#);
     while is_open(table::player_client(world, "rowan")) {
-        if start.elapsed() > Duration::from_secs(60) || sent > budget {
+        if start.elapsed() > support::WAIT_LIMIT || sent > budget {
             let stderr = table::live_mut(world)
                 .host
                 .as_ref()
