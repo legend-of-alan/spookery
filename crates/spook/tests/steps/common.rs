@@ -256,6 +256,16 @@ fn break_pack(pack: &Path, fault: &str) {
             "control_type: pc_template\n",
             "kind: pc_template\n",
         ),
+        "an empty tags key" => replace_in_file(
+            &pack.join("world/items/latch.md"),
+            "tags: []\n",
+            "tags:\n",
+        ),
+        "an empty modifiers key" => replace_in_file(
+            &pack.join("state/save.yaml"),
+            "  modifiers: {}\n",
+            "  modifiers:\n",
+        ),
         "flags under idle" => replace_in_file(
             &pack.join("cast/pc-rowan.md"),
             "  eligible: false\n",
