@@ -80,7 +80,7 @@
           ]
         },
         {
-          "description": "The reply to `claim`. `token` takes this PC back after a dropped connection. A new\nclaim carries `scrollback`, the speech this PC heard before, oldest first. A claim by\ntoken carries `missed`, the messages sent to this PC after the `last_seq` it named, and\n`gap` when more than `MISSED_MESSAGE_CAP` messages were missed.",
+          "description": "The reply to `claim`. `token` takes this PC back after a dropped connection.\n`round_index` and `world_time` are where the table is now. A new claim carries\n`scrollback`, the speech this PC heard before, oldest first. A claim by token carries\n`missed`, the messages sent to this PC after the `last_seq` it named, and `gap` when\nmore than `MISSED_MESSAGE_CAP` messages were missed.",
           "type": "object",
           "properties": {
             "actor": {
@@ -88,6 +88,18 @@
             },
             "token": {
               "type": "string"
+            },
+            "round_index": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0,
+              "default": 0
+            },
+            "world_time": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0,
+              "default": 0
             },
             "scrollback": {
               "type": "array",
@@ -827,10 +839,13 @@
       ]
     },
     "MeterView": {
-      "description": "Part of a `View`, sent from the table to a player client.",
+      "description": "Part of a `View`, sent from the table to a player client. `name` is the pack's name for the\nmeter, left out when it gives none.",
       "type": "object",
       "properties": {
         "id": {
+          "type": "string"
+        },
+        "name": {
           "type": "string"
         },
         "value": {
@@ -937,10 +952,25 @@
           }
         },
         "items": {
+          "description": "The items lying in the viewer's place.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/ItemStack"
           }
+        },
+        "carried": {
+          "description": "The items the viewer holds.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ItemStack"
+          }
+        },
+        "wielded_item_id": {
+          "description": "Which of `carried` the viewer wields, if any.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "meters": {
           "type": "array",
@@ -980,7 +1010,7 @@
       ]
     },
     "ChangeView": {
-      "description": "One change of a `changes` body, sent from the table to a player client. `component_id`\nnames what changed, such as `meter`, `item` or `place`. `entity_id` is whose it is as a\nrule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`.\n`entity_name` is that actor's, place's or story's name. `entry_id` is which one of the\nentity's, such as the meter or item id, and `entry_name` the item's name, or for `place` the\nname of the place moved to. `before` and `after` are left out when there was none.",
+      "description": "One change of a `changes` body, sent from the table to a player client. `component_id`\nnames what changed, such as `meter`, `item` or `place`. `entity_id` is whose it is as a\nrule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`.\n`entity_name` is that actor's, place's or story's name. `entry_id` is which one of the\nentity's, such as the meter or item id, and `entry_name` the item's or meter's name, or for\n`place` the name of the place moved to. `before` and `after` are left out when there was none.",
       "type": "object",
       "properties": {
         "component_id": {
@@ -1074,9 +1104,13 @@
       ]
     },
     "PlaceView": {
-      "description": "One place of a `map` reply: its name and the exits the player may see there.",
+      "description": "One place of a `map` reply: its id, its name and the exits the player may see there.",
       "type": "object",
       "properties": {
+        "place_id": {
+          "type": "string",
+          "default": ""
+        },
         "name": {
           "type": "string"
         },

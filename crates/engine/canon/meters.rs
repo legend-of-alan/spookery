@@ -61,6 +61,7 @@ pub(super) fn meter_descs(
         meters.insert(
             entry.id,
             meter::Descriptor {
+                name: entry.name.unwrap_or_default(),
                 min: entry.min,
                 base_cap: entry.base_cap,
                 max: entry.max,
@@ -123,6 +124,7 @@ struct MetersDoc {
 #[serde(deny_unknown_fields)]
 pub(super) struct MeterYaml {
     id: String,
+    name: Option<String>,
     min: i64,
     base_cap: i64,
     max: i64,

@@ -1,8 +1,8 @@
 //! Readable text for player and GM messages, and the status and commit replies.
 
 use crate::protocol::{
-    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, MeterView, NoteView, Outcome,
-    PlaceView, Roll, ServerBody, Speaker, Speech, TableStatus,
+    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, ItemStack, MeterView,
+    NoteView, Outcome, PlaceView, Roll, ServerBody, Speaker, Speech, TableStatus,
 };
 
 /// Readable text for one player body. Empty means print nothing.
@@ -125,6 +125,8 @@ pub fn render_view(view: &protocol::View) -> String {
         known_facts,
         notes,
         items,
+        carried,
+        wielded_item_id,
         meters,
         world_meters,
         exits,
@@ -163,12 +165,12 @@ pub fn render_view(view: &protocol::View) -> String {
         "Notes:",
         notes.iter().map(|note| note.text.as_str()),
     );
-    if !items.is_empty() {
-        let mut lines = Vec::new();
-        for item in items {
-            lines.push(format!("{}: {}", item.name, item.count));
+    let wielded = wielded_item_id.as_deref();
+    for (title, items) in [("Items here:", items), ("You carry:", carried)] {
+        if !items.is_empty() {
+            let lines: Vec<String> = items.iter().map(|item| item_line(item, wielded)).collect();
+            sections.push(format!("{title}\n{}", lines.join("\n")));
         }
-        sections.push(format!("Items:\n{}", lines.join("\n")));
     }
     for (title, meters) in [("Meters:", meters), ("The world:", world_meters)] {
         if !meters.is_empty() {
@@ -214,7 +216,8 @@ fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
                 as_number(change.after.as_ref()),
             ) {
                 ("meter", Some(after)) => {
-                    Some(format!("{whose} {} is now {after}.", change.entry_id))
+                    let name = meter_name(&change.entry_id, &change.entry_name);
+                    Some(format!("{whose} {name} is now {after}."))
                 }
                 ("item", Some(_)) => render_item_change(viewer, change, changes),
                 ("place", _) if !change.entry_name.is_empty() => {
@@ -332,8 +335,29 @@ fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<
     sections.push(format!("{title}\n{}", lines.join("\n")));
 }
 
+/// `Lamp oil: 4`, or `Brass key: 1 (in hand)` for the item the viewer wields.
+fn item_line(item: &ItemStack, wielded: Option<&str>) -> String {
+    let line = format!("{}: {}", item.name, item.count);
+    if wielded == Some(item.id.as_str()) {
+        format!("{line} (in hand)")
+    } else {
+        line
+    }
+}
+
+/// `Health: 8/16`.
 fn meter_line(meter: &MeterView) -> String {
-    format!("{}: {}/{}", humanize(&meter.id), meter.value, meter.max)
+    let name = meter_name(&meter.id, &meter.name);
+    format!("{name}: {}/{}", meter.value, meter.max)
+}
+
+/// The meter's `name`, or its `id` made readable when the pack gives it none.
+fn meter_name(id: &str, name: &str) -> String {
+    if name.is_empty() {
+        humanize(id)
+    } else {
+        name.to_string()
+    }
 }
 
 /// `docks_shop` becomes "Docks shop".

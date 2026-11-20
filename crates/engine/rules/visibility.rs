@@ -116,6 +116,9 @@ fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
             crate::rules::lines::find_place_name(canon, place)
         }
         (Item::ID, _) => canon.name(&entry_id).map(str::to_string),
+        (Meter::ID, _) => {
+            (canon.meter_desc(key.entity_id.as_ref(), &entry_id)).map(|desc| desc.name.clone())
+        }
         _ => None,
     };
     Some(ChangeView {

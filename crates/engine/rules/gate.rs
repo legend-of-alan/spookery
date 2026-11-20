@@ -250,25 +250,24 @@ pub(crate) fn list_ids(
     presence: &Presence,
     viewer: &Viewer,
 ) -> Vec<NamedId> {
-    let mut ids: Vec<NamedId> = (world.actors().get::<component::Item>(viewer.actor_id()))
-        .iter()
-        .filter(|(_, count)| **count > 0)
-        .filter_map(|(id, _)| Some(NamedId::new(id, canon.name(id)?.to_string())))
-        .collect();
-    if let Ok(view) = perceive::build_view(canon, world, presence, viewer) {
-        ids.push(NamedId::new(&view.place, view.place_name));
-        let me = viewer.actor_id();
-        let actors = view.visible_actors.iter().zip(view.actor_names);
-        let others = actors.filter(|(id, _)| *id != me);
-        ids.extend(others.map(|(id, name)| NamedId::new(id.as_str(), name)));
-        let items = view.items.into_iter();
-        ids.extend(items.map(|item| NamedId::new(&item.id, item.name)));
-        ids.extend(view.exits.into_iter().map(|exit| NamedId {
-            id: exit.exit_id,
-            name: exit.name,
-            aliases: vec![exit.place_id, exit.place_name],
-        }));
-    }
+    let Ok(view) = perceive::build_view(canon, world, presence, viewer) else {
+        return Vec::new();
+    };
+    let named_items = |items: Vec<perceive::ItemStack>| {
+        (items.into_iter()).map(|item| NamedId::new(&item.id, item.name))
+    };
+    let mut ids: Vec<NamedId> = named_items(view.carried).collect();
+    ids.push(NamedId::new(&view.place, view.place_name));
+    let me = viewer.actor_id();
+    let actors = view.visible_actors.iter().zip(view.actor_names);
+    let others = actors.filter(|(id, _)| *id != me);
+    ids.extend(others.map(|(id, name)| NamedId::new(id.as_str(), name)));
+    ids.extend(named_items(view.items));
+    ids.extend(view.exits.into_iter().map(|exit| NamedId {
+        id: exit.exit_id,
+        name: exit.name,
+        aliases: vec![exit.place_id, exit.place_name],
+    }));
     ids
 }
 
