@@ -8,17 +8,12 @@ use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
-use std::time::Duration;
 
 use crate::mcp_client::{event_line, read_event, GmClient, RawSession};
 use serde_json::{json, Value};
 use spookery::protocol::{Addrs, ClientMessage, ServerBody, ServerMessage, ToolResult};
 use tungstenite::protocol::Role;
 use tungstenite::{Message, WebSocket};
-
-/// A seat that never answers still has to fail the test. The line itself
-/// unblocks the wait.
-const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 const SCRUBBED_GAME_ADDR: &str = "127.0.0.1:<game>";
 const SCRUBBED_MCP_ADDR: &str = "127.0.0.1:<mcp>";
@@ -326,7 +321,7 @@ fn send(seat: &mut SeatClient, command: &str, args: Value) -> Value {
 fn next_json(seat: &SeatClient) -> Value {
     let line = seat
         .lines
-        .recv_timeout(READ_TIMEOUT)
+        .recv_timeout(crate::support::WAIT_LIMIT)
         .unwrap_or_else(|err| panic!("no message: {err}"));
     serde_json::from_str(&line).unwrap_or_else(|err| panic!("{err} in {line}"))
 }

@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::support::{copy_pack, drain, fresh_dir, pack_arg, text_of, Process};
+use crate::support::{copy_pack, drain, fresh_dir, pack_arg, text_of, Process, WAIT_LIMIT};
 
 /// Long enough for one call, one retry, and a slow CPU-only model.
 const ROUND_BOUND: Duration = Duration::from_secs(240);
@@ -52,19 +52,14 @@ fn a_live_model_plays_one_round() {
     let (proxy, calls) = start_proxy(upstream);
     let gm_dir = fresh_dir("live-round-ai-gm");
     let mut host = spawn_ai_gm(&gm_dir, &addr, &key, &format!("http://{proxy}"), &model);
-    wait_text(&host, &host.stderr, "listening", Duration::from_secs(20));
+    wait_text(&host, &host.stderr, "listening");
 
     let sit = world_time(&pack);
     let mut player = crate::support::spawn(&["--addr", &addr, "play"]);
     let stdin = player.stdin.as_mut().expect("player stdin");
     stdin.write_all(b"rowan\n").expect("pick rowan");
     stdin.flush().expect("flush pick");
-    wait_text(
-        &player,
-        &player.stdout,
-        "You are in",
-        Duration::from_secs(20),
-    );
+    wait_text(&player, &player.stdout, "You are in");
     let stdin = player.stdin.as_mut().expect("player stdin");
     stdin
         .write_all(b"travel docks_street\n")
@@ -210,7 +205,7 @@ fn start_proxy(upstream: String) -> (String, Arc<Mutex<Vec<Call>>>) {
 }
 
 fn read_request(stream: &mut TcpStream) -> (Option<String>, Vec<u8>) {
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
+    let _ = stream.set_read_timeout(Some(WAIT_LIMIT));
     let mut buf = Vec::new();
     let mut byte = [0u8; 1];
     while !buf.ends_with(b"\r\n\r\n") {
@@ -250,17 +245,17 @@ fn wait_port(addr: &str, server: &mut Process) {
         if let Some(status) = server.child.try_wait().unwrap() {
             panic!("spook run exited {status:?}\n{}", text_of(&server.stderr));
         }
-        if start.elapsed() > Duration::from_secs(20) {
+        if start.elapsed() > WAIT_LIMIT {
             panic!("spook run did not listen");
         }
         thread::sleep(Duration::from_millis(50));
     }
 }
 
-fn wait_text(proc: &Process, slot: &Arc<Mutex<String>>, needle: &str, bound: Duration) {
+fn wait_text(proc: &Process, slot: &Arc<Mutex<String>>, needle: &str) {
     let start = Instant::now();
     while !text_of(slot).contains(needle) {
-        if start.elapsed() > bound {
+        if start.elapsed() > WAIT_LIMIT {
             panic!(
                 "missing {needle:?}\nstdout:\n{}\nstderr:\n{}",
                 text_of(&proc.stdout),
