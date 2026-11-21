@@ -3,14 +3,11 @@
 use blake2::{Blake2s256, Digest};
 
 pub(crate) fn blake2s_256(bytes: &[u8]) -> [u8; 32] {
-    let digest = Blake2s256::digest(bytes);
-    let mut out = [0u8; 32];
-    out.copy_from_slice(&digest);
-    out
+    Blake2s256::digest(bytes).into()
 }
 
 pub(crate) fn blake2s_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Blake2s256::digest(bytes))
+    blake2s_256(bytes).map(|b| format!("{b:02x}")).concat()
 }
 
 #[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]

@@ -805,10 +805,7 @@ pub(crate) async fn wait_round(world: &World, world_time: u64) -> String {
     .await
 }
 
-/// How long a wait gives the host to do what a step asked.
-const WAIT: Duration = Duration::from_secs(5);
-
-/// Calls `check` until it returns `Ok`. After `WAIT` it panics with `want` and
+/// Calls `check` until it returns `Ok`. After `WAIT_LIMIT` it panics with `want` and
 /// the last `Err`, which says what was seen instead, printed as is. Between checks
 /// the task sleeps, so other scenarios run.
 pub(crate) async fn poll_until<T, Seen: std::fmt::Display>(
@@ -819,7 +816,7 @@ pub(crate) async fn poll_until<T, Seen: std::fmt::Display>(
     loop {
         match check().await {
             Ok(done) => return done,
-            Err(seen) if start.elapsed() > WAIT => panic!("missing {want}\n{seen}"),
+            Err(seen) if start.elapsed() > support::WAIT_LIMIT => panic!("missing {want}\n{seen}"),
             Err(_) => tokio::time::sleep(Duration::from_millis(20)).await,
         }
     }
