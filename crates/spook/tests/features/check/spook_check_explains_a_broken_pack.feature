@@ -33,6 +33,8 @@ Feature: spook check explains a broken pack
       | pack_rev mismatch                   | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                                                 |
       | an actor the cast lacks             | state/save.yaml            | SCHEMA            | is not a cast member                                     |
       | a control type with two keys        | state/save.yaml            | SCHEMA            | two keys where one belongs                               |
+      | an empty tags key                   | world/items/latch.md       | SCHEMA            | or write [] for none                                     |
+      | an empty modifiers key              | state/save.yaml            | SCHEMA            | or write {} for none                                     |
       | exit to an unknown place            | world/map.yaml             | SCHEMA            | not a place                                              |
       | duplicate exit                      | world/map.yaml             | SCHEMA            | listed twice                                             |
       | exits in a place file               | world/places/docks_shop.md | SCHEMA            | unknown field 'exits'                                    |

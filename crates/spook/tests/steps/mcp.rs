@@ -1,7 +1,6 @@
 use spookery_engine::testing::world_of;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::time::Duration;
 
 use cucumber::gherkin::Step;
 use cucumber::{given, then, when};
@@ -468,7 +467,7 @@ fn post_initialize_with_version(port: u16, version: &str) -> String {
     let mut stream =
         TcpStream::connect(("127.0.0.1", port)).unwrap_or_else(|err| panic!("connect HTTP: {err}"));
     stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
+        .set_read_timeout(Some(support::WAIT_LIMIT))
         .unwrap_or_else(|err| panic!("timeout: {err}"));
     stream
         .write_all(request.as_bytes())
@@ -494,7 +493,7 @@ pub(crate) fn post_initialize(port: u16, host: &str, origin: Option<&str>) -> St
     let mut stream =
         TcpStream::connect(("127.0.0.1", port)).unwrap_or_else(|err| panic!("connect HTTP: {err}"));
     stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
+        .set_read_timeout(Some(support::WAIT_LIMIT))
         .unwrap_or_else(|err| panic!("timeout: {err}"));
     stream
         .write_all(request.as_bytes())

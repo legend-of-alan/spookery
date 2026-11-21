@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
 
 use cucumber::{given, then, when};
 use spookery::agent::{model, CompletionError};
@@ -581,7 +580,7 @@ fn assert_chat_post(raw: &str) {
 }
 
 fn read_http(stream: &mut TcpStream) -> String {
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = stream.set_read_timeout(Some(support::WAIT_LIMIT));
     let mut buf = Vec::new();
     let mut byte = [0u8; 1];
     loop {

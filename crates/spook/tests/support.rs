@@ -61,8 +61,8 @@ pub(crate) fn put_items(now: &mut ecs::World, id: &entity::Id, item: &str, count
     put.unwrap();
 }
 
-/// How long one async wait without its own bound may take before the test fails.
-const WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(20);
+/// How long any test waits for an event before it fails.
+pub(crate) const WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(20);
 
 /// Awaits `work`, and panics naming `what` if it takes longer than `WAIT_LIMIT`.
 pub(crate) async fn expect_within_limit<T>(

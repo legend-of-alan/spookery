@@ -16,6 +16,8 @@ cargo test --workspace --test features_host --test features_world
 
 `rust-toolchain.toml` pins the Rust version, and rustup installs it for you. Pull requests only run CI on Linux. Pushes to main also run it on macOS and Windows.
 
+Dependencies use normal caret versions, like `"1.4"`. An exact `=` pin needs a written reason in a comment next to it.
+
 ## Issues and PRs
 
 Issue titles are plain sentences. Every issue gets an area label and a size label.
@@ -44,6 +46,7 @@ A test earns its place by failing when something a player, GM or pack author wou
 - **Don't guard the past.** Don't test that a removed flag, field or behavior stays gone, and don't re-run a fixed bug's old steps to prove it stays fixed. The scenario for the new behavior already fails if the old code comes back.
 - **Leave other scenarios alone.** Don't add setup or checks to a scenario about something else just to re-test your change. Extend the scenario whose subject is your change.
 - **Assert what people see.** Check output, refusals, the save or `spook verify`. Don't check journal keys, private fields, call counts or the order of internal steps when a visible outcome already shows the result. A refactor that keeps behavior should break no test.
+- **Wait for events, not time.** A step waits for the reply, status or line of output it needs, never for a fixed time. Let time pass only when a timeout is what the scenario checks, and then write the check so it fails one way only. A timer never fires early, so check that a timeout happened by waiting well past it, and check that it hasn't happened yet with a timeout far longer than the scenario's waits. A scenario that checks two timers fired waits past the later one.
 - **Unit tests only where no scenario can reach.** A parser edge case is a good one. A parser test for an argument that doesn't exist is not.
 - **Name it for what the steps prove.** A scenario title says what its `Then` lines check. If they disagree, fix one of them.
 
