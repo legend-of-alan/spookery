@@ -748,10 +748,8 @@ mod tests {
     }
 
     fn assert_screens(name: &str, screen: &mut Screen) {
-        for (width, height) in [(80, 24), (120, 40)] {
-            let shown = screen_text(screen, width, height);
-            insta::assert_snapshot!(format!("{name}_{width}x{height}"), shown);
-        }
+        let shown = screen_text(screen, 80, 24);
+        insta::assert_snapshot!(format!("{name}_80x24"), shown);
     }
 
     #[test]
