@@ -55,10 +55,9 @@ async fn join_session(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitR
             .collect(),
         _ => Vec::new(),
     };
-    let mut view = None;
-    show(terminal, &hello, &mut view)?;
+    terminal.show(&hello, None)?;
     drop(connection);
-    let Some(chosen) = terminal.next_line(view.as_ref(), &commands).await? else {
+    let Some(chosen) = terminal.next_line(None, &commands).await? else {
         return Ok(ExitReason::PlayerLeft);
     };
     let actor = chosen.trim();
@@ -66,13 +65,8 @@ async fn join_session(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitR
         return Err(Error::Message("SCHEMA".into()));
     }
     let mut connection = websocket::Connection::open(addr, "player").await?.0;
-    let (mut view, mut token) = claim_pc(
-        &mut connection,
-        json!({ "actor": actor }),
-        terminal,
-        &mut view,
-    )
-    .await?;
+    let (mut view, mut token) =
+        claim_pc(&mut connection, json!({ "actor": actor }), terminal, None).await?;
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
     loop {
@@ -106,7 +100,15 @@ async fn join_session(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitR
                     continue;
                 };
                 if !commands.iter().any(|known| known == command) {
-                    terminal.show_body(&ServerBody::Refused(Refusal::from(Reason::NotInSpec)), Some(&view))?;
+                    terminal.show(
+                        &ServerMessage {
+                            id: None,
+                            seq: None,
+                            reply_to: None,
+                            body: ServerBody::Refused(Refusal::from(Reason::NotInSpec)),
+                        },
+                        Some(&view),
+                    )?;
                     continue;
                 }
                 match connection.send(command, args.clone()).await {
@@ -145,8 +147,7 @@ async fn reconnect(
         }
     };
     let args = json!({ "token": token.as_str(), "last_seq": terminal.last_seq });
-    let mut current = Some(view.clone());
-    let (new_view, new_token) = claim_pc(&mut opened, args, terminal, &mut current).await?;
+    let (new_view, new_token) = claim_pc(&mut opened, args, terminal, Some(view.clone())).await?;
     *connection = opened;
     *view = new_view;
     *token = new_token;
@@ -159,7 +160,7 @@ async fn claim_pc(
     connection: &mut websocket::Connection,
     args: Value,
     terminal: &mut Terminal,
-    view: &mut Option<protocol::View>,
+    mut view: Option<protocol::View>,
 ) -> Result<(protocol::View, String), Error> {
     let request_id = connection.send("claim", args).await?;
     let mut token = String::new();
@@ -175,7 +176,10 @@ async fn claim_pc(
                 )));
             }
         }
-        show(terminal, &message, view)?;
+        if let ServerBody::View(body) = &message.body {
+            view = Some((**body).clone());
+        }
+        terminal.show(&message, view.as_ref())?;
         match message.body {
             ServerBody::Claimed {
                 token: held,
@@ -184,24 +188,16 @@ async fn claim_pc(
             } => {
                 token = held;
                 for missed in &missed {
-                    show(terminal, missed, view)?;
+                    if let ServerBody::View(body) = &missed.body {
+                        view = Some((**body).clone());
+                    }
+                    terminal.show(missed, view.as_ref())?;
                 }
             }
             ServerBody::View(body) => return Ok((*body, token)),
             _ => {}
         }
     }
-}
-
-fn show(
-    terminal: &mut Terminal,
-    message: &ServerMessage,
-    view: &mut Option<protocol::View>,
-) -> Result<(), Error> {
-    if let ServerBody::View(body) = &message.body {
-        *view = Some((**body).clone());
-    }
-    terminal.show(message, view.as_ref())
 }
 
 /// Where play shows each message and reads each line the player sends, and the last `seq` it
@@ -247,17 +243,11 @@ impl Terminal {
                 plain.print_raw(message);
                 Ok(())
             }
-            _ => self.show_body(&message.body, view),
-        }
-    }
-
-    fn show_body(&mut self, body: &ServerBody, view: Option<&protocol::View>) -> Result<(), Error> {
-        match &mut self.surface {
             Surface::Plain(plain) => {
-                plain.print(body);
+                plain.print(&message.body);
                 Ok(())
             }
-            Surface::Window(window) => window.show(body, view),
+            Surface::Window(window) => window.show(&message.body, view),
         }
     }
 
