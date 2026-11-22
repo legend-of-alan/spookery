@@ -1,50 +1,29 @@
 //! The human player: claims a PC, turns typed lines into commands, and shows each message as
 //! lines or in the game window. Quitting releases the PC. A dropped connection opens again and
 //! takes it back by token. Opens a fresh connection after the PC choice, so a slow choice never
-//! trips the first-message deadline. If the host is gone, prints `host closed` after the terminal
-//! is restored.
+//! trips the first-message deadline. If the host is gone, returns `ExitReason::HostClosed` so the
+//! caller can print `host closed` after the terminal is restored.
 
 use std::net::SocketAddr;
 
 use serde_json::{json, Value};
-use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::protocol::{self, Reason, Refusal, ServerBody, ServerMessage};
+use crate::terminal::Terminal;
 use crate::text;
 use crate::websocket;
-use crate::window::Window;
 use crate::Error;
 
-/// Opens the game window, connects, claims a PC, and plays until the player leaves or the host
-/// closes.
-pub async fn run_windowed(addr: SocketAddr) -> Result<(), Error> {
-    run(addr, Terminal::window()?).await
-}
-
-/// Prints plain lines, as text or with `raw` as protocol frames, connects, claims a PC, and plays
-/// until the player leaves or the host closes.
-pub async fn run_plain(addr: SocketAddr, raw: bool) -> Result<(), Error> {
-    run(addr, Terminal::plain(raw)).await
-}
-
-async fn run(addr: SocketAddr, mut terminal: Terminal) -> Result<(), Error> {
-    let exit = play_session(addr, &mut terminal).await;
-    drop(terminal);
-    if let Ok(ExitReason::HostClosed) = exit {
-        eprintln!("host closed");
-    }
-    exit.map(drop)
-}
-
 /// How play exited.
-enum ExitReason {
+pub enum ExitReason {
     /// The player left, releasing their PC if they held one.
     PlayerLeft,
     /// `spook run` was gone when play opened a connection again.
     HostClosed,
 }
 
-async fn play_session(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReason, Error> {
+/// Connects, claims a PC, and plays until the player leaves or the host closes.
+pub async fn play(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReason, Error> {
     let (connection, hello) = websocket::Connection::open(addr, "player").await?;
     let commands = match &hello.body {
         ServerBody::Hello { commands, .. } => commands
@@ -193,113 +172,6 @@ async fn claim_pc(
             ServerBody::Claimed { token: held, .. } => token = held,
             ServerBody::View(body) => return Ok((*body, token)),
             _ => {}
-        }
-    }
-}
-
-/// Where play shows each message and reads each line the player sends, and the last `seq` it
-/// showed, so a reconnect asks for what came after.
-struct Terminal {
-    surface: Surface,
-    last_seq: u64,
-}
-
-/// Plain lines on stdout and stderr with lines typed on stdin, or the game window.
-enum Surface {
-    Plain(Plain),
-    Window(Box<Window>),
-}
-
-impl Terminal {
-    fn window() -> Result<Self, Error> {
-        Ok(Self {
-            surface: Surface::Window(Box::new(Window::open()?)),
-            last_seq: 0,
-        })
-    }
-
-    fn plain(raw: bool) -> Self {
-        Self {
-            surface: Surface::Plain(Plain {
-                text: text::Renderer::new(),
-                raw,
-                typed: crate::stdin_lines(),
-            }),
-            last_seq: 0,
-        }
-    }
-
-    fn show(
-        &mut self,
-        message: &ServerMessage,
-        view: Option<&protocol::View>,
-    ) -> Result<(), Error> {
-        self.last_seq = self.last_seq.max(message.seq.unwrap_or(0));
-        match &mut self.surface {
-            Surface::Plain(plain) if plain.raw => {
-                plain.print_raw(message);
-                Ok(())
-            }
-            Surface::Plain(plain) => {
-                plain.print(&message.body);
-                Ok(())
-            }
-            Surface::Window(window) => window.show(&message.body, view),
-        }
-    }
-
-    /// The next line the player sends: typed on stdin, or chosen or typed in the window.
-    /// `None` when stdin ends or the player quits the window.
-    async fn next_line(
-        &mut self,
-        view: Option<&protocol::View>,
-        commands: &[String],
-    ) -> Result<Option<String>, Error> {
-        match &mut self.surface {
-            Surface::Plain(plain) => Ok(plain.typed.recv().await),
-            Surface::Window(window) => window.next_line(view, commands).await,
-        }
-    }
-
-    /// Whether refusals show as their bare code.
-    fn is_raw(&self) -> bool {
-        matches!(&self.surface, Surface::Plain(plain) if plain.raw)
-    }
-}
-
-/// The plain surface. Game text goes to stdout and refusals go to stderr. With `raw`,
-/// each message other than the picker or a refusal is its protocol frame.
-struct Plain {
-    text: text::Renderer,
-    raw: bool,
-    typed: UnboundedReceiver<String>,
-}
-
-impl Plain {
-    fn print(&mut self, body: &ServerBody) {
-        let shown = match body {
-            ServerBody::Hello {
-                open,
-                taken,
-                pc_names,
-                ..
-            } => text::render_pc_picker(&text::pc_picker_rows(open, taken, pc_names)),
-            ServerBody::Refused(refusal) => {
-                eprintln!("{}", text::render_refusal(refusal, self.raw));
-                return;
-            }
-            _ => self.text.render(body),
-        };
-        if !shown.is_empty() {
-            println!("{shown}");
-        }
-    }
-
-    /// The picker as text, a refusal as its code on stderr, and any other message as its frame.
-    fn print_raw(&mut self, message: &ServerMessage) {
-        match &message.body {
-            ServerBody::Hello { .. } | ServerBody::Refused(_) => self.print(&message.body),
-            _ => println!("{}", message.to_text()),
         }
     }
 }

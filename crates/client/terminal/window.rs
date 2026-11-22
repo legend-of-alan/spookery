@@ -1,5 +1,5 @@
 //! The game window `spook play` opens at a terminal: the picker, then the story, the place
-//! panel, the input line and the key bar, painted in the Spookery palette. `player` hands it each
+//! panel, the input line and the key bar, painted in the Spookery palette. `Terminal` hands it each
 //! message body and reads from it each line the player sends.
 
 use std::collections::BTreeMap;
@@ -680,7 +680,7 @@ mod tests {
     use super::{Request, Screen};
     use crate::protocol::{self, ServerBody, ServerMessage};
 
-    const RECORDING: &str = include_str!("../protocol/sessions/v2.jsonl");
+    const RECORDING: &str = include_str!("../../protocol/sessions/v2.jsonl");
 
     fn press(screen: &mut Screen, code: KeyCode, commands: &[String]) -> Option<Request> {
         screen.press(KeyEvent::from(code), commands)

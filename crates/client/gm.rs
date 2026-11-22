@@ -34,7 +34,7 @@ Commands:
 A command the table does not list, or arguments it cannot read, is not sent.";
 
 /// Sit the GM seat on `/gm` at `addr` until the seat is released or the host closes it.
-pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
+pub async fn play(addr: SocketAddr, raw: bool) -> Result<(), Error> {
     let (mut seat, hello) = match websocket::Connection::open(addr, "gm").await {
         Err(Error::Refused(refusal)) => {
             return Err(Error::Message(text::render_refusal(&refusal, raw)))

@@ -1,5 +1,5 @@
 ---
-source: crates/client/window.rs
+source: crates/client/terminal/window.rs
 expression: shown
 ---
  SPOOKERY                                           Rowan · round 2 · tick 1090
@@ -19,8 +19,8 @@ expression: shown
 │Your action is queued.                             ││━━━───────               │
 │── round 2 · tick 1090 ──                          ││Hp: 8/16 ━━━━━─────      │
 │You picked up the Lamp oil.                        ││Might: 1/45 ──────────   │
-│                                                   ││Rest: 3/5 ━━━━━━────     │
-│                                                   ││Vigor: 1/110 ──────────  │
+│› travel stairs                                    ││Rest: 3/5 ━━━━━━────     │
+│The stair door is locked. [NO_EXIT]                ││Vigor: 1/110 ──────────  │
 ╰───────────────────────────────────────────────────╯╰─────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │›                                                                             │

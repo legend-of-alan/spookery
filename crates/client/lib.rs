@@ -9,12 +9,12 @@ pub mod gm;
 pub mod http_model;
 pub mod player;
 use spookery_protocol as protocol;
+pub mod terminal;
 pub mod text;
 pub mod websocket;
-mod window;
 
-/// A client failure: what `player::run_windowed`, `player::run_plain`, `gm::run` and
-/// `ai_gm::run` return to `spook`, and what the seat connections and `HttpModel`
+/// A client failure: what `player::play`, `gm::play` and
+/// `ai_gm::play` return to `spook`, and what the seat connections and `HttpModel`
 /// return to them. Display is the line `spook` prints for it.
 #[derive(Debug)]
 pub enum Error {

@@ -173,14 +173,21 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 .map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
-        Command::Play { raw, plain } => if opens_window(raw, plain) {
-            spookery::player::run_windowed(addr).await
-        } else {
-            spookery::player::run_plain(addr, raw).await
+        Command::Play { raw, plain } => {
+            let mut terminal = if opens_window(raw, plain) {
+                spookery::terminal::Terminal::window().map_err(|err| err.to_string())?
+            } else {
+                spookery::terminal::Terminal::plain(raw)
+            };
+            let exit = spookery::player::play(addr, &mut terminal).await;
+            drop(terminal);
+            if let Ok(spookery::player::ExitReason::HostClosed) = exit {
+                eprintln!("host closed");
+            }
+            exit.map(drop).map_err(|err| err.to_string())
         }
-        .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
-        Command::Gm { raw } => spookery::gm::run(addr, raw)
+        Command::Gm { raw } => spookery::gm::play(addr, raw)
             .await
             .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
@@ -188,7 +195,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             let model = spookery::http_model::Settings::from_env()
                 .and_then(spookery::http_model::HttpModel::new)
                 .map_err(|err| err.to_string())?;
-            spookery::ai_gm::run(addr, model, std::io::stderr())
+            spookery::ai_gm::play(addr, model, std::io::stderr())
                 .await
                 .map_err(|err| err.to_string())
         }

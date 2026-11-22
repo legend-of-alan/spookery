@@ -1,5 +1,5 @@
 ---
-source: crates/client/window.rs
+source: crates/client/terminal/window.rs
 expression: shown
 ---
  SPOOKERY                                           Rowan · round 2 · tick 1090

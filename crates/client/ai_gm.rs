@@ -12,7 +12,7 @@ use crate::Error;
 
 /// Connect as the GM on the game port at `addr` and play each turn through `model` until
 /// the server closes the connection. `listening` and each warning go to `err`, one line each.
-pub async fn run(
+pub async fn play(
     addr: SocketAddr,
     model: impl Model,
     err: impl Write + Send + 'static,
