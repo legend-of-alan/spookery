@@ -1,6 +1,8 @@
 //! The human player: claims a PC, turns typed lines into commands, and shows each message as
 //! lines or in the game window. Quitting releases the PC. A dropped connection dials again and
-//! takes it back by token.
+//! takes it back by token. Dials a fresh connection after the PC choice, so a slow choice never
+//! trips the first-message deadline. If the host is gone, prints `host closed` after the terminal
+//! is restored.
 
 use std::io::{self, Write};
 use std::net::SocketAddr;
@@ -15,17 +17,13 @@ use crate::ws;
 use crate::Error;
 
 /// Opens the game window, connects, claims a PC, and plays until the player leaves or the host
-/// closes. Dials a fresh connection after the PC choice, so a slow choice never trips the
-/// first-message deadline. If the host is gone, prints `host closed` after the terminal is
-/// restored.
+/// closes.
 pub async fn run_window(addr: SocketAddr) -> Result<(), Error> {
     run(addr, Terminal::window()?).await
 }
 
 /// Prints plain lines, as text or with `raw` as protocol frames, connects, claims a PC, and plays
-/// until the player leaves or the host closes. Dials a fresh connection after the PC choice, so a
-/// slow choice never trips the first-message deadline. If the host is gone, prints `host closed`
-/// after the terminal is restored.
+/// until the player leaves or the host closes.
 pub async fn run_lines(addr: SocketAddr, raw: bool) -> Result<(), Error> {
     run(addr, Terminal::lines(raw)).await
 }
@@ -69,7 +67,9 @@ async fn join(addr: SocketAddr, terminal: &mut Terminal) -> Result<Exit, Error> 
                 let message = match message {
                     Some(Ok(message)) => message,
                     Some(Err(Error::Io(_))) | None => {
-                        if !reconnect(addr, &mut connection, &mut here, &mut token, terminal).await? {
+                        if !reconnect_into(addr, &mut connection, &mut here, &mut token, terminal)
+                            .await?
+                        {
                             return Ok(Exit::HostClosed);
                         }
                         continue;
@@ -99,7 +99,9 @@ async fn join(addr: SocketAddr, terminal: &mut Terminal) -> Result<Exit, Error> 
                 match connection.send(command, args.clone()).await {
                     Ok(_) => {}
                     Err(Error::Io(_)) => {
-                        if !reconnect(addr, &mut connection, &mut here, &mut token, terminal).await? {
+                        if !reconnect_into(addr, &mut connection, &mut here, &mut token, terminal)
+                            .await?
+                        {
                             return Ok(Exit::HostClosed);
                         }
                         connection.send(command, args).await?;
@@ -113,25 +115,38 @@ async fn join(addr: SocketAddr, terminal: &mut Terminal) -> Result<Exit, Error> 
     Ok(Exit::PlayerLeft)
 }
 
-/// Dials again and takes the PC back by its token, after the last `seq` shown. `false` when
+/// Dials again and takes the PC back by its token, after the last `seq` shown. `None` when
 /// `spook run` is gone.
 async fn reconnect(
+    addr: SocketAddr,
+    token: &str,
+    terminal: &mut Terminal,
+) -> Result<Option<(ws::Connection, protocol::View, String)>, Error> {
+    let mut connection = match ws::Connection::open(addr, "player").await {
+        Ok((connection, _)) => connection,
+        Err(error) => {
+            tracing::debug!(%error, "could not dial the host again");
+            return Ok(None);
+        }
+    };
+    let args = json!({ "token": token, "last_seq": terminal.last_seq });
+    let (here, token) = claim(&mut connection, args, terminal).await?;
+    Ok(Some((connection, here, token)))
+}
+
+/// Puts a successful `reconnect` onto the live connection, view and token. `false` when
+/// `spook run` is gone.
+async fn reconnect_into(
     addr: SocketAddr,
     connection: &mut ws::Connection,
     here: &mut protocol::View,
     token: &mut String,
     terminal: &mut Terminal,
 ) -> Result<bool, Error> {
-    let mut new_connection = match ws::Connection::open(addr, "player").await {
-        Ok((connection, _)) => connection,
-        Err(error) => {
-            tracing::debug!(%error, "could not dial the host again");
-            return Ok(false);
-        }
+    let Some(back) = reconnect(addr, token, terminal).await? else {
+        return Ok(false);
     };
-    let args = json!({ "token": *token, "last_seq": terminal.last_seq });
-    (*here, *token) = claim(&mut new_connection, args, terminal).await?;
-    *connection = new_connection;
+    (*connection, *here, *token) = back;
     Ok(true)
 }
 

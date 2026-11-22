@@ -747,7 +747,7 @@ mod tests {
         rows.join("\n")
     }
 
-    fn assert_screens(name: &str, screen: &mut Screen) {
+    fn assert_screen(name: &str, screen: &mut Screen) {
         let shown = screen_text(screen, 80, 24);
         insta::assert_snapshot!(format!("{name}_80x24"), shown);
     }
@@ -762,14 +762,14 @@ mod tests {
         let hello: Value = serde_json::from_str(hello).unwrap();
         let hello: ServerMessage = serde_json::from_value(hello["get"].clone()).unwrap();
         screen.show(&hello.body);
-        assert_screens("picker", &mut screen);
+        assert_screen("picker", &mut screen);
     }
 
     #[test]
     fn a_seated_table_shows_the_story_and_the_place() {
         let mut screen = Screen::new(true);
         replay_until(&mut screen, "travel");
-        assert_screens("seated", &mut screen);
+        assert_screen("seated", &mut screen);
     }
 
     #[test]
@@ -779,7 +779,7 @@ mod tests {
         type_text(&mut screen, "tr");
         press(&mut screen, KeyCode::Tab);
         type_text(&mut screen, "stairs");
-        assert_screens("completed", &mut screen);
+        assert_screen("completed", &mut screen);
     }
 
     #[test]
@@ -788,13 +788,13 @@ mod tests {
         replay_until(&mut screen, "release");
         screen_text(&mut screen, 80, 24);
         press(&mut screen, KeyCode::PageUp);
-        assert_screens("scrolled_back", &mut screen);
+        assert_screen("scrolled_back", &mut screen);
     }
 
     #[test]
     fn a_refusal_shows_in_the_story() {
         let mut screen = Screen::new(true);
         replay_until(&mut screen, "release");
-        assert_screens("refused", &mut screen);
+        assert_screen("refused", &mut screen);
     }
 }
