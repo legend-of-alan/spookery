@@ -4,7 +4,6 @@
 //! trips the first-message deadline. If the host is gone, prints `host closed` after the terminal
 //! is restored.
 
-use std::io::{self, Write};
 use std::net::SocketAddr;
 
 use serde_json::{json, Value};
@@ -29,7 +28,7 @@ pub async fn run_plain(addr: SocketAddr, raw: bool) -> Result<(), Error> {
 }
 
 async fn run(addr: SocketAddr, mut terminal: Terminal) -> Result<(), Error> {
-    let exit = join_session(addr, &mut terminal).await;
+    let exit = play_session(addr, &mut terminal).await;
     drop(terminal);
     if let Ok(ExitReason::HostClosed) = exit {
         eprintln!("host closed");
@@ -45,7 +44,7 @@ enum ExitReason {
     HostClosed,
 }
 
-async fn join_session(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReason, Error> {
+async fn play_session(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReason, Error> {
     let (connection, hello) = websocket::Connection::open(addr, "player").await?;
     let commands = match &hello.body {
         ServerBody::Hello { commands, .. } => commands
@@ -292,7 +291,7 @@ impl Plain {
             _ => self.text.render(body),
         };
         if !shown.is_empty() {
-            print_text(&shown);
+            println!("{shown}");
         }
     }
 
@@ -300,14 +299,9 @@ impl Plain {
     fn print_raw(&mut self, message: &ServerMessage) {
         match &message.body {
             ServerBody::Hello { .. } | ServerBody::Refused(_) => self.print(&message.body),
-            _ => print_text(&message.to_text()),
+            _ => println!("{}", message.to_text()),
         }
     }
-}
-
-fn print_text(text: &str) {
-    println!("{text}");
-    let _ = io::stdout().flush();
 }
 
 /// The command a typed line names, and its arguments. `tell` is the word `say`.
