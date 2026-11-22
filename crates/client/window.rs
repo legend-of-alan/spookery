@@ -435,7 +435,7 @@ impl Screen {
                 ("Tab", "complete"),
                 ("↑↓", "history"),
                 ("PgUp PgDn", "scroll"),
-                ("Ctrl+C", "release"),
+                ("Ctrl+C", "quit"),
             ],
         );
     }
@@ -684,46 +684,22 @@ mod tests {
 
     const RECORDING: &str = include_str!("../protocol/sessions/v2.jsonl");
 
-    struct Harness {
-        screen: Screen,
-        view: Option<protocol::View>,
-        commands: Vec<String>,
+    fn press(screen: &mut Screen, code: KeyCode, commands: &[String]) -> Option<Request> {
+        screen.press(KeyEvent::from(code), commands)
     }
 
-    impl Harness {
-        fn new() -> Self {
-            Self {
-                screen: Screen::new(true),
-                view: None,
-                commands: Vec::new(),
-            }
-        }
-
-        fn show(&mut self, body: &ServerBody) {
-            if let ServerBody::Hello { commands, .. } = body {
-                self.commands = commands.clone();
-            }
-            if let ServerBody::View(view) = body {
-                self.view = Some((**view).clone());
-            }
-            self.screen.show(body);
-        }
-
-        fn press(&mut self, code: KeyCode) -> Option<Request> {
-            self.screen.press(KeyEvent::from(code), &self.commands)
-        }
-
-        fn type_text(&mut self, text: &str) {
-            for letter in text.chars() {
-                self.press(KeyCode::Char(letter));
-            }
+    fn type_text(screen: &mut Screen, text: &str, commands: &[String]) {
+        for letter in text.chars() {
+            press(screen, KeyCode::Char(letter), commands);
         }
     }
 
     /// Replays Rowan's side of the recorded docks session: shows each message Rowan got, picks
     /// Rowan at the picker, types each command Rowan sent, and stops before the first command
-    /// named `stop`.
-    fn replay_until(harness: &mut Harness, stop: &str) {
+    /// named `stop`. Returns the latest view and the hello command list.
+    fn replay_until(screen: &mut Screen, stop: &str) -> (Option<protocol::View>, Vec<String>) {
+        let mut view = None;
+        let mut commands = Vec::new();
         for row in RECORDING.lines() {
             let row: Value = serde_json::from_str(row).unwrap();
             if row["seat"] != "player:rowan" {
@@ -733,33 +709,45 @@ mod tests {
                 let (command, args) = (&sent["body"]["kind"], &sent["body"]["args"]);
                 let typed = match command.as_str().unwrap_or_default() {
                     "claim" => continue,
-                    command if command == stop => return,
+                    command if command == stop => return (view, commands),
                     "say" => format!("say {}", args["text"].as_str().unwrap_or_default()),
                     command => format!("{command} {}", args["target"].as_str().unwrap_or_default()),
                 };
-                harness.type_text(typed.trim());
-                harness.press(KeyCode::Enter);
+                type_text(screen, typed.trim(), &commands);
+                press(screen, KeyCode::Enter, &commands);
                 continue;
             }
             let message: ServerMessage = serde_json::from_value(row["get"].clone()).unwrap();
-            harness.show(&message.body);
+            if let ServerBody::Hello {
+                commands: listed, ..
+            } = &message.body
+            {
+                commands = listed.clone();
+            }
+            if let ServerBody::View(body) = &message.body {
+                view = Some((**body).clone());
+            }
+            screen.show(&message.body);
             if matches!(message.body, ServerBody::Hello { .. }) {
-                harness.press(KeyCode::Down);
+                press(screen, KeyCode::Down, &commands);
                 assert_eq!(
-                    harness.press(KeyCode::Enter),
+                    press(screen, KeyCode::Enter, &commands),
                     Some(Request::Send("rowan".into()))
                 );
             }
         }
+        (view, commands)
     }
 
     /// The screen's text at `width` by `height`, one row per line.
-    fn screen_text(harness: &mut Harness, width: u16, height: u16) -> String {
+    fn screen_text(
+        screen: &mut Screen,
+        view: Option<&protocol::View>,
+        width: u16,
+        height: u16,
+    ) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-        let view = harness.view.as_ref();
-        terminal
-            .draw(|frame| harness.screen.draw(frame, view))
-            .unwrap();
+        terminal.draw(|frame| screen.draw(frame, view)).unwrap();
         let buffer = terminal.backend().buffer();
         let rows: Vec<String> = (0..height)
             .map(|y| {
@@ -770,54 +758,54 @@ mod tests {
         rows.join("\n")
     }
 
-    fn assert_screen(name: &str, harness: &mut Harness) {
-        let shown = screen_text(harness, 80, 24);
+    fn assert_screen(name: &str, screen: &mut Screen, view: Option<&protocol::View>) {
+        let shown = screen_text(screen, view, 80, 24);
         insta::assert_snapshot!(format!("{name}_80x24"), shown);
     }
 
     #[test]
     fn the_picker_lists_each_pc_by_name() {
-        let mut harness = Harness::new();
+        let mut screen = Screen::new(true);
         let hello = RECORDING
             .lines()
             .find(|row| row.contains(r#""kind":"hello","version":2,"commands":["claim""#))
             .unwrap();
         let hello: Value = serde_json::from_str(hello).unwrap();
         let hello: ServerMessage = serde_json::from_value(hello["get"].clone()).unwrap();
-        harness.show(&hello.body);
-        assert_screen("picker", &mut harness);
+        screen.show(&hello.body);
+        assert_screen("picker", &mut screen, None);
     }
 
     #[test]
     fn a_seated_table_shows_the_story_and_the_place() {
-        let mut harness = Harness::new();
-        replay_until(&mut harness, "travel");
-        assert_screen("seated", &mut harness);
+        let mut screen = Screen::new(true);
+        let (view, _) = replay_until(&mut screen, "travel");
+        assert_screen("seated", &mut screen, view.as_ref());
     }
 
     #[test]
     fn tab_completes_a_command_name() {
-        let mut harness = Harness::new();
-        replay_until(&mut harness, "travel");
-        harness.type_text("tr");
-        harness.press(KeyCode::Tab);
-        harness.type_text("stairs");
-        assert_screen("completed", &mut harness);
+        let mut screen = Screen::new(true);
+        let (view, commands) = replay_until(&mut screen, "travel");
+        type_text(&mut screen, "tr", &commands);
+        press(&mut screen, KeyCode::Tab, &commands);
+        type_text(&mut screen, "stairs", &commands);
+        assert_screen("completed", &mut screen, view.as_ref());
     }
 
     #[test]
     fn page_up_scrolls_the_story_back() {
-        let mut harness = Harness::new();
-        replay_until(&mut harness, "release");
-        screen_text(&mut harness, 80, 24);
-        harness.press(KeyCode::PageUp);
-        assert_screen("scrolled_back", &mut harness);
+        let mut screen = Screen::new(true);
+        let (view, commands) = replay_until(&mut screen, "release");
+        screen_text(&mut screen, view.as_ref(), 80, 24);
+        press(&mut screen, KeyCode::PageUp, &commands);
+        assert_screen("scrolled_back", &mut screen, view.as_ref());
     }
 
     #[test]
     fn a_refusal_shows_in_the_story() {
-        let mut harness = Harness::new();
-        replay_until(&mut harness, "release");
-        assert_screen("refused", &mut harness);
+        let mut screen = Screen::new(true);
+        let (view, _) = replay_until(&mut screen, "release");
+        assert_screen("refused", &mut screen, view.as_ref());
     }
 }

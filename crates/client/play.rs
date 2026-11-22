@@ -82,14 +82,17 @@ async fn join_session(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitR
                     }
                     Some(Err(err)) => return Err(err),
                 };
-                show_latest(terminal, &message, &mut view)?;
+                if let ServerBody::View(body) = &message.body {
+                    view = (**body).clone();
+                }
+                terminal.show(&message, Some(&view))?;
             }
             _ = &mut ctrl_c => break,
             line = terminal.next_line(Some(&view), &commands) => {
                 let Some(line) = line? else {
                     break;
                 };
-                if line.trim() == "release" {
+                if line.trim() == "quit" {
                     break;
                 }
                 let Some((command, args)) = parse_command(&line, &view) else {
@@ -118,27 +121,8 @@ async fn join_session(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitR
 }
 
 /// Opens a connection again and takes the PC back by its token, after the last `seq` shown.
-/// `None` when `spook run` is gone.
-async fn open_by_token(
-    addr: SocketAddr,
-    token: &str,
-    terminal: &mut Terminal,
-    view: &mut Option<protocol::View>,
-) -> Result<Option<(websocket::Connection, protocol::View, String)>, Error> {
-    let mut connection = match websocket::Connection::open(addr, "player").await {
-        Ok((connection, _)) => connection,
-        Err(error) => {
-            tracing::debug!(%error, "could not connect to the host again");
-            return Ok(None);
-        }
-    };
-    let args = json!({ "token": token, "last_seq": terminal.last_seq });
-    let (view, token) = claim_pc(&mut connection, args, terminal, view).await?;
-    Ok(Some((connection, view, token)))
-}
-
-/// Opens a connection again by token and replaces the live connection, view and token.
-/// `false` when `spook run` is gone.
+/// Replaces the live connection, view and token only when that succeeds. `false` when
+/// `spook run` is gone, leaving those live values untouched.
 async fn reconnect(
     addr: SocketAddr,
     connection: &mut websocket::Connection,
@@ -146,11 +130,19 @@ async fn reconnect(
     token: &mut String,
     terminal: &mut Terminal,
 ) -> Result<bool, Error> {
-    let mut current = Some(view.clone());
-    let Some(back) = open_by_token(addr, token, terminal, &mut current).await? else {
-        return Ok(false);
+    let mut opened = match websocket::Connection::open(addr, "player").await {
+        Ok((connection, _)) => connection,
+        Err(error) => {
+            tracing::debug!(%error, "could not connect to the host again");
+            return Ok(false);
+        }
     };
-    (*connection, *view, *token) = back;
+    let args = json!({ "token": token.as_str(), "last_seq": terminal.last_seq });
+    let mut current = Some(view.clone());
+    let (new_view, new_token) = claim_pc(&mut opened, args, terminal, &mut current).await?;
+    *connection = opened;
+    *view = new_view;
+    *token = new_token;
     Ok(true)
 }
 
@@ -203,17 +195,6 @@ fn show(
         *view = Some((**body).clone());
     }
     terminal.show(message, view.as_ref())
-}
-
-fn show_latest(
-    terminal: &mut Terminal,
-    message: &ServerMessage,
-    view: &mut protocol::View,
-) -> Result<(), Error> {
-    if let ServerBody::View(body) = &message.body {
-        *view = (**body).clone();
-    }
-    terminal.show(message, Some(view))
 }
 
 /// Where play shows each message and reads each line the player sends, and the last `seq` it
