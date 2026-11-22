@@ -176,24 +176,18 @@ async fn claim_pc(
                 )));
             }
         }
-        if let ServerBody::View(body) = &message.body {
-            view = Some((**body).clone());
-        }
-        terminal.show(&message, view.as_ref())?;
-        match message.body {
-            ServerBody::Claimed {
-                token: held,
-                missed,
-                ..
-            } => {
-                token = held;
-                for missed in &missed {
-                    if let ServerBody::View(body) = &missed.body {
-                        view = Some((**body).clone());
-                    }
-                    terminal.show(missed, view.as_ref())?;
-                }
+        let missed = match &message.body {
+            ServerBody::Claimed { missed, .. } => missed.as_slice(),
+            _ => &[],
+        };
+        for item in std::iter::once(&message).chain(missed) {
+            if let ServerBody::View(body) = &item.body {
+                view = Some((**body).clone());
             }
+            terminal.show(item, view.as_ref())?;
+        }
+        match message.body {
+            ServerBody::Claimed { token: held, .. } => token = held,
             ServerBody::View(body) => return Ok((*body, token)),
             _ => {}
         }
