@@ -13,7 +13,7 @@ pub mod text;
 mod window;
 pub mod ws;
 
-/// A client failure: what `play::run`, `gm::run` and `ai_gm::run` return to `spook`, and what
+/// A client failure: what `play::run_window`, `play::run_lines`, `gm::run` and `ai_gm::run` return to `spook`, and what
 /// the seat connections and `HttpModel` return to them. Display is the line `spook` prints for it.
 #[derive(Debug)]
 pub enum Error {

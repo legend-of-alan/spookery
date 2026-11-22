@@ -173,16 +173,12 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 .map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
-        Command::Play { raw, lines } => {
-            let mode = if opens_window(raw, lines) {
-                spookery::play::Mode::Window
-            } else {
-                spookery::play::Mode::Lines { raw }
-            };
-            spookery::play::run(addr, mode)
-                .await
-                .map_err(|err| err.to_string())
+        Command::Play { raw, lines } => if opens_window(raw, lines) {
+            spookery::play::run_window(addr).await
+        } else {
+            spookery::play::run_lines(addr, raw).await
         }
+        .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
         Command::Gm { raw } => spookery::gm::run(addr, raw)
             .await
