@@ -356,9 +356,7 @@ impl Screen {
         if typed.contains(' ') {
             return;
         }
-        let mut names = commands
-            .iter()
-            .filter(|command| *command != "claim" && command.starts_with(typed));
+        let mut names = commands.iter().filter(|command| command.starts_with(typed));
         let Some(first) = names.next() else {
             return;
         };

@@ -48,7 +48,11 @@ enum ExitReason {
 async fn join_session(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReason, Error> {
     let (connection, hello) = websocket::Connection::open(addr, "player").await?;
     let commands = match &hello.body {
-        ServerBody::Hello { commands, .. } => commands.clone(),
+        ServerBody::Hello { commands, .. } => commands
+            .iter()
+            .filter(|command| *command != "claim" && *command != "release")
+            .cloned()
+            .collect(),
         _ => Vec::new(),
     };
     let mut view = None;
