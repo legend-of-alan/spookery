@@ -9,7 +9,7 @@ use crate::support;
 use crate::World;
 
 use super::common::{
-    a_docks_table, add_verb, capture_play_stdout, edit_save, join_play, replace_in_file,
+    a_docks_table, add_verb, capture_play_stdout, edit_save, play_as_pc, replace_in_file,
     spawn_play, wait_play, wait_play_until,
 };
 use super::table;
@@ -53,12 +53,12 @@ fn stdout_names_the_default_loopback_address(world: &mut World) {
 
 #[when(expr = "play joins the table with --plain")]
 async fn play_joins_the_table_with_plain(world: &mut World) {
-    join_play(world, "rowan", &["--plain"]).await;
+    play_as_pc(world, "rowan", &["--plain"]).await;
 }
 
 #[when(expr = "play joins the table with raw frames")]
 async fn play_joins_the_table_with_raw_frames(world: &mut World) {
-    join_play(world, "rowan", &["--raw"]).await;
+    play_as_pc(world, "rowan", &["--raw"]).await;
 }
 
 #[when(expr = "play says {string}")]

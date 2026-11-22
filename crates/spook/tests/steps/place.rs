@@ -74,7 +74,7 @@ async fn the_seated_player_sees(world: &mut World, text: String) {
 #[given(expr = "the CLI is connected as a player holding rowan")]
 async fn the_cli_holds_rowan(world: &mut World) {
     world.pack = Some(crate::support::copy_pack("docks", "cli"));
-    common::join_play(world, "rowan", &[]).await;
+    common::play_as_pc(world, "rowan", &[]).await;
 }
 
 #[when(expr = "I type {string}")]
@@ -129,7 +129,7 @@ async fn add_rule_and_join(world: &mut World, label: &str, page: &str, from: &st
     fs::write(&path, next).unwrap();
     crate::support::stamp_pack_rev(&pack);
     world.pack = Some(pack);
-    common::join_play(world, "rowan", &[]).await;
+    common::play_as_pc(world, "rowan", &[]).await;
 }
 
 #[given(expr = "Aldric has an ask verb and the CLI holds rowan in the shop")]

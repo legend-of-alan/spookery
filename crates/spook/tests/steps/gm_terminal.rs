@@ -15,14 +15,14 @@ const HELLO_JSON: &str = r#"{"body":{"kind":"hello""#;
 #[when(expr = "play and a human GM share a free loopback port")]
 async fn play_and_a_human_gm_share_a_port(world: &mut World) {
     let addr = sit_gm(world, false).await;
-    join_play_at(world, &addr, None).await;
+    play_as_pc_at(world, &addr, None).await;
 }
 
 #[when(expr = "two players and a human GM share a free loopback port")]
 async fn two_players_and_a_human_gm_share_a_port(world: &mut World) {
     let addr = sit_gm(world, false).await;
-    join_play_at(world, &addr, Some("rowan")).await;
-    join_play_at(world, &addr, Some("wren")).await;
+    play_as_pc_at(world, &addr, Some("rowan")).await;
+    play_as_pc_at(world, &addr, Some("wren")).await;
 }
 
 #[when(expr = "a human GM sits on a free loopback port")]
@@ -263,7 +263,7 @@ async fn sit_gm(world: &mut World, raw: bool) -> String {
     addr
 }
 
-async fn join_play_at(world: &mut World, addr: &str, as_player: Option<&str>) {
+async fn play_as_pc_at(world: &mut World, addr: &str, as_player: Option<&str>) {
     let mut play = common::spawn_play(addr, as_player.unwrap_or("rowan"), &[]);
     common::wait_proc_until(
         &mut play,

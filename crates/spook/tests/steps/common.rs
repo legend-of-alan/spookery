@@ -481,18 +481,18 @@ fn break_pack(pack: &Path, fault: &str) {
     }
 }
 
-/// Hosts the pack and runs play on it with `flags`, picking `pc`.
-pub(crate) async fn join_play(world: &mut World, pc: &str, flags: &[&str]) {
+/// Hosts the pack and plays as `pc` with `flags`.
+pub(crate) async fn play_as_pc(world: &mut World, pc: &str, flags: &[&str]) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack).await;
     let addr = table::game_addr(world);
     world.play = Some(spawn_play(&addr, pc, flags));
-    let needle = if flags.contains(&"--raw") {
+    let first_view = if flags.contains(&"--raw") {
         "\"kind\":\"view\""
     } else {
         "You are in"
     };
-    wait_play(world, needle).await;
+    wait_play(world, first_view).await;
 }
 
 /// Starts `spook play` on `addr` with `flags`, and types `pc` at its picker the way a player
@@ -659,12 +659,12 @@ fn the_report_says(world: &mut World, text: String) {
 
 #[when(expr = "play joins the table on a free loopback address")]
 async fn play_joins_the_table_on_a_free_loopback_address(world: &mut World) {
-    join_play(world, "rowan", &[]).await;
+    play_as_pc(world, "rowan", &[]).await;
 }
 
 #[when(expr = "play joins the table as {string}")]
 async fn play_joins_the_table_as(world: &mut World, pick: String) {
-    join_play(world, &pick, &[]).await;
+    play_as_pc(world, &pick, &[]).await;
 }
 
 #[when(expr = "play types {string}")]
