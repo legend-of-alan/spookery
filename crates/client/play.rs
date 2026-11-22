@@ -61,7 +61,10 @@ async fn join_session(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitR
     let Some(chosen) = terminal.next_line(view.as_ref(), &commands).await? else {
         return Ok(ExitReason::PlayerLeft);
     };
-    let actor = parse_pc_choice(&chosen)?;
+    let actor = chosen.trim();
+    if actor.is_empty() {
+        return Err(Error::Message("SCHEMA".into()));
+    }
     let mut connection = websocket::Connection::open(addr, "player").await?.0;
     let (mut view, mut token) = claim_pc(
         &mut connection,
@@ -319,16 +322,6 @@ fn print_text(text: &str) {
     let _ = io::stdout().flush();
 }
 
-/// The PC a picker line names, by id, `player:<id>` or name.
-fn parse_pc_choice(line: &str) -> Result<String, Error> {
-    let line = line.trim();
-    let choice = line.strip_prefix("player:").unwrap_or(line).trim();
-    if choice.is_empty() {
-        return Err(Error::Message("SCHEMA".into()));
-    }
-    Ok(choice.to_string())
-}
-
 /// The command a typed line names, and its arguments. `tell` is the word `say`.
 /// `say place <text>` speaks to the place `view` shows. Any other say of two or more words
 /// goes to the table as typed, the first word as the actor in `to` and the rest in `text`, and the
@@ -354,19 +347,4 @@ fn parse_command<'l>(line: &'l str, view: &protocol::View) -> Option<(&'l str, V
         return Some((command, json!({})));
     }
     Some((command, json!({ "target": rest })))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_pc_choice;
-
-    #[test]
-    fn a_bare_id_and_a_player_prefix_are_one_id() {
-        let bare = parse_pc_choice("rowan").ok();
-        assert_eq!(bare.as_deref(), Some("rowan"));
-        assert_eq!(parse_pc_choice("player:rowan").ok(), bare);
-        assert_eq!(parse_pc_choice("  player:rowan").ok(), bare);
-        assert!(parse_pc_choice("player:").is_err());
-        assert!(parse_pc_choice("").is_err());
-    }
 }
