@@ -165,28 +165,32 @@ async fn claim_pc(
     let request_id = connection.send("claim", args).await?;
     let mut token = String::new();
     loop {
-        let Some(message) = connection.recv().await.transpose()? else {
+        let Some(server_message) = connection.recv().await.transpose()? else {
             return Err(Error::Message("NOT_IN_SPEC".into()));
         };
-        if let ServerBody::Refused(refusal) = &message.body {
-            if message.reply_to.as_deref() == Some(request_id.as_str()) {
+        if let ServerBody::Refused(refusal) = &server_message.body {
+            if server_message.reply_to.as_deref() == Some(request_id.as_str()) {
                 return Err(Error::Message(text::render_refusal(
                     refusal,
                     terminal.is_raw(),
                 )));
             }
         }
-        let missed = match &message.body {
-            ServerBody::Claimed { missed, .. } => missed.as_slice(),
+        let missed_messages = match &server_message.body {
+            ServerBody::Claimed {
+                missed: missed_messages,
+                ..
+            } => missed_messages.as_slice(),
             _ => &[],
         };
-        for item in std::iter::once(&message).chain(missed) {
-            if let ServerBody::View(body) = &item.body {
+        let messages = std::iter::once(&server_message).chain(missed_messages);
+        for message in messages {
+            if let ServerBody::View(body) = &message.body {
                 view = Some((**body).clone());
             }
-            terminal.show(item, view.as_ref())?;
+            terminal.show(message, view.as_ref())?;
         }
-        match message.body {
+        match server_message.body {
             ServerBody::Claimed { token: held, .. } => token = held,
             ServerBody::View(body) => return Ok((*body, token)),
             _ => {}
