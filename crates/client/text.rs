@@ -7,19 +7,19 @@ use crate::protocol::{
     NoteView, Outcome, PlaceView, Roll, ServerBody, Speaker, Speech, TableStatus,
 };
 
-/// The picker's heading.
-pub(crate) const PICKER_HEADING: &str = "Choose a character";
+/// The PC picker's heading.
+pub(crate) const PC_PICKER_HEADING: &str = "Choose a character";
 
 /// The line under the picker when every PC is held.
 pub(crate) const NONE_FREE: &str = "None is free.";
 
-/// One PC of the picker: its name as the hello gives it, and its id while nobody holds it.
-pub(crate) struct PickerRow {
+/// One PC of the PC picker: its name as the hello gives it, and its id while nobody holds it.
+pub(crate) struct PcPickerRow {
     pub(crate) name: String,
     pub(crate) open_id: Option<String>,
 }
 
-impl PickerRow {
+impl PcPickerRow {
     /// `Rowan`, or `Rowan (in use)` for a PC someone holds.
     pub(crate) fn label(&self) -> String {
         match self.open_id {
@@ -30,30 +30,30 @@ impl PickerRow {
 }
 
 /// Every PC a hello lists, open and taken, sorted by label.
-pub(crate) fn picker_rows(
+pub(crate) fn pc_picker_rows(
     open: &[String],
     taken: &[String],
     pc_names: &BTreeMap<String, String>,
-) -> Vec<PickerRow> {
+) -> Vec<PcPickerRow> {
     let name = |id: &String| pc_names.get(id).cloned().unwrap_or_default();
-    let open = open.iter().map(|id| PickerRow {
+    let open = open.iter().map(|id| PcPickerRow {
         name: name(id),
         open_id: Some(id.clone()),
     });
-    let taken = taken.iter().map(|id| PickerRow {
+    let taken = taken.iter().map(|id| PcPickerRow {
         name: name(id),
         open_id: None,
     });
-    let mut rows: Vec<PickerRow> = open.chain(taken).collect();
-    rows.sort_by_key(PickerRow::label);
+    let mut rows: Vec<PcPickerRow> = open.chain(taken).collect();
+    rows.sort_by_key(PcPickerRow::label);
     rows
 }
 
-/// The picker as lines mode prints it: the heading, each row, and `None is free.` when every
+/// The PC picker as the plain surface prints it: the heading, each row, and `None is free.` when every
 /// PC is held.
-pub(crate) fn render_picker(rows: &[PickerRow]) -> String {
-    let labels: Vec<String> = rows.iter().map(PickerRow::label).collect();
-    let mut text = format!("{PICKER_HEADING}:\n{}", labels.join("\n"));
+pub(crate) fn render_pc_picker(rows: &[PcPickerRow]) -> String {
+    let labels: Vec<String> = rows.iter().map(PcPickerRow::label).collect();
+    let mut text = format!("{PC_PICKER_HEADING}:\n{}", labels.join("\n"));
     if rows.iter().all(|row| row.open_id.is_none()) {
         text.push('\n');
         text.push_str(NONE_FREE);
@@ -89,11 +89,11 @@ pub fn render(body: &ServerBody) -> String {
 }
 
 fn render_speech(speech: &Speech) -> String {
-    format!("{}: {}", speaker_for_player(speech), speech.text)
+    format!("{}: {}", shown_speaker(speech), speech.text)
 }
 
 /// The name a player reads for who spoke: `You` for a player, else `GM` or the actor's name.
-pub(crate) fn speaker_for_player(speech: &Speech) -> &str {
+pub(crate) fn shown_speaker(speech: &Speech) -> &str {
     match &speech.from {
         Speaker::Player(_) => "You",
         Speaker::Gm | Speaker::Npc(_) => speaker_name(speech),

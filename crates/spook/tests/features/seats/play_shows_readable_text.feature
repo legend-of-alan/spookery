@@ -2,7 +2,7 @@ Feature: Play shows readable text
 
   Scenario: A docks session shows the place and who is present
     Given a docks table
-    When play joins the table with --lines
+    When play joins the table with --plain
     Then play shows "You are in Docks Shop."
     And play shows "Here: Aldric, You"
     And play does not show "While you were away:"

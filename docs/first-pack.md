@@ -138,4 +138,4 @@ spook run /tmp/mypack
 spook play
 ```
 
-It lists every PC and marks the ones in use. Choose Ada with the arrow keys and Enter to sit, or type `ada` under `spook play --lines`. The first picture is the yard. `travel lane` leaves for the lane and commits a round, because no GM is seated. `listen`, `wait`, `steady`, and `press` are the other player verbs.
+It lists every PC and marks the ones in use. Choose Ada with the arrow keys and Enter to sit, or type `ada` under `spook play --plain`. The first picture is the yard. `travel lane` leaves for the lane and commits a round, because no GM is seated. `listen`, `wait`, `steady`, and `press` are the other player verbs.

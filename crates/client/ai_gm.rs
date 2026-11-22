@@ -7,7 +7,7 @@ use spookery_agent::{ConnectionError, Model};
 use tokio::sync::Mutex;
 
 use crate::protocol::{ClientMessage, ServerMessage};
-use crate::ws::Connection;
+use crate::websocket;
 use crate::Error;
 
 /// Connect as the GM on the game port at `addr` and play each turn through `model` until
@@ -17,7 +17,7 @@ pub async fn run(
     model: impl Model,
     err: impl Write + Send + 'static,
 ) -> Result<(), Error> {
-    let (connection, _hello) = Connection::open(addr, "gm").await?;
+    let (connection, _hello) = websocket::Connection::open(addr, "gm").await?;
     let err = std::sync::Mutex::new(err);
     let report = move |line: &str| {
         let mut err = err.lock().unwrap_or_else(|err| err.into_inner());
@@ -28,8 +28,8 @@ pub async fn run(
 }
 
 /// The GM's connection, shared by `&self` one call at a time. A newtype because the
-/// orphan rule keeps `spookery_agent::Connection` off `tokio::sync::Mutex<Connection>`.
-struct GmConnection(Mutex<Connection>);
+/// orphan rule keeps `spookery_agent::Connection` off `tokio::sync::Mutex<websocket::Connection>`.
+struct GmConnection(Mutex<websocket::Connection>);
 
 impl spookery_agent::Connection for GmConnection {
     async fn send(&self, message: ClientMessage) -> Result<(), ConnectionError> {

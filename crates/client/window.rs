@@ -98,21 +98,29 @@ impl Window {
     }
 
     /// Adds one body to the screen and draws it.
-    pub(crate) fn show(&mut self, body: &ServerBody) -> Result<(), Error> {
+    pub(crate) fn show(
+        &mut self,
+        body: &ServerBody,
+        view: Option<&protocol::View>,
+    ) -> Result<(), Error> {
         self.screen.show(body);
-        self.draw()
+        self.draw(view)
     }
 
     /// Handles keys until the player sends a line: a PC id at the picker, else a typed line.
     /// `None` when they quit with Ctrl+C.
-    pub(crate) async fn next_line(&mut self) -> Result<Option<String>, Error> {
-        self.draw()?;
+    pub(crate) async fn next_line(
+        &mut self,
+        view: Option<&protocol::View>,
+        commands: &[String],
+    ) -> Result<Option<String>, Error> {
+        self.draw(view)?;
         while let Some(event) = self.keys.next().await {
             let request = match event.map_err(Error::Io)? {
-                Event::Key(key) => self.screen.press(key),
+                Event::Key(key) => self.screen.press(key, commands),
                 _ => None,
             };
-            self.draw()?;
+            self.draw(view)?;
             match request {
                 Some(Request::Send(line)) => return Ok(Some(line)),
                 Some(Request::Quit) => return Ok(None),
@@ -122,10 +130,10 @@ impl Window {
         Ok(None)
     }
 
-    fn draw(&mut self) -> Result<(), Error> {
+    fn draw(&mut self, view: Option<&protocol::View>) -> Result<(), Error> {
         let screen = &mut self.screen;
         self.terminal
-            .draw(|frame| screen.draw(frame))
+            .draw(|frame| screen.draw(frame, view))
             .map_err(Error::Io)?;
         Ok(())
     }
@@ -150,7 +158,7 @@ enum Request {
 /// panel and input line.
 struct Screen {
     truecolor: bool,
-    picker: Option<Picker>,
+    picker: Option<PcPicker>,
     /// Each PC's name by id, from the hello.
     pc_names: BTreeMap<String, String>,
     /// The seated PC's name, for the title bar.
@@ -165,19 +173,15 @@ struct Screen {
     story_page_rows: usize,
     /// The place whose name and prose the story showed last.
     shown_place_id: String,
-    /// The latest view, which the place panel shows.
-    view: Option<protocol::View>,
     input: Input,
-    /// The commands Tab completes: the hello's, but `claim`.
-    commands: Vec<String>,
     /// The lines sent, oldest first, and which one Up and Down put in the input.
     history: Vec<String>,
     recalled: Option<usize>,
 }
 
 /// Every PC the hello lists, and the open one Enter would choose.
-struct Picker {
-    rows: Vec<text::PickerRow>,
+struct PcPicker {
+    rows: Vec<text::PcPickerRow>,
     chosen: ListState,
 }
 
@@ -194,9 +198,7 @@ impl Screen {
             story_rows_back: 0,
             story_page_rows: 1,
             shown_place_id: String::new(),
-            view: None,
             input: Input::default(),
-            commands: Vec::new(),
             history: Vec::new(),
             recalled: None,
         }
@@ -222,22 +224,16 @@ impl Screen {
     fn show(&mut self, body: &ServerBody) {
         match body {
             ServerBody::Hello {
-                commands,
                 open,
                 taken,
                 pc_names,
                 ..
             } => {
-                let rows = text::picker_rows(open, taken, pc_names);
+                let rows = text::pc_picker_rows(open, taken, pc_names);
                 let first_open = rows.iter().position(|row| row.open_id.is_some());
                 let chosen = ListState::default().with_selected(first_open);
-                self.picker = Some(Picker { rows, chosen });
+                self.picker = Some(PcPicker { rows, chosen });
                 self.pc_names = pc_names.clone();
-                self.commands = commands
-                    .iter()
-                    .filter(|command| *command != "claim")
-                    .cloned()
-                    .collect();
             }
             ServerBody::Claimed { actor, .. } => {
                 self.pc_name = self.pc_names.get(actor).cloned().unwrap_or_default();
@@ -257,7 +253,6 @@ impl Screen {
                     self.shown_place_id = view.place.clone();
                     self.push_arrival(view);
                 }
-                self.view = Some((**view).clone());
             }
             ServerBody::Say(speech) => {
                 let line = self.speech_line(speech);
@@ -305,13 +300,13 @@ impl Screen {
             Speaker::Npc(_) => TANGERINE,
         };
         Line::from(vec![
-            self.span(text::speaker_for_player(speech), speaker_color),
+            self.span(text::shown_speaker(speech), speaker_color),
             self.span(format!(": {}", speech.text), PARCHMENT),
         ])
     }
 
     /// What `key` does. Only presses count, since Windows also reports releases.
-    fn press(&mut self, key: KeyEvent) -> Option<Request> {
+    fn press(&mut self, key: KeyEvent, commands: &[String]) -> Option<Request> {
         if key.kind != KeyEventKind::Press {
             return None;
         }
@@ -325,7 +320,7 @@ impl Screen {
         }
         match key.code {
             KeyCode::Enter => return self.send_typed(),
-            KeyCode::Tab => self.complete_command(),
+            KeyCode::Tab => self.complete_command(commands),
             KeyCode::Up | KeyCode::Down => self.recall(key.code == KeyCode::Up),
             KeyCode::PageUp => self.story_rows_back += self.story_page_rows,
             KeyCode::PageDown => {
@@ -356,15 +351,14 @@ impl Screen {
 
     /// Completes the first word to the command names that start with it: to the one name and a
     /// space, or to what all of them share.
-    fn complete_command(&mut self) {
+    fn complete_command(&mut self, commands: &[String]) {
         let typed = self.input.value();
         if typed.contains(' ') {
             return;
         }
-        let mut names = self
-            .commands
+        let mut names = commands
             .iter()
-            .filter(|command| command.starts_with(typed));
+            .filter(|command| *command != "claim" && command.starts_with(typed));
         let Some(first) = names.next() else {
             return;
         };
@@ -405,7 +399,7 @@ impl Screen {
         self.input = Input::new(line.unwrap_or_default());
     }
 
-    fn draw(&mut self, frame: &mut Frame) {
+    fn draw(&mut self, frame: &mut Frame, view: Option<&protocol::View>) {
         let area = frame.area();
         let void = VOID.to_color(self.truecolor);
         frame.render_widget(Block::new().style(Style::new().bg(void)), area);
@@ -431,7 +425,7 @@ impl Screen {
         let [story, place] =
             Layout::horizontal([Constraint::Fill(2), Constraint::Fill(1)]).areas(middle);
         self.draw_story(frame, story);
-        self.draw_place(frame, place);
+        self.draw_place(frame, place, view);
         self.draw_input(frame, input);
         self.draw_keys(
             frame,
@@ -496,7 +490,7 @@ impl Screen {
     }
 
     fn draw_picker(&mut self, frame: &mut Frame, area: Rect) {
-        let block = self.pane(text::PICKER_HEADING, true);
+        let block = self.pane(text::PC_PICKER_HEADING, true);
         let highlight = self.style(GOLD).add_modifier(Modifier::BOLD);
         let (parchment, ash) = (self.style(PARCHMENT), self.style(ASH));
         let Some(picker) = &mut self.picker else {
@@ -539,8 +533,8 @@ impl Screen {
     }
 
     /// Who is here, the exits, the items, the meters, then what the PC knows and its notes.
-    fn draw_place(&self, frame: &mut Frame, area: Rect) {
-        let Some(view) = &self.view else {
+    fn draw_place(&self, frame: &mut Frame, area: Rect, view: Option<&protocol::View>) {
+        let Some(view) = view else {
             frame.render_widget(self.pane("Here", false), area);
             return;
         };
@@ -659,7 +653,7 @@ impl Screen {
     }
 }
 
-impl Picker {
+impl PcPicker {
     /// Moves the choice to the open PC above or below with Up and Down. Enter chooses it and
     /// returns its PC id.
     fn press(&mut self, code: KeyCode) -> Option<String> {
@@ -686,24 +680,50 @@ mod tests {
     use serde_json::Value;
 
     use super::{Request, Screen};
-    use crate::protocol::{ServerBody, ServerMessage};
+    use crate::protocol::{self, ServerBody, ServerMessage};
 
     const RECORDING: &str = include_str!("../protocol/sessions/v2.jsonl");
 
-    fn press(screen: &mut Screen, code: KeyCode) -> Option<Request> {
-        screen.press(KeyEvent::from(code))
+    struct Harness {
+        screen: Screen,
+        view: Option<protocol::View>,
+        commands: Vec<String>,
     }
 
-    fn type_text(screen: &mut Screen, text: &str) {
-        for letter in text.chars() {
-            press(screen, KeyCode::Char(letter));
+    impl Harness {
+        fn new() -> Self {
+            Self {
+                screen: Screen::new(true),
+                view: None,
+                commands: Vec::new(),
+            }
+        }
+
+        fn show(&mut self, body: &ServerBody) {
+            if let ServerBody::Hello { commands, .. } = body {
+                self.commands = commands.clone();
+            }
+            if let ServerBody::View(view) = body {
+                self.view = Some((**view).clone());
+            }
+            self.screen.show(body);
+        }
+
+        fn press(&mut self, code: KeyCode) -> Option<Request> {
+            self.screen.press(KeyEvent::from(code), &self.commands)
+        }
+
+        fn type_text(&mut self, text: &str) {
+            for letter in text.chars() {
+                self.press(KeyCode::Char(letter));
+            }
         }
     }
 
     /// Replays Rowan's side of the recorded docks session: shows each message Rowan got, picks
     /// Rowan at the picker, types each command Rowan sent, and stops before the first command
     /// named `stop`.
-    fn replay_until(screen: &mut Screen, stop: &str) {
+    fn replay_until(harness: &mut Harness, stop: &str) {
         for row in RECORDING.lines() {
             let row: Value = serde_json::from_str(row).unwrap();
             if row["seat"] != "player:rowan" {
@@ -717,16 +737,16 @@ mod tests {
                     "say" => format!("say {}", args["text"].as_str().unwrap_or_default()),
                     command => format!("{command} {}", args["target"].as_str().unwrap_or_default()),
                 };
-                type_text(screen, typed.trim());
-                press(screen, KeyCode::Enter);
+                harness.type_text(typed.trim());
+                harness.press(KeyCode::Enter);
                 continue;
             }
             let message: ServerMessage = serde_json::from_value(row["get"].clone()).unwrap();
-            screen.show(&message.body);
+            harness.show(&message.body);
             if matches!(message.body, ServerBody::Hello { .. }) {
-                press(screen, KeyCode::Down);
+                harness.press(KeyCode::Down);
                 assert_eq!(
-                    press(screen, KeyCode::Enter),
+                    harness.press(KeyCode::Enter),
                     Some(Request::Send("rowan".into()))
                 );
             }
@@ -734,9 +754,12 @@ mod tests {
     }
 
     /// The screen's text at `width` by `height`, one row per line.
-    fn screen_text(screen: &mut Screen, width: u16, height: u16) -> String {
+    fn screen_text(harness: &mut Harness, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-        terminal.draw(|frame| screen.draw(frame)).unwrap();
+        let view = harness.view.as_ref();
+        terminal
+            .draw(|frame| harness.screen.draw(frame, view))
+            .unwrap();
         let buffer = terminal.backend().buffer();
         let rows: Vec<String> = (0..height)
             .map(|y| {
@@ -747,54 +770,54 @@ mod tests {
         rows.join("\n")
     }
 
-    fn assert_screen(name: &str, screen: &mut Screen) {
-        let shown = screen_text(screen, 80, 24);
+    fn assert_screen(name: &str, harness: &mut Harness) {
+        let shown = screen_text(harness, 80, 24);
         insta::assert_snapshot!(format!("{name}_80x24"), shown);
     }
 
     #[test]
     fn the_picker_lists_each_pc_by_name() {
-        let mut screen = Screen::new(true);
+        let mut harness = Harness::new();
         let hello = RECORDING
             .lines()
             .find(|row| row.contains(r#""kind":"hello","version":2,"commands":["claim""#))
             .unwrap();
         let hello: Value = serde_json::from_str(hello).unwrap();
         let hello: ServerMessage = serde_json::from_value(hello["get"].clone()).unwrap();
-        screen.show(&hello.body);
-        assert_screen("picker", &mut screen);
+        harness.show(&hello.body);
+        assert_screen("picker", &mut harness);
     }
 
     #[test]
     fn a_seated_table_shows_the_story_and_the_place() {
-        let mut screen = Screen::new(true);
-        replay_until(&mut screen, "travel");
-        assert_screen("seated", &mut screen);
+        let mut harness = Harness::new();
+        replay_until(&mut harness, "travel");
+        assert_screen("seated", &mut harness);
     }
 
     #[test]
     fn tab_completes_a_command_name() {
-        let mut screen = Screen::new(true);
-        replay_until(&mut screen, "travel");
-        type_text(&mut screen, "tr");
-        press(&mut screen, KeyCode::Tab);
-        type_text(&mut screen, "stairs");
-        assert_screen("completed", &mut screen);
+        let mut harness = Harness::new();
+        replay_until(&mut harness, "travel");
+        harness.type_text("tr");
+        harness.press(KeyCode::Tab);
+        harness.type_text("stairs");
+        assert_screen("completed", &mut harness);
     }
 
     #[test]
     fn page_up_scrolls_the_story_back() {
-        let mut screen = Screen::new(true);
-        replay_until(&mut screen, "release");
-        screen_text(&mut screen, 80, 24);
-        press(&mut screen, KeyCode::PageUp);
-        assert_screen("scrolled_back", &mut screen);
+        let mut harness = Harness::new();
+        replay_until(&mut harness, "release");
+        screen_text(&mut harness, 80, 24);
+        harness.press(KeyCode::PageUp);
+        assert_screen("scrolled_back", &mut harness);
     }
 
     #[test]
     fn a_refusal_shows_in_the_story() {
-        let mut screen = Screen::new(true);
-        replay_until(&mut screen, "release");
-        assert_screen("refused", &mut screen);
+        let mut harness = Harness::new();
+        replay_until(&mut harness, "release");
+        assert_screen("refused", &mut harness);
     }
 }

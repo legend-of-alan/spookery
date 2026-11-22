@@ -89,7 +89,7 @@ spook verify /tmp/docks
 
 While `spook run` serves a pack, `round` and `migrate` on that pack exit 1 with `COMMIT_CONFLICT` and write nothing. Stop `spook run` to use them.
 
-At a terminal, `spook play` opens a game window: the story on the left, the place on the right, and the line you type at the bottom. Tab completes a command, Up and Down walk what you typed, PgUp and PgDn scroll the story, and Ctrl+C releases your character. Piped, or with `--lines`, it prints plain lines instead, which suits screen readers. `--raw` prints each protocol frame as one JSON line.
+At a terminal, `spook play` opens a game window: the story on the left, the place on the right, and the line you type at the bottom. Tab completes a command, Up and Down walk what you typed, PgUp and PgDn scroll the story, and Ctrl+C releases your character. Piped, or with `--plain`, it prints plain lines instead, which suits screen readers. `--raw` prints each protocol frame as one JSON line.
 
 If you join as a character who's already seated, `spook play` exits 1 with `That character is already taken. [SEAT_TAKEN]`. A fourth player gets `The table is full. [TABLE_FULL]`.
 

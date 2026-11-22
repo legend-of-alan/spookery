@@ -10,10 +10,10 @@ pub mod http_model;
 pub mod play;
 use spookery_protocol as protocol;
 pub mod text;
+pub mod websocket;
 mod window;
-pub mod ws;
 
-/// A client failure: what `play::run_window`, `play::run_lines`, `gm::run` and
+/// A client failure: what `play::run_windowed`, `play::run_plain`, `gm::run` and
 /// `ai_gm::run` return to `spook`, and what the seat connections and `HttpModel`
 /// return to them. Display is the line `spook` prints for it.
 #[derive(Debug)]

@@ -45,12 +45,12 @@ enum Command {
     /// Sit the player seat. At a terminal it opens the game window; piped, it prints lines.
     #[cfg(feature = "client")]
     Play {
-        /// Print each protocol frame as one JSON line. Implies `--lines`.
+        /// Print each protocol frame as one JSON line. Implies `--plain`.
         #[arg(long)]
         raw: bool,
         /// Print plain lines even at a terminal.
         #[arg(long)]
-        lines: bool,
+        plain: bool,
     },
     /// Sit the GM seat.
     #[cfg(feature = "client")]
@@ -173,10 +173,10 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 .map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
-        Command::Play { raw, lines } => if opens_window(raw, lines) {
-            spookery::play::run_window(addr).await
+        Command::Play { raw, plain } => if opens_window(raw, plain) {
+            spookery::play::run_windowed(addr).await
         } else {
-            spookery::play::run_lines(addr, raw).await
+            spookery::play::run_plain(addr, raw).await
         }
         .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
@@ -278,7 +278,7 @@ fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
         #[cfg(feature = "client")]
         Command::AiGm => (Some("ai-gm"), "warn,spook=info"),
         #[cfg(feature = "client")]
-        Command::Play { raw, lines } if opens_window(*raw, *lines) => (Some("play"), "warn"),
+        Command::Play { raw, plain } if opens_window(*raw, *plain) => (Some("play"), "warn"),
         _ => (None, "warn"),
     };
     let directives = std::env::var("RUST_LOG")
@@ -305,10 +305,10 @@ fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
     Ok(Some(path))
 }
 
-/// Whether `spook play` opens its window: at a terminal, without `--raw` or `--lines`.
+/// Whether `spook play` opens its window: at a terminal, without `--raw` or `--plain`.
 #[cfg(feature = "client")]
-fn opens_window(raw: bool, lines: bool) -> bool {
-    !raw && !lines && std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
+fn opens_window(raw: bool, plain: bool) -> bool {
+    !raw && !plain && std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
 }
 
 fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {
@@ -372,17 +372,17 @@ mod tests {
             play.command,
             Command::Play {
                 raw: false,
-                lines: false
+                plain: false
             }
         ));
         let raw = Cli::try_parse_from(["spook", "play", "--raw"]).unwrap();
         assert!(matches!(raw.command, Command::Play { raw: true, .. }));
-        let lines = Cli::try_parse_from(["spook", "play", "--lines"]).unwrap();
+        let plain = Cli::try_parse_from(["spook", "play", "--plain"]).unwrap();
         assert!(matches!(
-            lines.command,
+            plain.command,
             Command::Play {
                 raw: false,
-                lines: true
+                plain: true
             }
         ));
         let host = Cli::try_parse_from(["spook", "ai-gm"]).unwrap();

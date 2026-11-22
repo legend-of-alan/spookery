@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 
 use crate::protocol::{Reason, Refusal, ServerBody, ServerMessage};
 use crate::text;
-use crate::ws::Connection;
+use crate::websocket;
 use crate::Error;
 
 const HELP: &str = "\
@@ -35,7 +35,7 @@ A command the table does not list, or arguments it cannot read, is not sent.";
 
 /// Sit the GM seat on `/gm` at `addr` until the seat is released or the host closes it.
 pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
-    let (mut seat, hello) = match Connection::open(addr, "gm").await {
+    let (mut seat, hello) = match websocket::Connection::open(addr, "gm").await {
         Err(Error::Refused(refusal)) => {
             return Err(Error::Message(text::render_refusal(&refusal, raw)))
         }
