@@ -1,5 +1,4 @@
-//! The play terminal: plain lines or the game window, and the last `seq` it showed so a
-//! reconnect asks for what came after.
+//! The play terminal: plain lines or the game window.
 
 use tokio::sync::mpsc::UnboundedReceiver;
 
@@ -14,7 +13,7 @@ use window::Window;
 /// showed, so a reconnect asks for what came after.
 pub struct Terminal {
     surface: Surface,
-    pub(crate) last_seq: u64,
+    last_seq: u64,
 }
 
 /// Plain lines on stdout and stderr with lines typed on stdin, or the game window.
@@ -24,6 +23,7 @@ enum Surface {
 }
 
 impl Terminal {
+    /// Opens the game window and takes over the terminal until this `Terminal` is dropped.
     pub fn window() -> Result<Self, Error> {
         Ok(Self {
             surface: Surface::Window(Box::new(Window::open()?)),
@@ -31,6 +31,7 @@ impl Terminal {
         })
     }
 
+    /// Prints plain lines, as text or with `raw` as protocol frames.
     pub fn plain(raw: bool) -> Self {
         Self {
             surface: Surface::Plain(Plain {
@@ -42,6 +43,7 @@ impl Terminal {
         }
     }
 
+    /// Shows the message and records its `seq`.
     pub(crate) fn show(
         &mut self,
         message: &ServerMessage,
@@ -77,6 +79,10 @@ impl Terminal {
     /// Whether refusals show as their bare code.
     pub(crate) fn is_raw(&self) -> bool {
         matches!(&self.surface, Surface::Plain(plain) if plain.raw)
+    }
+
+    pub(crate) fn last_seq(&self) -> u64 {
+        self.last_seq
     }
 }
 

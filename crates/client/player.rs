@@ -124,7 +124,7 @@ async fn reconnect(
             return Ok(false);
         }
     };
-    let args = json!({ "token": token.as_str(), "last_seq": terminal.last_seq });
+    let args = json!({ "token": token.as_str(), "last_seq": terminal.last_seq() });
     let (new_view, new_token) = claim_pc(&mut opened, args, terminal, Some(view.clone())).await?;
     *connection = opened;
     *view = new_view;
