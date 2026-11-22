@@ -1,5 +1,5 @@
 //! The game window `spook play` opens at a terminal: the picker, then the story, the place
-//! panel, the input line and the key bar, painted in the Spookery palette. `play` hands it each
+//! panel, the input line and the key bar, painted in the Spookery palette. `player` hands it each
 //! message body and reads from it each line the player sends.
 
 use std::collections::BTreeMap;

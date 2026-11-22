@@ -45,7 +45,6 @@ enum ExitReason {
 }
 
 async fn play_session(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReason, Error> {
-    // repeats module: the verb for the whole session, from join through exit
     let (connection, hello) = websocket::Connection::open(addr, "player").await?;
     let commands = match &hello.body {
         ServerBody::Hello { commands, .. } => commands

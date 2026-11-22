@@ -129,7 +129,7 @@ jobs:
           done
           cargo tree -e normal -p spookery-server --locked | (! grep -E 'reqwest|tracing-subscriber')
           # Only the `spook play` and `spook gm` terminals print. Library code hands output to a writer.
-          (! grep -rnE '\b(e?print(ln)?!|io::std(out|err)\(\))' crates/{engine,protocol,agent,server,client} --include='*.rs' | grep -vE '^crates/client/(play|gm)\.rs:')
+          (! grep -rnE '\b(e?print(ln)?!|io::std(out|err)\(\))' crates/{engine,protocol,agent,server,client} --include='*.rs' | grep -vE '^crates/client/(player|gm)\.rs:')
           # Rust source has no plain comments: only ///, //! and the rule-8 marker on an item's line or
           # the next one (CONTRIBUTING.md No plain comments).
           git ls-files -z '*.rs' | xargs -0 awk -v item_re="$item_re" 'FNR == 1 { on_item = 0 } { after_item = on_item; on_item = $0 ~ item_re }

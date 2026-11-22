@@ -174,9 +174,9 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "client")]
         Command::Play { raw, plain } => if opens_window(raw, plain) {
-            spookery::play::run_windowed(addr).await
+            spookery::player::run_windowed(addr).await
         } else {
-            spookery::play::run_plain(addr, raw).await
+            spookery::player::run_plain(addr, raw).await
         }
         .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
