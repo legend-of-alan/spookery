@@ -419,7 +419,7 @@ async fn a_round_commits(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let before = world_of(&pack).round_index;
     let queued =
-        table::gm_tool_call(world, 5, "queue", r#"{"actor_id":"aldric","move":"wait"}"#).await;
+        table::gm_tool_call(world, 5, "queue", r#"{"actor":"aldric","move":"wait"}"#).await;
     assert!(queued.contains("\"id\""), "{queued}");
     let committed = table::gm_tool_call(world, 6, "commit", r#"{"include_round":true}"#).await;
     assert_eq!(world_of(&pack).round_index, before + 1, "{committed}");

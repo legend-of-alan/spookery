@@ -790,7 +790,7 @@ fn play_queued(
     (session.world().clone(), output)
 }
 
-/// The GM's `queue` command: `actor_id` plays `verb` at `target`, under the id `id`.
+/// The GM's `queue` command: `actor` plays `verb` at `target`, under the id `id`.
 fn intent(
     id: &str,
     actor_id: &str,

@@ -87,7 +87,7 @@ async fn a_queued_wait_meets_wakes(world: &mut World) {
         .unwrap_or_else(|| panic!("no queue\n{status}"));
     assert_eq!(rows.len(), 1, "{status}");
     assert_eq!(rows[0]["id"], id.as_str(), "{status}");
-    assert_eq!(rows[0]["actor_id"], "rowan", "{status}");
+    assert_eq!(rows[0]["actor"], "rowan", "{status}");
     assert_eq!(world_of(&pack).world_time, 1080);
 }
 

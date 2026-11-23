@@ -354,13 +354,13 @@ fn sort_words<'a>(words: impl Iterator<Item = &'a str>) -> String {
     words.join(" ")
 }
 
-#[then(regex = r#"^a queue call with "actor_id", "move" and "to" is accepted$"#)]
+#[then(regex = r#"^a queue call with "actor", "move" and "to" is accepted$"#)]
 async fn a_queue_call_with_to_is_accepted(world: &mut World) {
     let holder = world
         .http_gm
         .as_mut()
         .unwrap_or_else(|| panic!("no GM holds the seat"));
-    let arguments = json!({"actor_id": "rowan", "move": "wait", "to": ["wren"]});
+    let arguments = json!({"actor": "rowan", "move": "wait", "to": ["wren"]});
     let queued = call(holder, "queue", arguments).await;
     assert_not_refused(&queued, "queue");
 }
@@ -418,7 +418,7 @@ async fn call_each_gm_tool(gm: &mut GmClient) {
     for (tool_id, arguments) in [
         ("status", json!({})),
         ("perceive", json!({"as": "rowan"})),
-        ("queue", json!({"actor_id": "rowan", "move": "wait"})),
+        ("queue", json!({"actor": "rowan", "move": "wait"})),
         ("say", json!({"to": "table", "text": "good evening"})),
         ("commit", json!({"include_round": true})),
     ] {
@@ -529,10 +529,10 @@ async fn an_mcp_gm_and_a_websocket_gm(world: &mut World) {
 
 /// Bram stands in the street. Travel needs a target, and the shop is next to it.
 const TRAVEL_THEN_COMMIT: [(&str, &str); 3] = [
-    ("queue", r#"{"actor_id":"bram","move":"travel"}"#),
+    ("queue", r#"{"actor":"bram","move":"travel"}"#),
     (
         "queue",
-        r#"{"actor_id":"bram","move":"travel","target":"docks_shop"}"#,
+        r#"{"actor":"bram","move":"travel","target":"docks_shop"}"#,
     ),
     ("commit", r#"{"include_round":true}"#),
 ];

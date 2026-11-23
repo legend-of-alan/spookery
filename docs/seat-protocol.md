@@ -72,7 +72,7 @@ Each command reads `args` as one type, and the schema's `$defs` in `client.json`
 | a pack verb | player | `MoveArgs`: `target`, when the verb takes one | `queued` |
 | `status` | GM | `NoArgs` | `status` |
 | `perceive` | GM | `PerceiveArgs`: `as`, `max_body_chars` | `view` |
-| `queue` | GM | `QueueArgs`: `actor_id`, `move`, `id`, `target`, `to`, `round_index`, `rationale_code` | `queued` |
+| `queue` | GM | `QueueArgs`: `actor`, `move`, `id`, `target`, `to`, `round_index`, `rationale_code` | `queued` |
 | `commit` | GM | `CommitArgs`: `include_round`, `session_id` | a `round` for each round played, then `committed` |
 
 ### claim and release
@@ -294,11 +294,11 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 
 ### queue
 
-`actor_id` and `move` are required. `id` becomes the queue id, and the table mints one when it is left out. A PC a player holds takes only that player's moves, so the GM's move for it is `ACTOR_MISMATCH`.
+`actor` and `move` are required. `id` becomes the queue id, and the table mints one when it is left out. A PC a player holds takes only that player's moves, so the GM's move for it is `ACTOR_MISMATCH`.
 
 <!-- example: gm-queue -->
 ```json
-{"id":"c2","body":{"kind":"queue","args":{"actor_id":"aldric","move":"wait","id":"gm-wait"}}}
+{"id":"c2","body":{"kind":"queue","args":{"actor":"aldric","move":"wait","id":"gm-wait"}}}
 ```
 
 <!-- example: gm-queued -->
@@ -490,7 +490,7 @@ Each seated player gets, in order: the `round`, a `check` for each of their own 
 
 <!-- example: mcp-call -->
 ```json
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"queue","arguments":{"actor_id":"aldric","move":"wait","id":"mcp-wait"}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"queue","arguments":{"actor":"aldric","move":"wait","id":"mcp-wait"}}}
 ```
 
 The result's `structuredContent` is `messages`: every message the command sent this seat, in order, the reply last.
@@ -657,5 +657,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 narrowed a roll before any release, on purpose, when a rule's `check:` replaced `roll:`: a `committed` roll dropped `faces` and `stat`, and `target` became `success_at`. The check's dice are a line in `dice`, like any other number's. The recording took the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
 - Version 2 added fields a player window needs, and the version stayed 2 because each only adds: `view.items_carried` and `view.wielded_item_id`, a meter's `name` in `view` and its `entry_name` in `changes`, a `map` place's `place_id`, and `round_index` and `world_time` in `claimed`. The recording took the docks pack's new `pack_rev` with it.
 - Version 2 renamed two `claimed` fields on purpose, so each says what it holds: `missed` became `missed_messages` and `gap` became `is_missed_truncated`. The alpha pre-releases send and read the old names. A client and a table from either side of the rename still play, but a reconnect shows no missed messages, since each side ignores a field it does not know. The recording has neither field.
+- Version 2 renamed the GM `queue` field and the actor id on `status.queued[]` before any release, on purpose, so they match the other actor ids: `actor_id` became `actor`. There is no alias for the old key. The recording took the new name with it. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.
