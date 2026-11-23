@@ -1,0 +1,28 @@
+---
+source: crates/client/terminal/window.rs
+expression: shown
+---
+ SPOOKERY                                           Rowan · round 2 · tick 1090
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+╭ Transcript ────────────────────────────────╮╭ Docks Shop ────────────────────╮
+│▌ Docks Shop                                ││Here: Aldric, You               │
+│The shop faces the water. Tins sit in a row.││Exits                           │
+│› look                                      ││Docks Street — 0 ticks          │
+│› say evening                               ││stairs (locked) — 2 ticks       │
+│You: evening                                ││Items here                      │
+│GM: good evening                            ││Lamp oil: 3                     │
+│› exert  ╭ Help ────────────────────────────────────────────────────╮         │
+│Your acti│look                                                      │─────────╯
+│◆ Your ro│strike <actor>: Aldric                                    │n ───────╮
+│› take la│travel <exit>: Docks Street, stairs                       │ ━━──────│
+│Your acti╰ Esc closes ──────────────────────────────────────────────╯ ━━━━────│
+│You picked up the Lamp oil.                 ││Might: 1/45             ────────│
+│› travel stairs                             ││Rest: 3/5               ━━━━────│
+│The stair door is locked. [NO_EXIT]         ││Vigor: 1/110            ────────│
+│› fly                                       ││The world                       │
+│That line is not valid. [SCHEMA]            ││Tide: 3/10              ━━──────│
+╰────────────────────────────────────────────╯╰F2 F3 F4 switch · same key hides╯
+╭──────────────────────────────────────────────────────────────────────────────╮
+│›                                                                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ Enter send  Tab complete  ↑↓ history  PgUp PgDn scroll  F1 help  Ctrl+C quit

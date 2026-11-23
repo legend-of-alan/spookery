@@ -84,7 +84,10 @@ pub async fn play(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReaso
                     continue;
                 }
                 match connection.send(command, args.clone()).await {
-                    Ok(_) => continue,
+                    Ok(request_id) => {
+                        terminal.record_request_id(request_id);
+                        continue;
+                    }
                     Err(Error::Io(_)) => Some((command.to_string(), args)),
                     Err(err) => return Err(err),
                 }
@@ -94,7 +97,8 @@ pub async fn play(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReaso
             return Ok(ExitReason::HostClosed);
         }
         if let Some((command, args)) = unsent {
-            connection.send(&command, args).await?;
+            let request_id = connection.send(&command, args).await?;
+            terminal.record_request_id(request_id);
         }
     }
     connection.release().await?;

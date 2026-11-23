@@ -1,0 +1,13 @@
+---
+source: crates/client/terminal/window.rs
+expression: "region_text(screen, Some(view), pick_rect)"
+---
+╭ Docks Shop ────────────────────╮
+│Here: Aldric, You               │
+│Exits                           │
+│Docks Street — 0 ticks          │
+│stairs (locked) — 2 ticks       │
+│Nearby                          │
+│Docks Street → Gate Yard        │
+│                                │
+╰────────────────────────────────╯

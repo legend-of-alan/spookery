@@ -55,7 +55,7 @@ impl Terminal {
                 plain.print(message);
                 Ok(())
             }
-            Surface::Window(window) => window.show(&message.body, view),
+            Surface::Window(window) => window.show(message, view),
         }
     }
 
@@ -69,6 +69,14 @@ impl Terminal {
         match &mut self.surface {
             Surface::Plain(plain) => Ok(plain.stdin_lines.recv().await),
             Surface::Window(window) => window.next_line(view, commands).await,
+        }
+    }
+
+    /// Takes the request id play sent the last line from `next_line` under, so the window knows
+    /// the reply to its own request.
+    pub(crate) fn record_request_id(&mut self, request_id: String) {
+        if let Surface::Window(window) = &mut self.surface {
+            window.record_request_id(request_id);
         }
     }
 

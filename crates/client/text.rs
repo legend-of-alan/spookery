@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 
 use crate::protocol::{
-    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, ItemStack, MeterView,
-    NoteView, Outcome, PlaceView, Roll, ServerBody, Speaker, Speech, TableStatus,
+    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, ItemStack, KnownFact,
+    MeterView, NoteView, Outcome, PlaceView, Roll, ServerBody, Speaker, Speech, TableStatus,
 };
 
 /// The PC picker's heading.
@@ -215,27 +215,11 @@ pub fn render_view(view: &protocol::View) -> String {
             .join(", ");
         sections.push(format!("Here: {names}"));
     }
-    push_lines(
-        &mut sections,
-        "You know:",
-        known_facts.iter().map(|fact| fact.text.as_str()),
-    );
-    push_lines(
-        &mut sections,
-        "Notes:",
-        notes.iter().map(|note| note.text.as_str()),
-    );
+    sections.extend(render_facts_and_notes(known_facts, notes));
     let items_here_lines: Vec<String> = items_here.iter().map(render_item).collect();
     let items_carried_lines: Vec<String> = items_carried
         .iter()
-        .map(|item| {
-            let line = render_item(item);
-            if wielded_item_id.as_ref() == Some(&item.id) {
-                format!("{line} (in hand)")
-            } else {
-                line
-            }
-        })
+        .map(|item| render_carried_item(item, wielded_item_id.as_ref() == Some(&item.id)))
         .collect();
     for (title, lines) in [
         ("Items here:", items_here_lines),
@@ -415,9 +399,35 @@ pub(crate) fn actor_ids_and_names(
     view.visible_actors.iter().zip(&view.actor_names)
 }
 
+/// The `You know:` and `Notes:` sections, each left out when it has no lines.
+pub(crate) fn render_facts_and_notes(known_facts: &[KnownFact], notes: &[NoteView]) -> Vec<String> {
+    let mut sections = Vec::new();
+    push_lines(
+        &mut sections,
+        "You know:",
+        known_facts.iter().map(|fact| fact.text.as_str()),
+    );
+    push_lines(
+        &mut sections,
+        "Notes:",
+        notes.iter().map(|note| note.text.as_str()),
+    );
+    sections
+}
+
 /// `Lamp oil: 4`: the item's name and count.
 pub(crate) fn render_item(item: &ItemStack) -> String {
     format!("{}: {}", item.name, item.count)
+}
+
+/// `Lamp oil: 1`, or `Lamp oil: 1 (in hand)` when the viewer wields it.
+pub(crate) fn render_carried_item(item: &ItemStack, is_wielded: bool) -> String {
+    let line = render_item(item);
+    if is_wielded {
+        format!("{line} (in hand)")
+    } else {
+        line
+    }
 }
 
 /// `Health: 8/16`: the meter's name, value and max.

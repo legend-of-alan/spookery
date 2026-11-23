@@ -1,0 +1,44 @@
+---
+source: crates/client/terminal/window.rs
+expression: shown
+---
+ SPOOKERY                                                                                                       Rowan · round 2 · tick 1090
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+╭ Transcript ──────────────────────────────────────────────────────────╮╭ Docks Shop ────────────────────╮╭ Stats │ Carried │ Known ───────╮
+│▌ Docks Shop                                                          ││Here: Aldric, You               ││Assassination debt: 2/6 ━━──────│
+│The shop faces the water. Tins sit in a row.                          ││Exits                           ││Health: 8/16            ━━━━────│
+│› look                                                                ││Docks Street — 0 ticks          ││Might: 1/45             ────────│
+│› say evening                                                         ││stairs (locked) — 2 ticks       ││Rest: 3/5               ━━━━────│
+│You: evening                                                          ││Nearby                          ││Vigor: 1/110            ────────│
+│GM: good evening                                                      ││Docks Street → Gate Yard        ││The world                       │
+│› exert                                                               ││Items here                      ││Tide: 3/10              ━━──────│
+│Your action is queued.                                                ││Lamp oil: 3                     ││                                │
+│── round 1 · tick 1085 ──                                             ││                                ││                                │
+│◆ Your roll succeeded.                                                ││                                ││                                │
+│› take lamp_oil                                                       ││                                ││                                │
+│Your action is queued.                                                ││                                ││                                │
+│── round 2 · tick 1090 ──                                             ││                                ││                                │
+│You picked up the Lamp oil.                                           ││                                ││                                │
+│› travel stairs                                                       ││                                ││                                │
+│The stair door is locked. [NO_EXIT]                                   ││                                ││                                │
+│› fly                                                                 ││                                ││                                │
+│That line is not valid. [SCHEMA]                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+│                                                                      ││                                ││                                │
+╰──────────────────────────────────────────────────────────────────────╯╰────────────────────────────────╯╰F2 F3 F4 switch · same key hides╯
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│›                                                                                                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ Enter send  Tab complete  ↑↓ history  PgUp PgDn scroll  F1 help  Ctrl+C quit

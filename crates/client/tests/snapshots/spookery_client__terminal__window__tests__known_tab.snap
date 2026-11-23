@@ -1,0 +1,13 @@
+---
+source: crates/client/terminal/window.rs
+expression: "region_text(screen, Some(view), pick_rect)"
+---
+╭ Stats │ Carried │ Known ───────╮
+│You know:                       │
+│Oil is on the shelf.            │
+│                                │
+│Notes:                          │
+│Back at dusk. Oil on the shelf. │
+│                                │
+│                                │
+╰F2 F3 F4 switch · same key hides╯
