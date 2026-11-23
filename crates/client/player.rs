@@ -48,24 +48,18 @@ pub async fn play(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReaso
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
     loop {
-        tokio::select! {
-            message = connection.recv() => {
-                let message = match message {
-                    Some(Ok(message)) => message,
-                    Some(Err(Error::Io(_))) | None => {
-                        if !reconnect(addr, &mut connection, &mut view, &mut token, terminal).await?
-                        {
-                            return Ok(ExitReason::HostClosed);
-                        }
-                        continue;
+        let unsent = tokio::select! {
+            message = connection.recv() => match message {
+                Some(Ok(message)) => {
+                    if let ServerBody::View(body) = &message.body {
+                        view = (**body).clone();
                     }
-                    Some(Err(err)) => return Err(err),
-                };
-                if let ServerBody::View(body) = &message.body {
-                    view = (**body).clone();
+                    terminal.show(&message, Some(&view))?;
+                    continue;
                 }
-                terminal.show(&message, Some(&view))?;
-            }
+                Some(Err(Error::Io(_))) | None => None,
+                Some(Err(err)) => return Err(err),
+            },
             _ = &mut ctrl_c => break,
             line = terminal.next_line(Some(&view), &commands) => {
                 let Some(line) = line? else {
@@ -90,17 +84,17 @@ pub async fn play(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReaso
                     continue;
                 }
                 match connection.send(command, args.clone()).await {
-                    Ok(_) => {}
-                    Err(Error::Io(_)) => {
-                        if !reconnect(addr, &mut connection, &mut view, &mut token, terminal).await?
-                        {
-                            return Ok(ExitReason::HostClosed);
-                        }
-                        connection.send(command, args).await?;
-                    }
+                    Ok(_) => continue,
+                    Err(Error::Io(_)) => Some((command.to_string(), args)),
                     Err(err) => return Err(err),
                 }
             }
+        };
+        if !reconnect(addr, &mut connection, &mut view, &mut token, terminal).await? {
+            return Ok(ExitReason::HostClosed);
+        }
+        if let Some((command, args)) = unsent {
+            connection.send(&command, args).await?;
         }
     }
     connection.release().await?;
