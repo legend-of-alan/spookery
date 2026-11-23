@@ -11,7 +11,7 @@ use crate::protocol::{
 pub(crate) const PC_PICKER_HEADING: &str = "Choose a character";
 
 /// The line under the picker when every PC is held.
-pub(crate) const NONE_FREE: &str = "None is free.";
+pub(crate) const PC_PICKER_NONE_OPEN: &str = "None is free.";
 
 /// One PC of the PC picker: its name as the hello gives it, and its id while nobody holds it.
 pub(crate) struct PcPickerRow {
@@ -56,7 +56,7 @@ pub(crate) fn render_pc_picker(rows: &[PcPickerRow]) -> String {
     let mut text = format!("{PC_PICKER_HEADING}:\n{}", labels.join("\n"));
     if rows.iter().all(|row| row.open_id.is_none()) {
         text.push('\n');
-        text.push_str(NONE_FREE);
+        text.push_str(PC_PICKER_NONE_OPEN);
     }
     text
 }
@@ -89,11 +89,11 @@ pub fn render(body: &ServerBody) -> String {
 }
 
 fn render_speech(speech: &Speech) -> String {
-    format!("{}: {}", shown_speaker(speech), speech.text)
+    format!("{}: {}", speaker_label(speech), speech.text)
 }
 
 /// The name a player reads for who spoke: `You` for a player, else `GM` or the actor's name.
-pub(crate) fn shown_speaker(speech: &Speech) -> &str {
+pub(crate) fn speaker_label(speech: &Speech) -> &str {
     match &speech.from {
         Speaker::Player(_) => "You",
         Speaker::Gm | Speaker::Npc(_) => speaker_name(speech),

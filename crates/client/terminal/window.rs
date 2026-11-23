@@ -1,8 +1,6 @@
-//! The game window `spook play` opens at a terminal: the picker, then the story, the place
-//! panel, the input line and the key bar, painted in the Spookery palette. `Terminal` hands it each
-//! message body and reads from it each line the player sends.
-
-use std::collections::BTreeMap;
+//! The game window `spook play` opens at a terminal: the PC picker, then the transcript, the
+//! place panel, the input line and the key bar, painted in the Spookery palette. `Terminal`
+//! hands it each message body and reads from it each line the player sends.
 
 use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures_util::StreamExt;
@@ -22,7 +20,25 @@ use crate::Error;
 #[derive(Clone, Copy)]
 struct PaletteColor {
     rgb: u32,
-    fallback: u8,
+    fallback_index: u8,
+}
+
+impl PaletteColor {
+    const fn new(rgb: u32, fallback_index: u8) -> Self {
+        Self {
+            rgb,
+            fallback_index,
+        }
+    }
+
+    fn to_color(self, is_truecolor: bool) -> Color {
+        if is_truecolor {
+            let [_, r, g, b] = self.rgb.to_be_bytes();
+            Color::Rgb(r, g, b)
+        } else {
+            Color::Indexed(self.fallback_index)
+        }
+    }
 }
 
 const VOID: PaletteColor = PaletteColor::new(0x000000, 16);
@@ -56,26 +72,11 @@ const TITLE_LETTERS: [(char, PaletteColor); 8] = [
 /// How many cells a meter's gauge takes in the place panel.
 const GAUGE_CELLS: usize = 10;
 
-impl PaletteColor {
-    const fn new(rgb: u32, fallback: u8) -> Self {
-        Self { rgb, fallback }
-    }
-
-    fn to_color(self, truecolor: bool) -> Color {
-        if truecolor {
-            let [_, r, g, b] = self.rgb.to_be_bytes();
-            Color::Rgb(r, g, b)
-        } else {
-            Color::Indexed(self.fallback)
-        }
-    }
-}
-
-/// The terminal in raw mode on the alternate screen, its key events and the screen drawn on
+/// The terminal in raw mode on the alternate screen, its event stream and the screen drawn on
 /// it. Dropping it restores the terminal.
 pub(crate) struct Window {
     terminal: DefaultTerminal,
-    keys: EventStream,
+    event_stream: EventStream,
     screen: Screen,
 }
 
@@ -84,7 +85,7 @@ impl Window {
     /// `COLORTERM` says so or the terminal is Windows Terminal, else the 256-color palette.
     pub(crate) fn open() -> Result<Self, Error> {
         let colorterm = std::env::var("COLORTERM").unwrap_or_default();
-        let truecolor = matches!(colorterm.as_str(), "truecolor" | "24bit")
+        let is_truecolor = matches!(colorterm.as_str(), "truecolor" | "24bit")
             || std::env::var_os("WT_SESSION").is_some();
         let terminal = ratatui::try_init().map_err(|err| {
             ratatui::restore();
@@ -92,8 +93,8 @@ impl Window {
         })?;
         Ok(Self {
             terminal,
-            keys: EventStream::new(),
-            screen: Screen::new(truecolor),
+            event_stream: EventStream::new(),
+            screen: Screen::new(is_truecolor),
         })
     }
 
@@ -107,7 +108,7 @@ impl Window {
         self.draw(view)
     }
 
-    /// Handles keys until the player sends a line: a PC id at the picker, else a typed line.
+    /// Handles keys until the player sends a line: a PC id at the PC picker, else a typed line.
     /// `None` when they quit with Ctrl+C.
     pub(crate) async fn next_line(
         &mut self,
@@ -115,15 +116,15 @@ impl Window {
         commands: &[String],
     ) -> Result<Option<String>, Error> {
         self.draw(view)?;
-        while let Some(event) = self.keys.next().await {
-            let request = match event.map_err(Error::Io)? {
-                Event::Key(key) => self.screen.press(key, commands),
+        while let Some(event) = self.event_stream.next().await {
+            let key_request = match event.map_err(Error::Io)? {
+                Event::Key(key) => self.screen.on_key(key, commands),
                 _ => None,
             };
             self.draw(view)?;
-            match request {
-                Some(Request::Send(line)) => return Ok(Some(line)),
-                Some(Request::Quit) => return Ok(None),
+            match key_request {
+                Some(KeyRequest::Send(line)) => return Ok(Some(line)),
+                Some(KeyRequest::Quit) => return Ok(None),
                 None => {}
             }
         }
@@ -145,80 +146,100 @@ impl Drop for Window {
     }
 }
 
-/// What a key asks play to do.
+/// What a key asks play to do, from `Screen::on_key` to `Window::next_line`.
 #[derive(Debug, PartialEq)]
-enum Request {
-    /// Send this line, as the lines mode sends a typed one.
+enum KeyRequest {
+    /// Send this line, as the plain surface sends a typed one.
     Send(String),
     /// Release the PC and leave.
     Quit,
 }
 
-/// What the window shows: the picker until a PC is chosen, then the title bar, story, place
-/// panel and input line.
+/// What the window shows: the PC picker until a PC is chosen, then the title bar, transcript,
+/// place panel and input line.
 struct Screen {
-    truecolor: bool,
-    picker: Option<PcPicker>,
-    /// Each PC's name by id, from the hello.
-    pc_names: BTreeMap<String, String>,
-    /// The seated PC's name, for the title bar.
-    pc_name: String,
-    /// The last round's index and world time.
-    last_round: Option<(u64, u64)>,
-    text: text::Renderer,
-    story: Vec<Line<'static>>,
-    /// How many wrapped rows the story is scrolled up from its bottom.
-    story_rows_back: usize,
-    /// How many rows PgUp and PgDn move: the story pane's height less one, as last drawn.
-    story_page_rows: usize,
-    /// The place whose name and prose the story showed last.
-    shown_place_id: String,
+    is_truecolor: bool,
+    pc_picker: Option<PcPicker>,
+    /// The last round's index for the title bar, `None` before the first round.
+    last_round_index: Option<u64>,
+    /// The world time after the last round.
+    world_time_ticks: u64,
+    renderer: text::Renderer,
+    /// Every line the window has shown in the transcript pane, oldest first.
+    transcript: Vec<Line<'static>>,
+    /// How many wrapped rows the transcript is scrolled up from its bottom.
+    scroll_offset_rows: usize,
+    /// How many rows PgUp adds to `scroll_offset_rows` and PgDn takes off: the transcript
+    /// pane's height less one, as last drawn.
+    scroll_step_rows: usize,
+    /// The place whose name and prose the transcript showed last.
+    last_place_id: String,
     input: Input,
-    /// The lines sent, oldest first, and which one Up and Down put in the input.
+    /// The lines the player sent, oldest first.
     history: Vec<String>,
-    recalled: Option<usize>,
+    /// The index in `history` of the line Up and Down put in the input, `None` while the
+    /// player types a new line.
+    history_index: Option<usize>,
 }
 
 /// Every PC the hello lists, and the open one Enter would choose.
 struct PcPicker {
     rows: Vec<text::PcPickerRow>,
-    chosen: ListState,
+    list_state: ListState,
+}
+
+impl PcPicker {
+    /// Moves the selection to the open PC above or below with Up and Down. Enter returns the
+    /// selected PC's id.
+    fn on_key(&mut self, code: KeyCode) -> Option<String> {
+        let selected_index = self.list_state.selected()?;
+        let is_open = |index: &usize| self.rows[*index].open_id.is_some();
+        let next_index = match code {
+            KeyCode::Up => (0..selected_index).rev().find(is_open),
+            KeyCode::Down => (selected_index + 1..self.rows.len()).find(is_open),
+            KeyCode::Enter => return self.rows[selected_index].open_id.clone(),
+            _ => None,
+        };
+        if next_index.is_some() {
+            self.list_state.select(next_index);
+        }
+        None
+    }
 }
 
 impl Screen {
-    fn new(truecolor: bool) -> Self {
+    fn new(is_truecolor: bool) -> Self {
         Self {
-            truecolor,
-            picker: None,
-            pc_names: BTreeMap::new(),
-            pc_name: String::new(),
-            last_round: None,
-            text: text::Renderer::new(),
-            story: Vec::new(),
-            story_rows_back: 0,
-            story_page_rows: 1,
-            shown_place_id: String::new(),
+            is_truecolor,
+            pc_picker: None,
+            last_round_index: None,
+            world_time_ticks: 0,
+            renderer: text::Renderer::new(),
+            transcript: Vec::new(),
+            scroll_offset_rows: 0,
+            scroll_step_rows: 1,
+            last_place_id: String::new(),
             input: Input::default(),
             history: Vec::new(),
-            recalled: None,
+            history_index: None,
         }
     }
 
     fn style(&self, color: PaletteColor) -> Style {
-        Style::new().fg(color.to_color(self.truecolor))
+        Style::new().fg(color.to_color(self.is_truecolor))
     }
 
-    fn span(&self, text: impl Into<String>, color: PaletteColor) -> Span<'static> {
-        Span::styled(text.into(), self.style(color))
+    fn span(&self, content: impl Into<String>, color: PaletteColor) -> Span<'static> {
+        Span::styled(content.into(), self.style(color))
     }
 
-    /// Adds each line of `shown` to the story in `color`.
-    fn push_text(&mut self, shown: &str, color: PaletteColor) {
+    /// Adds each line of `content` to the transcript in `color`.
+    fn push_text(&mut self, content: &str, color: PaletteColor) {
         let style = self.style(color);
-        let lines = shown
+        let lines = content
             .lines()
             .map(|line| Line::styled(line.to_string(), style));
-        self.story.extend(lines);
+        self.transcript.extend(lines);
     }
 
     fn show(&mut self, body: &ServerBody) {
@@ -230,33 +251,29 @@ impl Screen {
                 ..
             } => {
                 let rows = text::pc_picker_rows(open, taken, pc_names);
-                let first_open = rows.iter().position(|row| row.open_id.is_some());
-                let chosen = ListState::default().with_selected(first_open);
-                self.picker = Some(PcPicker { rows, chosen });
-                self.pc_names = pc_names.clone();
-            }
-            ServerBody::Claimed { actor, .. } => {
-                self.pc_name = self.pc_names.get(actor).cloned().unwrap_or_default();
-                let shown = self.text.render(body);
-                self.push_text(&shown, PARCHMENT);
+                let first_open_index = rows.iter().position(|row| row.open_id.is_some());
+                let list_state = ListState::default().with_selected(first_open_index);
+                self.pc_picker = Some(PcPicker { rows, list_state });
             }
             ServerBody::Round {
                 round_index,
                 world_time,
             } => {
-                self.last_round = Some((*round_index, *world_time));
+                self.last_round_index = Some(*round_index);
+                self.world_time_ticks = *world_time;
                 let divider = format!("── round {round_index} · tick {world_time} ──");
-                self.story.push(Line::styled(divider, self.style(DRIP)));
+                self.transcript
+                    .push(Line::styled(divider, self.style(DRIP)));
             }
             ServerBody::View(view) => {
-                if view.place != self.shown_place_id {
-                    self.shown_place_id = view.place.clone();
-                    self.push_arrival(view);
+                if view.place != self.last_place_id {
+                    self.last_place_id = view.place.clone();
+                    self.push_place_arrival(view);
                 }
             }
             ServerBody::Say(speech) => {
-                let line = self.speech_line(speech);
-                self.story.push(line);
+                let line = self.render_speech(speech);
+                self.transcript.push(line);
             }
             ServerBody::Check { outcome } => {
                 let color = match outcome {
@@ -265,66 +282,70 @@ impl Screen {
                     Outcome::Miss => SCARLET,
                 };
                 let sentence = text::render(body);
-                self.story
+                self.transcript
                     .push(Line::styled(format!("◆ {sentence}"), self.style(color)));
             }
             ServerBody::Refused(refusal) => {
                 self.push_text(&text::render_refusal(refusal, false), ROSE);
             }
-            ServerBody::Changes { .. } | ServerBody::Queued { .. } => {
-                let shown = self.text.render(body);
-                self.push_text(&shown, ASH);
-            }
             _ => {
-                let shown = self.text.render(body);
-                self.push_text(&shown, PARCHMENT);
+                let color = match body {
+                    ServerBody::Changes { .. } | ServerBody::Queued { .. } => ASH,
+                    _ => PARCHMENT,
+                };
+                let content = self.renderer.render(body);
+                self.push_text(&content, color);
             }
         }
     }
 
     /// The place's name and prose, shown once when the PC arrives.
-    fn push_arrival(&mut self, view: &protocol::View) {
+    fn push_place_arrival(&mut self, view: &protocol::View) {
         if !view.place_name.is_empty() {
             let name = self.span(view.place_name.clone(), GOLD);
             let marker = self.span("▌ ", FLAME);
-            self.story
+            self.transcript
                 .push(Line::from(vec![marker, name.add_modifier(Modifier::BOLD)]));
         }
         self.push_text(view.body.trim(), PARCHMENT);
     }
 
-    fn speech_line(&self, speech: &Speech) -> Line<'static> {
+    /// The speaker's label in their color, then what they said.
+    fn render_speech(&self, speech: &Speech) -> Line<'static> {
         let speaker_color = match speech.from {
             Speaker::Player(_) => AMBER,
             Speaker::Gm => ROSE,
             Speaker::Npc(_) => TANGERINE,
         };
         Line::from(vec![
-            self.span(text::shown_speaker(speech), speaker_color),
+            self.span(text::speaker_label(speech), speaker_color),
             self.span(format!(": {}", speech.text), PARCHMENT),
         ])
     }
 
-    /// What `key` does. Only presses count, since Windows also reports releases.
-    fn press(&mut self, key: KeyEvent, commands: &[String]) -> Option<Request> {
+    /// Handles a key event and returns what it asks play to do. Only presses count, since
+    /// Windows also reports releases.
+    fn on_key(&mut self, key: KeyEvent, commands: &[String]) -> Option<KeyRequest> {
         if key.kind != KeyEventKind::Press {
             return None;
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
-            return Some(Request::Quit);
+            return Some(KeyRequest::Quit);
         }
-        if let Some(picker) = &mut self.picker {
-            let pc_id = picker.press(key.code)?;
-            self.picker = None;
-            return Some(Request::Send(pc_id));
+        if let Some(pc_picker) = &mut self.pc_picker {
+            let pc_id = pc_picker.on_key(key.code)?;
+            self.pc_picker = None;
+            return Some(KeyRequest::Send(pc_id));
         }
         match key.code {
-            KeyCode::Enter => return self.send_typed(),
+            KeyCode::Enter => return self.send_input(),
             KeyCode::Tab => self.complete_command(commands),
-            KeyCode::Up | KeyCode::Down => self.recall(key.code == KeyCode::Up),
-            KeyCode::PageUp => self.story_rows_back += self.story_page_rows,
+            KeyCode::Up | KeyCode::Down => self.recall_history(key.code == KeyCode::Up),
+            KeyCode::PageUp => self.scroll_offset_rows += self.scroll_step_rows,
             KeyCode::PageDown => {
-                self.story_rows_back = self.story_rows_back.saturating_sub(self.story_page_rows);
+                self.scroll_offset_rows = self
+                    .scroll_offset_rows
+                    .saturating_sub(self.scroll_step_rows);
             }
             _ => {
                 self.input.handle_event(&Event::Key(key));
@@ -333,75 +354,77 @@ impl Screen {
         None
     }
 
-    /// Sends the typed line, keeps it in the history and shows it in the story.
-    fn send_typed(&mut self) -> Option<Request> {
+    /// Sends the input line, keeps it in the history and echoes it in the transcript.
+    fn send_input(&mut self) -> Option<KeyRequest> {
         let line = self.input.value_and_reset();
-        self.recalled = None;
+        self.history_index = None;
         if line.trim().is_empty() {
             return None;
         }
         if self.history.last() != Some(&line) {
             self.history.push(line.clone());
         }
-        let typed = Line::from(vec![self.span("› ", FLAME), self.span(line.clone(), BERRY)]);
-        self.story.push(typed);
-        self.story_rows_back = 0;
-        Some(Request::Send(line))
+        let echo = Line::from(vec![self.span("› ", FLAME), self.span(line.clone(), BERRY)]);
+        self.transcript.push(echo);
+        self.scroll_offset_rows = 0;
+        Some(KeyRequest::Send(line))
     }
 
     /// Completes the first word to the command names that start with it: to the one name and a
-    /// space, or to what all of them share.
+    /// space, or to the prefix all of them share.
     fn complete_command(&mut self, commands: &[String]) {
-        let typed = self.input.value();
-        if typed.contains(' ') {
+        let typed_word = self.input.value();
+        if typed_word.contains(' ') {
             return;
         }
-        let mut names = commands.iter().filter(|command| command.starts_with(typed));
-        let Some(first) = names.next() else {
+        let mut matches = commands
+            .iter()
+            .filter(|command| command.starts_with(typed_word));
+        let Some(first_match) = matches.next() else {
             return;
         };
-        let mut shared = first.as_str();
-        let mut only = true;
-        for name in names {
-            only = false;
-            let bytes: usize = shared
+        let mut common_prefix = first_match.as_str();
+        let mut is_unique = true;
+        for command in matches {
+            is_unique = false;
+            let prefix_bytes: usize = common_prefix
                 .chars()
-                .zip(name.chars())
-                .take_while(|(a, b)| a == b)
-                .map(|(a, _)| a.len_utf8())
+                .zip(command.chars())
+                .take_while(|(left, right)| left == right)
+                .map(|(letter, _)| letter.len_utf8())
                 .sum();
-            shared = &shared[..bytes];
+            common_prefix = &common_prefix[..prefix_bytes];
         }
-        let completed = if only {
-            format!("{shared} ")
+        let completion = if is_unique {
+            format!("{common_prefix} ")
         } else {
-            shared.to_string()
+            common_prefix.to_string()
         };
-        self.input = Input::new(completed);
+        self.input = Input::new(completion);
     }
 
     /// Puts an older line from the history in the input, or a newer one, or clears it past the
     /// newest.
-    fn recall(&mut self, older: bool) {
+    fn recall_history(&mut self, is_older: bool) {
         if self.history.is_empty() {
             return;
         }
-        let newest = self.history.len() - 1;
-        self.recalled = match (self.recalled, older) {
-            (None, true) => Some(newest),
-            (Some(at), true) => Some(at.saturating_sub(1)),
-            (Some(at), false) if at < newest => Some(at + 1),
+        let newest_index = self.history.len() - 1;
+        self.history_index = match (self.history_index, is_older) {
+            (None, true) => Some(newest_index),
+            (Some(index), true) => Some(index.saturating_sub(1)),
+            (Some(index), false) if index < newest_index => Some(index + 1),
             (_, false) => None,
         };
-        let line = self.recalled.map(|at| self.history[at].clone());
+        let line = self.history_index.map(|index| self.history[index].clone());
         self.input = Input::new(line.unwrap_or_default());
     }
 
     fn draw(&mut self, frame: &mut Frame, view: Option<&protocol::View>) {
         let area = frame.area();
-        let void = VOID.to_color(self.truecolor);
+        let void = VOID.to_color(self.is_truecolor);
         frame.render_widget(Block::new().style(Style::new().bg(void)), area);
-        let [title, rule, middle, input, keys] = Layout::vertical([
+        let [title_area, rule_area, middle_area, input_area, key_bar_area] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Fill(1),
@@ -409,25 +432,25 @@ impl Screen {
             Constraint::Length(1),
         ])
         .areas(area);
-        self.draw_title(frame, title);
-        self.draw_rule(frame, rule);
-        if self.picker.is_some() {
-            self.draw_picker(frame, middle);
-            self.draw_keys(
+        self.draw_title(frame, title_area, view);
+        self.draw_rule(frame, rule_area);
+        if self.pc_picker.is_some() {
+            self.draw_pc_picker(frame, middle_area);
+            self.draw_key_bar(
                 frame,
-                keys,
+                key_bar_area,
                 &[("↑↓", "choose"), ("Enter", "play"), ("Ctrl+C", "quit")],
             );
             return;
         }
-        let [story, place] =
-            Layout::horizontal([Constraint::Fill(2), Constraint::Fill(1)]).areas(middle);
-        self.draw_story(frame, story);
-        self.draw_place(frame, place, view);
-        self.draw_input(frame, input);
-        self.draw_keys(
+        let [transcript_area, place_area] =
+            Layout::horizontal([Constraint::Fill(2), Constraint::Fill(1)]).areas(middle_area);
+        self.draw_transcript(frame, transcript_area);
+        self.draw_place(frame, place_area, view);
+        self.draw_input(frame, input_area);
+        self.draw_key_bar(
             frame,
-            keys,
+            key_bar_area,
             &[
                 ("Enter", "send"),
                 ("Tab", "complete"),
@@ -438,102 +461,114 @@ impl Screen {
         );
     }
 
-    fn pane(&self, title: &str, focused: bool) -> Block<'static> {
-        let (border, title_color) = if focused {
+    /// A pane's rounded border with `title` on it: plum with an amber title when
+    /// `is_highlighted`, else drip with a tangerine title.
+    fn pane_block(&self, title: &str, is_highlighted: bool) -> Block<'static> {
+        let (border_color, title_color) = if is_highlighted {
             (PLUM, AMBER)
         } else {
             (DRIP, TANGERINE)
         };
         Block::bordered()
             .border_type(BorderType::Rounded)
-            .border_style(self.style(border))
+            .border_style(self.style(border_color))
             .title(self.span(format!(" {title} "), title_color))
     }
 
-    /// SPOOKERY in its gradient, then the PC's name, the round and the tick.
-    fn draw_title(&self, frame: &mut Frame, area: Rect) {
-        let dusk = DUSK.to_color(self.truecolor);
-        let mut spans: Vec<Span> = vec![Span::raw(" ")];
-        spans.extend(TITLE_LETTERS.iter().map(|(letter, color)| {
+    /// SPOOKERY in its gradient, then the PC's name from `view`, the last round and the tick.
+    fn draw_title(&self, frame: &mut Frame, area: Rect, view: Option<&protocol::View>) {
+        let dusk = DUSK.to_color(self.is_truecolor);
+        let mut letter_spans: Vec<Span> = vec![Span::raw(" ")];
+        letter_spans.extend(TITLE_LETTERS.iter().map(|(letter, color)| {
             self.span(letter.to_string(), *color)
                 .add_modifier(Modifier::BOLD)
         }));
-        let mut seated = self.pc_name.clone();
-        if let Some((round_index, world_time)) = self.last_round {
-            seated.push_str(&format!(" · round {round_index} · tick {world_time}"));
+        let mut pc_label = view
+            .and_then(|view| {
+                let mut actors = view.visible_actors.iter().zip(&view.actor_names);
+                actors.find(|(id, _)| **id == view.viewer)
+            })
+            .map(|(_, name)| name.clone())
+            .unwrap_or_default();
+        if let Some(round_index) = self.last_round_index {
+            let world_time_ticks = self.world_time_ticks;
+            pc_label.push_str(&format!(" · round {round_index} · tick {world_time_ticks}"));
         }
-        let [letters, pc] =
+        let [letters_area, pc_area] =
             Layout::horizontal([Constraint::Length(10), Constraint::Fill(1)]).areas(area);
-        frame.render_widget(Paragraph::new(Line::from(spans)).bg(dusk), letters);
-        let pc_line = Line::styled(format!("{seated} "), self.style(PARCHMENT)).right_aligned();
-        frame.render_widget(Paragraph::new(pc_line).bg(dusk), pc);
+        frame.render_widget(
+            Paragraph::new(Line::from(letter_spans)).bg(dusk),
+            letters_area,
+        );
+        let pc_line = Line::styled(format!("{pc_label} "), self.style(PARCHMENT)).right_aligned();
+        frame.render_widget(Paragraph::new(pc_line).bg(dusk), pc_area);
     }
 
     /// A plum rule of upper half blocks with drip-colored drops hanging from it.
     fn draw_rule(&self, frame: &mut Frame, area: Rect) {
-        let plum = PLUM.to_color(self.truecolor);
-        let drop = DRIP.to_color(self.truecolor);
-        let void = VOID.to_color(self.truecolor);
+        let plum = PLUM.to_color(self.is_truecolor);
+        let drip = DRIP.to_color(self.is_truecolor);
+        let void = VOID.to_color(self.is_truecolor);
         let spans: Vec<Span> = (0..area.width)
             .map(|column| {
-                let below = if (column * 5 + 3) % 13 < 2 {
-                    drop
+                let background = if (column * 5 + 3) % 13 < 2 {
+                    drip
                 } else {
                     void
                 };
-                Span::styled("▀", Style::new().fg(plum).bg(below))
+                Span::styled("▀", Style::new().fg(plum).bg(background))
             })
             .collect();
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
-    fn draw_picker(&mut self, frame: &mut Frame, area: Rect) {
-        let block = self.pane(text::PC_PICKER_HEADING, true);
-        let highlight = self.style(GOLD).add_modifier(Modifier::BOLD);
-        let (parchment, ash) = (self.style(PARCHMENT), self.style(ASH));
-        let Some(picker) = &mut self.picker else {
+    fn draw_pc_picker(&mut self, frame: &mut Frame, area: Rect) {
+        let block = self.pane_block(text::PC_PICKER_HEADING, true);
+        let highlight_style = self.style(GOLD).add_modifier(Modifier::BOLD);
+        let (open_style, taken_style) = (self.style(PARCHMENT), self.style(ASH));
+        let Some(pc_picker) = &mut self.pc_picker else {
             return;
         };
-        let mut items: Vec<ListItem> = picker
+        let mut items: Vec<ListItem> = pc_picker
             .rows
             .iter()
             .map(|row| {
                 let style = if row.open_id.is_some() {
-                    parchment
+                    open_style
                 } else {
-                    ash
+                    taken_style
                 };
                 ListItem::new(row.label()).style(style)
             })
             .collect();
-        if picker.chosen.selected().is_none() {
-            items.push(ListItem::new(text::NONE_FREE).style(ash));
+        if pc_picker.list_state.selected().is_none() {
+            items.push(ListItem::new(text::PC_PICKER_NONE_OPEN).style(taken_style));
         }
         let list = List::new(items)
             .block(block)
-            .highlight_style(highlight)
+            .highlight_style(highlight_style)
             .highlight_symbol("› ");
-        frame.render_stateful_widget(list, area, &mut picker.chosen);
+        frame.render_stateful_widget(list, area, &mut pc_picker.list_state);
     }
 
-    /// The story, wrapped and pinned to the bottom unless scrolled back.
-    fn draw_story(&mut self, frame: &mut Frame, area: Rect) {
-        let block = self.pane("Story", true);
-        let inner = block.inner(area);
-        let story = Paragraph::new(self.story.clone()).wrap(Wrap { trim: false });
-        let rows = story.line_count(inner.width);
-        let page = usize::from(inner.height);
-        self.story_page_rows = page.saturating_sub(1).max(1);
-        let bottom = rows.saturating_sub(page);
-        self.story_rows_back = self.story_rows_back.min(bottom);
-        let top = u16::try_from(bottom - self.story_rows_back).unwrap_or(u16::MAX);
-        frame.render_widget(story.scroll((top, 0)).block(block), area);
+    /// The transcript, wrapped and pinned to the bottom unless scrolled back.
+    fn draw_transcript(&mut self, frame: &mut Frame, area: Rect) {
+        let block = self.pane_block("Transcript", true);
+        let inner_area = block.inner(area);
+        let paragraph = Paragraph::new(self.transcript.clone()).wrap(Wrap { trim: false });
+        let wrapped_rows = paragraph.line_count(inner_area.width);
+        let page_rows = usize::from(inner_area.height);
+        self.scroll_step_rows = page_rows.saturating_sub(1).max(1);
+        let max_offset_rows = wrapped_rows.saturating_sub(page_rows);
+        self.scroll_offset_rows = self.scroll_offset_rows.min(max_offset_rows);
+        let top_row = u16::try_from(max_offset_rows - self.scroll_offset_rows).unwrap_or(u16::MAX);
+        frame.render_widget(paragraph.scroll((top_row, 0)).block(block), area);
     }
 
     /// Who is here, the exits, the items, the meters, then what the PC knows and its notes.
     fn draw_place(&self, frame: &mut Frame, area: Rect, view: Option<&protocol::View>) {
         let Some(view) = view else {
-            frame.render_widget(self.pane("Here", false), area);
+            frame.render_widget(self.pane_block("Here", false), area);
             return;
         };
         let mut lines: Vec<Line> = Vec::new();
@@ -542,7 +577,7 @@ impl Screen {
                 lines.push(Line::styled(line.clone(), self.style(ASH)));
             }
         }
-        let mut here = vec![self.span("Here: ", PARCHMENT)];
+        let mut here_spans = vec![self.span("Here: ", PARCHMENT)];
         for (index, (id, name)) in view
             .visible_actors
             .iter()
@@ -550,15 +585,15 @@ impl Screen {
             .enumerate()
         {
             if index > 0 {
-                here.push(self.span(", ", PARCHMENT));
+                here_spans.push(self.span(", ", PARCHMENT));
             }
-            here.push(if *id == view.viewer {
+            here_spans.push(if *id == view.viewer {
                 self.span("You", AMBER)
             } else {
                 self.span(name.clone(), TANGERINE)
             });
         }
-        lines.push(Line::from(here));
+        lines.push(Line::from(here_spans));
         self.push_heading(&mut lines, "Exits");
         for exit in &view.exits {
             let color = if exit.locked { ROSE } else { ORANGE };
@@ -576,16 +611,16 @@ impl Screen {
         for (heading, meters) in [("Meters", &view.meters), ("The world", &view.world_meters)] {
             if !meters.is_empty() {
                 self.push_heading(&mut lines, heading);
-                lines.extend(meters.iter().map(|meter| self.meter_gauge(meter)));
+                lines.extend(meters.iter().map(|meter| self.render_meter(meter)));
             }
         }
-        let known: Vec<&str> = view
+        let known_facts: Vec<&str> = view
             .known_facts
             .iter()
             .map(|fact| fact.text.as_str())
             .collect();
         let notes: Vec<&str> = view.notes.iter().map(|note| note.text.as_str()).collect();
-        for (heading, sentences) in [("You know", known), ("Notes", notes)] {
+        for (heading, sentences) in [("You know", known_facts), ("Notes", notes)] {
             if !sentences.is_empty() {
                 self.push_heading(&mut lines, heading);
                 for sentence in sentences {
@@ -595,7 +630,7 @@ impl Screen {
         }
         let panel = Paragraph::new(lines)
             .wrap(Wrap { trim: true })
-            .block(self.pane(&view.place_name, false));
+            .block(self.pane_block(&view.place_name, false));
         frame.render_widget(panel, area);
     }
 
@@ -604,9 +639,9 @@ impl Screen {
         lines.push(Line::styled(heading.to_string(), self.style(ASH)));
     }
 
-    /// `Hp: 8/16` and a gauge of its fill, scarlet on drip.
-    fn meter_gauge(&self, meter: &protocol::MeterView) -> Line<'static> {
-        let filled = match usize::try_from(meter.max) {
+    /// The meter as a line: `Hp: 8/16` and a gauge of its fill, scarlet on drip.
+    fn render_meter(&self, meter: &protocol::MeterView) -> Line<'static> {
+        let full_cells = match usize::try_from(meter.max) {
             Ok(max) if max > 0 => {
                 let value = usize::try_from(meter.value.clamp(0, meter.max)).unwrap_or(0);
                 (value * GAUGE_CELLS + max / 2) / max
@@ -615,8 +650,8 @@ impl Screen {
         };
         Line::from(vec![
             self.span(format!("{} ", text::meter_line(meter)), PARCHMENT),
-            self.span("━".repeat(filled), SCARLET),
-            self.span("─".repeat(GAUGE_CELLS - filled), DRIP),
+            self.span("━".repeat(full_cells), SCARLET),
+            self.span("─".repeat(GAUGE_CELLS - full_cells), DRIP),
         ])
     }
 
@@ -625,48 +660,30 @@ impl Screen {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
             .border_style(self.style(DRIP));
-        let [prompt, typed] = Layout::horizontal([Constraint::Length(2), Constraint::Fill(1)])
-            .areas(block.inner(area));
+        let [prompt_area, value_area] =
+            Layout::horizontal([Constraint::Length(2), Constraint::Fill(1)])
+                .areas(block.inner(area));
         frame.render_widget(block, area);
-        frame.render_widget(Paragraph::new(self.span("› ", FLAME)), prompt);
-        let scroll = self
+        frame.render_widget(Paragraph::new(self.span("› ", FLAME)), prompt_area);
+        let scroll_cells = self
             .input
-            .visual_scroll(usize::from(typed.width.saturating_sub(1)));
+            .visual_scroll(usize::from(value_area.width.saturating_sub(1)));
         let value = self.span(self.input.value().to_string(), PARCHMENT);
-        let scroll_cells = u16::try_from(scroll).unwrap_or(u16::MAX);
-        frame.render_widget(Paragraph::new(value).scroll((0, scroll_cells)), typed);
-        let cursor = u16::try_from(self.input.visual_cursor() - scroll).unwrap_or(u16::MAX);
-        frame.set_cursor_position((typed.x.saturating_add(cursor), typed.y));
+        let scroll_x = u16::try_from(scroll_cells).unwrap_or(u16::MAX);
+        frame.render_widget(Paragraph::new(value).scroll((0, scroll_x)), value_area);
+        let cursor_x = u16::try_from(self.input.visual_cursor() - scroll_cells).unwrap_or(u16::MAX);
+        frame.set_cursor_position((value_area.x.saturating_add(cursor_x), value_area.y));
     }
 
-    /// Each key's name in tangerine and what it does.
-    fn draw_keys(&self, frame: &mut Frame, area: Rect, keys: &[(&str, &str)]) {
+    /// The key bar: each key's name in tangerine and its action in ash.
+    fn draw_key_bar(&self, frame: &mut Frame, area: Rect, key_hints: &[(&str, &str)]) {
         let mut spans = Vec::new();
-        for (key, does) in keys {
+        for (key, action) in key_hints {
             spans.push(self.span(format!(" {key} "), TANGERINE));
-            spans.push(self.span(format!("{does} "), ASH));
+            spans.push(self.span(format!("{action} "), ASH));
         }
-        let dusk = DUSK.to_color(self.truecolor);
+        let dusk = DUSK.to_color(self.is_truecolor);
         frame.render_widget(Paragraph::new(Line::from(spans)).bg(dusk), area);
-    }
-}
-
-impl PcPicker {
-    /// Moves the choice to the open PC above or below with Up and Down. Enter chooses it and
-    /// returns its PC id.
-    fn press(&mut self, code: KeyCode) -> Option<String> {
-        let at = self.chosen.selected()?;
-        let is_open = |index: &usize| self.rows[*index].open_id.is_some();
-        let next = match code {
-            KeyCode::Up => (0..at).rev().find(is_open),
-            KeyCode::Down => (at + 1..self.rows.len()).find(is_open),
-            KeyCode::Enter => return self.rows[at].open_id.clone(),
-            _ => None,
-        };
-        if next.is_some() {
-            self.chosen.select(next);
-        }
-        None
     }
 }
 
@@ -677,13 +694,13 @@ mod tests {
     use ratatui::Terminal;
     use serde_json::Value;
 
-    use super::{Request, Screen};
+    use super::{KeyRequest, Screen};
     use crate::protocol::{self, ServerBody, ServerMessage};
 
     const RECORDING: &str = include_str!("../../protocol/sessions/v2.jsonl");
 
-    fn press(screen: &mut Screen, code: KeyCode, commands: &[String]) -> Option<Request> {
-        screen.press(KeyEvent::from(code), commands)
+    fn press(screen: &mut Screen, code: KeyCode, commands: &[String]) -> Option<KeyRequest> {
+        screen.on_key(KeyEvent::from(code), commands)
     }
 
     fn type_text(screen: &mut Screen, text: &str, commands: &[String]) {
@@ -730,7 +747,7 @@ mod tests {
                 press(screen, KeyCode::Down, &commands);
                 assert_eq!(
                     press(screen, KeyCode::Enter, &commands),
-                    Some(Request::Send("rowan".into()))
+                    Some(KeyRequest::Send("rowan".into()))
                 );
             }
         }
@@ -775,10 +792,10 @@ mod tests {
     }
 
     #[test]
-    fn a_seated_table_shows_the_story_and_the_place() {
+    fn a_claimed_pc_shows_the_transcript_and_the_place() {
         let mut screen = Screen::new(true);
         let (view, _) = replay_until(&mut screen, "travel");
-        assert_screen("seated", &mut screen, view.as_ref());
+        assert_screen("claimed", &mut screen, view.as_ref());
     }
 
     #[test]
@@ -792,7 +809,7 @@ mod tests {
     }
 
     #[test]
-    fn page_up_scrolls_the_story_back() {
+    fn page_up_scrolls_the_transcript_back() {
         let mut screen = Screen::new(true);
         let (view, commands) = replay_until(&mut screen, "release");
         screen_text(&mut screen, view.as_ref(), 80, 24);
@@ -801,7 +818,7 @@ mod tests {
     }
 
     #[test]
-    fn a_refusal_shows_in_the_story() {
+    fn a_refusal_shows_in_the_transcript() {
         let mut screen = Screen::new(true);
         let (view, _) = replay_until(&mut screen, "release");
         assert_screen("refused", &mut screen, view.as_ref());
