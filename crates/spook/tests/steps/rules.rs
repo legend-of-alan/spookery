@@ -557,7 +557,7 @@ fn bogus_appears_in_earlier_text(world: &mut World) {
     do:
       - narrate:
           to: self
-          text: the bogus rumor
+          text: the bogus tale
 "#,
     );
     world.pack = Some(pack);
@@ -574,12 +574,12 @@ fn an_effect_key_is_bogus(world: &mut World) {
 async fn check_reports_the_key(world: &mut World) {
     let text = fs::read_to_string(world.pack.as_ref().unwrap().join("rules/verbs.yaml")).unwrap();
     let (line, column) = locate_key(&text, "bogus:");
-    let rumor = text
+    let tale_line = text
         .lines()
-        .position(|row| row.contains("the bogus rumor"))
+        .position(|row| row.contains("the bogus tale"))
         .unwrap()
         + 1;
-    assert_ne!(line as usize, rumor);
+    assert_ne!(line as usize, tale_line);
     run(world, &["check", "--json"]).await;
     assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
     let items: Vec<Value> = serde_json::from_str(world.stdout.trim())
@@ -595,7 +595,7 @@ async fn check_reports_the_key(world: &mut World) {
     assert_eq!(hit["file"], "rules/verbs.yaml");
     assert_eq!(hit["line"], line);
     assert_eq!(hit["column"], column, "{hit}");
-    assert_ne!(hit["line"].as_u64(), Some(rumor as u64));
+    assert_ne!(hit["line"].as_u64(), Some(tale_line as u64));
 }
 
 const SECOND_KEY: &str = "flag: { of: self, key: second_key";
