@@ -1,5 +1,5 @@
 //! The game window `spook play` opens at a terminal: the PC picker, then the transcript, the
-//! place panel, the tab box, the input line and the key bar, painted in the Spookery palette.
+//! place panel, the tab box, the input line and the hotkey bar, painted in the Spookery palette.
 //! `Terminal` hands it each message body and reads from it each line the player sends.
 
 use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -73,7 +73,7 @@ const TITLE_LETTERS: [(char, PaletteColor); 8] = [
 const WIDE_LAYOUT_COLUMNS: u16 = 120;
 
 /// How many columns the place panel and the tab box each take.
-const SIDE_PANE_COLUMNS: u16 = 34;
+const SIDE_PANEL_COLUMNS: u16 = 34;
 
 /// The meter whose gauge fills in scarlet. Every other meter's fills in gold.
 const HP_METER_ID: &str = "hp";
@@ -125,67 +125,75 @@ impl From<Line<'static>> for TranscriptLine {
     }
 }
 
-/// Where each pane goes at one terminal size. `layout` is the one place that picks it.
-struct Panes {
-    title: Rect,
-    rule: Rect,
+/// Where each part of the screen goes at one terminal size. `ScreenAreas::new` is the one place
+/// that picks it.
+struct ScreenAreas {
+    title_rect: Rect,
+    rule_rect: Rect,
     /// The rows between the rule and the input, where the PC picker goes.
-    middle: Rect,
-    transcript: Rect,
-    place: Rect,
+    middle_rect: Rect,
+    transcript_rect: Rect,
+    place_panel_rect: Rect,
     /// `None` while the player has the tab box hidden.
-    tab_box: Option<Rect>,
-    input: Rect,
-    key_bar: Rect,
-    shows_round_dividers: bool,
+    tab_box_rect: Option<Rect>,
+    input_rect: Rect,
+    hotkey_bar_rect: Rect,
+    /// From `WIDE_LAYOUT_COLUMNS`, where the transcript shows round dividers.
+    is_wide: bool,
 }
 
-/// The compact layout below `WIDE_LAYOUT_COLUMNS`: the transcript, and a right column with
-/// the place panel above the tab box, which gets `tab_box_content_rows` and its borders. The
-/// wide layout: the transcript, the place panel and the tab box side by side, with round
-/// dividers in the transcript. `tab_box_content_rows` is `None` while the tab box is hidden,
-/// which gives its rows to the place panel, or in the wide layout its columns to the transcript.
-fn layout(area: Rect, tab_box_content_rows: Option<u16>) -> Panes {
-    let [title, rule, middle, input, key_bar] = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Fill(1),
-        Constraint::Length(3),
-        Constraint::Length(1),
-    ])
-    .areas(area);
-    let is_wide = area.width >= WIDE_LAYOUT_COLUMNS;
-    let side_pane = Constraint::Length(SIDE_PANE_COLUMNS);
-    let (transcript, place, tab_box) = match (tab_box_content_rows, is_wide) {
-        (Some(_), true) => {
-            let [transcript, place, tab_box] =
-                Layout::horizontal([Constraint::Fill(1), side_pane, side_pane]).areas(middle);
-            (transcript, place, Some(tab_box))
-        }
-        (Some(content_rows), false) => {
-            let [transcript, right_column] =
-                Layout::horizontal([Constraint::Fill(1), side_pane]).areas(middle);
-            let [place, tab_box] =
-                Layout::vertical([Constraint::Fill(1), Constraint::Length(content_rows + 2)])
+impl ScreenAreas {
+    /// The compact layout below `WIDE_LAYOUT_COLUMNS`: the transcript, and a right column with
+    /// the place panel above the tab box, which gets `tab_box_content_rows` and its borders.
+    /// The wide layout: the transcript, the place panel and the tab box side by side.
+    /// `tab_box_content_rows` is `None` while the tab box is hidden, which gives its rows to the
+    /// place panel, or in the wide layout its columns to the transcript.
+    fn new(area: Rect, tab_box_content_rows: Option<u16>) -> Self {
+        let [title_rect, rule_rect, middle_rect, input_rect, hotkey_bar_rect] = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Fill(1),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
+        .areas(area);
+        let is_wide = area.width >= WIDE_LAYOUT_COLUMNS;
+        let side_column = Constraint::Length(SIDE_PANEL_COLUMNS);
+        let (transcript_rect, place_panel_rect, tab_box_rect) =
+            match (tab_box_content_rows, is_wide) {
+                (Some(_), true) => {
+                    let [transcript_rect, place_panel_rect, tab_box_rect] =
+                        Layout::horizontal([Constraint::Fill(1), side_column, side_column])
+                            .areas(middle_rect);
+                    (transcript_rect, place_panel_rect, Some(tab_box_rect))
+                }
+                (Some(content_rows), false) => {
+                    let [transcript_rect, right_column] =
+                        Layout::horizontal([Constraint::Fill(1), side_column]).areas(middle_rect);
+                    let [place_panel_rect, tab_box_rect] = Layout::vertical([
+                        Constraint::Fill(1),
+                        Constraint::Length(content_rows + 2),
+                    ])
                     .areas(right_column);
-            (transcript, place, Some(tab_box))
+                    (transcript_rect, place_panel_rect, Some(tab_box_rect))
+                }
+                (None, _) => {
+                    let [transcript_rect, place_panel_rect] =
+                        Layout::horizontal([Constraint::Fill(1), side_column]).areas(middle_rect);
+                    (transcript_rect, place_panel_rect, None)
+                }
+            };
+        Self {
+            title_rect,
+            rule_rect,
+            middle_rect,
+            transcript_rect,
+            place_panel_rect,
+            tab_box_rect,
+            input_rect,
+            hotkey_bar_rect,
+            is_wide,
         }
-        (None, _) => {
-            let [transcript, place] =
-                Layout::horizontal([Constraint::Fill(1), side_pane]).areas(middle);
-            (transcript, place, None)
-        }
-    };
-    Panes {
-        title,
-        rule,
-        middle,
-        transcript,
-        place,
-        tab_box,
-        input,
-        key_bar,
-        shows_round_dividers: is_wide,
     }
 }
 
@@ -304,10 +312,10 @@ struct Screen {
     /// The tab the tab box shows, `None` while the player has it hidden.
     open_tab: Option<Tab>,
     /// The last `help` reply as text, shown in a popup until Esc.
-    help_popup: Option<String>,
+    help_text: Option<String>,
     map_request: MapRequest,
     /// The places of the last `map` reply.
-    map_places: Vec<protocol::PlaceView>,
+    place_views: Vec<protocol::PlaceView>,
     /// How many wrapped rows the transcript is scrolled up from its bottom.
     scroll_offset_rows: usize,
     /// How many rows PgUp adds to `scroll_offset_rows` and PgDn takes off: the transcript
@@ -358,9 +366,9 @@ impl Screen {
             renderer: text::Renderer::new(),
             transcript: Vec::new(),
             open_tab: Some(Tab::Stats),
-            help_popup: None,
+            help_text: None,
             map_request: MapRequest::NotDue,
-            map_places: Vec::new(),
+            place_views: Vec::new(),
             scroll_offset_rows: 0,
             scroll_step_rows: 1,
             last_place_id: String::new(),
@@ -464,9 +472,9 @@ impl Screen {
                 let content = self.renderer.render_without_separator(body);
                 self.push_text(&content, ASH);
             }
-            ServerBody::Help { commands } => self.help_popup = Some(text::render_help(commands)),
+            ServerBody::Help { commands } => self.help_text = Some(text::render_help(commands)),
             ServerBody::Map { places } => {
-                self.map_places = places.clone();
+                self.place_views = places.clone();
                 if self.map_request == MapRequest::Sent {
                     self.map_request = MapRequest::NotDue;
                 } else {
@@ -528,7 +536,7 @@ impl Screen {
                 let tab = Tab::ALL[usize::from(function_key_number - 2)];
                 self.open_tab = (self.open_tab != Some(tab)).then_some(tab);
             }
-            KeyCode::Esc => self.help_popup = None,
+            KeyCode::Esc => self.help_text = None,
             KeyCode::Tab => self.complete_command(commands),
             KeyCode::Up | KeyCode::Down => self.recall_history(key.code == KeyCode::Up),
             KeyCode::PageUp => self.scroll_offset_rows += self.scroll_step_rows,
@@ -615,30 +623,30 @@ impl Screen {
         let void = VOID.to_color(self.is_truecolor);
         frame.render_widget(Block::new().style(Style::new().bg(void)), area);
         let tab_box_content_rows = self.open_tab.map(|_| stats_rows(view));
-        let panes = layout(area, tab_box_content_rows);
-        self.draw_title(frame, panes.title, view);
-        self.draw_rule(frame, panes.rule);
+        let areas = ScreenAreas::new(area, tab_box_content_rows);
+        self.draw_title(frame, areas.title_rect, view);
+        self.draw_rule(frame, areas.rule_rect);
         if self.pc_picker.is_some() {
-            self.draw_pc_picker(frame, panes.middle);
-            self.draw_key_bar(
+            self.draw_pc_picker(frame, areas.middle_rect);
+            self.draw_hotkey_bar(
                 frame,
-                panes.key_bar,
+                areas.hotkey_bar_rect,
                 &[("↑↓", "choose"), ("Enter", "play"), ("Ctrl+C", "quit")],
             );
             return;
         }
-        self.draw_transcript(frame, panes.transcript, panes.shows_round_dividers);
-        self.draw_place(frame, panes.place, view);
-        if let (Some(tab_box_area), Some(tab)) = (panes.tab_box, self.open_tab) {
+        self.draw_transcript(frame, areas.transcript_rect, areas.is_wide);
+        self.draw_place(frame, areas.place_panel_rect, view);
+        if let (Some(tab_box_area), Some(tab)) = (areas.tab_box_rect, self.open_tab) {
             self.draw_tab_box(frame, tab_box_area, tab, view);
         }
-        self.draw_input(frame, panes.input);
-        if let Some(help_text) = &self.help_popup {
-            self.draw_help_popup(frame, panes.middle, help_text);
+        self.draw_input(frame, areas.input_rect);
+        if let Some(help_text) = &self.help_text {
+            self.draw_help_popup(frame, areas.middle_rect, help_text);
         }
-        self.draw_key_bar(
+        self.draw_hotkey_bar(
             frame,
-            panes.key_bar,
+            areas.hotkey_bar_rect,
             &[
                 ("Enter", "send"),
                 ("Tab", "complete"),
@@ -652,7 +660,7 @@ impl Screen {
 
     /// A pane's rounded border with `title` on it: plum with an amber title when
     /// `is_highlighted`, else mulberry with a tangerine title.
-    fn pane_border(&self, title: &str, is_highlighted: bool) -> Block<'static> {
+    fn titled_border(&self, title: &str, is_highlighted: bool) -> Block<'static> {
         let (border_color, title_color) = if is_highlighted {
             (PLUM, AMBER)
         } else {
@@ -709,7 +717,7 @@ impl Screen {
     }
 
     fn draw_pc_picker(&mut self, frame: &mut Frame, area: Rect) {
-        let border = self.pane_border(text::PC_PICKER_HEADING, true);
+        let border = self.titled_border(text::PC_PICKER_HEADING, true);
         let highlight_style = self.style(GOLD).add_modifier(Modifier::BOLD);
         let (open_style, taken_style) = (self.style(PARCHMENT), self.style(ASH));
         let Some(pc_picker) = &mut self.pc_picker else {
@@ -738,11 +746,13 @@ impl Screen {
     }
 
     /// The transcript, wrapped and pinned to the bottom unless scrolled back.
-    fn draw_transcript(&mut self, frame: &mut Frame, area: Rect, shows_round_dividers: bool) {
-        let border = self.pane_border("Transcript", true);
+    fn draw_transcript(&mut self, frame: &mut Frame, area: Rect, is_showing_round_dividers: bool) {
+        let border = self.titled_border("Transcript", true);
         let inner_area = border.inner(area);
         let lines: Vec<Line> = (self.transcript.iter())
-            .filter(|transcript_line| shows_round_dividers || !transcript_line.is_round_divider)
+            .filter(|transcript_line| {
+                is_showing_round_dividers || !transcript_line.is_round_divider
+            })
             .map(|transcript_line| transcript_line.line.clone())
             .collect();
         let transcript_text = Paragraph::new(lines).wrap(Wrap { trim: false });
@@ -760,7 +770,7 @@ impl Screen {
     /// While the tab box is hidden, the bottom border names the keys that bring it back.
     fn draw_place(&self, frame: &mut Frame, area: Rect, view: Option<&protocol::View>) {
         let title = view.map_or("Here", |view| view.place_name.as_str());
-        let mut border = self.pane_border(title, false);
+        let mut border = self.titled_border(title, false);
         if self.open_tab.is_none() {
             border = border.title_bottom(self.span("F2 F3 F4 tabs", TANGERINE));
         }
@@ -798,7 +808,7 @@ impl Screen {
         let nearby_lines: Vec<Line> = (view.exits.iter())
             .filter_map(|exit| {
                 let place =
-                    (self.map_places.iter()).find(|place| place.place_id == exit.place_id)?;
+                    (self.place_views.iter()).find(|place| place.place_id == exit.place_id)?;
                 Some(self.render_nearby_place(place, &view.place))
             })
             .collect();
@@ -877,14 +887,14 @@ impl Screen {
             return;
         };
         match tab {
-            Tab::Stats => self.draw_stats(frame, content_area, view),
-            Tab::Carried => self.draw_carried(frame, content_area, view),
-            Tab::Known => self.draw_known(frame, content_area, view),
+            Tab::Stats => self.draw_meters(frame, content_area, view),
+            Tab::Carried => self.draw_carried_items(frame, content_area, view),
+            Tab::Known => self.draw_facts_and_notes(frame, content_area, view),
         }
     }
 
     /// Each meter's gauge, then `The world` and the world's meters.
-    fn draw_stats(&self, frame: &mut Frame, area: Rect, view: &protocol::View) {
+    fn draw_meters(&self, frame: &mut Frame, area: Rect, view: &protocol::View) {
         let label_width = (view.meters.iter().chain(&view.world_meters))
             .map(|meter| text::render_meter(meter).chars().count())
             .max()
@@ -903,14 +913,18 @@ impl Screen {
                 }
             }
             for (meter, row) in meters.iter().zip(&mut rows) {
-                frame.render_widget(self.meter_gauge(meter, label_width), row);
+                frame.render_widget(self.render_meter_gauge(meter, label_width), row);
             }
         }
     }
 
     /// `Health: 8/16` padded to `label_width`, then the meter's fill: scarlet for Hp, gold for
     /// any other, on mulberry.
-    fn meter_gauge(&self, meter: &protocol::MeterView, label_width: usize) -> LineGauge<'static> {
+    fn render_meter_gauge(
+        &self,
+        meter: &protocol::MeterView,
+        label_width: usize,
+    ) -> LineGauge<'static> {
         let ratio = if meter.max > 0 {
             meter.value.clamp(0, meter.max) as f64 / meter.max as f64
         } else {
@@ -931,7 +945,7 @@ impl Screen {
     }
 
     /// Each item the PC carries, the wielded one in gold.
-    fn draw_carried(&self, frame: &mut Frame, area: Rect, view: &protocol::View) {
+    fn draw_carried_items(&self, frame: &mut Frame, area: Rect, view: &protocol::View) {
         let mut item_list_items: Vec<ListItem> = (view.items_carried.iter())
             .map(|item| {
                 let is_wielded = view.wielded_item_id.as_ref() == Some(&item.id);
@@ -947,8 +961,8 @@ impl Screen {
     }
 
     /// The facts the PC knows and its notes, worded as the line client words them.
-    fn draw_known(&self, frame: &mut Frame, area: Rect, view: &protocol::View) {
-        let sections = text::render_known(&view.known_facts, &view.notes);
+    fn draw_facts_and_notes(&self, frame: &mut Frame, area: Rect, view: &protocol::View) {
+        let sections = text::render_facts_and_notes(&view.known_facts, &view.notes);
         let known_text = if sections.is_empty() {
             Paragraph::new(self.span("Nothing yet", ASH))
         } else {
@@ -960,7 +974,7 @@ impl Screen {
     /// The `help` reply over the middle of `area`, on dusk, until Esc.
     fn draw_help_popup(&self, frame: &mut Frame, area: Rect, help_text: &str) {
         let border = self
-            .pane_border("Help", true)
+            .titled_border("Help", true)
             .title_bottom(self.span(" Esc closes ", TANGERINE));
         let help = Paragraph::new(help_text.to_string())
             .style(self.style(PARCHMENT))
@@ -995,10 +1009,10 @@ impl Screen {
         frame.set_cursor_position((value_area.x.saturating_add(cursor_x), value_area.y));
     }
 
-    /// The key bar: each key's name in tangerine and its action in ash.
-    fn draw_key_bar(&self, frame: &mut Frame, area: Rect, key_hints: &[(&str, &str)]) {
+    /// The hotkey bar: each key's name in tangerine and its action in ash.
+    fn draw_hotkey_bar(&self, frame: &mut Frame, area: Rect, hotkey_hints: &[(&str, &str)]) {
         let mut hint_spans = Vec::new();
-        for (key, action) in key_hints {
+        for (key, action) in hotkey_hints {
             hint_spans.push(self.span(format!(" {key} "), TANGERINE));
             hint_spans.push(self.span(format!("{action} "), ASH));
         }
@@ -1131,7 +1145,7 @@ mod tests {
     const HELP_REPLY: &str = r#"{"seq":9,"reply_to":"c3","body":{"kind":"help","commands":[{"id":"release","target":"none"},{"id":"say","target":"none"},{"id":"look","target":"none"},{"id":"help","target":"none"},{"id":"map","target":"none"},{"id":"cancel","target":"none"},{"id":"drop","target":"item","names":["Lamp oil"]},{"id":"exert","target":"none"},{"id":"strike","target":"actor","names":["Aldric"]},{"id":"take","target":"item","names":["Lamp oil"]},{"id":"travel","target":"exit","names":["Docks Street","stairs"]},{"id":"unwield","target":"none"},{"id":"wait","target":"none"},{"id":"wield","target":"item","names":["Lamp oil"]}]}}"#;
 
     /// Rowan's recorded session up to `release`, then the view carrying lamp oil.
-    fn seated_carrying_oil(screen: &mut Screen) -> (Option<protocol::View>, Vec<String>) {
+    fn seat_rowan_carrying_oil(screen: &mut Screen) -> (Option<protocol::View>, Vec<String>) {
         let (_, commands) = replay_until(screen, "release");
         (show_json(screen, VIEW_CARRYING_OIL), commands)
     }
@@ -1139,14 +1153,14 @@ mod tests {
     #[test]
     fn the_stats_tab_shows_each_meter_by_name_with_a_gauge() {
         let mut screen = Screen::new(true);
-        let (view, _) = seated_carrying_oil(&mut screen);
+        let (view, _) = seat_rowan_carrying_oil(&mut screen);
         assert_screen("stats_tab", &mut screen, view.as_ref());
     }
 
     #[test]
     fn f3_shows_what_the_pc_carries_with_the_wielded_item_marked() {
         let mut screen = Screen::new(true);
-        let (view, commands) = seated_carrying_oil(&mut screen);
+        let (view, commands) = seat_rowan_carrying_oil(&mut screen);
         press(&mut screen, KeyCode::F(3), &commands);
         assert_screen("carried_tab", &mut screen, view.as_ref());
     }
@@ -1154,7 +1168,7 @@ mod tests {
     #[test]
     fn f4_shows_the_facts_and_notes_the_pc_knows() {
         let mut screen = Screen::new(true);
-        let (view, commands) = seated_carrying_oil(&mut screen);
+        let (view, commands) = seat_rowan_carrying_oil(&mut screen);
         press(&mut screen, KeyCode::F(4), &commands);
         assert_screen("known_tab", &mut screen, view.as_ref());
     }
@@ -1162,7 +1176,7 @@ mod tests {
     #[test]
     fn the_open_tabs_key_hides_the_tab_box() {
         let mut screen = Screen::new(true);
-        let (view, commands) = seated_carrying_oil(&mut screen);
+        let (view, commands) = seat_rowan_carrying_oil(&mut screen);
         press(&mut screen, KeyCode::F(3), &commands);
         press(&mut screen, KeyCode::F(3), &commands);
         assert_screen("tab_box_hidden", &mut screen, view.as_ref());
@@ -1171,7 +1185,7 @@ mod tests {
     #[test]
     fn f1_asks_for_help_and_esc_closes_its_popup() {
         let mut screen = Screen::new(true);
-        let (view, commands) = seated_carrying_oil(&mut screen);
+        let (view, commands) = seat_rowan_carrying_oil(&mut screen);
         let before_help = screen_text(&mut screen, view.as_ref(), 80, 24);
         assert_eq!(
             press(&mut screen, KeyCode::F(1), &commands),
@@ -1186,7 +1200,7 @@ mod tests {
     #[test]
     fn arriving_at_a_place_asks_for_the_map_once() {
         let mut screen = Screen::new(true);
-        seated_carrying_oil(&mut screen);
+        seat_rowan_carrying_oil(&mut screen);
         assert!(screen.take_map_request());
         assert!(!screen.take_map_request());
     }
@@ -1194,7 +1208,7 @@ mod tests {
     #[test]
     fn the_place_panel_lists_nearby_places_from_the_map() {
         let mut screen = Screen::new(true);
-        let (view, _) = seated_carrying_oil(&mut screen);
+        let (view, _) = seat_rowan_carrying_oil(&mut screen);
         screen.take_map_request();
         show_json(&mut screen, MAP_REPLY);
         assert_screen("nearby", &mut screen, view.as_ref());
@@ -1203,7 +1217,7 @@ mod tests {
     #[test]
     fn a_wide_terminal_shows_the_story_the_place_and_the_tab_box_side_by_side() {
         let mut screen = Screen::new(true);
-        let (view, _) = seated_carrying_oil(&mut screen);
+        let (view, _) = seat_rowan_carrying_oil(&mut screen);
         screen.take_map_request();
         show_json(&mut screen, MAP_REPLY);
         assert_screen_at("wide", &mut screen, view.as_ref(), 140, 40);

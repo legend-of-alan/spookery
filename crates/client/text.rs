@@ -215,7 +215,7 @@ pub fn render_view(view: &protocol::View) -> String {
             .join(", ");
         sections.push(format!("Here: {names}"));
     }
-    sections.extend(render_known(known_facts, notes));
+    sections.extend(render_facts_and_notes(known_facts, notes));
     let items_here_lines: Vec<String> = items_here.iter().map(render_item).collect();
     let items_carried_lines: Vec<String> = items_carried
         .iter()
@@ -400,7 +400,7 @@ pub(crate) fn actor_ids_and_names(
 }
 
 /// The `You know:` and `Notes:` sections, each left out when it has no lines.
-pub(crate) fn render_known(known_facts: &[KnownFact], notes: &[NoteView]) -> Vec<String> {
+pub(crate) fn render_facts_and_notes(known_facts: &[KnownFact], notes: &[NoteView]) -> Vec<String> {
     let mut sections = Vec::new();
     push_lines(
         &mut sections,
