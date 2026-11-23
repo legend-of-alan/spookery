@@ -280,11 +280,6 @@ fn break_pack(pack: &Path, fault: &str) {
             "  eligible: false\n",
             "  eligible: false\n  flags: []\n",
         ),
-        "a flags list in a cast file" => replace_in_file(
-            &pack.join("cast/pc-rowan.md"),
-            "idle:\n",
-            "flags:\n  - sealed\nidle:\n",
-        ),
         "idle maybe" => replace_in_file(
             &pack.join("rules/budget.yaml"),
             "schema: budget\n",

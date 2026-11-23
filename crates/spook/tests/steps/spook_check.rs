@@ -4,6 +4,7 @@ use std::path::Path;
 
 use cucumber::{then, when};
 use serde_json::Value;
+use spookery_engine::component::Flag;
 
 use crate::support;
 use crate::World;
@@ -54,13 +55,11 @@ fn a_verb_tests_an_unset_flag(world: &mut World, flag: String) {
 
 #[when(expr = "the save gives rowan the flag {string}")]
 fn the_save_gives_rowan_the_flag(world: &mut World, flag: String) {
-    let path = table::pack(world).join("state/save.yaml");
-    let now = spookery_engine::parse_save(&fs::read_to_string(&path).unwrap())
-        .unwrap_or_else(|err| panic!("load save: {err:?}"));
-    let mut saved = serde_json::to_value(&now).unwrap();
-    saved["actors"]["flags"]["rowan"] = Value::from(vec![flag]);
-    let now = serde_json::from_value(saved).unwrap_or_else(|err| panic!("edited save: {err}"));
-    fs::write(&path, spookery_engine::emit_save(&now).unwrap()).unwrap();
+    support::edit_save(table::pack(world), |now| {
+        let mut rowan = now.actors_mut();
+        let set = rowan.get_mut::<Flag>(&"rowan".into()).set(&flag, true);
+        set.unwrap_or_else(|err| panic!("set {flag}: {err}"));
+    });
 }
 
 #[when(expr = "the pack_rev is restamped")]

@@ -11,7 +11,7 @@ use crate::intent::Target;
 use crate::Reason;
 
 /// How many times an actor has acted, and the action they are still on.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Act {
     pub last_act_round: u64,
@@ -23,8 +23,8 @@ pub struct Act {
     pub pending: Option<PendingAction>,
 }
 
-/// What an actor with no save row for it holds: `Act::default()`.
-static DEFAULT_ACT: Act = Act {
+/// What an actor who has not acted holds, and so what one with no save row for it reads.
+static NOT_ACTED: Act = Act {
     last_act_round: 0,
     idle_acts_this_window: 0,
     live_acts_this_window: 0,
@@ -49,9 +49,9 @@ impl Act {
 }
 
 impl<'a> Ref<'a, entity::Actors, Act> {
-    /// The actor's action state: its save row, or `Act::default()` when it has none.
+    /// The actor's action state: its save row, or `NOT_ACTED` when it has none.
     pub fn get(&self) -> &'a Act {
-        self.store().get(self.id).unwrap_or(&DEFAULT_ACT)
+        self.store().get(self.id).unwrap_or(&NOT_ACTED)
     }
 
     /// Busy means an action under way, or a cooldown whose `busy_until` is still after
@@ -65,7 +65,7 @@ impl<'a> Ref<'a, entity::Actors, Act> {
 impl Mut<'_, entity::Actors, Act> {
     /// The one write to the actor's action state: `edit` made to what they hold, reporting the
     /// change under `component_id` as `read` reads the action state before and after. An action
-    /// state back at `Act::default()` leaves the save.
+    /// state back at `NOT_ACTED` leaves the save.
     fn write(
         &mut self,
         component_id: &'static str,
@@ -73,13 +73,13 @@ impl Mut<'_, entity::Actors, Act> {
         edit: impl FnOnce(&mut Act),
     ) -> Result<(), Reason> {
         self.check_exists()?;
-        let held = self.store().get(self.id).unwrap_or(&DEFAULT_ACT);
+        let held = self.store().get(self.id).unwrap_or(&NOT_ACTED);
         let before = read(held);
         let mut next = held.clone();
         edit(&mut next);
         let key = change::Key::new(component_id, self.id.as_id_ref(), None);
         let change = Change::new(key, before, read(&next));
-        let next = (next != DEFAULT_ACT).then_some(next);
+        let next = (next != NOT_ACTED).then_some(next);
         let (id, (acts, transaction)) = (self.id.clone(), self.store_mut());
         acts.set(transaction, id, next, [change.into()])
     }

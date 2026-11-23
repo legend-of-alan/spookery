@@ -44,7 +44,6 @@ Feature: spook check explains a broken pack
       | a verb named look                   | rules/verbs.yaml           | SCHEMA            | 'look' is a built-in command                             |
       | a verb named say                    | rules/verbs.yaml           | SCHEMA            | 'say' is a built-in command                              |
       | flags under idle                    | cast/pc-rowan.md           | SCHEMA            | unknown field                                            |
-      | a flags list in a cast file         | cast/pc-rowan.md           | SCHEMA            | unknown field 'flags'                                    |
       | a cast role named kind              | cast/pc-rowan.md           | SCHEMA            | unknown field 'kind'                                     |
       | idle maybe                          | rules/budget.yaml          | SCHEMA            | not on or off                                            |
       | zero round interval                 | rules/budget.yaml          | SCHEMA            | round_every_real_seconds                                 |

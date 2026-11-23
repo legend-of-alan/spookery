@@ -624,9 +624,7 @@ fn rowan_takes_an_item_beside_nell(world: &mut World) {
 }
 
 /// `of: here` is known only at play time, so the pack check lets the habit through.
-#[given(
-    expr = "Mira has a habit that adds 1 to her {string} meter on her place, which only she carries"
-)]
+#[given(expr = "Mira has a habit that adds 1 to {string} of her place, a meter only she carries")]
 fn mira_has_a_place_meter_habit(world: &mut World, meter: String) {
     let pack = copy_pack("docks", "habit-meter");
     replace_in_file(
