@@ -11,7 +11,7 @@ expression: shown
 │GM: good evening                                   ││Docks Street — 0 ticks   │
 │› exert                                            ││stairs (locked) — 2 ticks│
 │Your action is queued.                             ││                         │
-│── round 1 · tick 1085 ──                          ││Items                    │
+│── round 1 · tick 1085 ──                          ││Items here               │
 │◆ Your roll succeeded.                             ││Lamp oil: 3              │
 │› take lamp_oil                                    ││                         │
 │Your action is queued.                             ││Meters                   │

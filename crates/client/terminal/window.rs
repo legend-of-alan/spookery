@@ -611,7 +611,7 @@ impl Screen {
             panel_lines.push(Line::styled("none", self.style(ASH)));
         }
         if !view.items.is_empty() {
-            self.push_heading(&mut panel_lines, "Items");
+            self.push_heading(&mut panel_lines, "Items here");
             for item in &view.items {
                 panel_lines.push(Line::styled(text::render_item(item), self.style(PARCHMENT)));
             }
