@@ -11,17 +11,16 @@ use super::Palette;
 /// Every line the window has shown, oldest first, and how far the player has scrolled it back.
 #[derive(Default)]
 pub(super) struct Transcript {
-    lines: Vec<TranscriptLine>,
+    lines: Vec<Entry>,
     /// How many wrapped rows the transcript is scrolled up from its bottom.
     scroll_offset_rows: usize,
     /// How many rows PgUp adds to `scroll_offset_rows` and PgDn takes off: the pane's height less
-    /// one, as last drawn. The window draws before it reads a key.
+    /// one. Set by each draw.
     scroll_step_rows: usize,
 }
 
 /// One line, and whether it is a round divider, which the compact layout leaves out.
-struct TranscriptLine {
-    // repeats module: it wraps ratatui's `Line`, which this module also names
+struct Entry {
     line: Line<'static>,
     is_round_divider: bool,
 }
@@ -32,14 +31,14 @@ impl Transcript {
     }
 
     pub(super) fn push(&mut self, line: Line<'static>) {
-        self.lines.push(TranscriptLine {
+        self.lines.push(Entry {
             line,
             is_round_divider: false,
         });
     }
 
     pub(super) fn push_round_divider(&mut self, line: Line<'static>) {
-        self.lines.push(TranscriptLine {
+        self.lines.push(Entry {
             line,
             is_round_divider: true,
         });
@@ -47,7 +46,7 @@ impl Transcript {
 
     /// Puts a blank line before the line at `index`.
     pub(super) fn insert_blank_line(&mut self, index: usize) {
-        let blank_line = TranscriptLine {
+        let blank_line = Entry {
             line: Line::default(),
             is_round_divider: false,
         };
@@ -80,10 +79,8 @@ impl Transcript {
         let border = palette.titled_border("Transcript", true);
         let inner_area = border.inner(area);
         let lines: Vec<Line> = (self.lines.iter())
-            .filter(|transcript_line| {
-                is_showing_round_dividers || !transcript_line.is_round_divider
-            })
-            .map(|transcript_line| transcript_line.line.clone())
+            .filter(|entry| is_showing_round_dividers || !entry.is_round_divider)
+            .map(|entry| entry.line.clone())
             .collect();
         let transcript_text = Paragraph::new(lines).wrap(Wrap { trim: false });
         let wrapped_rows = transcript_text.line_count(inner_area.width);

@@ -357,7 +357,7 @@ impl Screen {
     /// renderer says one is due. A reply to the window's own `map` only updates the place panel.
     fn show(&mut self, message: &ServerMessage) {
         let body = &message.body;
-        self.place_panel.show(body);
+        self.place_panel.keep_map_places(body);
         if (self.place_panel).remove_own_map_request(message.reply_to.as_deref()) {
             return;
         }
@@ -931,9 +931,9 @@ mod tests {
             region_text(&mut screen, Some(&view), transcript_rect),
             transcript_before
         );
-        let place_panel_rect = |areas: &ScreenAreas| Some(areas.place_panel_rect);
-        let place_panel = region_text(&mut screen, Some(&view), place_panel_rect);
-        assert!(place_panel.contains("Docks Street → Gate Yard"));
+        assert_region("nearby", &mut screen, &view, |areas| {
+            Some(areas.place_panel_rect)
+        });
         type_text(&mut screen, "map", &commands);
         assert_eq!(
             press(&mut screen, KeyCode::Enter, &commands),
@@ -944,17 +944,6 @@ mod tests {
         screen.show(&map_reply("c11"));
         let transcript_after = region_text(&mut screen, Some(&view), transcript_rect);
         assert!(transcript_after.contains("Gate Yard — 0 ticks"));
-    }
-
-    #[test]
-    fn the_place_panel_lists_nearby_places_from_the_map() {
-        let mut screen = Screen::new(true);
-        let (view, _) = seat_rowan_carrying_oil(&mut screen);
-        send_own_map(&mut screen, "c8");
-        screen.show(&map_reply("c8"));
-        assert_region("nearby", &mut screen, &view, |areas| {
-            Some(areas.place_panel_rect)
-        });
     }
 
     #[test]

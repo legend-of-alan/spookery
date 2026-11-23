@@ -46,7 +46,7 @@ impl PlacePanel {
     }
 
     /// Keeps the places of a `map` reply.
-    pub(super) fn show(&mut self, body: &ServerBody) {
+    pub(super) fn keep_map_places(&mut self, body: &ServerBody) {
         if let ServerBody::Map { places } = body {
             self.place_views = places.clone();
         }
