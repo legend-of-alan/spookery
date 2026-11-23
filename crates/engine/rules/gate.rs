@@ -253,14 +253,14 @@ pub(crate) fn list_ids(
     let Ok(view) = perceive::build_view(canon, world, presence, viewer) else {
         return Vec::new();
     };
-    let named_item = |item: perceive::ItemStack| NamedId::new(&item.id, item.name);
-    let mut ids: Vec<NamedId> = view.items_carried.into_iter().map(named_item).collect();
+    let name_item = |item: perceive::ItemStack| NamedId::new(&item.id, item.name);
+    let mut ids: Vec<NamedId> = view.items_carried.into_iter().map(name_item).collect();
     ids.push(NamedId::new(&view.place, view.place_name));
     let me = viewer.actor_id();
     let actors = view.visible_actors.iter().zip(view.actor_names);
     let others = actors.filter(|(id, _)| *id != me);
     ids.extend(others.map(|(id, name)| NamedId::new(id.as_str(), name)));
-    ids.extend(view.items.into_iter().map(named_item));
+    ids.extend(view.items.into_iter().map(name_item));
     ids.extend(view.exits.into_iter().map(|exit| NamedId {
         id: exit.exit_id,
         name: exit.name,
