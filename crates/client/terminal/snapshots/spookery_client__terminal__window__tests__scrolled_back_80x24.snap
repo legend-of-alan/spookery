@@ -4,25 +4,25 @@ expression: shown
 ---
  SPOOKERY                                           Rowan · round 2 · tick 1090
 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-╭ Transcript ───────────────────────────────────────╮╭ Docks Shop ─────────────╮
-│▌ Docks Shop                                       ││Here: Aldric, You        │
-│The shop faces the water. Tins sit in a row.       ││                         │
-│› look                                             ││Exits                    │
-│› say evening                                      ││Docks Street — 0 ticks   │
-│You: evening                                       ││stairs (locked) — 2 ticks│
-│GM: good evening                                   ││                         │
-│› exert                                            ││Items here               │
-│Your action is queued.                             ││Lamp oil: 3              │
-│── round 1 · tick 1085 ──                          ││                         │
-│◆ Your roll succeeded.                             ││Meters                   │
-│› take lamp_oil                                    ││Assassination debt: 2/6  │
-│Your action is queued.                             ││━━━───────               │
-│── round 2 · tick 1090 ──                          ││Hp: 8/16 ━━━━━─────      │
-│You picked up the Lamp oil.                        ││Might: 1/45 ──────────   │
-│› travel stairs                                    ││Rest: 3/5 ━━━━━━────     │
-│The stair door is locked. [NO_EXIT]                ││Vigor: 1/110 ──────────  │
-╰───────────────────────────────────────────────────╯╰─────────────────────────╯
+╭ Transcript ────────────────────────────────╮╭ Docks Shop ────────────────────╮
+│▌ Docks Shop                                ││Here: Aldric, You               │
+│The shop faces the water. Tins sit in a row.││Exits                           │
+│› look                                      ││Docks Street — 0 ticks          │
+│› say evening                               ││stairs (locked) — 2 ticks       │
+│You: evening                                ││Items here                      │
+│GM: good evening                            ││Lamp oil: 3                     │
+│› exert                                     ││                                │
+│Your action is queued.                      ││                                │
+│◆ Your roll succeeded.                      │╰────────────────────────────────╯
+│› take lamp_oil                             │╭────────────────────────────────╮
+│Your action is queued.                      ││ Stats │ Carried │ Known        │
+│You picked up the Lamp oil.                 ││Assassination debt: 2/6 ━━──────│
+│› travel stairs                             ││Hp: 8/16                ━━━━────│
+│The stair door is locked. [NO_EXIT]         ││Might: 1/45             ────────│
+│› fly                                       ││Rest: 3/5               ━━━━────│
+│That line is not valid. [SCHEMA]            ││Vigor: 1/110            ────────│
+╰────────────────────────────────────────────╯╰F2 F3 F4 switch · same key hides╯
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │›                                                                             │
 ╰──────────────────────────────────────────────────────────────────────────────╯
- Enter send  Tab complete  ↑↓ history  PgUp PgDn scroll  Ctrl+C quit
+ Enter send  Tab complete  ↑↓ history  PgUp PgDn scroll  F1 help  Ctrl+C quit

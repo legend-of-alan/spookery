@@ -1,0 +1,28 @@
+---
+source: crates/client/terminal/window.rs
+expression: shown
+---
+ SPOOKERY                                           Rowan · round 2 · tick 1090
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+╭ Transcript ────────────────────────────────╮╭ Docks Shop ────────────────────╮
+│▌ Docks S╭ Help ────────────────────────────────────────────────────╮         │
+│The shop │release                                                   │         │
+│› look   │say                                                       │         │
+│› say eve│look                                                      │ks       │
+│You: even│help                                                      │         │
+│GM: good │map                                                       │         │
+│› exert  │cancel                                                    │         │
+│Your acti│drop <item>: Lamp oil                                     │         │
+│◆ Your ro│exert                                                     │─────────╯
+│› take la│strike <actor>: Bram, Wren                                │─────────╮
+│Your acti│take <item>: Lamp oil                                     │n        │
+│You picke│travel <exit>: Docks Shop, Gate Yard                      │ ━━──────│
+│› travel │unwield                                                   │ ━━━━────│
+│The stair│wait                                                      │ ────────│
+│› fly    │wield <item>: Lamp oil                                    │ ━━━━────│
+│That line╰ Esc closes ──────────────────────────────────────────────╯ ────────│
+╰────────────────────────────────────────────╯╰F2 F3 F4 switch · same key hides╯
+╭──────────────────────────────────────────────────────────────────────────────╮
+│›                                                                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ Enter send  Tab complete  ↑↓ history  PgUp PgDn scroll  F1 help  Ctrl+C quit
