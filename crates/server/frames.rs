@@ -36,9 +36,8 @@ fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
     }
 }
 
-/// The reply to a claim: the PC, its token and the round and tick `now` is at. A new claim
-/// gives the speech the PC heard before as `scrollback`. A claim by token gives the messages
-/// sent to it after `last_seq`, which a new claim has none of.
+/// The reply to a claim: the PC, its token, the round and tick of `now`, `scrollback`, and the
+/// messages `claim` kept after `last_seq`.
 pub(super) fn render_claimed(
     now: &engine::ecs::World,
     claim: &Claim,

@@ -83,7 +83,7 @@ pub enum ServerBody {
         pc_names: BTreeMap<String, String>,
     },
     /// The reply to `claim`. `token` takes this PC back after a dropped connection.
-    /// `round_index` and `world_time` are where the table is now. A new claim carries
+    /// `round_index` and `world_time` are the table's round and tick. A new claim carries
     /// `scrollback`, the speech this PC heard before, oldest first. A claim by token carries
     /// `missed`, the messages sent to this PC after the `last_seq` it named, and `gap` when
     /// more than `MISSED_MESSAGE_CAP` messages were missed.
