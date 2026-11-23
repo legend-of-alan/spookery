@@ -24,7 +24,7 @@ async fn mark_needs_a_knife(world: &mut World) {
 fn gains_a_shout_row(world: &mut World) {
     append_verbs(
         world,
-        "\n  - id: mark\n    when: habit\n    do:\n      - shout:\n          shout: r_184\n          to: aldric\n          heat: 1\n",
+        "\n  - id: mark\n    when: habit\n    do:\n      - shout:\n          to: aldric\n",
     );
 }
 
