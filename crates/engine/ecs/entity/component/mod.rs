@@ -148,7 +148,7 @@ where
     E: entity::Has<C, Store = entity::MapStore<E, C>>,
     C: Component<Value = ()>,
 {
-    /// Put `entry_id` on or take it off: set a flag, or open or shut a door.
+    /// Put `entry_id` on or take it off: set a flag, or open or shut an exit.
     pub fn set(&mut self, entry_id: &str, on: bool) -> Result<(), Reason> {
         self.check_exists()?;
         let (before, after) = (Some(ChangeValue::Bool(!on)), Some(ChangeValue::Bool(on)));

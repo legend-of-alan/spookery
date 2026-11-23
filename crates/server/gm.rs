@@ -231,7 +231,7 @@ mod tests {
         let calls = [
             ("status", json!({})),
             ("perceive", json!({"as": "rowan"})),
-            ("queue", json!({"actor_id": "rowan", "move": "wait"})),
+            ("queue", json!({"actor": "rowan", "move": "wait"})),
             ("say", json!({"to": "table", "text": "hi"})),
             ("commit", json!({"include_round": false})),
             ("release", json!({})),
@@ -273,7 +273,7 @@ mod tests {
     fn parsed_intent_reaches_the_session_with_move_and_to() {
         let pack = copy_pack("docks", "gm_intent");
         let mut session = spookery_engine::Session::open(&pack).unwrap();
-        let args = json!({"actor_id": "rowan", "move": "wait", "to": ["wren"]});
+        let args = json!({"actor": "rowan", "move": "wait", "to": ["wren"]});
         let call = crate::protocol::parse_args(args.as_object()).unwrap();
         let queued = session
             .queue_gm_intent(&Presence::default(), call, || Ok("i1".into()))

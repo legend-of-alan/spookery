@@ -1,9 +1,9 @@
-//! Open exits: the doors that stand open, each on its place.
+//! Open exits, each on its place.
 
 use crate::ecs::component::Component;
 
-/// An exit whose door is open, on its place under the exit's id.
-pub struct OpenExit;
+/// An open exit, on its place under the exit's id.
+pub struct OpenExit; // repeats module: mirrors the save key places.open_exits
 
 impl Component for OpenExit {
     type Value = ();

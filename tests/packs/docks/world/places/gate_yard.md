@@ -2,27 +2,6 @@
 schema: place
 id: gate_yard
 name: Gate Yard
-exits:
-  - to: mill_lane
-    id: mill_lane
-    cost:
-      ticks: 15
-    if:
-      - flag:
-          of: world
-          key: passage
-          is: true
-      - flag:
-          of: world
-          key: chocked
-          is: true
-    locked_text: The lane is shut.
-  - to: loft
-    id: loft
-  - to: wheel_shed
-    id: wheel_shed
-  - to: docks_street
-    id: docks_street
 facts: []
 rules:
   - id: chock

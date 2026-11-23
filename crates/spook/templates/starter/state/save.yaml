@@ -1,6 +1,6 @@
 schema: save
 world_id: starter
-pack_rev: blake2s:7da4554d5cd959b0e02f35155894940080e3a5f90cb5b4ced816d598273f385e
+pack_rev: blake2s:cbe52fcb62349177be1c87da47df8630d145d8fda82aa1c9a44ab60622a17aff
 rules_rev: 30
 state_rev: 0
 round_index: 0

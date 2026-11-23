@@ -79,7 +79,7 @@ pub enum EffectKind {
         key: String,
         value: bool,
     },
-    /// Open or shut the door of an exit. JSON writes the exit as `place` and `exit`.
+    /// Open or shut an exit. JSON writes it as `place` and `exit`.
     ExitOpen {
         #[serde(flatten)]
         exit: ExitId,
@@ -239,7 +239,8 @@ impl Effect {
             }
             EffectKind::ExitOpen { exit, open } => {
                 canon
-                    .has_door(&exit)
+                    .find_exit(exit.place.as_str(), &exit.exit)
+                    .is_some_and(|exit| exit.path.is_conditional())
                     .then_some(())
                     .ok_or(Reason::UnknownId)?;
                 world.places_mut().set_exit_open(&exit, open)

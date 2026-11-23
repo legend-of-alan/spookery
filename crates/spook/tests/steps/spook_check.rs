@@ -22,9 +22,9 @@ async fn the_operator_runs_spook_check_json_again(world: &mut World) {
 fn the_street_exit_is_removed(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     super::common::replace_in_file(
-        &pack.join("world/places/docks_shop.md"),
-        "  - to: docks_street\n    id: docks_street\n",
-        "",
+        &pack.join("world/map.yaml"),
+        "  - path: docks_shop <-> docks_street\n",
+        "  - path: docks_street -> docks_shop\n",
     );
 }
 

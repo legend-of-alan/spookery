@@ -44,15 +44,15 @@ pub(crate) fn add_trapdoor(pack: &Path) {
         "    text: Oil is on the shelf.\n",
         "    text: Oil is on the shelf.\n  - id: fact_trapdoor\n    text: A trapdoor is under the rug.\n    hidden: true\n",
     );
-    let next = next.replace(
-        "    locked_text: The stair door is locked.\n",
-        "    locked_text: The stair door is locked.\n  - to: cellar\n    id: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
-    );
     assert_ne!(text, next);
     fs::write(&path, next).unwrap();
+    crate::support::append(
+        &pack.join("world/map.yaml"),
+        "  - path: docks_shop -> cellar\n    id: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
+    );
     fs::write(
         pack.join("world/places/cellar.md"),
-        "---\nschema: place\nid: cellar\nname: Cellar\nfacts: []\nexits: []\n---\nUnder the shop.\n",
+        "---\nschema: place\nid: cellar\nname: Cellar\nfacts: []\n---\nUnder the shop.\n",
     )
     .unwrap();
 }
@@ -217,15 +217,26 @@ fn break_pack(pack: &Path, fault: &str) {
             "    aldric: { npc: null, pc: null }\n",
         ),
         "exit to an unknown place" => replace_in_file(
-            &pack.join("world/places/docks_shop.md"),
-            "  - to: docks_street\n",
-            "  - to: nowhere\n",
+            &pack.join("world/map.yaml"),
+            "  - path: docks_shop <-> docks_street\n",
+            "  - path: docks_shop <-> nowhere\n",
         ),
-        "duplicate exit" => replace_in_file(
-            &pack.join("world/places/docks_shop.md"),
-            "    id: docks_street\n",
-            "    id: docks_street\n  - to: docks_street\n    id: docks_street\n",
+        "duplicate exit" => crate::support::append(
+            &pack.join("world/map.yaml"),
+            "  - path: docks_shop -> docks_street\n",
         ),
+        "exits in a place file" => crate::support::insert_before_fence(
+            &pack.join("world/places/docks_shop.md"),
+            "exits:\n  - to: docks_street\n    id: docks_street\n",
+        ),
+        "a path with no arrow" => replace_in_file(
+            &pack.join("world/map.yaml"),
+            "  - path: gate_yard <-> loft\n",
+            "  - path: gate_yard loft\n",
+        ),
+        "missing map" => {
+            fs::remove_file(pack.join("world/map.yaml")).unwrap();
+        }
         "duplicate place fact" => replace_in_file(
             &pack.join("world/places/docks_shop.md"),
             "    text: Oil is on the shelf.\n",
@@ -332,7 +343,7 @@ fn break_pack(pack: &Path, fault: &str) {
             "      verb: wait\n    do:\n      - check: { by: target, total: 1d20, success_at: 12 }\n",
         ),
         "target on an exit" => replace_in_file(
-            &pack.join("world/places/gate_yard.md"),
+            &pack.join("world/map.yaml"),
             "          of: world\n          key: passage\n",
             "          of: target\n          key: passage\n",
         ),
@@ -845,9 +856,9 @@ fn the_view_hides_the_trapdoor(world: &mut World) {
 async fn the_stairs_cost_ten_ticks(world: &mut World) {
     let pack = copy_pack("docks", "ten-ticks");
     replace_in_file(
-        &pack.join("world/places/docks_shop.md"),
-        "ticks: 2\n",
-        "ticks: 10\n",
+        &pack.join("world/map.yaml"),
+        "      ticks: 2\n",
+        "      ticks: 10\n",
     );
     edit_save(&pack, |now| {
         give_key(now);

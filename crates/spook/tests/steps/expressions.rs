@@ -51,7 +51,7 @@ async fn the_gm_queues_aldrics_wait_and_commits(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack).await;
     table::seat_gm(world).await;
-    table::gm_tool_call(world, 6, "queue", r#"{"actor_id":"aldric","move":"wait"}"#).await;
+    table::gm_tool_call(world, 6, "queue", r#"{"actor":"aldric","move":"wait"}"#).await;
     world.stdout = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#).await;
 }
 
@@ -144,10 +144,8 @@ fn the_pack_has(world: &mut World, number: String, field: String) {
     }
     match field.as_str() {
         "the street exit's ticks" => {
-            let path = pack.join("world/places/docks_shop.md");
-            let text = fs::read_to_string(&path).unwrap();
-            let cost = format!("    id: docks_street\n    cost: {{ ticks: \"{number}\" }}\n");
-            fs::write(&path, text.replace("    id: docks_street\n", &cost)).unwrap();
+            let cost = format!("    cost: {{ ticks: \"{number}\" }}\n");
+            crate::support::split_path(&pack, ["docks_shop", "docks_street"], [&cost, ""]);
         }
         "the strain's modifier ticks" => {
             super::modifiers::add_modifier(&pack, "fatigue", "vigor", "");
@@ -181,7 +179,7 @@ async fn the_player_hits_and_the_gm_commits(world: &mut World, hits: String) {
     let _ = table::player_send(world, line, "\"kind\":\"queued\"").await;
     if hits.ends_with("rouse") {
         let queued =
-            table::gm_tool_call(world, 6, "queue", r#"{"actor_id":"mira","move":"rouse"}"#).await;
+            table::gm_tool_call(world, 6, "queue", r#"{"actor":"mira","move":"rouse"}"#).await;
         assert!(!queued.contains("\"refused\""), "{queued}");
     }
     world.mark = table::player_mark(world);

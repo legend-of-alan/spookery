@@ -37,6 +37,8 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 | **Canon** | Files under `world/`, `cast/` and `rules/` in a pack. They don't change while the world runs. |
 | **`spook`** | The program that loads a pack. It is the only thing that writes the pack's state. |
 | **Engine** | The code that decides what is legal, rolls checks and tracks who knows what. |
+| **Path** | A way from one place to another, one-way or both, in `world/map.yaml`. |
+| **Exit** | A path as seen from a place it leaves, named by the word a player types there. |
 | **Tick** | The only unit of game time. The engine counts world time in ticks. The engine knows no day or hour: a pack names its own cycles, such as a day or a tide, in `rules/budget.yaml`. Talking takes no ticks. Moving and acting do. Players and the GM see plain ticks. |
 | **Speech** | One spoken line on the session tape. The command that writes it is `say`. Talking takes no ticks. |
 | **Round** | One batch of work, in which queued intents are settled together and the results are journaled. A round writes some ticks, but it is not a unit of time. |

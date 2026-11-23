@@ -35,8 +35,11 @@ Feature: spook check explains a broken pack
       | a control type with two keys        | state/save.yaml            | SCHEMA            | two keys where one belongs                               |
       | an empty tags key                   | world/items/latch.md       | SCHEMA            | or write [] for none                                     |
       | an empty modifiers key              | state/save.yaml            | SCHEMA            | or write {} for none                                     |
-      | exit to an unknown place            | world/places/docks_shop.md | SCHEMA            | not a place                                              |
-      | duplicate exit                      | world/places/docks_shop.md | SCHEMA            | listed twice                                             |
+      | exit to an unknown place            | world/map.yaml             | SCHEMA            | not a place                                              |
+      | duplicate exit                      | world/map.yaml             | SCHEMA            | listed twice                                             |
+      | exits in a place file               | world/places/docks_shop.md | SCHEMA            | unknown field 'exits'                                    |
+      | a path with no arrow                | world/map.yaml             | SCHEMA            | -> or <->                                                |
+      | missing map                         | world/map.yaml             | NOT_IN_SPEC       | missing                                                  |
       | a target alias                      | rules/verbs.yaml           | SCHEMA            | not a target kind                                        |
       | a verb named look                   | rules/verbs.yaml           | SCHEMA            | 'look' is a built-in command                             |
       | a verb named say                    | rules/verbs.yaml           | SCHEMA            | 'say' is a built-in command                              |
@@ -54,7 +57,7 @@ Feature: spook check explains a broken pack
       | owner target on an item move        | rules/verbs.yaml           | SCHEMA            | in of:, but its target is item                           |
       | id: target with no target           | rules/verbs.yaml           | SCHEMA            | in id:, but its target is none                           |
       | a save by target with none          | rules/verbs.yaml           | SCHEMA            | in by:, but its target is none                           |
-      | target on an exit                   | world/places/gate_yard.md  | SCHEMA            | but an exit has no target                                |
+      | target on an exit                   | world/map.yaml             | SCHEMA            | but an exit has no target                                |
       | a meter on the wrong actor          | cast/bram.md               | SCHEMA            | only mira carries meter 'shop_day'                       |
       | a cast meter that is global         | cast/mira.md               | SCHEMA            | meter 'vigor' is already in rules/meters.yaml            |
       | a meter its actor lacks             | cast/mira.md               | SCHEMA            | mira carries no meter 'dawn'                             |
@@ -93,7 +96,7 @@ Feature: spook check explains a broken pack
     And the operator runs spook check
     Then the check exits 1
     And the report names "rules/verbs.yaml"
-    And the report names "world/places/docks_shop.md"
+    And the report names "world/map.yaml"
     And stdout is empty
     And the pack bytes are unchanged
 

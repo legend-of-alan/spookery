@@ -58,10 +58,18 @@ fn refused_no_exit_and_stays(world: &mut World) {
 }
 
 #[given(
-    regex = r"^the stairs exit needs brass_key, rowan has none, and travel walks (at once|inside a nested check)$"
+    regex = r"^rowan stands in (docks_shop|mira_rooms), the stairs exit needs brass_key, rowan has none, and travel walks (at once|inside a nested check)$"
 )]
-async fn stairs_need_a_key(world: &mut World, walk: String) {
+async fn stairs_need_a_key(world: &mut World, place: String, walk: String) {
     let pack = copy_pack("docks", "locked");
+    if place != "docks_shop" {
+        edit_save(&pack, |now| {
+            let rowan = &"rowan".into();
+            (now.actors_mut().get_mut::<component::Place>(rowan))
+                .set(&place)
+                .unwrap();
+        });
+    }
     if walk == "inside a nested check" {
         super::common::replace_in_file(
             &pack.join("rules/verbs.yaml"),

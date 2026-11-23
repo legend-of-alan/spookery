@@ -1,13 +1,17 @@
-//! Cross-file validation of rules, exits, meters, items, facts, and triggers.
+//! Cross-file validation of rules, paths, meters, items, facts, and triggers.
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::canon::map::MAP_FILE;
 use crate::canon::source::{FileText, Locator, Problem};
-use crate::canon::{declared_flags, Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
+use crate::canon::{
+    declared_flags, Canon, CastDef, Exit, FactDef, ItemDef, PathDef, Paths, PlaceDef, StoryDef,
+    OPEN,
+};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::component::modifier;
-use crate::ecs::id::{ActorId, PlaceId, StoryId};
+use crate::ecs::id::{ActorId, ExitId, PlaceId, StoryId};
 use crate::entity;
 use crate::rules::cond;
 use crate::rules::expr::Expr;
@@ -17,61 +21,37 @@ use crate::rules::rule::{
 };
 use crate::Reason;
 
-/// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
-pub(super) fn broken_exits(
+/// Paths whose ends are not places, and facts or items a path names but the pack does not.
+pub(super) fn broken_paths(
+    paths: &[PathDef],
     places: &BTreeMap<PlaceId, PlaceDef>,
     facts: &BTreeMap<String, FactDef>,
     items: &BTreeMap<String, ItemDef>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    for place in places.values() {
-        for exit in &place.exits {
-            if !places.contains_key(exit.to.as_str()) {
-                diags.push(
-                    schema_error(
-                        &exit.file,
-                        &format!(
-                            "exit '{}' goes to '{}', which is not a place",
-                            exit.id, exit.to
-                        ),
-                        "set to: to a place id",
-                    )
-                    .at_path(format!("exits[{}].to", exit.index)),
-                );
-            }
-            if exit.hidden && exit.revealed_by.is_none() {
-                diags.push(
-                    schema_error(
-                        &exit.file,
-                        &format!("hidden exit '{}' has no revealed_by fact", exit.id),
-                        "set revealed_by to a fact id",
-                    )
-                    .at_path(format!("exits[{}].revealed_by", exit.index)),
-                );
-            }
-            if let Some(fact) = &exit.revealed_by {
-                if !facts.contains_key(fact) {
-                    diags.push(
-                        schema_error(
-                            &exit.file,
-                            &format!("exit '{}' reveals '{fact}', which is not a fact", exit.id),
-                            "use a fact id from this pack",
-                        )
-                        .at_path(format!("exits[{}].revealed_by", exit.index)),
-                    );
-                }
-            }
-            for id in exit.mentions().item_ids {
-                if !items.contains_key(id) {
-                    diags.push(
-                        schema_error(
-                            &exit.file,
-                            &format!("exit '{}' names unknown item '{id}'", exit.id),
-                            &format!("add world/items/{id}.md"),
-                        )
-                        .at_path(format!("exits[{}]", exit.index)),
-                    );
-                }
+    for (row, path) in paths.iter().enumerate() {
+        let arrow = if path.bidirectional { "<->" } else { "->" };
+        let line = format!("{} {arrow} {}", path.ends[0], path.ends[1]);
+        let mut refuse = |field: &str, problem: String, hint: &str| {
+            let at = format!("paths[{row}]{field}");
+            diags.push(schema_error(MAP_FILE, &problem, hint).at_path(at));
+        };
+        for end in path.ends.iter().filter(|end| !places.contains_key(*end)) {
+            let problem = format!("path '{line}' names '{end}', which is not a place");
+            refuse(".path", problem, "name a place from world/places");
+        }
+        if path.hidden && path.revealed_by.is_none() {
+            let problem = format!("hidden path '{line}' has no revealed_by fact");
+            refuse(".revealed_by", problem, "set revealed_by to a fact id");
+        }
+        if let Some(fact) = (path.revealed_by.as_ref()).filter(|fact| !facts.contains_key(*fact)) {
+            let problem = format!("path '{line}' reveals '{fact}', which is not a fact");
+            refuse(".revealed_by", problem, "use a fact id from this pack");
+        }
+        for id in path.mentions().item_ids {
+            if !items.contains_key(id) {
+                let problem = format!("path '{line}' names unknown item '{id}'");
+                refuse("", problem, &format!("add world/items/{id}.md"));
             }
         }
     }
@@ -170,13 +150,10 @@ pub(super) fn unknown_reads(scope: &EntityScope, rules: &rule::Table) -> Vec<Dia
         let source = FileText::named(&rule.file);
         scope.push_unknown_reads(&source, &path, fixed_self(rule), &exprs, &mut diags);
     }
-    for place in scope.places.values() {
-        for exit in &place.exits {
-            let exprs = exit.exprs();
-            let path = format!("exits[{}]", exit.index);
-            let source = FileText::named(&exit.file);
-            scope.push_unknown_reads(&source, &path, None, &exprs, &mut diags);
-        }
+    for (row, path) in scope.paths.iter().enumerate() {
+        let at = format!("paths[{row}]");
+        let source = FileText::named(MAP_FILE);
+        scope.push_unknown_reads(&source, &at, None, &path.exprs(), &mut diags);
     }
     diags
 }
@@ -229,12 +206,13 @@ fn fixed_self(rule: &Rule) -> Option<&str> {
     }
 }
 
-/// The meters each entity carries, and the cast, places and stories an `of` may name.
+/// The meters each entity carries, and the cast, places, exits and stories an `of` may name.
 pub(super) struct EntityScope<'a> {
     pub meters: &'a BTreeMap<String, meter::Descriptor>,
     pub world_meters: &'a BTreeMap<String, meter::Descriptor>,
     pub cast: &'a BTreeMap<ActorId, CastDef>,
     pub places: &'a BTreeMap<PlaceId, PlaceDef>,
+    pub paths: &'a Paths,
     pub stories: &'a BTreeMap<StoryId, StoryDef>,
 }
 
@@ -269,8 +247,10 @@ impl EntityScope<'_> {
             } else if key != OPEN {
                 Some(format!("an exit carries only the flag '{OPEN}'"))
             } else {
-                let door = (self.places.get(&exit.place)).is_some_and(|at| at.has_door(&exit.exit));
-                (!door).then(|| format!("{exit} has no if, so it is always open"))
+                let is_conditional = self
+                    .find_exit(exit)
+                    .is_some_and(|exit| exit.path.is_conditional());
+                (!is_conditional).then(|| format!("{exit} has no if, so it is always open"))
             };
         }
         let id = self.fixed_entity(fixed_self, of)?;
@@ -306,7 +286,12 @@ impl EntityScope<'_> {
         }
     }
 
-    /// The id `of` gives when no place, story or cast member has it.
+    /// The exit `exit` names, when its place has one by that word.
+    fn find_exit(&self, exit: &ExitId) -> Option<Exit<'_>> {
+        self.paths.find_exit(exit.place.as_str(), &exit.exit)
+    }
+
+    /// The id `of` gives when no place, exit, story or cast member has it.
     fn unknown_object(&self, of: &grammar::Object) -> Option<String> {
         match of {
             grammar::Object::Actor(grammar::Actor::Self_ | grammar::Actor::Target)
@@ -316,11 +301,7 @@ impl EntityScope<'_> {
             grammar::Object::Place(id) => Some(format!("place:{id}")),
             grammar::Object::Story(id) if self.stories.contains_key(id) => None,
             grammar::Object::Story(id) => Some(format!("story:{id}")),
-            grammar::Object::Exit(exit) => {
-                let exits = self.places.get(&exit.place).map(|at| at.exits.as_slice());
-                let known = exits.is_some_and(|exits| exits.iter().any(|at| at.id == exit.exit));
-                (!known).then(|| exit.to_string())
-            }
+            grammar::Object::Exit(exit) => self.find_exit(exit).is_none().then(|| exit.to_string()),
             grammar::Object::Actor(grammar::Actor::Id(id)) if self.cast.contains_key(id) => None,
             grammar::Object::Actor(grammar::Actor::Id(id)) => Some(id.to_string()),
         }
@@ -400,23 +381,20 @@ fn check_gm_notes_length(canon: &Canon) -> Option<Diagnostic> {
     })
 }
 
-/// `cycle` conditions, on a rule or an exit, that name no cycle in the budget or have a bound
+/// `cycle` conditions, on a rule or a path, that name no cycle in the budget or have a bound
 /// at or past the cycle's length.
 fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
-    let rules = canon
-        .rules
-        .iter()
-        .map(|rule| (&rule.file, format!("rules[{}].if", rule.index), &rule.if_));
-    let exits = canon
-        .places
-        .values()
-        .flat_map(|place| &place.exits)
-        .map(|exit| {
-            let path = format!("exits[{}].if", exit.index);
-            (&exit.file, path, &exit.if_)
-        });
+    let rules = canon.rules.iter().map(|rule| {
+        (
+            rule.file.as_str(),
+            format!("rules[{}].if", rule.index),
+            &rule.if_,
+        )
+    });
+    let paths = (canon.paths.iter().enumerate())
+        .map(|(row, path)| (MAP_FILE, format!("paths[{row}].if"), &path.if_));
     let mut diags = Vec::new();
-    for (file, path, conds) in rules.chain(exits) {
+    for (file, at, conds) in rules.chain(paths) {
         let mut cycles = Vec::new();
         for cond in conds {
             cond.visit(|cond| {
@@ -433,7 +411,7 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
                         &format!("there is no cycle {id}"),
                         "name a cycle from cycles in rules/budget.yaml, or add it there",
                     )
-                    .at_path(path.clone()),
+                    .at_path(at.clone()),
                 );
                 continue;
             };
@@ -445,7 +423,7 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
                         &format!("cycle bound is not below cycle {id}, which is {length} ticks"),
                         "set from and to to ticks of the cycle, below its length",
                     )
-                    .at_path(path.clone()),
+                    .at_path(at.clone()),
                 );
             }
         }
@@ -453,7 +431,7 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
     diags
 }
 
-/// Places no exit path reaches from the start, including hidden and locked exits.
+/// Places no walk reaches from the start, including through hidden and locked exits.
 fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
     let mut seen = BTreeSet::new();
     let mut queue = vec![canon.start_place.clone()];
@@ -461,11 +439,7 @@ fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
         if !seen.insert(place.clone()) {
             continue;
         }
-        if let Some(node) = canon.places.get(place.as_str()) {
-            for exit in &node.exits {
-                queue.push(exit.to.clone());
-            }
-        }
+        queue.extend(canon.exits(&place).map(|exit| exit.to.to_string()));
     }
     let mut diags = Vec::new();
     for id in canon.places.keys() {
@@ -476,7 +450,7 @@ fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
             warning(
                 "world/places",
                 &format!("place '{id}' has no path from {}", canon.start_place),
-                "add an exit that reaches it",
+                "add a path in world/map.yaml that reaches it",
             )
             .at_path(id.clone()),
         );
@@ -723,8 +697,7 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
         }
         ChangeWatch::Flag { key, .. } => {
             let declared = |flags: &[String]| flags.contains(key);
-            let doors = |place: &PlaceDef| place.exits.iter().any(|exit| !exit.if_.is_empty());
-            (key == OPEN && canon.places.values().any(doors))
+            (key == OPEN && canon.paths.iter().any(PathDef::is_conditional))
                 || canon.places.values().any(|place| declared(&place.flags))
                 || canon.stories.values().any(|story| declared(&story.flags))
                 || canon.rules.iter().any(|rule| {

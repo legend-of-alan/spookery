@@ -255,7 +255,7 @@ pub(crate) fn resolve_item_id(context: &Context, id: &str) -> Result<String, Rea
 
 /// Who holds the meter, flag or item a rule names: `here` and `place:` are a place, `story:`
 /// is a story, `world` is the world, and anyone else is an actor. An exit holds none of them:
-/// its door is an `exit_open`, and a door's flag is read by `cond::holds`.
+/// whether it is open is an `exit_open`, and its `open` flag is read by `cond::holds`.
 pub(crate) fn resolve_entity(
     context: &Context,
     of: &grammar::Object,

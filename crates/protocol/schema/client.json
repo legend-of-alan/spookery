@@ -187,7 +187,7 @@
           "format": "uint64",
           "minimum": 0
         },
-        "actor_id": {
+        "actor": {
           "description": "The actor the move is for. The schema requires it, and the table refuses a call without\nit as `SCHEMA`.",
           "type": "string"
         },
@@ -216,7 +216,7 @@
       },
       "additionalProperties": false,
       "required": [
-        "actor_id",
+        "actor",
         "move"
       ]
     },

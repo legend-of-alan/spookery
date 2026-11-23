@@ -16,6 +16,10 @@ const FILES: &[(&str, &str)] = &[
         include_str!("../templates/starter/world/places/lane.md"),
     ),
     (
+        "world/map.yaml",
+        include_str!("../templates/starter/world/map.yaml"),
+    ),
+    (
         "cast/keeper.md",
         include_str!("../templates/starter/cast/keeper.md"),
     ),

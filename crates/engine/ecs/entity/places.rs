@@ -19,7 +19,7 @@ pub struct Places {
     meters: undo::Store<component::Map<PlaceId, Meter>>,
     #[serde(with = "nested_map::lists")]
     flags: undo::Store<component::Map<PlaceId, component::Flag>>,
-    /// The id of each exit whose door is open, by its place.
+    /// The id of each open exit, by its place.
     #[serde(with = "nested_map::lists")]
     open_exits: undo::Store<component::Map<PlaceId, component::OpenExit>>,
 }
@@ -55,14 +55,14 @@ impl Places {
 }
 
 impl Reader<'_, Places> {
-    /// Whether the door of `exit` is open.
+    /// Whether `exit` is open.
     pub fn is_exit_open(self, exit: &ExitId) -> bool {
         (self.get::<component::OpenExit>(&exit.place)).contains(&exit.exit)
     }
 }
 
 impl Writer<'_, Places> {
-    /// Open the door of `exit`, or shut it.
+    /// Open `exit`, or shut it.
     pub fn set_exit_open(&mut self, exit: &ExitId, open: bool) -> Result<(), Reason> {
         (self.get_mut::<component::OpenExit>(&exit.place)).set(&exit.exit, open)
     }
