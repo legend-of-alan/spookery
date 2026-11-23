@@ -525,7 +525,7 @@ mod tests {
             .unwrap_or_else(|| panic!("no protocol version\n{body}"))
     }
 
-    async fn bind_mcp() -> (
+    async fn bind_endpoint() -> (
         u16,
         tokio::sync::mpsc::UnboundedReceiver<()>,
         mpsc::Sender<()>,
@@ -567,17 +567,17 @@ mod tests {
     }
 
     /// A session whose event stream holds the GM seat.
-    async fn sit(port: u16) -> (String, String, tokio::net::TcpStream) {
+    async fn connect_gm(port: u16) -> (String, String, tokio::net::TcpStream) {
         let (session, version) = open_session(port).await;
         let (events, head) = open_event_stream(port, &session, &version).await;
-        assert!(head.contains("\"hello\""), "the GM did not sit\n{head}");
+        assert!(head.contains("\"hello\""), "the GM did not connect\n{head}");
         (session, version, events)
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_gm_that_hangs_up_frees_the_seat() {
-        let (port, mut fault_seen, let_go) = bind_mcp().await;
-        let (_session, _version, events) = sit(port).await;
+        let (port, mut fault_seen, let_go) = bind_endpoint().await;
+        let (_session, _version, events) = connect_gm(port).await;
 
         drop(events);
         assert!(
@@ -588,13 +588,13 @@ mod tests {
             .send(())
             .unwrap_or_else(|err| panic!("let go: {err}"));
 
-        sit(port).await;
+        connect_gm(port).await;
     }
 
     #[tokio::test]
     async fn a_quiet_gm_keeps_the_seat() {
-        let (port, mut fault_seen, _let_go) = bind_mcp().await;
-        let (session, version, _events) = sit(port).await;
+        let (port, mut fault_seen, _let_go) = bind_endpoint().await;
+        let (session, version, _events) = connect_gm(port).await;
 
         tokio::time::pause();
         tokio::time::sleep(std::time::Duration::from_secs(301)).await;
@@ -610,9 +610,9 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn a_gm_can_sit_again_as_soon_as_delete_answers() {
-        let (port, mut fault_seen, let_go) = bind_mcp().await;
-        let (session, version, _events) = sit(port).await;
+    async fn a_gm_can_connect_again_as_soon_as_delete_answers() {
+        let (port, mut fault_seen, let_go) = bind_endpoint().await;
+        let (session, version, _events) = connect_gm(port).await;
 
         let mut delete =
             tokio::spawn(
@@ -645,6 +645,6 @@ mod tests {
             "DELETE did not answer with success\n{reply}"
         );
 
-        sit(port).await;
+        connect_gm(port).await;
     }
 }

@@ -2,9 +2,9 @@
 
 use crate::canon::{Canon, OPEN};
 use crate::ecs::component::Note;
-use crate::ecs::id::GlobalId;
+use crate::ecs::id::{ActorId, GlobalId};
 use crate::ecs::{self, component, Presence};
-use crate::intent::{Intent, Source, Target, Viewer};
+use crate::intent::{Intent, Source, Target};
 use crate::rules::context::Context;
 use crate::rules::expr;
 use crate::rules::grammar;
@@ -21,14 +21,14 @@ pub(crate) fn all_hold(context: &Context, conds: &[Cond]) -> Result<(), Reason> 
     Ok(())
 }
 
-/// Whether `conds` hold for `viewer` doing `verb` to `target`. `help`, exit locks and an
+/// Whether `conds` hold for `actor_id` doing `verb` to `target`. `help`, exit locks and an
 /// NPC's habit list read an `if` this way: they have no intent, so they read it against a
 /// probe with no id.
 pub(crate) fn if_holds(
     canon: &Canon,
     world: &ecs::World,
     presence: &Presence,
-    viewer: &Viewer,
+    actor_id: &ActorId,
     verb: &str,
     target: Target,
     conds: &[Cond],
@@ -36,7 +36,7 @@ pub(crate) fn if_holds(
     let probe = Intent::new(
         String::new(),
         world.round_index,
-        Some(viewer.clone()),
+        Some(actor_id.clone()),
         Source::Player,
         verb,
         target,

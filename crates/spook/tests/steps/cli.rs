@@ -9,7 +9,7 @@ use crate::support;
 use crate::World;
 
 use super::common::{
-    a_docks_table, add_verb, capture_play_stdout, edit_save, join_play, replace_in_file,
+    a_docks_table, add_verb, capture_play_stdout, edit_save, play_as_pc, replace_in_file,
     spawn_play, wait_play, wait_play_until,
 };
 use super::table;
@@ -51,9 +51,14 @@ fn stdout_names_the_default_loopback_address(world: &mut World) {
     assert!(world.stdout.contains("127.0.0.1:9737"), "{}", world.stdout);
 }
 
+#[when(expr = "play joins the table with --plain")]
+async fn play_joins_the_table_with_plain(world: &mut World) {
+    play_as_pc(world, "rowan", &["--plain"]).await;
+}
+
 #[when(expr = "play joins the table with raw frames")]
 async fn play_joins_the_table_with_raw_frames(world: &mut World) {
-    join_play(world, "rowan", true).await;
+    play_as_pc(world, "rowan", &["--raw"]).await;
 }
 
 #[when(expr = "play says {string}")]
@@ -244,6 +249,14 @@ fn harbormouses_might_is_40(world: &mut World) {
             .set("might", Some(might))
             .unwrap();
     });
+}
+
+#[given(expr = "a docks table where hp has no name")]
+fn hp_has_no_name(world: &mut World) {
+    a_docks_table(world);
+    let meters = table::pack(world).join("rules/meters.yaml");
+    replace_in_file(&meters, "    name: Health\n", "");
+    spookery_engine::migrate_pack(table::pack(world)).unwrap_or_else(|err| panic!("{err}"));
 }
 
 #[given(expr = "a docks table where a spill reveals a hidden fact to Briar and costs Briar 1 hp")]

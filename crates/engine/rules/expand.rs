@@ -113,7 +113,6 @@ fn push_effects(
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let (world, intent) = (context.world, context.intent);
-    let viewer = intent.actor.as_ref();
     match template {
         EffectTemplate::Flag { of, key, value } => {
             let kind = match of {
@@ -127,11 +126,11 @@ fn push_effects(
                     value: *value,
                 },
             };
-            effects.push(Effect::new(viewer, &intent.id, kind));
+            effects.push(Effect::new(intent.actor_id.as_ref(), &intent.id, kind));
         }
         EffectTemplate::Modifier { to, id, add, ticks } => {
             effects.push(Effect::new(
-                viewer,
+                intent.actor_id.as_ref(),
                 &intent.id,
                 EffectKind::Modifier {
                     actor_id: expr::resolve_actor(context, to)?.clone(),
@@ -162,7 +161,7 @@ fn push_effects(
             let entity = expr::resolve_entity(context, of)?;
             let write = meter_offset(context, &entity, key, add.as_ref(), set.as_ref(), dice)?;
             effects.push(Effect::new(
-                viewer,
+                intent.actor_id.as_ref(),
                 &intent.id,
                 EffectKind::Meter {
                     entity,
@@ -179,7 +178,7 @@ fn push_effects(
                 entity::Id::Story(_) | entity::Id::Global => return Err(Reason::Schema),
             };
             effects.push(Effect::new(
-                viewer,
+                intent.actor_id.as_ref(),
                 &intent.id,
                 EffectKind::Item {
                     actor_id,
@@ -195,7 +194,7 @@ fn push_effects(
         EffectTemplate::Wield { subject, id } => {
             let actor_id = expr::resolve_actor(context, subject)?.clone();
             effects.push(Effect::new(
-                viewer,
+                intent.actor_id.as_ref(),
                 &intent.id,
                 EffectKind::Wield {
                     actor_id,
@@ -206,7 +205,7 @@ fn push_effects(
         EffectTemplate::Unwield { subject } => {
             let actor_id = expr::resolve_actor(context, subject)?.clone();
             effects.push(Effect::new(
-                viewer,
+                intent.actor_id.as_ref(),
                 &intent.id,
                 EffectKind::Unwield { actor_id },
             ));
@@ -219,7 +218,7 @@ fn push_effects(
             text,
         } => {
             effects.push(Effect::new(
-                viewer,
+                intent.actor_id.as_ref(),
                 &intent.id,
                 EffectKind::Note {
                     note_id: id.clone(),
@@ -240,7 +239,7 @@ fn push_effects(
                 NarrateTo::Present => context.presence.actors_present.clone(),
             };
             effects.push(Effect::new(
-                viewer,
+                intent.actor_id.as_ref(),
                 &intent.id,
                 EffectKind::Narrate {
                     to,
@@ -252,7 +251,7 @@ fn push_effects(
         EffectTemplate::Memory { to, fact_ids, text } => {
             let actor_id = expr::resolve_actor(context, to)?.clone();
             effects.push(Effect::new(
-                viewer,
+                intent.actor_id.as_ref(),
                 &intent.id,
                 EffectKind::Memory {
                     actor_id,
@@ -265,7 +264,7 @@ fn push_effects(
         EffectTemplate::Reveal { to, fact } => {
             let actor_id = expr::resolve_actor(context, to)?.clone();
             effects.push(Effect::new(
-                viewer,
+                intent.actor_id.as_ref(),
                 &intent.id,
                 EffectKind::Reveal {
                     actor_id,
@@ -322,7 +321,7 @@ fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
         .get();
     let from = from.ok_or(Reason::UnknownId)?.to_string();
     Ok(Effect::new(
-        intent.actor.as_ref(),
+        intent.actor_id.as_ref(),
         &intent.id,
         EffectKind::Location {
             actor_id,

@@ -19,7 +19,6 @@ use crate::canon::Canon;
 use crate::ecs::component::Note;
 use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component, Presence};
-use crate::intent::Viewer;
 use crate::rules::perceive::{self, View};
 use crate::session;
 
@@ -177,13 +176,8 @@ fn assert_hidden_stays_hidden(canon: &Canon, world: &ecs::World) -> Result<(), T
             continue;
         }
         let known_facts = world.actors().get::<component::KnownFacts>(pc).get();
-        let view = perceive::build_view(
-            canon,
-            world,
-            &Presence::default(),
-            &Viewer::Player(pc.clone()),
-        )
-        .map_err(|err| fail(err.to_string()))?;
+        let view = perceive::build_view(canon, world, &Presence::default(), pc)
+            .map_err(|err| fail(err.to_string()))?;
         for (id, fact) in &canon.facts {
             if !fact.hidden || known_facts.is_some_and(|facts| facts.contains(id)) {
                 continue;

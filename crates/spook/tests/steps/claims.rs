@@ -29,6 +29,7 @@ async fn a_player_claimed_rowan(world: &mut World) {
         .unwrap_or_else(|| panic!("no token\n{reply}"))
         .to_string();
     world.mark = seq_of(&view) as usize;
+    world.pc_picked_reply = reply;
     table::live_mut(world).players.push(PlayerClient {
         actor_id: "rowan".to_string(),
         seat,
@@ -53,6 +54,15 @@ async fn the_connection_drops_and_messages_pass(world: &mut World, count: usize)
         let speech = table::call_gm_tool(world, "say", &args.to_string()).await;
         assert!(speech.get("code").is_none(), "{speech}");
     }
+}
+
+#[when(expr = "the GM commits a round of Aldric's wait")]
+async fn the_gm_commits_aldrics_wait(world: &mut World) {
+    let wait = r#"{"actor_id":"aldric","move":"wait"}"#;
+    let queued = table::call_gm_tool(world, "queue", wait).await;
+    assert_eq!(queued["kind"], "queued", "{queued}");
+    let committed = table::call_gm_tool(world, "commit", r#"{"include_round":true}"#).await;
+    assert_eq!(committed["kind"], "committed", "{committed}");
 }
 
 #[when(expr = "the player releases rowan")]
@@ -86,6 +96,27 @@ async fn it_holds_rowan_and_catches_up(world: &mut World) {
     assert_eq!(looked["body"]["kind"], "view", "{looked}");
 }
 
+/// The pick and the claim by token each name the round and tick the table was at then.
+#[then(
+    expr = "the pick said round {int} at tick {int} and the token claim round {int} at tick {int}"
+)]
+fn each_claim_said_the_clock(
+    world: &mut World,
+    pc_picked_round: u64,
+    pc_picked_tick: u64,
+    token_round: u64,
+    token_tick: u64,
+) {
+    let clocks = [
+        (&world.pc_picked_reply, pc_picked_round, pc_picked_tick),
+        (&parse(&world.player_added), token_round, token_tick),
+    ];
+    for (reply, round_index, world_time) in clocks {
+        assert_eq!(reply["body"]["round_index"], round_index, "{reply}");
+        assert_eq!(reply["body"]["world_time"], world_time, "{reply}");
+    }
+}
+
 #[then(expr = "it holds rowan again with a gap and the newest 256 messages")]
 fn it_holds_rowan_with_a_gap(world: &mut World) {
     let missed = held_again(world, true);
@@ -116,16 +147,20 @@ fn the_reconnect_is_refused(world: &mut World, code: String) {
     assert_eq!(reply["body"]["code"], code.as_str(), "{reply}");
 }
 
-/// The reconnect's `claimed` reply holds Rowan under the same token, with `gap` as given.
-/// Returns its `missed` messages, each after the old connection's last `seq`.
-fn held_again(world: &World, gap: bool) -> Vec<Value> {
+/// The reconnect's `claimed` reply holds Rowan under the same token, with `is_missed_truncated`
+/// equal to `is_truncated`. Returns its `missed_messages`, each after the old connection's last `seq`.
+fn held_again(world: &World, is_truncated: bool) -> Vec<Value> {
     let reply = parse(&world.player_added);
     let body = &reply["body"];
     assert_eq!(body["kind"], "claimed", "{reply}");
     assert_eq!(body["actor"], "rowan", "{reply}");
     assert_eq!(body["token"], world.scratch.as_str(), "{reply}");
-    assert_eq!(body["gap"].as_bool().unwrap_or(false), gap, "{reply}");
-    let missed = body["missed"].as_array().cloned().unwrap_or_default();
+    let is_missed_truncated = body["is_missed_truncated"].as_bool().unwrap_or(false);
+    assert_eq!(is_missed_truncated, is_truncated, "{reply}");
+    let missed = body["missed_messages"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     let seqs: Vec<u64> = missed.iter().map(seq_of).collect();
     assert!(seqs.is_sorted(), "{seqs:?}");
     assert!(seqs.iter().all(|&seq| seq > world.mark as u64), "{seqs:?}");
@@ -133,17 +168,13 @@ fn held_again(world: &World, gap: bool) -> Vec<Value> {
     missed
 }
 
+/// The text of each `say` among `missed_messages`, in order.
 fn texts_in(missed: &[Value]) -> Vec<String> {
-    missed
+    let says = missed
         .iter()
-        .map(|message| {
-            assert_eq!(message["body"]["kind"], "say", "{message}");
-            message["body"]["text"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string()
-        })
-        .collect()
+        .filter(|message| message["body"]["kind"] == "say");
+    let texts = says.map(|message| message["body"]["text"].as_str().unwrap_or_default());
+    texts.map(str::to_string).collect()
 }
 
 async fn queue_rowan_wait(world: &mut World) -> Value {

@@ -534,7 +534,7 @@ async fn the_check_outcome_is_not(world: &mut World, outcome: String) {
     assert!(!text.contains(&word), "{text}");
 }
 
-async fn prepare_press(world: &mut World, base: i64, sit: bool) {
+async fn prepare_press(world: &mut World, base: i64, is_seated: bool) {
     let pack = copy_pack("docks", "press");
     world.pack = Some(pack.clone());
     common::add_verb(&pack, PRESS_ROW);
@@ -546,7 +546,7 @@ async fn prepare_press(world: &mut World, base: i64, sit: bool) {
             .set("docks_shop")
             .unwrap();
     });
-    if sit {
+    if is_seated {
         listen_and_seat_both(world, &pack).await;
     }
 }

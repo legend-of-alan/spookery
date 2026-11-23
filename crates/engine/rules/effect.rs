@@ -12,7 +12,7 @@ use crate::ecs::component::Note;
 use crate::ecs::id::{ActorId, ExitId, GlobalId, PlaceId};
 use crate::ecs::{self, component, MemoryLine, Presence};
 use crate::entity;
-use crate::intent::{Intent, Viewer};
+use crate::intent::Intent;
 use crate::rules::visibility::can_see_fact;
 use crate::Reason;
 
@@ -20,8 +20,8 @@ use crate::Reason;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Effect {
     pub kind: EffectKind,
-    /// Who the effect was written as, or `None` for a change rule on a world change.
-    pub viewer: Option<Viewer>,
+    /// The actor the effect was written as, or `None` for a change rule on a world change.
+    pub actor_id: Option<ActorId>,
     pub intent_id: String,
 }
 
@@ -113,8 +113,8 @@ impl Serialize for Effect {
             return Err(S::Error::custom("effect kind is not an object"));
         };
         fields.shift_insert(1, "intent_id".into(), self.intent_id.clone().into());
-        if let Some(viewer) = &self.viewer {
-            fields.shift_insert(1, "as".into(), viewer.to_string().into());
+        if let Some(actor_id) = &self.actor_id {
+            fields.shift_insert(1, "as".into(), actor_id.to_string().into());
         }
         fields.serialize(serializer)
     }
@@ -124,9 +124,9 @@ impl Serialize for Effect {
 impl<'de> Deserialize<'de> for Effect {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let mut fields = Map::deserialize(deserializer)?;
-        let viewer = fields
+        let actor_id = fields
             .shift_remove("as")
-            .map(Viewer::deserialize)
+            .map(ActorId::deserialize)
             .transpose()
             .map_err(D::Error::custom)?;
         let intent_id = fields
@@ -158,17 +158,17 @@ impl<'de> Deserialize<'de> for Effect {
         }
         Ok(Effect {
             kind,
-            viewer,
+            actor_id,
             intent_id,
         })
     }
 }
 
 impl Effect {
-    pub(crate) fn new(viewer: Option<&Viewer>, intent_id: &str, kind: EffectKind) -> Self {
+    pub(crate) fn new(actor_id: Option<&ActorId>, intent_id: &str, kind: EffectKind) -> Self {
         Effect {
             kind,
-            viewer: viewer.cloned(),
+            actor_id: actor_id.cloned(),
             intent_id: intent_id.to_string(),
         }
     }
@@ -307,7 +307,7 @@ pub(crate) fn payload_json(effect: &Effect) -> String {
 }
 
 fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
-    effect.viewer == intent.actor
+    effect.actor_id == intent.actor_id
 }
 
 /// Apply one stack of modifier `id` to an actor that carries its meter, lasting `ticks`, as
@@ -346,7 +346,7 @@ fn move_actor(
     from: &str,
     to: &str,
 ) -> Result<(), Reason> {
-    if intent.actor_id() != Some(actor_id) {
+    if intent.actor_id.as_ref() != Some(actor_id) {
         return Err(Reason::ActorMismatch);
     }
     let actors = world.actors();
@@ -373,18 +373,14 @@ fn remember(
     mut tags: Vec<String>,
     text: Option<String>,
 ) -> Result<(), Reason> {
-    let Some(viewer) = intent
-        .actor
-        .as_ref()
-        .filter(|viewer| viewer.actor_id() == actor_id)
-    else {
+    if intent.actor_id.as_ref() != Some(actor_id) {
         return Err(Reason::ActorMismatch);
-    };
+    }
     if text.as_ref().is_some_and(|text| text.chars().count() > 240) {
         return Err(Reason::Schema);
     }
     for fact in &fact_ids {
-        if !can_see_fact(canon, world, viewer, fact) {
+        if !can_see_fact(canon, world, actor_id, fact) {
             return Err(Reason::IllegalKnowledge);
         }
     }

@@ -489,7 +489,7 @@ fn rowan_and_nell_are_seated(world: &mut World) {
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
-        sit(seated, &["rowan", "nell"]);
+        set_present(seated, &["rowan", "nell"]);
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
 }
@@ -588,7 +588,7 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
-        sit(seated, &["nell", "wren"]);
+        set_present(seated, &["nell", "wren"]);
     });
     play_and_keep_summaries(
         world,
@@ -601,7 +601,7 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
 fn an_item_is_taken_from_the_shop(world: &mut World) {
     let pack = copy_pack("docks", "trigger-place-item");
     edit_table(world, &pack, |_, seated| {
-        sit(seated, &["rowan"]);
+        set_present(seated, &["rowan"]);
     });
     play_and_keep_summaries(
         world,
@@ -616,7 +616,7 @@ fn rowan_takes_an_item_beside_nell(world: &mut World) {
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_shop");
-        sit(seated, &["rowan", "nell", "wren"]);
+        set_present(seated, &["rowan", "nell", "wren"]);
     });
     play_and_keep_summaries(
         world,
@@ -646,7 +646,7 @@ fn rowan_and_wren_are_seated_with_mira(world: &mut World) {
     edit_table(world, &pack, |now, seated| {
         set_place(now, "mira", "docks_shop");
         set_place(now, "wren", "docks_shop");
-        sit(seated, &["rowan", "wren"]);
+        set_present(seated, &["rowan", "wren"]);
     });
 }
 
@@ -676,7 +676,7 @@ fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
         set_place(now, "harbormouse", "mira_rooms");
-        sit(seated, &["nell"]);
+        set_present(seated, &["nell"]);
     });
     play_and_keep_summaries(
         world,
@@ -695,7 +695,7 @@ fn a_message_hidden_from_wren_is_written(world: &mut World) {
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
-        sit(seated, &["nell", "wren"]);
+        set_present(seated, &["nell", "wren"]);
     });
     play_and_keep_summaries(
         world,
@@ -780,11 +780,11 @@ pub(crate) fn set_place(now: &mut ecs::World, id: &str, place: &str) {
         .unwrap();
 }
 
-/// Seat these PCs, sorted the way the host's seats are.
-pub(crate) fn sit(seated: &mut Presence, ids: &[&str]) {
-    seated.players = u32::try_from(ids.len()).unwrap();
-    seated.actors_present = ids.iter().map(|id| (*id).into()).collect();
-    seated.actors_present.sort();
+/// Marks these PCs present, sorted the way the host's seats are.
+pub(crate) fn set_present(presence: &mut Presence, ids: &[&str]) {
+    presence.players = u32::try_from(ids.len()).unwrap();
+    presence.actors_present = ids.iter().map(|id| (*id).into()).collect();
+    presence.actors_present.sort();
 }
 
 fn add_bell_narrate(pack: &Path) {
@@ -830,7 +830,7 @@ rules:
         set_place(now, "briar", "docks_shop");
         let briar = entity::Id::Actor("briar".into());
         support::put_meter(now, &briar, "hp", hp);
-        sit(seated, &["rowan"]);
+        set_present(seated, &["rowan"]);
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     pack
@@ -913,7 +913,7 @@ fn insert_actor_copy(
         .get_mut::<component::Meter>(&copy)
         .set("assassination_debt", None)
         .unwrap();
-    sit(seated, &[id]);
+    set_present(seated, &[id]);
 }
 
 /// Edit the save, and remember who the edit seats for the rounds this pack plays.

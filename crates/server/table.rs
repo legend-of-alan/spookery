@@ -9,9 +9,9 @@ use serde_json::{Map, Value};
 use spookery_engine::{emit_tape_record, ActorId, Presence, Reason, RecipientLine, TapeRecord};
 use tokio::sync::{oneshot, watch};
 
-use super::frames;
 use super::gm::{self, Reply};
 use super::idle::{self, now_stamp};
+use super::message_body;
 use super::seat::{Claim, ConnId, Connection, FrameSender, Seats};
 use super::Error;
 use crate::protocol::{
@@ -228,7 +228,7 @@ impl Table {
             !presence
                 .actors_present
                 .iter()
-                .any(|actor| actor == id.as_str())
+                .any(|actor_id| actor_id == id.as_str())
         })
     }
 
@@ -265,7 +265,11 @@ impl Table {
         if command == "claim" {
             return self.claim(conn, id, &args);
         }
-        let Some(actor_id) = self.seats.claim_of(conn).map(|claim| claim.actor.clone()) else {
+        let Some(actor_id) = self
+            .seats
+            .claim_of(conn)
+            .map(|claim| claim.actor_id.clone())
+        else {
             return self.reply(conn, id, ServerBody::Refused(Reason::ChoosePc.into()));
         };
         let presence = self.seats.presence();
@@ -279,7 +283,7 @@ impl Table {
             },
             "look" if read::<NoArgs>(&args).is_some() => {
                 match self.session.perceive(&presence, actor_id.as_str()) {
-                    Ok(view) => frames::render_view(&view),
+                    Ok(view) => message_body::build_view(&view),
                     Err(code) => ServerBody::Refused(code.into()),
                 }
             }
@@ -308,15 +312,15 @@ impl Table {
         let args = read::<ClaimArgs>(args).filter(|_| self.seats.claim_of(conn).is_none());
         let fresh = matches!(args, Some(ClaimArgs::Actor { .. }));
         let taken = match args {
-            Some(ClaimArgs::Actor { actor }) => self.claim_free_pc(&actor),
+            Some(ClaimArgs::Actor { actor_id }) => self.claim_free_pc(&actor_id),
             Some(ClaimArgs::Token { token, last_seq }) => self.claim_by_token(&token, last_seq),
             None => Err(Reason::Schema),
         };
-        let (token, actor, claimed) = match taken {
+        let (token, actor_id, claim_reply) = match taken {
             Ok(taken) => taken,
             Err(code) => return self.reply(conn, id, ServerBody::Refused(code.into())),
         };
-        let [resume, view] = match refresh(&self.session, &self.seats.presence(), &actor) {
+        let [resume, view] = match refresh(&self.session, &self.seats.presence(), &actor_id) {
             Ok(bodies) => bodies,
             Err(code) => {
                 if fresh {
@@ -325,9 +329,9 @@ impl Table {
                 return self.reply(conn, id, ServerBody::Refused(code.into()));
             }
         };
-        self.reply(conn, id, claimed);
-        tracing::info!(conn_id = %conn, actor_id = %actor, by_token = !fresh, "PC claimed");
-        if let Some(claim) = self.seats.claim_of_actor_mut(&actor) {
+        self.reply(conn, id, claim_reply);
+        tracing::info!(conn_id = %conn, actor_id = %actor_id, by_token = !fresh, "PC claimed");
+        if let Some(claim) = self.seats.claim_of_actor_mut(&actor_id) {
             claim.conn = Some(conn);
         }
         self.notify(conn, resume);
@@ -344,17 +348,17 @@ impl Table {
         if presence.actors_present.len() >= MAX_PLAYER_SEATS {
             return Err(Reason::TableFull);
         }
-        let actor = self.session.find_pc(text)?.ok_or(Reason::Schema)?;
-        if presence.actors_present.contains(&actor) {
+        let actor_id = self.session.find_pc(text)?.ok_or(Reason::Schema)?;
+        if presence.actors_present.contains(&actor_id) {
             return Err(Reason::SeatTaken);
         }
-        let scrollback = self.session.player_scrollback(&actor)?;
-        let token = uuid::Uuid::new_v4().simple().to_string();
-        let claimed = frames::render_claimed(&actor, &token, &scrollback);
-        self.seats
-            .claims
-            .push(Claim::new(token.clone(), actor.clone()));
-        Ok((token, actor, claimed))
+        let scrollback = self.session.player_scrollback(&actor_id)?;
+        let claim = Claim::new(uuid::Uuid::new_v4().simple().to_string(), actor_id.clone());
+        let claim_reply =
+            message_body::build_claim_reply(self.session.world(), &claim, &scrollback, 0);
+        let token = claim.token.clone();
+        self.seats.claims.push(claim);
+        Ok((token, actor_id, claim_reply))
     }
 
     /// The held claim `token` names, with what was sent to it after `last_seq`. A connection
@@ -371,20 +375,14 @@ impl Table {
             .find(|claim| claim.token == token)
             .ok_or(Reason::UnknownId)?;
         claim.conn = None;
-        let (missed, gap) = claim.messages_after(last_seq);
-        let claimed = ServerBody::Claimed {
-            actor: claim.actor.to_string(),
-            token: token.to_string(),
-            scrollback: Vec::new(),
-            missed,
-            gap,
-        };
-        Ok((token.to_string(), claim.actor.clone(), claimed))
+        let claim_reply =
+            message_body::build_claim_reply(self.session.world(), claim, &[], last_seq);
+        Ok((token.to_string(), claim.actor_id.clone(), claim_reply))
     }
 
     fn release_claim(&mut self, conn: ConnId, id: Option<String>) {
         if let Some(claim) = self.seats.claim_of(conn) {
-            tracing::info!(conn_id = %conn, actor_id = %claim.actor, "PC released");
+            tracing::info!(conn_id = %conn, actor_id = %claim.actor_id, "PC released");
         }
         self.seats.claims.retain(|claim| claim.conn != Some(conn));
         self.reply(conn, id, ServerBody::Released);
@@ -427,18 +425,18 @@ impl Table {
             {
                 Ok((queued, target)) => ServerBody::Queued {
                     intent: queued.id,
-                    actor: queued.actor_id,
+                    actor_id: queued.actor_id,
                     move_id: queued.move_id,
                     target,
                 },
                 Err(refused) if gm.is_none() && refused.code == Reason::Busy => {
-                    ServerBody::Refused(frames::render_refused_move(&refused))
+                    ServerBody::Refused(message_body::build_refused_move(&refused))
                 }
                 Err(refused) => {
                     return self.reply(
                         conn,
                         id,
-                        ServerBody::Refused(frames::render_refused_move(&refused)),
+                        ServerBody::Refused(message_body::build_refused_move(&refused)),
                     );
                 }
             };
@@ -502,7 +500,7 @@ impl Table {
             .seats
             .claims
             .iter()
-            .map(|claim| claim.actor.clone())
+            .map(|claim| claim.actor_id.clone())
             .collect();
         for commit in outputs.iter().filter_map(|output| output.commit.as_ref()) {
             let seq = self.next_seq();
@@ -522,7 +520,7 @@ impl Table {
         for actor_id in players {
             let mut bodies: Vec<ServerBody> = outputs
                 .iter()
-                .flat_map(|output| frames::render_checks(&output.reports, &actor_id))
+                .flat_map(|output| message_body::build_checks(&output.reports, &actor_id))
                 .collect();
             match refresh(&self.session, &presence, &actor_id) {
                 Ok(refreshed) => bodies.extend(refreshed),
@@ -568,17 +566,17 @@ impl Table {
             .claims
             .iter()
             .filter(|claim| {
-                speech.recipient_ids.iter().any(|id| claim.actor == **id)
+                speech.recipient_ids.iter().any(|id| claim.actor_id == **id)
                     || claim.conn.is_some_and(|conn| sender == Some(conn))
             })
-            .map(|claim| (claim.actor.clone(), claim.conn))
+            .map(|claim| (claim.actor_id.clone(), claim.conn))
             .collect();
         if let Some(gm) = self.seats.gm {
-            let body = frames::render_speech(speech, true);
+            let body = ServerBody::Say(message_body::build_speech(speech, true));
             self.send(gm, stamp_message(seq, reply_to(gm), body));
         }
         for (actor_id, conn) in hears {
-            let body = frames::render_speech(speech, false);
+            let body = ServerBody::Say(message_body::build_speech(speech, false));
             let message = stamp_message(seq, conn.and_then(reply_to), body);
             self.send_to_pc(&actor_id, message);
         }
@@ -616,7 +614,11 @@ impl Table {
         }
         let seq = self.next_seq();
         let message = stamp_message(seq, id, body);
-        match self.seats.claim_of(conn).map(|claim| claim.actor.clone()) {
+        match self
+            .seats
+            .claim_of(conn)
+            .map(|claim| claim.actor_id.clone())
+        {
             Some(actor_id) => self.send_to_pc(&actor_id, message),
             None => self.send(conn, message),
         }
@@ -714,5 +716,8 @@ fn refresh(
     actor_id: &ActorId,
 ) -> Result<[ServerBody; 2], Reason> {
     let view = session.perceive(presence, actor_id.as_str())?;
-    Ok([frames::render_resume(&view), frames::render_view(&view)])
+    Ok([
+        message_body::build_resume(&view),
+        message_body::build_view(&view),
+    ])
 }

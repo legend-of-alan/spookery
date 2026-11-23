@@ -17,7 +17,7 @@ Feature: Coding agents reach the GM seat
     Given a docks table
     When an HTTP request arrives with a public Origin
     Then the response is forbidden
-    And a GM hello still sits
+    And a GM hello still holds the seat
 
   Scenario: A second HTTP GM opens a session but is refused at its event stream
     Given a docks table
@@ -28,13 +28,13 @@ Feature: Coding agents reach the GM seat
     Then the event stream is refused with "TABLE_FULL"
     And the GM over HTTP can still call status
     When the GM over HTTP leaves
-    Then a GM can sit over HTTP
+    Then a GM can connect over HTTP
 
   Scenario: A session with no event stream holds no seat
     Given a docks table
     When an agent opens an MCP session
     Then that session's status call is refused with "NOT_IN_SPEC"
-    And a GM can sit over HTTP
+    And a GM can connect over HTTP
 
   Scenario: A second event stream on the seated session is refused
     Given a docks table
@@ -61,11 +61,11 @@ Feature: Coding agents reach the GM seat
 
   Scenario: spook gm and a coding agent share one seat
     Given a docks table
-    When a human GM sits on the game port
-    And a coding agent tries to sit at that MCP endpoint
+    When a human GM connects on the game port
+    And a coding agent tries to connect at that MCP endpoint
     Then the agent is told the table is full
     When the human GM leaves
-    Then a coding agent can sit at that MCP endpoint
+    Then a coding agent can connect at that MCP endpoint
 
   Scenario: spook run serves /mcp without a flag
     Given a docks table
@@ -86,7 +86,7 @@ Feature: Coding agents reach the GM seat
     Given a docks table
     When an HTTP request arrives with Host <host>
     Then the response is forbidden
-    And a GM hello still sits
+    And a GM hello still holds the seat
 
     Examples:
       | host         |

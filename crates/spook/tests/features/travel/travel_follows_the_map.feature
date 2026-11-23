@@ -55,6 +55,6 @@ Feature: Travel follows the map
     And spook verify passes
 
   Scenario: A player map lists the places rowan visited, across sittings
-    Given rowan visited the shop and mira_rooms in an earlier sitting
+    Given rowan visited the shop and mira_rooms in an earlier session
     When play joins the table again
     Then play's map lists the shop and mira_rooms and not the trapdoor

@@ -3,7 +3,7 @@ Feature: Seat presence stays in memory
   Scenario: Seating a player writes nothing under state
     Given a docks table
     When the state directory is remembered
-    And a player sits
+    And a player claims a PC
     Then the state directory is unchanged
     And state_rev is 0
 

@@ -6,7 +6,7 @@ use cucumber::{given, then, when};
 use spookery_engine::{component, ecs, ActorId, Meter};
 
 use super::common::{
-    add_trapdoor, capture_play_stdout, edit_save, give_key, join_play, set_busy, wait_play_until,
+    add_trapdoor, capture_play_stdout, edit_save, give_key, play_as_pc, set_busy, wait_play_until,
     write_play, EVENING,
 };
 use super::table;
@@ -308,7 +308,7 @@ async fn twelve_rounds_then_more(world: &mut World) {
     assert_eq!(world_of(&pack).world_time, mid + 12 * 5);
 }
 
-#[given(expr = "rowan visited the shop and mira_rooms in an earlier sitting")]
+#[given(expr = "rowan visited the shop and mira_rooms in an earlier session")]
 fn rowan_visited_both_rooms(world: &mut World) {
     let pack = copy_pack("docks", "map");
     add_trapdoor(&pack);
@@ -325,7 +325,7 @@ fn rowan_visited_both_rooms(world: &mut World) {
 
 #[when(expr = "play joins the table again")]
 async fn play_joins_again(world: &mut World) {
-    join_play(world, "rowan", false).await;
+    play_as_pc(world, "rowan", &[]).await;
 }
 
 /// The map is the table's: each place rowan's save says they visited, with the exits

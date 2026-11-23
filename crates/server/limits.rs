@@ -24,7 +24,7 @@ pub(super) const BURST: u64 = 10;
 pub(super) const OUTBOUND_FRAME_CAP: usize = 256;
 
 /// How many messages a claim keeps for a reconnect. Older ones are dropped, and the
-/// `claimed` reply says `gap`.
+/// `claimed` reply says `is_missed_truncated`.
 pub(super) const MISSED_MESSAGE_CAP: usize = 256;
 
 /// Bytes queued toward one socket before that socket is dropped.

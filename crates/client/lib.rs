@@ -1,5 +1,5 @@
 //! The client side of a table: the seat connection, messages as text, the `spook play` and
-//! `spook gm` terminals, and the AI GM runner.
+//! `spook gm` terminals, the `spook play` game window, and the AI GM runner.
 
 use std::fmt;
 use std::io;
@@ -7,13 +7,15 @@ use std::io;
 pub mod ai_gm;
 pub mod gm;
 pub mod http_model;
-pub mod play;
+pub mod player;
 use spookery_protocol as protocol;
+pub mod terminal;
 pub mod text;
-pub mod ws;
+pub mod websocket;
 
-/// A client failure: what `play::run`, `gm::run` and `ai_gm::run` return to `spook`, and what
-/// the seat connections and `HttpModel` return to them. Display is the line `spook` prints for it.
+/// A client failure: what `player::play`, `gm::play` and
+/// `ai_gm::play` return to `spook`, and what the seat connections and `HttpModel`
+/// return to them. Display is the line `spook` prints for it.
 #[derive(Debug)]
 pub enum Error {
     /// A socket could not be dialed, read or written.

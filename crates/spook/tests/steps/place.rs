@@ -18,21 +18,36 @@ fn rowan_starts_in_docks_street(world: &mut World) {
     world.pack = Some(pack);
 }
 
-/// The street's exits stay hidden behind the ledger fact, which rowan does not know.
-#[given(expr = "a docks copy where the world shows dawn and the street's exits are hidden")]
-fn the_world_shows_dawn_and_the_street_exits_are_hidden(world: &mut World) {
+/// The latch is tagged a weapon so Rowan may wield it. The street's exits stay hidden behind
+/// the ledger fact, which Rowan does not know.
+#[given(
+    expr = "a docks copy where rowan carries two tonics and wields the latch, the world shows dawn and the street's exits are hidden"
+)]
+fn rowan_wields_the_latch_and_the_world_shows_dawn(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "view-sections");
+    let weapon = "tags:\n  - weapon\n";
+    common::replace_in_file(&pack.join("world/items/latch.md"), "tags: []\n", weapon);
     let dawn = "schema: meters\nmeters:\n  - id: dawn\n    min: 0\n    base_cap: 6\n    max: 6\n    base: 6\n    hidden: false\n";
     fs::write(pack.join("world/meters.yaml"), dawn).unwrap();
     let hidden = "    hidden: true\n    revealed_by: fact_ledger_short\n";
     crate::support::split_path(&pack, ["docks_shop", "docks_street"], ["", hidden]);
     crate::support::split_path(&pack, ["docks_street", "gate_yard"], [hidden, ""]);
+    crate::support::edit_save(&pack, |now| {
+        let rowan = "rowan".into();
+        let mut actors = now.actors_mut();
+        let mut held = actors.get_mut::<component::Item>(&rowan);
+        held.shift("tonic", 2, None).unwrap();
+        held.shift("latch", 1, None).unwrap();
+        let mut wielded = actors.get_mut::<component::WieldedItem>(&rowan);
+        wielded.set(Some("latch")).unwrap();
+    });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
 }
 
-/// The view of Docks Street ends `Exits:` `none`, with no `Items:` heading for its empty floor.
-#[then(expr = "the Docks Street view shows no exits and no Items heading")]
+/// The view of Docks Street ends `Exits:` `none`, with no `Items here:` heading for its empty
+/// floor.
+#[then(expr = "the Docks Street view shows no exits and no Items here heading")]
 async fn the_docks_street_view_shows_no_exits(world: &mut World) {
     let find_street_view = |stdout: &str| {
         let start = stdout.rfind("You are in Docks Street.")?;
@@ -48,7 +63,7 @@ async fn the_docks_street_view_shows_no_exits(world: &mut World) {
     .await;
     let view = find_street_view(&world.stdout).unwrap();
     assert!(view.ends_with("Exits:\nnone"), "{view}");
-    assert!(!view.contains("Items:"), "{view}");
+    assert!(!view.contains("Items here:"), "{view}");
 }
 
 #[given(expr = "wren is seated and not travelling")]
@@ -70,7 +85,7 @@ async fn the_seated_player_sees(world: &mut World, text: String) {
 #[given(expr = "the CLI is connected as a player holding rowan")]
 async fn the_cli_holds_rowan(world: &mut World) {
     world.pack = Some(crate::support::copy_pack("docks", "cli"));
-    common::join_play(world, "rowan", false).await;
+    common::play_as_pc(world, "rowan", &[]).await;
 }
 
 #[when(expr = "I type {string}")]
@@ -81,7 +96,7 @@ fn i_type(world: &mut World, line: String) {
 
 /// `You are in` and `Here:` are the client's words for a view, not engine prose.
 #[then(expr = "I see the place name, exits and who is here, built from server messages")]
-async fn i_see_the_place(world: &mut World) {
+async fn i_see_the_view(world: &mut World) {
     // repeats module: mirrors its step text
     let shown = [
         "You are in Docks Shop.",
@@ -125,7 +140,7 @@ async fn add_rule_and_join(world: &mut World, label: &str, page: &str, from: &st
     fs::write(&path, next).unwrap();
     crate::support::stamp_pack_rev(&pack);
     world.pack = Some(pack);
-    common::join_play(world, "rowan", false).await;
+    common::play_as_pc(world, "rowan", &[]).await;
 }
 
 #[given(expr = "Aldric has an ask verb and the CLI holds rowan in the shop")]

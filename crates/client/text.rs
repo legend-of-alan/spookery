@@ -1,9 +1,65 @@
-//! Readable text for player and GM messages, and the status and commit replies.
+//! Readable text for player and GM messages, the picker, and the status and commit replies.
+
+use std::collections::BTreeMap;
 
 use crate::protocol::{
-    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, MeterView, NoteView, Outcome,
-    PlaceView, Roll, ServerBody, Speaker, Speech, TableStatus,
+    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, ItemStack, MeterView,
+    NoteView, Outcome, PlaceView, Roll, ServerBody, Speaker, Speech, TableStatus,
 };
+
+/// The PC picker's heading.
+pub(crate) const PC_PICKER_HEADING: &str = "Choose a character";
+
+/// The line under the picker when every PC is held.
+pub(crate) const PC_PICKER_NONE_OPEN: &str = "None is free.";
+
+/// One PC of the PC picker: its name as the hello gives it, and its id while nobody holds it.
+pub(crate) struct PcPickerRow {
+    pub(crate) name: String,
+    pub(crate) open_id: Option<String>,
+}
+
+impl PcPickerRow {
+    /// `Rowan`, or `Rowan (in use)` for a PC someone holds.
+    pub(crate) fn label(&self) -> String {
+        match self.open_id {
+            Some(_) => self.name.clone(),
+            None => format!("{} (in use)", self.name),
+        }
+    }
+}
+
+/// Every PC a hello lists, open and taken, sorted by label.
+pub(crate) fn pc_picker_rows(
+    open: &[String],
+    taken: &[String],
+    pc_names: &BTreeMap<String, String>,
+) -> Vec<PcPickerRow> {
+    let name = |id: &String| pc_names.get(id).cloned().unwrap_or_default();
+    let open = open.iter().map(|id| PcPickerRow {
+        name: name(id),
+        open_id: Some(id.clone()),
+    });
+    let taken = taken.iter().map(|id| PcPickerRow {
+        name: name(id),
+        open_id: None,
+    });
+    let mut rows: Vec<PcPickerRow> = open.chain(taken).collect();
+    rows.sort_by_key(PcPickerRow::label);
+    rows
+}
+
+/// The PC picker as the plain surface prints it: the heading, each row, and `None is free.` when every
+/// PC is held.
+pub(crate) fn render_pc_picker(rows: &[PcPickerRow]) -> String {
+    let labels: Vec<String> = rows.iter().map(PcPickerRow::label).collect();
+    let mut text = format!("{PC_PICKER_HEADING}:\n{}", labels.join("\n"));
+    if rows.iter().all(|row| row.open_id.is_none()) {
+        text.push('\n');
+        text.push_str(PC_PICKER_NONE_OPEN);
+    }
+    text
+}
 
 /// Readable text for one player body. Empty means print nothing.
 pub fn render(body: &ServerBody) -> String {
@@ -33,9 +89,14 @@ pub fn render(body: &ServerBody) -> String {
 }
 
 fn render_speech(speech: &Speech) -> String {
+    format!("{}: {}", speaker_label(speech), speech.text)
+}
+
+/// The name a player reads for who spoke: `You` for a player, else `GM` or the actor's name.
+pub(crate) fn speaker_label(speech: &Speech) -> &str {
     match &speech.from {
-        Speaker::Player(_) => format!("You: {}", speech.text),
-        Speaker::Gm | Speaker::Npc(_) => format!("{}: {}", speaker_name(speech), speech.text),
+        Speaker::Player(_) => "You",
+        Speaker::Gm | Speaker::Npc(_) => speaker_name(speech),
     }
 }
 
@@ -55,11 +116,12 @@ fn render_scrollback(scrollback: &[Speech]) -> String {
     )
 }
 
-/// Turns the messages of one sitting into readable text.
+/// Turns the messages of one session into readable text, and owns the blank line that both
+/// the plain surface and the window put between a claim's scrollback and the first live text.
 #[derive(Default)]
 pub struct Renderer {
     seen_resume: bool,
-    after_scrollback: bool,
+    is_separator_due: bool,
 }
 
 impl Renderer {
@@ -70,32 +132,32 @@ impl Renderer {
     /// Text for this body. Empty means print nothing.
     /// A leading newline is the blank line between the scrollback and the first live text.
     pub fn render(&mut self, body: &ServerBody) -> String {
-        match body {
-            ServerBody::Claimed { scrollback, .. } => {
-                self.after_scrollback = !scrollback.is_empty();
-                render(body)
-            }
-            ServerBody::Resume { notes } => {
-                if self.seen_resume {
-                    return String::new();
-                }
-                self.seen_resume = true;
-                self.after_scrollback(render_resume(notes))
-            }
-            _ => self.after_scrollback(render(body)),
+        let text = self.render_without_separator(body);
+        if self.take_scrollback_separator(body, !text.is_empty()) {
+            return format!("\n{text}");
         }
+        text
     }
 
-    /// Live text, after a blank line when it is the first after the scrollback.
-    fn after_scrollback(&mut self, text: String) -> String {
-        if text.is_empty() || !self.after_scrollback {
-            return text;
+    /// Text for this body without the scrollback separator, and nothing for a repeated resume.
+    pub(crate) fn render_without_separator(&mut self, body: &ServerBody) -> String {
+        if matches!(body, ServerBody::Resume { .. })
+            && std::mem::replace(&mut self.seen_resume, true)
+        {
+            return String::new();
         }
-        self.after_scrollback = false;
-        format!(
-            "
-{text}"
-        )
+        render(body)
+    }
+
+    /// Whether a blank line goes before this body's text: true once, for the first body that
+    /// shows text after a claim that carried scrollback. `has_text` says whether this body
+    /// shows any.
+    pub(crate) fn take_scrollback_separator(&mut self, body: &ServerBody, has_text: bool) -> bool {
+        if let ServerBody::Claimed { scrollback, .. } = body {
+            self.is_separator_due = !scrollback.is_empty();
+            return false;
+        }
+        has_text && std::mem::take(&mut self.is_separator_due)
     }
 }
 
@@ -118,13 +180,15 @@ pub fn render_view(view: &protocol::View) -> String {
         place: _,
         place_name,
         body,
-        actor_names,
+        actor_names: _,
         cant_act,
         busy,
         visible_actors,
         known_facts,
         notes,
-        items,
+        items: items_here,
+        items_carried,
+        wielded_item_id,
         meters,
         world_meters,
         exits,
@@ -145,9 +209,7 @@ pub fn render_view(view: &protocol::View) -> String {
         sections.push(prose.to_string());
     }
     if !visible_actors.is_empty() {
-        let names = visible_actors
-            .iter()
-            .zip(actor_names)
+        let names = actor_ids_and_names(view)
             .map(|(id, name)| if id == viewer { "You" } else { name })
             .collect::<Vec<_>>()
             .join(", ");
@@ -163,30 +225,43 @@ pub fn render_view(view: &protocol::View) -> String {
         "Notes:",
         notes.iter().map(|note| note.text.as_str()),
     );
-    if !items.is_empty() {
-        let mut lines = Vec::new();
-        for item in items {
-            lines.push(format!("{}: {}", item.name, item.count));
-        }
-        sections.push(format!("Items:\n{}", lines.join("\n")));
-    }
-    for (title, meters) in [("Meters:", meters), ("The world:", world_meters)] {
-        if !meters.is_empty() {
-            let lines: Vec<String> = meters.iter().map(meter_line).collect();
+    let items_here_lines: Vec<String> = items_here.iter().map(render_item).collect();
+    let items_carried_lines: Vec<String> = items_carried
+        .iter()
+        .map(|item| {
+            let line = render_item(item);
+            if wielded_item_id.as_ref() == Some(&item.id) {
+                format!("{line} (in hand)")
+            } else {
+                line
+            }
+        })
+        .collect();
+    for (title, lines) in [
+        ("Items here:", items_here_lines),
+        ("You carry:", items_carried_lines),
+    ] {
+        if !lines.is_empty() {
             sections.push(format!("{title}\n{}", lines.join("\n")));
         }
     }
-    sections.push(exit_section(exits));
+    for (title, meters) in [("Meters:", meters), ("The world:", world_meters)] {
+        if !meters.is_empty() {
+            let lines: Vec<String> = meters.iter().map(render_meter).collect();
+            sections.push(format!("{title}\n{}", lines.join("\n")));
+        }
+    }
+    sections.push(render_exit_section(exits));
     sections.join("\n\n")
 }
 
 /// One command per line: `look`, `ask Briar`, or `strike <actor>: Briar, Aldric`.
 pub fn render_help(commands: &[CommandView]) -> String {
-    let lines: Vec<String> = commands.iter().map(command_line).collect();
+    let lines: Vec<String> = commands.iter().map(render_command).collect();
     lines.join("\n")
 }
 
-fn command_line(command: &CommandView) -> String {
+fn render_command(command: &CommandView) -> String {
     let id = &command.id;
     if let Some(owner) = &command.owner {
         let owner = command.names.first().unwrap_or(owner);
@@ -214,7 +289,8 @@ fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
                 as_number(change.after.as_ref()),
             ) {
                 ("meter", Some(after)) => {
-                    Some(format!("{whose} {} is now {after}.", change.entry_id))
+                    let name = meter_name(&change.entry_id, &change.entry_name);
+                    Some(format!("{whose} {name} is now {after}."))
                 }
                 ("item", Some(_)) => render_item_change(viewer, change, changes),
                 ("place", _) if !change.entry_name.is_empty() => {
@@ -295,7 +371,7 @@ pub fn render_map(places: &[PlaceView]) -> String {
     for place in places {
         lines.push(place.name.clone());
         for exit in &place.exits {
-            lines.push(format!("  {}", exit_phrase(exit)));
+            lines.push(format!("  {}", render_exit(exit)));
         }
     }
     lines.join("\n")
@@ -303,7 +379,7 @@ pub fn render_map(places: &[PlaceView]) -> String {
 
 /// `stairs (locked) — 2 ticks`, or `Docks Street — 0 ticks` for an exit named by where it
 /// goes.
-fn exit_phrase(exit: &ExitView) -> String {
+pub(crate) fn render_exit(exit: &ExitView) -> String {
     let (name, ticks) = (&exit.name, exit.ticks);
     if exit.locked {
         format!("{name} (locked) — {ticks} ticks")
@@ -313,11 +389,11 @@ fn exit_phrase(exit: &ExitView) -> String {
 }
 
 /// `Exits:` and one exit per line, or `none`.
-fn exit_section(exits: &[ExitView]) -> String {
+fn render_exit_section(exits: &[ExitView]) -> String {
     if exits.is_empty() {
         return "Exits:\nnone".to_string();
     }
-    let lines: Vec<String> = exits.iter().map(exit_phrase).collect();
+    let lines: Vec<String> = exits.iter().map(render_exit).collect();
     format!("Exits:\n{}", lines.join("\n"))
 }
 
@@ -332,8 +408,31 @@ fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<
     sections.push(format!("{title}\n{}", lines.join("\n")));
 }
 
-fn meter_line(meter: &MeterView) -> String {
-    format!("{}: {}/{}", humanize(&meter.id), meter.value, meter.max)
+/// Each actor `view` shows, as its id and its name.
+pub(crate) fn actor_ids_and_names(
+    view: &protocol::View,
+) -> impl Iterator<Item = (&String, &String)> {
+    view.visible_actors.iter().zip(&view.actor_names)
+}
+
+/// `Lamp oil: 4`: the item's name and count.
+pub(crate) fn render_item(item: &ItemStack) -> String {
+    format!("{}: {}", item.name, item.count)
+}
+
+/// `Health: 8/16`: the meter's name, value and max.
+pub(crate) fn render_meter(meter: &MeterView) -> String {
+    let name = meter_name(&meter.id, &meter.name);
+    format!("{name}: {}/{}", meter.value, meter.max)
+}
+
+/// The meter's `name`, or its `id` made readable when the pack gives it none.
+fn meter_name(id: &str, name: &str) -> String {
+    if name.is_empty() {
+        humanize(id)
+    } else {
+        name.to_string()
+    }
 }
 
 /// `docks_shop` becomes "Docks shop".
@@ -409,13 +508,26 @@ fn speaker_name(speech: &Speech) -> &str {
 pub fn render_gm(body: &ServerBody) -> String {
     match body {
         ServerBody::Say(speech) => format!("{}: {}", speaker_name(speech), speech.text),
-        ServerBody::Queued { actor, move_id, .. } => {
-            format!("{} queued: {move_id}", humanize(actor))
+        ServerBody::Queued {
+            actor_id, move_id, ..
+        } => {
+            format!("{} queued: {move_id}", humanize(actor_id))
         }
         ServerBody::Status(status) => render_status(status),
         ServerBody::View(view) => render_view(view),
         ServerBody::Committed(body) => render_commit(body),
-        _ => String::new(),
+        ServerBody::Hello { .. }
+        | ServerBody::Claimed { .. }
+        | ServerBody::Released
+        | ServerBody::Presence { .. }
+        | ServerBody::Refused(_)
+        | ServerBody::Round { .. }
+        | ServerBody::Check { .. }
+        | ServerBody::Resume { .. }
+        | ServerBody::Lines { .. }
+        | ServerBody::Changes { .. }
+        | ServerBody::Help { .. }
+        | ServerBody::Map { .. } => String::new(),
     }
 }
 

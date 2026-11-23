@@ -255,7 +255,7 @@ fn view_has_fact(world: &World, actor: &str, fact_id: &str) -> bool {
     view.known_facts.iter().any(|fact| fact.id == fact_id)
 }
 
-/// The resume frame the host sends when `actor` sits at a table on this pack.
+/// The resume frame the host sends when `actor` is claimed at a table on this pack.
 async fn read_player_resume(world: &mut World, actor: &str) -> String {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack).await;

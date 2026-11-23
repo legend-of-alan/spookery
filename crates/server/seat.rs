@@ -49,7 +49,7 @@ impl Seats {
         let mut actors_present: Vec<ActorId> = self
             .claims
             .iter()
-            .map(|claim| claim.actor.clone())
+            .map(|claim| claim.actor_id.clone())
             .collect();
         actors_present.sort();
         Presence {
@@ -69,9 +69,11 @@ impl Seats {
             .find(|claim| claim.conn == Some(conn))
     }
 
-    /// The claim on the PC `actor`.
-    pub(super) fn claim_of_actor_mut(&mut self, actor: &ActorId) -> Option<&mut Claim> {
-        self.claims.iter_mut().find(|claim| claim.actor == *actor)
+    /// The claim on the PC `actor_id`.
+    pub(super) fn claim_of_actor_mut(&mut self, actor_id: &ActorId) -> Option<&mut Claim> {
+        self.claims
+            .iter_mut()
+            .find(|claim| claim.actor_id == *actor_id)
     }
 
     pub(super) fn connection(&self, conn: ConnId) -> Option<&Connection> {
@@ -101,7 +103,7 @@ pub(super) struct Connection {
 /// claim by its `token` takes it back, with the messages it kept.
 pub(super) struct Claim {
     pub(super) token: String,
-    pub(super) actor: ActorId,
+    pub(super) actor_id: ActorId,
     /// The connection that drives it, while one does.
     pub(super) conn: Option<ConnId>,
     /// The newest `MISSED_MESSAGE_CAP` messages sent to this claim, oldest first.
@@ -111,10 +113,10 @@ pub(super) struct Claim {
 }
 
 impl Claim {
-    pub(super) fn new(token: String, actor: ActorId) -> Self {
+    pub(super) fn new(token: String, actor_id: ActorId) -> Self {
         Self {
             token,
-            actor,
+            actor_id,
             conn: None,
             kept: VecDeque::new(),
             last_lost_seq: 0,
@@ -133,13 +135,13 @@ impl Claim {
 
     /// The kept messages after `last_seq`, and whether any were dropped past `MISSED_MESSAGE_CAP`.
     pub(super) fn messages_after(&self, last_seq: u64) -> (Vec<ServerMessage>, bool) {
-        let missed = self
+        let missed_messages = self
             .kept
             .iter()
             .filter(|message| message.seq.is_some_and(|seq| seq > last_seq))
             .cloned()
             .collect();
-        (missed, last_seq < self.last_lost_seq)
+        (missed_messages, last_seq < self.last_lost_seq)
     }
 }
 

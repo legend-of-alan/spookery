@@ -9,7 +9,7 @@ use spookery_engine::{component, entity, ActorId, Meter, Modifier};
 
 use super::common::{add_verb, replace_in_file};
 use super::meters::{assert_refused, run_check};
-use super::triggers::{edit_table, intent, play_round, seen_of, set_place, sit};
+use super::triggers::{edit_table, intent, play_round, seen_of, set_place, set_present};
 use crate::support::{self, copy_pack};
 use crate::World;
 
@@ -137,7 +137,7 @@ fn docks_with_one_tick_rounds(world: &mut World) {
             .set("docks_shop")
             .unwrap();
         support::edit_meter(now, "rowan", "vigor", |vigor| vigor.base = 20);
-        sit(seated, &["harbormouse", "rowan", "wren"]);
+        set_present(seated, &["harbormouse", "rowan", "wren"]);
     });
     world.pack = Some(pack);
 }
