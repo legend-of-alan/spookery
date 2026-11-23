@@ -28,7 +28,7 @@ Every issue gets a priority label from `P0` (most urgent) to `P3` (least urgent)
 
 ## Design principles
 
-- **Keep it simple.** The best fix is often deleting code, not adding it. Before you write something new, check whether you can remove, reuse or derive what you need from what's already there. Build only as much as the job needs. CI shows a `Net: +N production, +M tests` notice on its check run for the lines it adds or removes. If it grows the code, say why in the PR body.
+- **Keep it simple.** The best fix is often deleting code, not adding it. Before you write something new, check whether you can remove, reuse or derive what you need from what's already there. Build only as much as the job needs. CI shows a `Net: +N production, +M tests` notice on its check run for the lines it adds or removes. If it grows the code, say why in the PR body. Simple means no unnecessary abstractions, not cramming distinct jobs into one file: split a growing or mixed-job file into focused modules.
 - **Say it once.** Each message, rule, check or format should live in one place. If you find the same thing in two places, merge them instead of adding a flag to keep them in sync.
 - **No side doors.** Tests should use the same code path as the real program. If a test needs a shortcut, fix the test or the design.
 - **Use the words people already know.** Good code reads the way people expect, so it needs no tutorial, like WASD in a game. Names follow [Naming](#naming) below.
