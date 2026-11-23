@@ -11,7 +11,7 @@ expression: shown
 │› say evening                               ││stairs (locked) — 2 ticks       │
 │You: evening                                ││Nearby                          │
 │GM: good evening                            ││Docks Street → Gate Yard        │
-│› exert                                     ││Items here                      │
+│› exert                                     ││                                │
 │Your action is queued.                      │╰────────────────────────────────╯
 │◆ Your roll succeeded.                      │╭ Stats │ Carried │ Known ───────╮
 │› take lamp_oil                             ││Assassination debt: 2/6 ━━──────│

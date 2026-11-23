@@ -628,7 +628,7 @@ impl Screen {
             return;
         }
         self.draw_transcript(frame, panes.transcript, panes.shows_round_dividers);
-        self.draw_place(frame, panes.place, view, panes.tab_box.is_none());
+        self.draw_place(frame, panes.place, view);
         if let (Some(tab_box_area), Some(tab)) = (panes.tab_box, self.open_tab) {
             self.draw_tab_box(frame, tab_box_area, tab, view);
         }
@@ -756,28 +756,22 @@ impl Screen {
     }
 
     /// Who is here, the exits, the places past them that the map knows, and the items here.
-    /// With `shows_tab_keys`, while the tab box is hidden, the bottom border names the keys that
-    /// bring it back.
-    fn draw_place(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        view: Option<&protocol::View>,
-        shows_tab_keys: bool,
-    ) {
+    /// A section is left out, with all after it, when its heading and first row don't both fit.
+    /// While the tab box is hidden, the bottom border names the keys that bring it back.
+    fn draw_place(&self, frame: &mut Frame, area: Rect, view: Option<&protocol::View>) {
         let title = view.map_or("Here", |view| view.place_name.as_str());
         let mut border = self.pane_border(title, false);
-        if shows_tab_keys {
+        if self.open_tab.is_none() {
             border = border.title_bottom(self.span("F2 F3 F4 tabs", TANGERINE));
         }
         let Some(view) = view else {
             frame.render_widget(border, area);
             return;
         };
-        let mut panel_lines: Vec<Line> = Vec::new();
+        let mut here_lines: Vec<Line> = Vec::new();
         for line in [&view.cant_act, &view.busy] {
             if !line.is_empty() {
-                panel_lines.push(Line::styled(line.clone(), self.style(ASH)));
+                here_lines.push(Line::styled(line.clone(), self.style(ASH)));
             }
         }
         let mut here_spans = vec![self.span("Here: ", PARCHMENT)];
@@ -791,15 +785,16 @@ impl Screen {
                 self.span(name.clone(), TANGERINE)
             });
         }
-        panel_lines.push(Line::from(here_spans));
-        panel_lines.push(Line::from(self.span("Exits", ASH)));
+        here_lines.push(Line::from(here_spans));
+        let mut exit_lines = vec![Line::from(self.span("Exits", ASH))];
         for exit in &view.exits {
             let color = if exit.locked { ROSE } else { ORANGE };
-            panel_lines.push(Line::styled(text::render_exit(exit), self.style(color)));
+            exit_lines.push(Line::styled(text::render_exit(exit), self.style(color)));
         }
         if view.exits.is_empty() {
-            panel_lines.push(Line::styled("none", self.style(ASH)));
+            exit_lines.push(Line::styled("none", self.style(ASH)));
         }
+        let mut sections = vec![here_lines, exit_lines];
         let nearby_lines: Vec<Line> = (view.exits.iter())
             .filter_map(|exit| {
                 let place =
@@ -808,14 +803,30 @@ impl Screen {
             })
             .collect();
         if !nearby_lines.is_empty() {
-            panel_lines.push(Line::from(self.span("Nearby", ASH)));
-            panel_lines.extend(nearby_lines);
+            let heading = Line::from(self.span("Nearby", ASH));
+            sections.push(std::iter::once(heading).chain(nearby_lines).collect());
         }
         if !view.items.is_empty() {
-            panel_lines.push(Line::from(self.span("Items here", ASH)));
-            for item in &view.items {
-                panel_lines.push(Line::styled(text::render_item(item), self.style(PARCHMENT)));
+            let heading = Line::from(self.span("Items here", ASH));
+            let item_lines = (view.items.iter())
+                .map(|item| Line::styled(text::render_item(item), self.style(PARCHMENT)));
+            sections.push(std::iter::once(heading).chain(item_lines).collect());
+        }
+        let inner_width = border.inner(area).width;
+        let line_rows = |line: &Line<'static>| {
+            Paragraph::new(line.clone())
+                .wrap(Wrap { trim: true })
+                .line_count(inner_width)
+        };
+        let mut rows_left = usize::from(border.inner(area).height);
+        let mut panel_lines: Vec<Line> = Vec::new();
+        for section in sections {
+            if section.iter().take(2).map(line_rows).sum::<usize>() > rows_left {
+                break;
             }
+            let section_rows: usize = section.iter().map(line_rows).sum();
+            rows_left = rows_left.saturating_sub(section_rows);
+            panel_lines.extend(section);
         }
         let panel = Paragraph::new(panel_lines)
             .wrap(Wrap { trim: true })
