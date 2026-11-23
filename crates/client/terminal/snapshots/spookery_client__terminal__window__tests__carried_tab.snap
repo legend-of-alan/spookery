@@ -1,0 +1,13 @@
+---
+source: crates/client/terminal/window.rs
+expression: "region_text(screen, Some(view), pick_rect)"
+---
+╭ Stats │ Carried │ Known ───────╮
+│Lamp oil: 1 (in hand)           │
+│                                │
+│                                │
+│                                │
+│                                │
+│                                │
+│                                │
+╰F2 F3 F4 switch · same key hides╯

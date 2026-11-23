@@ -5,22 +5,22 @@ expression: shown
  SPOOKERY                                           Rowan · round 2 · tick 1090
 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
 ╭ Transcript ────────────────────────────────╮╭ Docks Shop ────────────────────╮
-│▌ Docks S╭ Help ────────────────────────────────────────────────────╮         │
-│The shop │release                                                   │         │
-│› look   │say                                                       │         │
-│› say eve│look                                                      │ks       │
-│You: even│help                                                      │         │
-│GM: good │map                                                       │         │
-│› exert  │cancel                                                    │         │
-│Your acti│drop <item>: Lamp oil                                     │─────────╯
-│◆ Your ro│exert                                                     │n ───────╮
-│› take la│strike <actor>: Aldric                                    │ ━━──────│
-│Your acti│take <item>: Lamp oil                                     │ ━━━━────│
-│You picke│travel <exit>: Docks Street, stairs                       │ ────────│
-│› travel │unwield                                                   │ ━━━━────│
-│The stair│wait                                                      │ ────────│
-│› fly    │wield <item>: Lamp oil                                    │         │
-│That line╰ Esc closes ──────────────────────────────────────────────╯ ━━──────│
+│▌ Docks Shop                                ││Here: Aldric, You               │
+│The shop faces the water. Tins sit in a row.││Exits                           │
+│› look                                      ││Docks Street — 0 ticks          │
+│› say evening                               ││stairs (locked) — 2 ticks       │
+│You: evening                                ││Items here                      │
+│GM: good evening                            ││Lamp oil: 3                     │
+│› exert  ╭ Help ────────────────────────────────────────────────────╮         │
+│Your acti│look                                                      │─────────╯
+│◆ Your ro│strike <actor>: Aldric                                    │n ───────╮
+│› take la│travel <exit>: Docks Street, stairs                       │ ━━──────│
+│Your acti╰ Esc closes ──────────────────────────────────────────────╯ ━━━━────│
+│You picked up the Lamp oil.                 ││Might: 1/45             ────────│
+│› travel stairs                             ││Rest: 3/5               ━━━━────│
+│The stair door is locked. [NO_EXIT]         ││Vigor: 1/110            ────────│
+│› fly                                       ││The world                       │
+│That line is not valid. [SCHEMA]            ││Tide: 3/10              ━━──────│
 ╰────────────────────────────────────────────╯╰F2 F3 F4 switch · same key hides╯
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │›                                                                             │

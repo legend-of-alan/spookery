@@ -1,0 +1,13 @@
+---
+source: crates/client/terminal/window.rs
+expression: "region_text(screen, Some(view), pick_rect)"
+---
+╭ Stats │ Carried │ Known ───────╮
+│Assassination debt: 2/6 ━━──────│
+│Health: 8/16            ━━━━────│
+│Might: 1/45             ────────│
+│Rest: 3/5               ━━━━────│
+│Vigor: 1/110            ────────│
+│The world                       │
+│Tide: 3/10              ━━──────│
+╰F2 F3 F4 switch · same key hides╯

@@ -791,27 +791,22 @@ mod tests {
         insta::assert_snapshot!(format!("{name}_{width}x{height}"), shown);
     }
 
-    /// Shows one message written as its JSON line, and returns its view when it is one.
-    fn show_json(screen: &mut Screen, message: &str) -> Option<protocol::View> {
-        let message: ServerMessage = serde_json::from_str(message).unwrap();
-        screen.show(&message);
-        match message.body {
-            ServerBody::View(view) => Some(*view),
-            _ => None,
-        }
+    /// Snapshots the one part of the 80 by 24 screen that `pick_rect` takes from its areas.
+    fn assert_region(
+        name: &str,
+        screen: &mut Screen,
+        view: &protocol::View,
+        pick_rect: fn(&ScreenAreas) -> Option<Rect>,
+    ) {
+        insta::assert_snapshot!(name, region_text(screen, Some(view), pick_rect));
     }
-
-    /// Rowan's view after taking a tin of lamp oil, from a docks session against this build,
-    /// with `wielded_item_id` and a world meter added, since no docks item is a weapon and docks
-    /// has no world meter.
-    const VIEW_CARRYING_OIL: &str = r#"{"seq":24,"body":{"kind":"view","viewer":"rowan","place":"docks_shop","place_name":"Docks Shop","body":"The shop faces the water. Tins sit in a row.","actor_names":["Aldric","Rowan"],"visible_actors":["aldric","rowan"],"known_facts":[{"id":"fact_oil_on_shelf","text":"Oil is on the shelf.","owner_body":"The shop faces the water. Tins sit in a row.\n"}],"notes":[{"id":"note_mira_door","to_ids":["rowan"],"place_id":"docks_shop","fact_ids":[],"text":"Back at dusk. Oil on the shelf."}],"unknown_mentions":[],"items":[{"id":"lamp_oil","count":3,"name":"Lamp oil"}],"items_carried":[{"id":"lamp_oil","count":1,"name":"Lamp oil"}],"wielded_item_id":"lamp_oil","meters":[{"id":"assassination_debt","value":2,"max":6},{"id":"hp","name":"Health","value":8,"max":16},{"id":"might","value":1,"max":45},{"id":"rest","value":3,"max":5},{"id":"vigor","value":1,"max":110}],"world_meters":[{"id":"tide","name":"Tide","value":3,"max":10}],"habits":[],"exits":[{"exit_id":"docks_street","name":"Docks Street","place_id":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"exit_id":"stairs","name":"stairs","place_id":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}}"#;
 
     /// Docks Street from Rowan's `map` reply in that session, after a walk there and back.
     const MAP_REPLY: &str = r#"{"seq":26,"body":{"kind":"map","places":[{"place_id":"docks_street","name":"Docks Street","exits":[{"exit_id":"docks_shop","name":"Docks Shop","place_id":"docks_shop","place_name":"Docks Shop","ticks":0,"locked":false},{"exit_id":"gate_yard","name":"Gate Yard","place_id":"gate_yard","place_name":"Gate Yard","ticks":0,"locked":false}]}]}}"#;
 
-    /// Rowan's `help` reply in the Docks Shop after taking a tin of lamp oil, from another docks
-    /// session against this build.
-    const HELP_REPLY: &str = r#"{"seq":9,"reply_to":"c3","body":{"kind":"help","commands":[{"id":"release","target":"none"},{"id":"say","target":"none"},{"id":"look","target":"none"},{"id":"help","target":"none"},{"id":"map","target":"none"},{"id":"cancel","target":"none"},{"id":"drop","target":"item","names":["Lamp oil"]},{"id":"exert","target":"none"},{"id":"strike","target":"actor","names":["Aldric"]},{"id":"take","target":"item","names":["Lamp oil"]},{"id":"travel","target":"exit","names":["Docks Street","stairs"]},{"id":"unwield","target":"none"},{"id":"wait","target":"none"},{"id":"wield","target":"item","names":["Lamp oil"]}]}}"#;
+    /// Three commands from Rowan's `help` reply in the Docks Shop, from a docks session against
+    /// this build.
+    const HELP_REPLY: &str = r#"{"seq":9,"reply_to":"c3","body":{"kind":"help","commands":[{"id":"look","target":"none"},{"id":"strike","target":"actor","names":["Aldric"]},{"id":"travel","target":"exit","names":["Docks Street","stairs"]}]}}"#;
 
     /// `MAP_REPLY` as the reply to `request_id`.
     fn map_reply(request_id: &str) -> ServerMessage {
@@ -836,17 +831,39 @@ mod tests {
         screen.record_request_id(request_id.into());
     }
 
-    /// Rowan's recorded session up to `release`, then the view carrying lamp oil.
-    fn seat_rowan_carrying_oil(screen: &mut Screen) -> (Option<protocol::View>, Vec<String>) {
-        let (_, commands) = replay_until(screen, "release");
-        (show_json(screen, VIEW_CARRYING_OIL), commands)
+    /// Rowan's recorded session up to `release`, and Rowan's last view there as this build sends
+    /// it: carrying and wielding a tin of lamp oil, with Hp named Health and one world meter,
+    /// since no docks item is a weapon and docks has no world meter.
+    fn seat_rowan_carrying_oil(screen: &mut Screen) -> (protocol::View, Vec<String>) {
+        let (view, commands) = replay_until(screen, "release");
+        let mut view = view.unwrap();
+        let lamp_oil = protocol::ItemStack {
+            id: "lamp_oil".into(),
+            count: 1,
+            name: "Lamp oil".into(),
+        };
+        view.items_carried = vec![lamp_oil];
+        view.wielded_item_id = Some("lamp_oil".into());
+        let hp = view
+            .meters
+            .iter_mut()
+            .find(|meter| meter.id == "hp")
+            .unwrap();
+        hp.name = "Health".into();
+        view.world_meters = vec![protocol::MeterView {
+            id: "tide".into(),
+            name: "Tide".into(),
+            value: 3,
+            max: 10,
+        }];
+        (view, commands)
     }
 
     #[test]
     fn the_stats_tab_shows_each_meter_by_name_with_a_gauge() {
         let mut screen = Screen::new(true);
         let (view, _) = seat_rowan_carrying_oil(&mut screen);
-        assert_screen("stats_tab", &mut screen, view.as_ref());
+        assert_region("stats_tab", &mut screen, &view, |areas| areas.tab_box_rect);
     }
 
     #[test]
@@ -854,7 +871,9 @@ mod tests {
         let mut screen = Screen::new(true);
         let (view, commands) = seat_rowan_carrying_oil(&mut screen);
         press(&mut screen, KeyCode::F(3), &commands);
-        assert_screen("carried_tab", &mut screen, view.as_ref());
+        assert_region("carried_tab", &mut screen, &view, |areas| {
+            areas.tab_box_rect
+        });
     }
 
     #[test]
@@ -862,7 +881,7 @@ mod tests {
         let mut screen = Screen::new(true);
         let (view, commands) = seat_rowan_carrying_oil(&mut screen);
         press(&mut screen, KeyCode::F(4), &commands);
-        assert_screen("known_tab", &mut screen, view.as_ref());
+        assert_region("known_tab", &mut screen, &view, |areas| areas.tab_box_rect);
     }
 
     #[test]
@@ -871,29 +890,28 @@ mod tests {
         let (view, commands) = seat_rowan_carrying_oil(&mut screen);
         press(&mut screen, KeyCode::F(3), &commands);
         press(&mut screen, KeyCode::F(3), &commands);
-        assert_screen("tab_box_hidden", &mut screen, view.as_ref());
+        assert_screen("tab_box_hidden", &mut screen, Some(&view));
     }
 
     #[test]
     fn f1_asks_for_help_and_esc_closes_its_popup() {
         let mut screen = Screen::new(true);
         let (view, commands) = seat_rowan_carrying_oil(&mut screen);
-        let before_help = screen_text(&mut screen, view.as_ref(), 80, 24);
+        let before_help = screen_text(&mut screen, Some(&view), 80, 24);
         assert_eq!(
             press(&mut screen, KeyCode::F(1), &commands),
             Some(KeyRequest::Send("help".into()))
         );
-        show_json(&mut screen, HELP_REPLY);
-        assert_screen("help_popup", &mut screen, view.as_ref());
+        screen.show(&serde_json::from_str(HELP_REPLY).unwrap());
+        assert_screen("help_popup", &mut screen, Some(&view));
         press(&mut screen, KeyCode::Esc, &commands);
-        assert_eq!(screen_text(&mut screen, view.as_ref(), 80, 24), before_help);
+        assert_eq!(screen_text(&mut screen, Some(&view), 80, 24), before_help);
     }
 
     #[test]
     fn the_windows_own_map_reply_fills_nearby_and_stays_out_of_the_transcript() {
         let mut screen = Screen::new(true);
         let (view, commands) = seat_rowan_carrying_oil(&mut screen);
-        let view = view.unwrap();
         send_own_map(&mut screen, "c8");
         let street_view = protocol::View {
             place: "docks_street".into(),
@@ -934,7 +952,9 @@ mod tests {
         let (view, _) = seat_rowan_carrying_oil(&mut screen);
         send_own_map(&mut screen, "c8");
         screen.show(&map_reply("c8"));
-        assert_screen("nearby", &mut screen, view.as_ref());
+        assert_region("nearby", &mut screen, &view, |areas| {
+            Some(areas.place_panel_rect)
+        });
     }
 
     #[test]
@@ -943,7 +963,7 @@ mod tests {
         let (view, _) = seat_rowan_carrying_oil(&mut screen);
         send_own_map(&mut screen, "c8");
         screen.show(&map_reply("c8"));
-        assert_screen_at("wide", &mut screen, view.as_ref(), 140, 40);
+        assert_screen_at("wide", &mut screen, Some(&view), 140, 40);
     }
 
     #[test]
