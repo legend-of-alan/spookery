@@ -61,10 +61,9 @@ pub mod testing {
         place.unwrap_or_else(|| panic!("{actor} stands nowhere"))
     }
 
-    /// What `actor` is doing, read through `Reader::get`. Panics when they have no action state.
+    /// What `actor` is doing, read through `Reader::get`.
     pub fn act_of(world: &crate::ecs::World, actor: &str) -> Act {
-        let act = world.actors().get::<Act>(&actor.into()).get().cloned();
-        act.unwrap_or_else(|| panic!("{actor} has no action state"))
+        world.actors().get::<Act>(&actor.into()).get().clone()
     }
 
     /// Whether `actor` is busy at the save's world time.

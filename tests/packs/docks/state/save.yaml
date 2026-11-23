@@ -1,7 +1,7 @@
 schema: save
 world_id: docks-001
 pack_rev: blake2s:589c993b77533a72cebcfb77ffda9e25a2240ea48a41ea8b5a06c4072b8a71aa
-rules_rev: 30
+rules_rev: 31
 state_rev: 0
 round_index: 0
 world_time: 1080
@@ -41,135 +41,17 @@ actors:
       docks_street:
         - docks_shop
         - gate_yard
-  acts:
-    aldric:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-    bram:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-    briar:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-    harbormouse:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-    mira:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-    rowan:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-    wren:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
   items:
     harbormouse:
       tonic: 1
   meters:
-    aldric:
-      hp:
-        base: 8
-        offset: 0
-      might:
-        base: 1
-        offset: 0
-      rest:
-        base: 3
-        offset: 0
-      vigor:
-        base: 1
-        offset: 0
-    bram:
-      hp:
-        base: 8
-        offset: 0
-      might:
-        base: 1
-        offset: 0
-      rest:
-        base: 3
-        offset: 0
-      vigor:
-        base: 1
-        offset: 0
     briar:
-      hp:
-        base: 8
-        offset: 0
       might:
         base: 2
-        offset: 0
-      rest:
-        base: 3
-        offset: 0
-      vigor:
-        base: 1
         offset: 0
     harbormouse:
-      hp:
-        base: 8
-        offset: 0
       might:
         base: 30
-        offset: 0
-      rest:
-        base: 3
-        offset: 0
-      vigor:
-        base: 1
-        offset: 0
-    mira:
-      hp:
-        base: 8
-        offset: 0
-      might:
-        base: 1
-        offset: 0
-      rest:
-        base: 3
-        offset: 0
-      shop_day:
-        base: 1
-        offset: 0
-      vigor:
-        base: 1
-        offset: 0
-    rowan:
-      assassination_debt:
-        base: 2
-        offset: 0
-      hp:
-        base: 8
-        offset: 0
-      might:
-        base: 1
-        offset: 0
-      rest:
-        base: 3
-        offset: 0
-      vigor:
-        base: 1
-        offset: 0
-    wren:
-      hp:
-        base: 8
-        offset: 0
-      might:
-        base: 1
-        offset: 0
-      rest:
-        base: 3
-        offset: 0
-      vigor:
-        base: 1
         offset: 0
   modifiers: {}
   flags: {}
@@ -181,11 +63,7 @@ places:
       latch: 1
     wheel_shed:
       chock: 1
-  meters:
-    docks_shop:
-      comfort:
-        base: 2
-        offset: 0
+  meters: {}
   flags: {}
   open_exits: {}
 stories:

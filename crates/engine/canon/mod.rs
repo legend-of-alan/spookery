@@ -181,16 +181,12 @@ pub struct PlaceDef {
     /// The name a player reads, the id when the pack gives none.
     pub name: String,
     pub body: String,
-    /// The flags an effect may set on this place.
-    pub flags: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
 pub struct StoryDef {
     /// The name a player reads, the id when the pack gives none.
     pub name: String,
-    /// The flags an effect may set on this story.
-    pub flags: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -198,8 +194,6 @@ pub struct CastDef {
     pub control_type: canon::ControlType,
     /// The name a player reads, the id when the pack gives none.
     pub name: String,
-    /// The flags an effect may set on this actor.
-    pub flags: Vec<String>,
     pub body: String,
     pub idle: Option<IdleProfile>,
 }
@@ -274,14 +268,6 @@ impl Canon {
         }
     }
 
-    /// Whether `id` carries flag `key`: one its file declares, or any world flag but `busy`.
-    pub(crate) fn carries_flag(&self, id: entity::IdRef<'_>, key: &str) -> bool {
-        match declared_flags(&self.cast, &self.places, &self.stories, id) {
-            Some(flags) => flags.iter().any(|flag| flag == key),
-            None => !key.is_empty() && key != "busy",
-        }
-    }
-
     /// The exits of `place`, in the file order of their paths.
     pub(crate) fn exits(&self, place: &str) -> impl Iterator<Item = Exit<'_>> {
         self.paths.exits(place)
@@ -317,24 +303,6 @@ impl Canon {
             .get(fact.place_id.as_str())
             .map_or("", |place| &place.body)
     }
-}
-
-/// The flags `carrier`'s file declares, none for an id the pack lacks: `None` for the world,
-/// which carries any flag but `busy`. Lint asks before the canon is assembled, so it takes the
-/// three maps.
-pub(crate) fn declared_flags<'a>(
-    cast: &'a BTreeMap<ActorId, CastDef>,
-    places: &'a BTreeMap<PlaceId, PlaceDef>,
-    stories: &'a BTreeMap<StoryId, StoryDef>,
-    carrier: entity::IdRef<'_>,
-) -> Option<&'a [String]> {
-    let flags = match carrier {
-        entity::IdRef::Actor(id) => cast.get(id).map(|cast| &cast.flags),
-        entity::IdRef::Place(id) => places.get(id).map(|place| &place.flags),
-        entity::IdRef::Story(id) => stories.get(id).map(|story| &story.flags),
-        entity::IdRef::Global => return None,
-    };
-    Some(flags.map_or(&[], Vec::as_slice))
 }
 
 pub fn pack_rev(root: &Path) -> Result<String, Reason> {

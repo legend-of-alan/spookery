@@ -69,10 +69,8 @@ fn is_eligible(canon: &Canon, world: &ecs::World, presence: &Presence, npc_id: &
         return false;
     }
     let act = world.actors().get::<component::Act>(npc_id);
-    let (Some(counters), Some(place)) = (
-        act.get(),
-        world.actors().get::<component::Place>(npc_id).get(),
-    ) else {
+    let counters = act.get();
+    let Some(place) = world.actors().get::<component::Place>(npc_id).get() else {
         return false;
     };
     if act.is_busy(world.world_time) || is_player_at(world, presence, place) {

@@ -158,7 +158,7 @@ pub(crate) fn map(
 /// `recovering until tick 1300` in a cooldown.
 pub(crate) fn busy_line(canon: &Canon, world: &ecs::World, actor_id: &ActorId) -> Option<String> {
     let act = world.actors().get::<component::Act>(actor_id);
-    let busy = act.get()?;
+    let busy = act.get();
     let place = world.actors().get::<component::Place>(actor_id).get()?;
     if !act.is_busy(world.world_time) {
         return None;

@@ -44,6 +44,25 @@ fn the_pack_gm_notes_run_to(world: &mut World, chars: usize) {
     table::append_gm_notes(table::pack(world), &"a".repeat(chars));
 }
 
+#[when(expr = "a verb tests rowan's flag {string}, which no rule sets")]
+fn a_verb_tests_an_unset_flag(world: &mut World, flag: String) {
+    let test = format!(
+        "\n  - id: test_{flag}\n    when:\n      verb: test_{flag}\n    if:\n      - flag: {{ of: rowan, key: {flag}, is: true }}\n    do: []\n"
+    );
+    super::common::add_verb(table::pack(world), &test);
+}
+
+#[when(expr = "the save gives rowan the flag {string}")]
+fn the_save_gives_rowan_the_flag(world: &mut World, flag: String) {
+    let path = table::pack(world).join("state/save.yaml");
+    let now = spookery_engine::parse_save(&fs::read_to_string(&path).unwrap())
+        .unwrap_or_else(|err| panic!("load save: {err:?}"));
+    let mut saved = serde_json::to_value(&now).unwrap();
+    saved["actors"]["flags"]["rowan"] = Value::from(vec![flag]);
+    let now = serde_json::from_value(saved).unwrap_or_else(|err| panic!("edited save: {err}"));
+    fs::write(&path, spookery_engine::emit_save(&now).unwrap()).unwrap();
+}
+
 #[when(expr = "the pack_rev is restamped")]
 fn the_pack_rev_is_restamped(world: &mut World) {
     let pack = table::pack(world).to_path_buf();

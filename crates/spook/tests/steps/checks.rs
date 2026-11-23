@@ -130,7 +130,6 @@ async fn a_docks_table_where_mira_can_notice(world: &mut World) {
     let pack = copy_pack("docks", "npc-notice");
     world.pack = Some(pack.clone());
     common::add_verb(&pack, NOTICE_ROWS);
-    insert_mira_flags(&pack, "    - braced\n    - slipped\n");
     support::stamp_pack_rev(&pack);
     listen_and_seat_both(world, &pack).await;
     world.mark = table::player_mark(world);
@@ -141,7 +140,6 @@ async fn a_docks_table_where_miras_vigor_contests_a_mark(world: &mut World) {
     let pack = copy_pack("docks", "contested-mark");
     world.pack = Some(pack.clone());
     common::add_verb(&pack, CONTESTED_MARK_ROW);
-    insert_mira_flags(&pack, "    - marked\n    - grazed\n    - missed\n");
     set_vigor(&pack, "mira", MIRA_VIGOR);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
@@ -166,7 +164,6 @@ async fn the_gm_queues_miras_hard_notice(world: &mut World) {
 fn an_engine_habit_rolls_a_check_for_mira(world: &mut World) {
     let pack = copy_pack("docks", "npc-habit");
     world.pack = Some(pack.clone());
-    insert_mira_flags(&pack, "    - braced\n    - slipped\n");
     insert_brace_habit(&pack);
     support::stamp_pack_rev(&pack);
     spookery_engine::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
@@ -273,18 +270,6 @@ async fn queue_mira(world: &mut World, move_id: &str) {
     let text = table::gm_tool_call(world, 4, "queue", &args).await;
     assert!(text.contains("\"id\""), "{text}");
     assert!(!text.contains("UNKNOWN_ID"), "{text}");
-}
-
-fn insert_mira_flags(pack: &Path, flags: &str) {
-    let path = pack.join("cast/mira.md");
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
-    let next = text.replacen(
-        "idle:\n  eligible: true\n",
-        &format!("idle:\n  eligible: true\nflags:\n{flags}"),
-        1,
-    );
-    assert_ne!(next, text, "mira flags were not inserted");
-    fs::write(&path, next).unwrap_or_else(|err| panic!("write mira: {err}"));
 }
 
 fn insert_brace_habit(pack: &Path) {
@@ -433,8 +418,6 @@ const NOTICE_PARTIAL_ROW: &str = "
           value: true
 ";
 
-const PRESS_FLAGS: &str = "    - touched\n    - clean\n    - halfway\n    - missed\n";
-
 #[given(expr = "a docks table where press vigor base is {int}")]
 async fn a_docks_table_where_press_vigor_base_is(world: &mut World, base: usize) {
     prepare_press(world, base as i64, true).await;
@@ -450,7 +433,6 @@ async fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
     let pack = copy_pack("docks", "press-notice");
     world.pack = Some(pack.clone());
     common::add_verb(&pack, NOTICE_PARTIAL_ROW);
-    insert_mira_flags(&pack, PRESS_FLAGS);
     set_vigor(&pack, "mira", 6);
     support::stamp_pack_rev(&pack);
     listen_and_seat_both(world, &pack).await;
@@ -538,7 +520,6 @@ async fn prepare_press(world: &mut World, base: i64, is_seated: bool) {
     let pack = copy_pack("docks", "press");
     world.pack = Some(pack.clone());
     common::add_verb(&pack, PRESS_ROW);
-    insert_mira_flags(&pack, PRESS_FLAGS);
     set_vigor(&pack, "rowan", base);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()

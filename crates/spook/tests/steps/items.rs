@@ -440,13 +440,6 @@ fn wren_rolls_a_nested_check_on_a_seeded_roll(world: &mut World) {
         ),
     )
     .unwrap();
-    let wren = fs::read_to_string(pack.join("cast/pc-wren.md")).unwrap();
-    let next = wren.replace(
-        "  eligible: false\n",
-        "  eligible: false\nflags:\n    - poisoned\n",
-    );
-    assert_ne!(wren, next);
-    fs::write(pack.join("cast/pc-wren.md"), next).unwrap();
     write_dagger(
         &pack,
         "

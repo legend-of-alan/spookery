@@ -193,7 +193,9 @@ impl ecs::World {
         let (id, entry_id) = (&key.entity_id, key.entry_id.as_deref().unwrap_or_default());
         let desc = canon.meter_desc(id.as_ref(), entry_id);
         let now = entity::in_collection!(id, [&save], |entities, id| {
-            Reader::new(entities, canon).get::<Meter>(id).get(entry_id)
+            Reader::new(entities, canon)
+                .get::<Meter>(id)
+                .get_or_start(entry_id)
         });
         let sum_now = match id {
             entity::Id::Actor(actor) => self.actors().get::<Modifier>(actor).sum(entry_id),
@@ -204,8 +206,8 @@ impl ecs::World {
                 .and_then(|(desc, held)| meter::value(desc, held, sum?));
             value.ok().map(ChangeValue::Number)
         };
-        let before = reading(held.unwrap_or(now), sum.unwrap_or(sum_now));
-        Change::new(key.clone(), before, reading(now, sum_now))
+        let before = reading(held.unwrap_or(now.as_ref()), sum.unwrap_or(sum_now));
+        Change::new(key.clone(), before, reading(now.as_ref(), sum_now))
     }
 
     pub(crate) fn take_memories(&mut self) -> Vec<MemoryLine> {
@@ -325,13 +327,9 @@ mod tests {
         world
             .actors_mut()
             .add_actor(&nell, component::ControlType::Npc, "docks_shop");
-        let added = world.actors().get::<component::Act>(&nell).get().is_some();
-        assert!(added, "Nell is added");
+        assert!(world.actors().contains(&nell), "Nell is added");
         world.rollback(point);
-        assert_eq!(
-            *world, *before,
-            "her control type, place and action state all go"
-        );
+        assert_eq!(*world, *before, "her control type and place both go");
     }
 
     #[test]

@@ -8,8 +8,7 @@ Feature: Stories and places carry meters and flags
     And no player's view lists dread
 
   Scenario: A story flag is set and tested on its story
-    Given story/siege.yaml declares the flag "walls_breached"
-    And a rule in story/siege.yaml sets flag walls_breached of "story:siege" to true
+    Given a rule in story/siege.yaml sets flag walls_breached of "story:siege" to true
     When the rule runs
     Then a rule testing flag walls_breached of "story:siege" is true sees it as set
     And the GM sees the flag change on the siege story
@@ -22,7 +21,7 @@ Feature: Stories and places carry meters and flags
     Then rowan's and wren's change lines show dread
 
   Scenario: A place flag is set and tested on its place
-    Given world/places/attic.md declares the flag "lamp_lit"
+    Given the docks pack gains world/places/attic.md
     And a rule sets flag lamp_lit of "place:attic" to true
     When the rule runs
     Then a rule testing flag lamp_lit of "place:attic" is true sees it as set
@@ -37,7 +36,7 @@ Feature: Stories and places carry meters and flags
     And the GM sees both light and draft
 
   Scenario: A place flag is never shown to players
-    Given world/places/attic.md declares the flag "lamp_lit"
+    Given the docks pack gains world/places/attic.md
     And rowan stands in the attic
     When a rule sets flag lamp_lit of "place:attic" to true
     Then rowan's change line does not show it

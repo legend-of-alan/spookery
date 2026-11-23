@@ -38,11 +38,21 @@ impl Descriptor {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Meter {
     pub base: i64,
     pub offset: i64,
+}
+
+impl Meter {
+    /// The meter a carrier with no save row reads: `desc`'s start, with no offset.
+    pub fn at_start(desc: &Descriptor) -> Meter {
+        Meter {
+            base: desc.start,
+            offset: 0,
+        }
+    }
 }
 
 /// A change to a meter's offset. A journal line writes it as `"write":"offset","delta":<n>`.
@@ -68,15 +78,13 @@ pub(crate) fn value(desc: &Descriptor, live: &Meter, modifiers: i64) -> Result<i
     Ok(sum.clamp(desc.min, desc.max))
 }
 
-/// `held` with its offset moved by `delta` inside `desc`'s bounds: `UNKNOWN_ID` when nothing is
-/// held.
-fn shift(held: Option<&Meter>, desc: &Descriptor, delta: i64) -> Result<Meter, Reason> {
-    let held = held.ok_or(Reason::UnknownId)?;
+/// `held` with its offset moved by `delta` inside `desc`'s bounds.
+fn shift(held: Meter, desc: &Descriptor, delta: i64) -> Result<Meter, Reason> {
     let offset = held.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
     if !is_storable(desc, held.base, offset) {
         return Err(Reason::OutOfRange);
     }
-    Ok(Meter { offset, ..*held })
+    Ok(Meter { offset, ..held })
 }
 
 impl Component for Meter {
@@ -84,20 +92,32 @@ impl Component for Meter {
     const ID: &'static str = "meter";
 }
 
+impl<'a, E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Ref<'a, E, Meter> {
+    /// Meter `entry_id` as the entity holds it: its save row, or `Meter::at_start` when it has
+    /// none. `None` when the entity does not carry the meter.
+    pub fn get_or_start(&self, entry_id: &str) -> Option<Meter> {
+        let desc = (self.entities.canon).meter_desc(self.id.as_id_ref(), entry_id)?;
+        let held = self.get(entry_id).copied();
+        (self.entities.contains(self.id)).then(|| held.unwrap_or(Meter::at_start(desc)))
+    }
+}
+
 impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter> {
-    /// Move meter `entry_id` by `delta` inside its bounds. It reports the meter's key with the
-    /// stored meter it replaced; the change is read, as rules read the meter, when the changes
-    /// are taken.
+    /// Move meter `entry_id` by `delta` inside its bounds. A meter back at its start leaves the
+    /// save. It reports the meter's key with the meter it replaced; the change is read, as rules
+    /// read the meter, when the changes are taken.
     pub fn shift(&mut self, entry_id: &str, delta: i64) -> Result<(), Reason> {
         self.check_exists()?;
         let id = self.id.as_id_ref();
         let desc = (self.writer.canon.meter_desc(id, entry_id)).ok_or(Reason::UnknownId)?;
+        let start = Meter::at_start(desc);
         let entry = (self.id.clone(), entry_id.to_string());
-        let held = self.store().get(&entry);
+        let held = self.store().get(&entry).copied().unwrap_or(start);
         let next = shift(held, desc, delta)?;
-        let report = change::Report::Meter(self.key(Some(entry_id)), held.cloned());
+        let report = change::Report::Meter(self.key(Some(entry_id)), Some(held));
+        let next = (next != start).then_some(next);
         let (store, transaction) = self.store_mut();
-        store.set(transaction, entry, Some(next), [report])
+        store.set(transaction, entry, next, [report])
     }
 
     /// Give the entity meter `entry_id` as `meter` says, `None` taking it off, outside a round's
@@ -108,7 +128,7 @@ impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter
             self.check_exists()?;
         }
         let entry = (self.id.clone(), entry_id.to_string());
-        let held = self.store().get(&entry).cloned();
+        let held = self.store().get(&entry).copied();
         let report = change::Report::Meter(self.key(Some(entry_id)), held);
         let (store, transaction) = self.store_mut();
         store.set(transaction, entry, meter, [report])
@@ -130,9 +150,11 @@ impl Ref<'_, Save, Meter> {
                     .meter_desc(id.as_ref(), entry_id)
                     .ok_or(Reason::UnknownId);
                 let held = in_collection!(id, [&save], |entities, id| {
-                    Reader::new(entities, canon).get::<Meter>(id).get(entry_id)
+                    Reader::new(entities, canon)
+                        .get::<Meter>(id)
+                        .get_or_start(entry_id)
                 });
-                value(desc?, held.ok_or(Reason::UnknownId)?, 0)
+                value(desc?, &held.ok_or(Reason::UnknownId)?, 0)
             }
         }
     }

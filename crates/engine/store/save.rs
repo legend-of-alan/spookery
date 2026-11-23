@@ -1,5 +1,7 @@
 //! Read, write, migrate and check the save.
 
+use std::collections::BTreeSet;
+
 use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 
@@ -7,10 +9,10 @@ use crate::canon::{unknown_item, ItemDef};
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::ecs::component::meter::{self, Meter};
 use crate::ecs::component::modifier::{self, Modifier};
-use crate::ecs::id::{ActorId, GlobalId};
+use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, Save};
 use crate::entity;
-use crate::store::records::{AddedMeter, DroppedMeter, MigrateRecord};
+use crate::store::records::{DroppedMeter, MigrateRecord};
 use crate::Reason;
 
 const FILE: &str = "state/save.yaml";
@@ -79,47 +81,6 @@ fn one_trailing_lf(mut text: String) -> String {
     text
 }
 
-/// Meters the pack gives an entity that the entity lacks, each at its `start`.
-pub(crate) fn find_missing_meters(world: &ecs::World) -> Vec<AddedMeter> {
-    let canon = world.canon();
-    let descs = canon.meters.iter().chain(&canon.world_meters);
-    descs
-        .filter(|(id, desc)| !find_lacking_carriers(world, &desc.carrier, id).is_empty())
-        .map(|(id, desc)| AddedMeter::new(id, desc))
-        .collect()
-}
-
-/// The entities `carrier` names that lack meter `id`. Every-actor and one-actor carriers are read
-/// off the save's actors, so a cast member the save does not list names nobody; any other carrier
-/// is itself. Migrate and `check` both read it, so they agree on who lacks a meter.
-pub(crate) fn find_lacking_carriers(
-    world: &ecs::World,
-    carrier: &Option<entity::Id>,
-    id: &str,
-) -> Vec<entity::Id> {
-    let held = match carrier {
-        None | Some(entity::Id::Actor(_)) => {
-            let actors = world.actors();
-            let named = |actor: &&ActorId| match carrier {
-                Some(entity::Id::Actor(one)) => one == *actor,
-                _ => true,
-            };
-            let lacks = |actor: &&ActorId| !actors.get::<Meter>(actor).contains(id);
-            let ids = actors.query::<ActorId>();
-            let lacking = ids.iter().filter(named).filter(lacks).cloned();
-            return lacking.map(entity::Id::Actor).collect();
-        }
-        Some(entity::Id::Place(place)) => world.places().get::<Meter>(place).get(id),
-        Some(entity::Id::Story(story)) => world.stories().get::<Meter>(story).get(id),
-        Some(entity::Id::Global) => world.globals().get::<Meter>(&GlobalId).get(id),
-    };
-    held.is_none()
-        .then(|| carrier.clone())
-        .flatten()
-        .into_iter()
-        .collect()
-}
-
 /// Every meter the save lists, with the actor, place, story or world that holds it.
 fn held_meters(world: &ecs::World) -> impl Iterator<Item = (entity::Id, &str, &Meter)> {
     let actors = world.actors().query::<&Meter>();
@@ -135,6 +96,19 @@ fn held_meters(world: &ecs::World) -> impl Iterator<Item = (entity::Id, &str, &M
     let globals = (globals.iter().flat_map(|held| held.iter_with_id()))
         .map(|(_, key, held)| (entity::Id::Global, key, held));
     actors.chain(places).chain(stories).chain(globals)
+}
+
+/// Every flag key the save lists, on any actor, place, story or the world.
+pub(crate) fn held_flag_keys(world: &ecs::World) -> BTreeSet<&str> {
+    let actors = world.actors().query::<&component::Flag>();
+    let places = world.places().query::<&component::Flag>();
+    let stories = world.stories().query::<&component::Flag>();
+    let globals = world.globals().query::<&component::Flag>();
+    let keys = (actors.iter().flat_map(|held| held.iter()))
+        .chain(places.iter().flat_map(|held| held.iter()))
+        .chain(stories.iter().flat_map(|held| held.iter()))
+        .chain(globals.iter().flat_map(|held| held.iter()));
+    keys.map(|(key, ())| key).collect()
 }
 
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
@@ -157,21 +131,12 @@ pub(crate) fn find_stale_modifiers(world: &ecs::World) -> Vec<(&ActorId, &str, &
         .collect()
 }
 
-/// Migrate a save as `record` says, through the writers a round uses: give each entity the
-/// meters it lacks, at their `start`, take the dropped modifiers off every actor and each dropped
-/// meter off its entity, then stamp the record's `pack_rev_after` and `state_rev_after`. A meter
-/// an entity holds keeps its value. Live migrate and replay both call this. It does not touch the
-/// disk, and it reads no hash or chain from the record.
+/// Migrate a save as `record` says, through the writers a round uses: take the dropped modifiers
+/// off every actor and each dropped meter off its entity, then stamp the record's `pack_rev_after`
+/// and `state_rev_after`. A meter an entity holds keeps its value, and one it has no row for reads
+/// the pack's start. Live migrate and replay both call this. It does not touch the disk, and it
+/// reads no hash or chain from the record.
 pub(crate) fn migrate(mut world: ecs::World, record: &MigrateRecord) -> Result<ecs::World, Reason> {
-    for meter in &record.meters {
-        let start = Meter {
-            base: meter.start,
-            offset: 0,
-        };
-        for id in find_lacking_carriers(&world, &meter.carrier, &meter.id) {
-            (world.entities_mut().get_mut::<Meter>(&id)).set(&meter.id, Some(start.clone()))?;
-        }
-    }
     let actors = world.actors().query::<&Modifier>();
     let held = actors.iter().flat_map(|held| held.iter_with_id());
     let dropped = held.filter(|(_, id, _)| record.dropped_modifiers.iter().any(|drop| drop == id));
@@ -190,10 +155,10 @@ pub(crate) fn migrate(mut world: ecs::World, record: &MigrateRecord) -> Result<e
 }
 
 /// Check the save against the pack without changing it. Refuse every component on an actor with no
-/// control type, every actor the cast lacks, every actor without a place or an action state, every
-/// actor in a place or on an exit the pack lacks, every meter, item and wielded slot the pack does
-/// not define, every meter the pack gives an entity that the entity lacks, every meter outside its
-/// rules, every modifier the pack no longer gives that meter, and every empty id or zero count.
+/// control type, every actor the cast lacks, every actor without a place, every actor in a place
+/// or on an exit the pack lacks, every meter, item and wielded slot the pack does not define,
+/// every meter outside its rules, every modifier the pack no longer gives that meter, and every
+/// empty id or zero count.
 pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
     let canon = world.canon();
     let mut diags = Vec::new();
@@ -214,12 +179,10 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
                 schema_error(FILE, &problem, hint).at_path(format!("actors.control_type.{id}")),
             );
         }
-        for store in ["place", "acts"] {
-            if !held.contains(&(store, id)) {
-                let problem = format!("actor '{id}' has a control type but no {store}");
-                let diag = schema_error(FILE, &problem, "give every actor a place and acts");
-                diags.push(diag.at_path(format!("actors.{store}.{id}")));
-            }
+        if !held.contains(&("place", id)) {
+            let problem = format!("actor '{id}' has a control type but no place");
+            let diag = schema_error(FILE, &problem, "give every actor a place");
+            diags.push(diag.at_path(format!("actors.place.{id}")));
         }
     }
     for (id, place) in actors.query::<(ActorId, &component::Place)>().iter() {
@@ -231,13 +194,6 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
             let problem = format!("actor '{id}' is at '{place}', which the pack does not define");
             let diag = schema_error(FILE, &problem, "move the actor to a place");
             diags.push(diag.at_path(format!("actors.place.{id}")));
-        }
-    }
-    for (key, desc) in canon.meters.iter().chain(&canon.world_meters) {
-        for carrier in find_lacking_carriers(world, &desc.carrier, key) {
-            let problem = format!("lacks meter '{key}', which the pack gives it");
-            let hint = "run spook migrate to add the meter";
-            diags.push(meter_error(&carrier, key, &problem, hint));
         }
     }
     for meter in find_stale_meters(world) {

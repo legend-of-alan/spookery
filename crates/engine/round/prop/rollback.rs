@@ -21,7 +21,7 @@ use crate::ecs::component::meter::{self, Meter};
 use crate::ecs::component::modifier;
 use crate::ecs::component::{self, Component};
 use crate::ecs::id::{ActorId, ExitId};
-use crate::ecs::{self, ActCounter, Presence, Save};
+use crate::ecs::{self, Presence, Save, WindowCount};
 use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::rules::effect::{Effect, EffectKind};
@@ -75,15 +75,10 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     let opened = session::Session::open(&pack.0).expect("docks pack opens");
     let mut canon = opened.canon().clone();
     canon.budget.max_state_keys_mutated = 1000;
-    let street = canon.places.get_mut("docks_street").expect("the street");
-    street.flags.extend(["lit".to_string(), "busy".to_string()]);
-    let mira = canon.cast.get_mut("mira").expect("Mira");
-    mira.flags.push("wary".to_string());
     let key = canon.items.get_mut("brass_key").expect("the brass key");
     key.tags.push("weapon".to_string());
     let tale = StoryDef {
         name: "tale".to_string(),
-        flags: vec!["told".to_string()],
     };
     canon.stories.insert("tale".into(), tale);
     let fatigue = modifier::Descriptor {
@@ -176,7 +171,7 @@ fn play_steps(session: &session::Session<()>, steps: &[Step]) -> Result<(), Test
                     .count(1, *players);
             }
             Step::ResetActs => {
-                let _ = (world.actors_mut()).reset_acts(ActCounter::IdleActsThisWindow);
+                let _ = (world.actors_mut()).reset_acts(WindowCount::Idle);
             }
             Step::Busy(true) => {
                 let _ = world

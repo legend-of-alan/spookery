@@ -166,8 +166,8 @@ impl<T: Entries> Store<T> {
     }
 }
 
-/// Holds a value for every actor in `kind`. Production code can only set a value for an actor
-/// already present; adding and taking one off are for the actor lifecycle only fixtures run.
+/// Holds a value for every actor. Production code can only set a value for an actor already
+/// present; adding and taking one off are for the actor lifecycle only fixtures run.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct DenseStore<V: PartialEq + Debug>(Store<BTreeMap<ActorId, V>>);

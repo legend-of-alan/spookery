@@ -602,16 +602,7 @@ fn strip_bodies() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn patch_mira_flags_and_place(pack: &Path, flags: &str) {
-    let path = pack.join("cast/mira.md");
-    let text = fs::read_to_string(&path).unwrap();
-    let next = text.replacen(
-        "idle:\n  eligible: true\n",
-        &format!("idle:\n  eligible: true\nflags:\n{flags}"),
-        1,
-    );
-    assert_ne!(next, text, "mira round block was not patched");
-    fs::write(&path, next).unwrap();
+fn put_mira_in_the_shop(pack: &Path) {
     let now_path = pack.join("state/save.yaml");
     let save = spookery_engine::parse_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
@@ -643,7 +634,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    check:\n      total: 2d6 + self.vigor\n      success_at: {difficulty}\n    do:\n      - flag:\n          of: target\n          key: marked\n          value: true\n",
         ));
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
-        patch_mira_flags_and_place(&pack, "    - marked\n");
+        put_mira_in_the_shop(&pack);
         stamp_pack_rev(&pack);
         let world = play_mark(&pack);
         assert_eq!(world.world_time, 1085);
@@ -662,7 +653,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    check:\n      total: 2d6 + self.vigor\n      success_at: {difficulty}\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n",
         ));
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
-        patch_mira_flags_and_place(&pack, "    - marked\n    - missed\n");
+        put_mira_in_the_shop(&pack);
         stamp_pack_rev(&pack);
         let world = play_mark(&pack);
         assert_eq!(flags_of(&world, "mira"), vec![flag.to_string()], "{label}");

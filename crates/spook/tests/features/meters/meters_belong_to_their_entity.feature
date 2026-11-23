@@ -16,6 +16,15 @@ Feature: Meters belong to their entity
     Then Mira's change line shows shop_day
     And rowan's change line does not
 
+  Scenario: The save lists a meter or act only while it differs from the pack's start
+    Given rowan has verbs that add 2 to and take 2 from her vigor
+    When rowan adds 2 to her vigor
+    Then rowan's vigor is at base 1 and offset 2
+    When rowan takes 2 from her vigor
+    Then rowan's vigor reads 1 and the save lists no vigor for her
+    And the save lists an act row for rowan
+    And the save lists no act row for wren
+
   Scenario: A player does not see a flag change
     Given rowan stands in the shop
     When a rule sets the world flag "bells_rung"

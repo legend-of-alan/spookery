@@ -5,8 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::map::MAP_FILE;
 use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{
-    declared_flags, Canon, CastDef, Exit, FactDef, ItemDef, PathDef, Paths, PlaceDef, StoryDef,
-    OPEN,
+    Canon, CastDef, Exit, FactDef, ItemDef, PathDef, Paths, PlaceDef, StoryDef, OPEN,
 };
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::ecs::component::meter;
@@ -158,8 +157,9 @@ pub(super) fn unknown_reads(scope: &EntityScope, rules: &rule::Table) -> Vec<Dia
     diags
 }
 
-/// Meter and flag effects and conditions whose entity is fixed by the pack and does not carry
-/// the meter or declare the flag. The world's flags are free names, so they are not checked.
+/// Meter effects and conditions whose entity is fixed by the pack and does not carry the meter,
+/// and flag effects and conditions on an exit that cannot carry the flag. Any other entity may
+/// carry any flag.
 pub(super) fn unknown_carriers(scope: &EntityScope, rules: &rule::Table) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
@@ -180,7 +180,7 @@ pub(super) fn unknown_carriers(scope: &EntityScope, rules: &rule::Table) -> Vec<
         for (kind, of, key) in named {
             let why = match kind {
                 "meter" => scope.why_not_carried(fixed, of, key),
-                _ => scope.why_undeclared(fixed, of, key),
+                _ => scope.why_exit_lacks_flag(of, key),
             };
             let Some(why) = why else {
                 continue;
@@ -234,29 +234,22 @@ impl EntityScope<'_> {
         }
     }
 
-    /// Why flag `key` of the owner `of` names can never be set or tested, or `None` when it may be.
-    fn why_undeclared(
-        &self,
-        fixed_self: Option<&str>,
-        of: &grammar::Object,
-        key: &str,
-    ) -> Option<String> {
-        if let grammar::Object::Exit(exit) = of {
-            return if self.unknown_object(of).is_some() {
-                Some(format!("{exit} is not an exit"))
-            } else if key != OPEN {
-                Some(format!("an exit carries only the flag '{OPEN}'"))
-            } else {
-                let is_conditional = self
-                    .find_exit(exit)
-                    .is_some_and(|exit| exit.path.is_conditional());
-                (!is_conditional).then(|| format!("{exit} has no if, so it is always open"))
-            };
+    /// Why flag `key` of the exit `of` names can never be set or tested, or `None` when it may be
+    /// or `of` is no exit.
+    fn why_exit_lacks_flag(&self, of: &grammar::Object, key: &str) -> Option<String> {
+        let grammar::Object::Exit(exit) = of else {
+            return None;
+        };
+        if self.unknown_object(of).is_some() {
+            Some(format!("{exit} is not an exit"))
+        } else if key != OPEN {
+            Some(format!("an exit carries only the flag '{OPEN}'"))
+        } else {
+            let is_conditional = self
+                .find_exit(exit)
+                .is_some_and(|exit| exit.path.is_conditional());
+            (!is_conditional).then(|| format!("{exit} has no if, so it is always open"))
         }
-        let id = self.fixed_entity(fixed_self, of)?;
-        let flags = declared_flags(self.cast, self.places, self.stories, id.as_ref())?;
-        let declared = flags.iter().any(|flag| flag == key);
-        (!declared).then(|| format!("{id} does not declare it"))
     }
 
     /// Why meter `key` of the owner `of` names can never be read or written, or `None` when it
@@ -349,8 +342,9 @@ impl EntityScope<'_> {
     }
 }
 
-/// Static warnings and trigger-reach errors on a loaded `Canon`.
-pub(crate) fn check_canon(canon: &Canon) -> Vec<Diagnostic> {
+/// Static warnings and trigger-reach errors on a loaded `Canon`, whose save lists the flag keys in
+/// `held_flags`.
+pub(crate) fn check_canon(canon: &Canon, held_flags: &BTreeSet<&str>) -> Vec<Diagnostic> {
     let mut diags = check_reachable_places(canon);
     diags.extend(check_teleport_verbs(canon));
     diags.extend(check_trigger_cycles(canon));
@@ -358,6 +352,46 @@ pub(crate) fn check_canon(canon: &Canon) -> Vec<Diagnostic> {
     diags.extend(check_world_change_subjects(canon));
     diags.extend(check_cycles(canon));
     diags.extend(check_gm_notes_length(canon));
+    diags.extend(check_unset_flags(canon, held_flags));
+    diags
+}
+
+/// Each rule's and each path's conditions, with the file and path that hold them.
+fn conditions(canon: &Canon) -> impl Iterator<Item = (&str, String, &[Cond])> {
+    let rules = (canon.rules.iter()).map(|rule| {
+        (
+            rule.file.as_str(),
+            format!("rules[{}].if", rule.index),
+            &rule.if_[..],
+        )
+    });
+    let paths = (canon.paths.iter().enumerate())
+        .map(|(row, path)| (MAP_FILE, format!("paths[{row}].if"), &path.if_[..]));
+    rules.chain(paths)
+}
+
+/// Flag conditions, on a rule or a path, that test a key no rule sets and `held` does not list,
+/// so its value never moves: most likely a misspelt key. An exit's `open` is left to
+/// `unknown_carriers`.
+fn check_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for (file, at, conds) in conditions(canon) {
+        for cond in conds {
+            cond.visit(|cond| {
+                let Cond::Flag { of, key, .. } = cond else {
+                    return;
+                };
+                let is_ever_set =
+                    |key| held.contains(key) || flag_owners(canon, key).next().is_some();
+                if matches!(of, grammar::Object::Exit(_)) || is_ever_set(key.as_str()) {
+                    return;
+                }
+                let problem = format!("tests flag '{key}', which no rule sets and no save holds");
+                let hint = "set the flag in a rule or the save, or test a flag that is set";
+                diags.push(warning(file, &problem, hint).at_path(at.clone()));
+            });
+        }
+    }
     diags
 }
 
@@ -384,17 +418,8 @@ fn check_gm_notes_length(canon: &Canon) -> Option<Diagnostic> {
 /// `cycle` conditions, on a rule or a path, that name no cycle in the budget or have a bound
 /// at or past the cycle's length.
 fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
-    let rules = canon.rules.iter().map(|rule| {
-        (
-            rule.file.as_str(),
-            format!("rules[{}].if", rule.index),
-            &rule.if_,
-        )
-    });
-    let paths = (canon.paths.iter().enumerate())
-        .map(|(row, path)| (MAP_FILE, format!("paths[{row}].if"), &path.if_));
     let mut diags = Vec::new();
-    for (file, at, conds) in rules.chain(paths) {
+    for (file, at, conds) in conditions(canon) {
         let mut cycles = Vec::new();
         for cond in conds {
             cond.visit(|cond| {
@@ -684,8 +709,8 @@ fn is_too_wide(sight: &Sight, reach: &Reach) -> bool {
 }
 
 /// Whether `watch` can match a change no actor holds, which has no subject: a meter the world,
-/// a place or a story carries, a flag a place or story declares, or a flag some rule sets with
-/// `of: world`.
+/// a place or a story carries, or a flag some rule sets on the world, a place, a story or an
+/// exit.
 fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
     match watch {
         ChangeWatch::Meter { key, .. } => {
@@ -696,24 +721,8 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
                     .is_some_and(|desc| !desc.is_actor_meter())
         }
         ChangeWatch::Flag { key, .. } => {
-            let declared = |flags: &[String]| flags.contains(key);
             (key == OPEN && canon.paths.iter().any(PathDef::is_conditional))
-                || canon.places.values().any(|place| declared(&place.flags))
-                || canon.stories.values().any(|story| declared(&story.flags))
-                || canon.rules.iter().any(|rule| {
-                    let mut sets = false;
-                    rule.visit_templates(|effect| {
-                        if let EffectTemplate::Flag {
-                            of: grammar::Object::Global,
-                            key: written,
-                            ..
-                        } = effect
-                        {
-                            sets |= written == key;
-                        }
-                    });
-                    sets
-                })
+                || flag_owners(canon, key).any(|of| !matches!(of, grammar::Object::Actor(_)))
         }
         _ => false,
     }
@@ -727,9 +736,25 @@ fn watches_actor_key(canon: &Canon, watch: &ChangeWatch) -> bool {
             .meters
             .get(key)
             .is_some_and(meter::Descriptor::is_actor_meter),
-        ChangeWatch::Flag { key, .. } => canon.cast.values().any(|cast| cast.flags.contains(key)),
+        ChangeWatch::Flag { key, .. } => {
+            flag_owners(canon, key).any(|of| matches!(of, grammar::Object::Actor(_)))
+        }
         _ => false,
     }
+}
+
+/// The `of` of each flag effect in the pack's rules that writes flag `key`.
+fn flag_owners<'c>(canon: &'c Canon, key: &str) -> impl Iterator<Item = &'c grammar::Object> {
+    let mut owners = Vec::new();
+    for rule in canon.rules.iter() {
+        rule.visit_templates(|effect| match effect {
+            EffectTemplate::Flag {
+                of, key: written, ..
+            } if written == key => owners.push(of),
+            _ => {}
+        });
+    }
+    owners.into_iter()
 }
 
 /// A change rule on a world change runs once, for no one, so it has no `self` and no `here`.

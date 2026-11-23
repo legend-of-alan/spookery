@@ -3,8 +3,6 @@ schema: cast
 id: keeper
 control_type: npc
 name: Keeper
-flags:
-  - tended
 idle:
   eligible: true
 rules:

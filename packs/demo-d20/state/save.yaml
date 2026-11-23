@@ -1,7 +1,7 @@
 schema: save
 world_id: demo-d20
 pack_rev: blake2s:b5842318632289de703b24ca7cd75966f5f8aab916fa745d93a049edb5044c0e
-rules_rev: 30
+rules_rev: 31
 state_rev: 0
 round_index: 0
 world_time: 1080
@@ -26,27 +26,6 @@ actors:
         - gate
         - loft
         - shed
-  acts:
-    briar:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-    corin:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-    goblin:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-    nell:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-    oden:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
   items:
     corin:
       tonic: 1
@@ -56,9 +35,6 @@ actors:
     briar:
       defense:
         base: 14
-        offset: 0
-      grace:
-        base: 1
         offset: 0
       hp:
         base: 12
@@ -73,53 +49,12 @@ actors:
       grace:
         base: 3
         offset: 0
-      hp:
-        base: 8
-        offset: 0
       might:
         base: 30
         offset: 0
-    goblin:
-      defense:
-        base: 10
-        offset: 0
-      grace:
-        base: 1
-        offset: 0
-      hp:
-        base: 8
-        offset: 0
-      might:
-        base: 1
-        offset: 0
-      nerve:
-        base: 3
-        offset: 0
     nell:
-      defense:
-        base: 10
-        offset: 0
       grace:
         base: 2
-        offset: 0
-      hp:
-        base: 8
-        offset: 0
-      might:
-        base: 1
-        offset: 0
-    oden:
-      defense:
-        base: 10
-        offset: 0
-      grace:
-        base: 1
-        offset: 0
-      hp:
-        base: 8
-        offset: 0
-      might:
-        base: 1
         offset: 0
   modifiers: {}
   flags:
@@ -138,9 +73,6 @@ stories:
   meters: {}
   flags: {}
 globals:
-  meters:
-    daylight:
-      base: 12
-      offset: 0
+  meters: {}
   flags: []
   notes: {}

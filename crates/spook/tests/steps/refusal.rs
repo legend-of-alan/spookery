@@ -43,8 +43,6 @@ async fn brams_habit_takes_a_missing_tonic(world: &mut World) {
         "\
 idle:
   eligible: true
-flags:
-  - grabbed
 rules:
   - id: grab
     when: habit
@@ -274,8 +272,6 @@ async fn bram_can_pay_until_harbormouse_spends_brams_vigor(world: &mut World) {
         "\
 idle:
   eligible: true
-flags:
-  - heaved
 rules:
   - id: heave
     when: habit

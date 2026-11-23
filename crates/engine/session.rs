@@ -767,12 +767,12 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
             None
         }
     };
+    let mut save = None;
     match journal::read_save(&journal::save_path(root)) {
-        Ok(bytes) => {
-            if let Err(more) = load_save_file(root, canon.as_ref(), &bytes) {
-                diags.extend(more);
-            }
-        }
+        Ok(bytes) => match load_save_file(root, canon.as_ref(), &bytes) {
+            Ok(loaded) => save = Some(loaded),
+            Err(more) => diags.extend(more),
+        },
         Err(Reason::NotInSpec) => {}
         Err(reason) => diags.push(
             error(
@@ -785,7 +785,9 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         ),
     }
     if let Some(canon) = &canon {
-        diags.extend(crate::canon::check_canon(canon));
+        let world = save.map(|save| ecs::World::new(save, Arc::clone(canon)));
+        let held_flags = world.as_ref().map(save::held_flag_keys).unwrap_or_default();
+        diags.extend(crate::canon::check_canon(canon, &held_flags));
     }
     diags
 }

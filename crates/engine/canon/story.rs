@@ -1,5 +1,5 @@
-//! `story/*.yaml`: rules that belong to no place, cast member or item, and the meters and flags
-//! the story carries.
+//! `story/*.yaml`: rules that belong to no place, cast member or item, and the meters the story
+//! carries.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -68,13 +68,7 @@ pub(super) fn load_stories(
             meters::add_own(meters, own, world_meters, &source, diags);
         }
         let name = story.name.unwrap_or_else(|| story.id.clone());
-        stories.insert(
-            id,
-            StoryDef {
-                name,
-                flags: story.flags,
-            },
-        );
+        stories.insert(id, StoryDef { name });
         let compiled = rule_list::compile(&file, story.rules, &Owner::Story(story.id));
         rules.extend(diags.keep(compiled).unwrap_or_default());
     }
@@ -89,8 +83,6 @@ struct StoryDoc {
     _schema: String,
     id: String,
     name: Option<String>,
-    #[serde(default)]
-    flags: Vec<String>,
     /// The meters only this story carries.
     #[serde(default)]
     meters: Vec<MeterYaml>,

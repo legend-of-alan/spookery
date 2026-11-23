@@ -18,7 +18,7 @@ fn add_toll(pack: &Path) {
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replace(
         "  eligible: true\n",
-        "  eligible: true\nflags:\n    - tolled\nrules:\n  - id: toll\n    when: habit\n    if:\n      - cycle:\n          id: day\n          from: 1260\n          to: 1320\n    do:\n      - flag:\n          of: self\n          key: tolled\n          value: true\n",
+        "  eligible: true\nrules:\n  - id: toll\n    when: habit\n    if:\n      - cycle:\n          id: day\n          from: 1260\n          to: 1320\n    do:\n      - flag:\n          of: self\n          key: tolled\n          value: true\n",
     );
     assert_ne!(text, next);
     fs::write(path, next).unwrap();
@@ -159,7 +159,7 @@ fn add_nell(now: &mut ecs::World, place: &str) {
     let nell = ActorId::from("nell");
     let wren = "wren".into();
     let meters: Vec<_> = (now.actors().get::<Meter>(&wren).iter())
-        .map(|(key, meter)| (key.to_string(), meter.clone()))
+        .map(|(key, meter)| (key.to_string(), *meter))
         .collect();
     let mut actors = now.actors_mut();
     actors.add_actor(&nell, component::ControlType::Pc, place);

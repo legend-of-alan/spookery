@@ -15,10 +15,8 @@ pub(crate) fn edit_meter(
     edit: impl FnOnce(&mut Meter),
 ) {
     let actor = ActorId::from(actor);
-    let held = now.actors().get::<Meter>(&actor).get(key);
-    let mut meter = held
-        .cloned()
-        .unwrap_or_else(|| panic!("{actor} has no {key}"));
+    let held = now.actors().get::<Meter>(&actor).get_or_start(key);
+    let mut meter = held.unwrap_or_else(|| panic!("{actor} has no {key}"));
     edit(&mut meter);
     let mut actors = now.actors_mut();
     actors
@@ -34,6 +32,11 @@ pub(crate) fn put_meter(now: &mut ecs::World, id: &entity::Id, key: &str, base: 
         .get_mut::<component::Meter>(id)
         .set(key, Some(meter))
         .unwrap();
+}
+
+/// The save at `pack`'s journal tip, as its file holds it.
+pub(crate) fn save_of(pack: &Path) -> serde_json::Value {
+    serde_json::to_value(&*world_of(pack)).unwrap_or_else(|err| panic!("save: {err}"))
 }
 
 /// Edit the save as its file holds it, for a fixture no writer makes: a count set outright, a

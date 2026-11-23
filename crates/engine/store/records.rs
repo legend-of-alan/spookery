@@ -2,34 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ecs::component::meter;
 use crate::ecs::id::ActorId;
 use crate::ecs::MemoryLine;
 use crate::entity;
 use crate::intent::Intent;
 use crate::rules::effect::Effect;
 use crate::rules::gate;
-
-/// One meter a migrate added, stored at that meter's `start`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AddedMeter {
-    pub id: String,
-    pub start: i64,
-    /// The one actor or the world that carries it. Omitted for a meter every actor carries.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub carrier: Option<entity::Id>,
-}
-
-impl AddedMeter {
-    pub(crate) fn new(id: &str, desc: &meter::Descriptor) -> Self {
-        Self {
-            id: id.to_string(),
-            start: desc.start,
-            carrier: desc.carrier.clone(),
-        }
-    }
-}
 
 /// One meter a migrate dropped from one entity, because the pack no longer gives it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,9 +25,6 @@ pub struct MigrateRecord {
     pub state_rev_before: u64,
     pub state_rev_after: u64,
     pub state_hash: String,
-    /// Meters this migrate added. Omitted when it added none, so older lines stay the same.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub meters: Vec<AddedMeter>,
     /// Modifiers this migrate dropped from every actor. Omitted when it dropped none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dropped_modifiers: Vec<String>,

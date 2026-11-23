@@ -223,14 +223,6 @@ rules:
 The ferry waits at the dock.
 ",
     );
-    let rowan = pack.join("cast/pc-rowan.md");
-    let text = fs::read_to_string(&rowan).unwrap();
-    let next = text.replace(
-        "idle:\n  eligible: false\n",
-        "idle:\n  eligible: false\nflags:\n    - took_the_ferry\n",
-    );
-    assert_ne!(text, next, "rowan profile was not found");
-    fs::write(&rowan, next).unwrap();
     edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"rowan".into())
@@ -356,10 +348,19 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
             .set("docks_shop")
             .unwrap();
         edit_as_saved(now, |save| {
-            save["actors"]["acts"]["mira"]["idle_acts_this_window"] = 3.into()
+            save["actors"]["acts"]["mira"] = idle_acts_used(3)
         });
     });
     play_an_empty_round(&pack);
+}
+
+/// The save row of an actor who has not acted but has used `idle` idle acts this window.
+fn idle_acts_used(idle: u32) -> serde_json::Value {
+    serde_json::json!({
+        "last_act_round": 0,
+        "idle_acts_this_window": idle,
+        "live_acts_this_window": 0,
+    })
 }
 
 fn play_an_empty_round(pack: &Path) {
@@ -404,8 +405,14 @@ fn every_actor_used_its_idle_acts(world: &mut World, window: u64, tick: u64) {
     edit_save(&pack, |now| {
         now.world_time = tick;
         edit_as_saved(now, |save| {
-            for act in save["actors"]["acts"].as_object_mut().unwrap().values_mut() {
-                act["idle_acts_this_window"] = 3.into();
+            let actors: Vec<String> = save["actors"]["control_type"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect();
+            for actor in actors {
+                save["actors"]["acts"][actor] = idle_acts_used(3);
             }
         });
     });
@@ -474,7 +481,7 @@ fn attack_targets_defense(world: &mut World) {
     let text = fs::read_to_string(&briar).unwrap();
     let next = text.replace(
         "  eligible: true\n",
-        "  eligible: true\nflags:\n    - hit\n    - missed\nmeters:\n  - id: defense\n    min: 0\n    base_cap: 20\n    max: 20\n    base: 12\n",
+        "  eligible: true\nmeters:\n  - id: defense\n    min: 0\n    base_cap: 20\n    max: 20\n    base: 12\n",
     );
     assert_ne!(text, next, "briar profile was not found");
     fs::write(&briar, next).unwrap();

@@ -44,6 +44,7 @@ Feature: spook check explains a broken pack
       | a verb named look                   | rules/verbs.yaml           | SCHEMA            | 'look' is a built-in command                             |
       | a verb named say                    | rules/verbs.yaml           | SCHEMA            | 'say' is a built-in command                              |
       | flags under idle                    | cast/pc-rowan.md           | SCHEMA            | unknown field                                            |
+      | a flags list in a cast file         | cast/pc-rowan.md           | SCHEMA            | unknown field 'flags'                                    |
       | a cast role named kind              | cast/pc-rowan.md           | SCHEMA            | unknown field 'kind'                                     |
       | idle maybe                          | rules/budget.yaml          | SCHEMA            | not on or off                                            |
       | zero round interval                 | rules/budget.yaml          | SCHEMA            | round_every_real_seconds                                 |
@@ -70,7 +71,6 @@ Feature: spook check explains a broken pack
       | a modifier for 0 ticks              | rules/verbs.yaml           | SCHEMA            | a modifier effect has ticks below 1                      |
       | a modifier listed twice             | rules/modifiers.yaml       | SCHEMA            | modifiers.yaml:6: modifier 'fatigue' is listed twice     |
       | an undefined modifier               | rules/verbs.yaml           | SCHEMA            | modifier 'scorch', which is not in rules/modifiers.yaml  |
-      | an undeclared story flag            | rules/verbs.yaml           | SCHEMA            | 'walls_breached', but story:siege does not declare it    |
       | a story meter the world declares    | story/ending.yaml          | SCHEMA            | meter 'dawn' is already in world/meters.yaml             |
       | a story meter a cast declares       | story/ending.yaml          | SCHEMA            | already declared in another cast, place or story file    |
       | a story meter on the wrong story    | story/prologue.yaml        | SCHEMA            | but only story:ending carries meter 'dread'              |
@@ -194,6 +194,21 @@ Feature: spook check explains a broken pack
       | walk                  |
       | at once               |
       | inside a nested check |
+
+  Scenario: A flag a rule reads that no rule sets and no save holds is a warning
+    Given a docks table
+    When a verb tests rowan's flag "sealed", which no rule sets
+    And the pack_rev is restamped
+    And the operator runs spook check
+    Then the check exits 0
+    And the report names "WARNING"
+    And the report says "flag 'sealed', which no rule sets and no save holds"
+    When the operator runs spook check --json
+    Then the JSON array is one diagnostic code "WARNING" file "rules/verbs.yaml" path "rules[8].if"
+    When the save gives rowan the flag "sealed"
+    And the operator runs spook check --json
+    Then the check exits 0
+    And stdout says "[]"
 
   Scenario: Long gm_notes are a warning and the check still exits 0
     Given a docks table

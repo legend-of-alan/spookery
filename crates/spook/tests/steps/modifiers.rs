@@ -83,7 +83,7 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
     let rowan = entity::Id::Actor("rowan".into());
     let actor = "rowan".into();
     let meters = now.actors().get::<Meter>(&actor);
-    let Meter { base, offset } = meters.get(meter).unwrap().clone();
+    let Meter { base, offset } = *meters.get(meter).unwrap();
     let value = now.entities().get::<component::Meter>(&rowan).value(meter);
     base + offset - value.unwrap()
 }
@@ -459,9 +459,6 @@ fn fatigue_over_stored_vigor(world: &mut World, id: String) {
 /// A story whose rules watch vigor cross below 3 and below 4, each setting a flag of its own.
 const STRAIN: &str = "schema: story
 id: strain
-flags:
-  - under_3
-  - under_4
 rules:
   - id: under_3
     when:
