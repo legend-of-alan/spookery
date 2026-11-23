@@ -619,7 +619,7 @@ impl Screen {
         for (heading, meters) in [("Meters", &view.meters), ("The world", &view.world_meters)] {
             if !meters.is_empty() {
                 self.push_heading(&mut panel_lines, heading);
-                panel_lines.extend(meters.iter().map(|meter| self.render_meter(meter)));
+                panel_lines.extend(meters.iter().map(|meter| self.render_meter_gauge(meter)));
             }
         }
         let known_facts: Vec<&str> = view
@@ -648,7 +648,7 @@ impl Screen {
     }
 
     /// The meter as a line: `Hp: 8/16` and a gauge of its fill, scarlet on mulberry.
-    fn render_meter(&self, meter: &protocol::MeterView) -> Line<'static> {
+    fn render_meter_gauge(&self, meter: &protocol::MeterView) -> Line<'static> {
         let full_cells = match usize::try_from(meter.max) {
             Ok(max) if max > 0 => {
                 let value = usize::try_from(meter.value.clamp(0, meter.max)).unwrap_or(0);
