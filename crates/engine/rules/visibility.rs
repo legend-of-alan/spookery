@@ -152,14 +152,19 @@ fn narrations(
     lines
 }
 
-fn can_see_facts(canon: &Canon, world: &ecs::World, viewer: &ActorId, fact_ids: &[String]) -> bool {
+fn can_see_facts(
+    canon: &Canon,
+    world: &ecs::World,
+    viewer_id: &ActorId,
+    fact_ids: &[String],
+) -> bool {
     fact_ids
         .iter()
-        .all(|fact| can_see_fact(canon, world, viewer, fact))
+        .all(|fact| can_see_fact(canon, world, viewer_id, fact))
 }
 
-fn can_see(canon: &Canon, world: &ecs::World, viewer: &ActorId, change: &Change) -> bool {
-    if !world.actors().contains(viewer) {
+fn can_see(canon: &Canon, world: &ecs::World, viewer_id: &ActorId, change: &Change) -> bool {
+    if !world.actors().contains(viewer_id) {
         return false;
     }
     let key = &change.key;
@@ -169,26 +174,26 @@ fn can_see(canon: &Canon, world: &ecs::World, viewer: &ActorId, change: &Change)
             is_shown(canon, &key.entity_id, entry)
         }
         (Meter::ID, entity::Id::Place(place)) => {
-            place_of(world, viewer) == Some(place.as_str())
+            place_of(world, viewer_id) == Some(place.as_str())
                 && is_shown(canon, &key.entity_id, entry)
         }
         (Meter::ID, entity::Id::Actor(actor_id)) => {
-            viewer == actor_id && is_shown(canon, &key.entity_id, entry)
+            viewer_id == actor_id && is_shown(canon, &key.entity_id, entry)
         }
-        (KnownFacts::ID, entity::Id::Actor(actor_id)) => viewer == actor_id,
+        (KnownFacts::ID, entity::Id::Actor(actor_id)) => viewer_id == actor_id,
         (Modifier::ID, entity::Id::Actor(actor_id)) => {
-            viewer == actor_id && canon.modifiers.get(entry).is_some_and(|desc| !desc.hidden)
+            viewer_id == actor_id && canon.modifiers.get(entry).is_some_and(|desc| !desc.hidden)
         }
-        (Item::ID, entity::Id::Place(place)) => place_of(world, viewer) == Some(place.as_str()),
-        (Note::ID, entity::Id::Global) => can_see_note(canon, world, viewer, entry),
+        (Item::ID, entity::Id::Place(place)) => place_of(world, viewer_id) == Some(place.as_str()),
+        (Note::ID, entity::Id::Global) => can_see_note(canon, world, viewer_id, entry),
         (Place::ID, entity::Id::Actor(actor_id)) => {
-            viewer == actor_id
-                || same_place(world, viewer, actor_id)
-                || is_at(world, viewer, change.before.as_ref())
-                || is_at(world, viewer, change.after.as_ref())
+            viewer_id == actor_id
+                || same_place(world, viewer_id, actor_id)
+                || is_at(world, viewer_id, change.before.as_ref())
+                || is_at(world, viewer_id, change.after.as_ref())
         }
         (Act::BUSY | Item::ID | WieldedItem::ID, entity::Id::Actor(actor_id)) => {
-            viewer == actor_id || same_place(world, viewer, actor_id)
+            viewer_id == actor_id || same_place(world, viewer_id, actor_id)
         }
         _ => false,
     }
@@ -221,16 +226,16 @@ fn is_at(world: &ecs::World, viewer: &ActorId, value: Option<&ChangeValue>) -> b
     }
 }
 
-fn can_see_note(canon: &Canon, world: &ecs::World, viewer: &ActorId, id: &str) -> bool {
+fn can_see_note(canon: &Canon, world: &ecs::World, viewer_id: &ActorId, id: &str) -> bool {
     let Some(note) = world.globals().get::<Note>(&GlobalId).get(id) else {
         return false;
     };
-    let in_room = note.place_id.as_ref().map(PlaceId::as_str) == place_of(world, viewer);
-    let addressed = note.to_ids.contains(viewer);
+    let in_room = note.place_id.as_ref().map(PlaceId::as_str) == place_of(world, viewer_id);
+    let addressed = note.to_ids.contains(viewer_id);
     if !in_room && !addressed {
         return false;
     }
     note.fact_ids
         .iter()
-        .all(|fact| can_see_fact(canon, world, viewer, fact))
+        .all(|fact| can_see_fact(canon, world, viewer_id, fact))
 }

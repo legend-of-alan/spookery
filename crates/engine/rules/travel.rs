@@ -185,15 +185,15 @@ pub(crate) fn exits_at(
 }
 
 /// `exit` as `actor_id` sees it now: where it goes, its ticks read for their walk (0 when they
-/// cannot be read), and whether it is locked. The ticks are read against a probe with no id,
-/// with no one seated, since a number reads no presence.
+/// cannot be read), and whether it is locked. The ticks are read against a travel intent with no
+/// id, with no one seated, since a number reads no presence.
 pub(crate) fn exit_view(
     canon: &Canon,
     world: &ecs::World,
     actor_id: &ActorId,
     exit: &Exit,
 ) -> ExitView {
-    let probe = Intent::new(
+    let travel_intent = Intent::new(
         String::new(),
         world.round_index,
         Some(actor_id.clone()),
@@ -202,7 +202,7 @@ pub(crate) fn exit_view(
         Target::Exit(exit.id.clone()),
     );
     let presence = Presence::default();
-    let context = Context::new(canon, world, &presence, &probe);
+    let context = Context::new(canon, world, &presence, &travel_intent);
     ExitView {
         exit_id: exit.id.clone(),
         name: exit.name.clone(),
