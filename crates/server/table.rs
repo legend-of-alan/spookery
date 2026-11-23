@@ -312,7 +312,7 @@ impl Table {
             Some(ClaimArgs::Token { token, last_seq }) => self.claim_by_token(&token, last_seq),
             None => Err(Reason::Schema),
         };
-        let (token, actor, claimed) = match taken {
+        let (token, actor, claim_reply) = match taken {
             Ok(taken) => taken,
             Err(code) => return self.reply(conn, id, ServerBody::Refused(code.into())),
         };
@@ -325,7 +325,7 @@ impl Table {
                 return self.reply(conn, id, ServerBody::Refused(code.into()));
             }
         };
-        self.reply(conn, id, claimed);
+        self.reply(conn, id, claim_reply);
         tracing::info!(conn_id = %conn, actor_id = %actor, by_token = !fresh, "PC claimed");
         if let Some(claim) = self.seats.claim_of_actor_mut(&actor) {
             claim.conn = Some(conn);
@@ -350,10 +350,10 @@ impl Table {
         }
         let scrollback = self.session.player_scrollback(&actor)?;
         let claim = Claim::new(uuid::Uuid::new_v4().simple().to_string(), actor.clone());
-        let claimed = frames::render_claimed(self.session.world(), &claim, &scrollback, 0);
+        let claim_reply = frames::render_claim_reply(self.session.world(), &claim, &scrollback, 0);
         let token = claim.token.clone();
         self.seats.claims.push(claim);
-        Ok((token, actor, claimed))
+        Ok((token, actor, claim_reply))
     }
 
     /// The held claim `token` names, with what was sent to it after `last_seq`. A connection
@@ -370,8 +370,8 @@ impl Table {
             .find(|claim| claim.token == token)
             .ok_or(Reason::UnknownId)?;
         claim.conn = None;
-        let claimed = frames::render_claimed(self.session.world(), claim, &[], last_seq);
-        Ok((token.to_string(), claim.actor.clone(), claimed))
+        let claim_reply = frames::render_claim_reply(self.session.world(), claim, &[], last_seq);
+        Ok((token.to_string(), claim.actor.clone(), claim_reply))
     }
 
     fn release_claim(&mut self, conn: ConnId, id: Option<String>) {

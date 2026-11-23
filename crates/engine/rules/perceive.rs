@@ -157,8 +157,8 @@ fn build_capped_view(
     }
 
     let (places, actors, me) = (world.places(), world.actors(), viewer.actor_id());
-    let items = item_stacks(canon, places.get::<component::Item>(&place_id).iter())?;
-    let items_carried = item_stacks(canon, actors.get::<component::Item>(me).iter())?;
+    let items = build_item_stacks(canon, places.get::<component::Item>(&place_id).iter())?;
+    let items_carried = build_item_stacks(canon, actors.get::<component::Item>(me).iter())?;
     let wielded_item_id = (actors.get::<component::WieldedItem>(me).get()).map(str::to_string);
 
     let meters = shown_meters(canon, world, &entity::Id::Actor(viewer.actor_id().clone()));
@@ -200,19 +200,20 @@ fn build_capped_view(
     })
 }
 
-/// Each item of `held`, with its count and name.
-fn item_stacks<'a>(
+/// Each item of `item_counts`, with its count and name.
+fn build_item_stacks<'a>(
     canon: &Canon,
-    held: impl Iterator<Item = (&'a str, &'a u32)>,
+    item_counts: impl Iterator<Item = (&'a str, &'a u32)>,
 ) -> Result<Vec<ItemStack>, Reason> {
-    held.map(|(id, count)| {
-        Ok(ItemStack {
-            id: id.to_string(),
-            count: *count,
-            name: canon.name(id).ok_or(Reason::UnknownId)?.to_string(),
+    item_counts
+        .map(|(id, count)| {
+            Ok(ItemStack {
+                id: id.to_string(),
+                count: *count,
+                name: canon.name(id).ok_or(Reason::UnknownId)?.to_string(),
+            })
         })
-    })
-    .collect()
+        .collect()
 }
 
 /// The meters `carrier` carries that are not hidden, in id order.

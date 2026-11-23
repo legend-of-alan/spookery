@@ -38,7 +38,7 @@ fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
 
 /// The reply to a claim: the PC, its token, the round and tick of `now`, `scrollback`, and the
 /// messages `claim` kept after `last_seq`.
-pub(super) fn render_claimed(
+pub(super) fn render_claim_reply(
     now: &engine::ecs::World,
     claim: &Claim,
     scrollback: &[TapeRecord],
