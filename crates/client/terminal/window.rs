@@ -49,7 +49,7 @@ const SCARLET: PaletteColor = PaletteColor::new(0xd85b5b, 167);
 const ROSE: PaletteColor = PaletteColor::new(0xce4f6d, 168);
 const BERRY: PaletteColor = PaletteColor::new(0xca3a7d, 162);
 const PLUM: PaletteColor = PaletteColor::new(0xb7308b, 163);
-const DRIP: PaletteColor = PaletteColor::new(0xa21d85, 126);
+const MULBERRY: PaletteColor = PaletteColor::new(0xa21d85, 126);
 const PARCHMENT: PaletteColor = PaletteColor::new(0xd9c79f, 187);
 const ASH: PaletteColor = PaletteColor::new(0x8c8270, 101);
 const DUSK: PaletteColor = PaletteColor::new(0x1e0f21, 234);
@@ -271,7 +271,7 @@ impl Screen {
                 self.world_time_ticks = *world_time;
                 let divider = format!("── round {round_index} · tick {world_time} ──");
                 self.transcript
-                    .push(Line::styled(divider, self.style(DRIP)));
+                    .push(Line::styled(divider, self.style(MULBERRY)));
             }
             ServerBody::View(view) => {
                 if view.place != self.last_place_id {
@@ -470,12 +470,12 @@ impl Screen {
     }
 
     /// A pane's rounded border with `title` on it: plum with an amber title when
-    /// `is_highlighted`, else drip with a tangerine title.
-    fn pane_block(&self, title: &str, is_highlighted: bool) -> Block<'static> {
+    /// `is_highlighted`, else mulberry with a tangerine title.
+    fn pane_border(&self, title: &str, is_highlighted: bool) -> Block<'static> {
         let (border_color, title_color) = if is_highlighted {
             (PLUM, AMBER)
         } else {
-            (DRIP, TANGERINE)
+            (MULBERRY, TANGERINE)
         };
         Block::bordered()
             .border_type(BorderType::Rounded)
@@ -509,32 +509,32 @@ impl Screen {
         frame.render_widget(Paragraph::new(pc_line).bg(dusk), pc_area);
     }
 
-    /// A plum rule of upper half blocks with drip-colored drops hanging from it.
+    /// A plum rule of upper half blocks with mulberry drops hanging from it.
     fn draw_rule(&self, frame: &mut Frame, area: Rect) {
-        let plum = PLUM.to_color(self.is_truecolor);
-        let drip = DRIP.to_color(self.is_truecolor);
-        let void = VOID.to_color(self.is_truecolor);
-        let spans: Vec<Span> = (0..area.width)
+        let rule_color = PLUM.to_color(self.is_truecolor);
+        let drop_color = MULBERRY.to_color(self.is_truecolor);
+        let gap_color = VOID.to_color(self.is_truecolor);
+        let rule_spans: Vec<Span> = (0..area.width)
             .map(|column| {
                 let background = if (column * 5 + 3) % 13 < 2 {
-                    drip
+                    drop_color
                 } else {
-                    void
+                    gap_color
                 };
-                Span::styled("▀", Style::new().fg(plum).bg(background))
+                Span::styled("▀", Style::new().fg(rule_color).bg(background))
             })
             .collect();
-        frame.render_widget(Paragraph::new(Line::from(spans)), area);
+        frame.render_widget(Paragraph::new(Line::from(rule_spans)), area);
     }
 
     fn draw_pc_picker(&mut self, frame: &mut Frame, area: Rect) {
-        let block = self.pane_block(text::PC_PICKER_HEADING, true);
+        let border = self.pane_border(text::PC_PICKER_HEADING, true);
         let highlight_style = self.style(GOLD).add_modifier(Modifier::BOLD);
         let (open_style, taken_style) = (self.style(PARCHMENT), self.style(ASH));
         let Some(pc_picker) = &mut self.pc_picker else {
             return;
         };
-        let mut items: Vec<ListItem> = pc_picker
+        let mut pc_list_items: Vec<ListItem> = pc_picker
             .rows
             .iter()
             .map(|row| {
@@ -547,39 +547,39 @@ impl Screen {
             })
             .collect();
         if pc_picker.list_state.selected().is_none() {
-            items.push(ListItem::new(text::PC_PICKER_NONE_OPEN).style(taken_style));
+            pc_list_items.push(ListItem::new(text::PC_PICKER_NONE_OPEN).style(taken_style));
         }
-        let list = List::new(items)
-            .block(block)
+        let pc_list = List::new(pc_list_items)
+            .block(border)
             .highlight_style(highlight_style)
             .highlight_symbol("› ");
-        frame.render_stateful_widget(list, area, &mut pc_picker.list_state);
+        frame.render_stateful_widget(pc_list, area, &mut pc_picker.list_state);
     }
 
     /// The transcript, wrapped and pinned to the bottom unless scrolled back.
     fn draw_transcript(&mut self, frame: &mut Frame, area: Rect) {
-        let block = self.pane_block("Transcript", true);
-        let inner_area = block.inner(area);
-        let paragraph = Paragraph::new(self.transcript.clone()).wrap(Wrap { trim: false });
-        let wrapped_rows = paragraph.line_count(inner_area.width);
+        let border = self.pane_border("Transcript", true);
+        let inner_area = border.inner(area);
+        let transcript_text = Paragraph::new(self.transcript.clone()).wrap(Wrap { trim: false });
+        let wrapped_rows = transcript_text.line_count(inner_area.width);
         let page_rows = usize::from(inner_area.height);
         self.scroll_step_rows = page_rows.saturating_sub(1).max(1);
         let max_offset_rows = wrapped_rows.saturating_sub(page_rows);
         self.scroll_offset_rows = self.scroll_offset_rows.min(max_offset_rows);
         let top_row = u16::try_from(max_offset_rows - self.scroll_offset_rows).unwrap_or(u16::MAX);
-        frame.render_widget(paragraph.scroll((top_row, 0)).block(block), area);
+        frame.render_widget(transcript_text.scroll((top_row, 0)).block(border), area);
     }
 
     /// Who is here, the exits, the items, the meters, then what the PC knows and its notes.
     fn draw_place(&self, frame: &mut Frame, area: Rect, view: Option<&protocol::View>) {
         let Some(view) = view else {
-            frame.render_widget(self.pane_block("Here", false), area);
+            frame.render_widget(self.pane_border("Here", false), area);
             return;
         };
-        let mut lines: Vec<Line> = Vec::new();
+        let mut panel_lines: Vec<Line> = Vec::new();
         for line in [&view.cant_act, &view.busy] {
             if !line.is_empty() {
-                lines.push(Line::styled(line.clone(), self.style(ASH)));
+                panel_lines.push(Line::styled(line.clone(), self.style(ASH)));
             }
         }
         let mut here_spans = vec![self.span("Here: ", PARCHMENT)];
@@ -593,25 +593,25 @@ impl Screen {
                 self.span(name.clone(), TANGERINE)
             });
         }
-        lines.push(Line::from(here_spans));
-        self.push_heading(&mut lines, "Exits");
+        panel_lines.push(Line::from(here_spans));
+        self.push_heading(&mut panel_lines, "Exits");
         for exit in &view.exits {
             let color = if exit.locked { ROSE } else { ORANGE };
-            lines.push(Line::styled(text::exit_phrase(exit), self.style(color)));
+            panel_lines.push(Line::styled(text::render_exit(exit), self.style(color)));
         }
         if view.exits.is_empty() {
-            lines.push(Line::styled("none", self.style(ASH)));
+            panel_lines.push(Line::styled("none", self.style(ASH)));
         }
         if !view.items.is_empty() {
-            self.push_heading(&mut lines, "Items");
+            self.push_heading(&mut panel_lines, "Items");
             for item in &view.items {
-                lines.push(Line::styled(text::item_line(item), self.style(PARCHMENT)));
+                panel_lines.push(Line::styled(text::render_item(item), self.style(PARCHMENT)));
             }
         }
         for (heading, meters) in [("Meters", &view.meters), ("The world", &view.world_meters)] {
             if !meters.is_empty() {
-                self.push_heading(&mut lines, heading);
-                lines.extend(meters.iter().map(|meter| self.render_meter(meter)));
+                self.push_heading(&mut panel_lines, heading);
+                panel_lines.extend(meters.iter().map(|meter| self.render_meter(meter)));
             }
         }
         let known_facts: Vec<&str> = view
@@ -622,15 +622,15 @@ impl Screen {
         let notes: Vec<&str> = view.notes.iter().map(|note| note.text.as_str()).collect();
         for (heading, sentences) in [("You know", known_facts), ("Notes", notes)] {
             if !sentences.is_empty() {
-                self.push_heading(&mut lines, heading);
+                self.push_heading(&mut panel_lines, heading);
                 for sentence in sentences {
-                    lines.push(Line::styled(sentence.to_string(), self.style(PARCHMENT)));
+                    panel_lines.push(Line::styled(sentence.to_string(), self.style(PARCHMENT)));
                 }
             }
         }
-        let panel = Paragraph::new(lines)
+        let panel = Paragraph::new(panel_lines)
             .wrap(Wrap { trim: true })
-            .block(self.pane_block(&view.place_name, false));
+            .block(self.pane_border(&view.place_name, false));
         frame.render_widget(panel, area);
     }
 
@@ -639,7 +639,7 @@ impl Screen {
         lines.push(Line::styled(heading.to_string(), self.style(ASH)));
     }
 
-    /// The meter as a line: `Hp: 8/16` and a gauge of its fill, scarlet on drip.
+    /// The meter as a line: `Hp: 8/16` and a gauge of its fill, scarlet on mulberry.
     fn render_meter(&self, meter: &protocol::MeterView) -> Line<'static> {
         let full_cells = match usize::try_from(meter.max) {
             Ok(max) if max > 0 => {
@@ -649,41 +649,41 @@ impl Screen {
             _ => 0,
         };
         Line::from(vec![
-            self.span(format!("{} ", text::meter_line(meter)), PARCHMENT),
+            self.span(format!("{} ", text::render_meter(meter)), PARCHMENT),
             self.span("━".repeat(full_cells), SCARLET),
-            self.span("─".repeat(GAUGE_CELLS - full_cells), DRIP),
+            self.span("─".repeat(GAUGE_CELLS - full_cells), MULBERRY),
         ])
     }
 
     /// The input line behind its prompt, with the cursor where the player types.
     fn draw_input(&self, frame: &mut Frame, area: Rect) {
-        let block = Block::bordered()
+        let border = Block::bordered()
             .border_type(BorderType::Rounded)
-            .border_style(self.style(DRIP));
+            .border_style(self.style(MULBERRY));
         let [prompt_area, value_area] =
             Layout::horizontal([Constraint::Length(2), Constraint::Fill(1)])
-                .areas(block.inner(area));
-        frame.render_widget(block, area);
+                .areas(border.inner(area));
+        frame.render_widget(border, area);
         frame.render_widget(Paragraph::new(self.span("› ", FLAME)), prompt_area);
         let scroll_cells = self
             .input
             .visual_scroll(usize::from(value_area.width.saturating_sub(1)));
-        let value = self.span(self.input.value().to_string(), PARCHMENT);
+        let input_span = self.span(self.input.value().to_string(), PARCHMENT);
         let scroll_x = u16::try_from(scroll_cells).unwrap_or(u16::MAX);
-        frame.render_widget(Paragraph::new(value).scroll((0, scroll_x)), value_area);
+        frame.render_widget(Paragraph::new(input_span).scroll((0, scroll_x)), value_area);
         let cursor_x = u16::try_from(self.input.visual_cursor() - scroll_cells).unwrap_or(u16::MAX);
         frame.set_cursor_position((value_area.x.saturating_add(cursor_x), value_area.y));
     }
 
     /// The key bar: each key's name in tangerine and its action in ash.
     fn draw_key_bar(&self, frame: &mut Frame, area: Rect, key_hints: &[(&str, &str)]) {
-        let mut spans = Vec::new();
+        let mut hint_spans = Vec::new();
         for (key, action) in key_hints {
-            spans.push(self.span(format!(" {key} "), TANGERINE));
-            spans.push(self.span(format!("{action} "), ASH));
+            hint_spans.push(self.span(format!(" {key} "), TANGERINE));
+            hint_spans.push(self.span(format!("{action} "), ASH));
         }
         let dusk = DUSK.to_color(self.is_truecolor);
-        frame.render_widget(Paragraph::new(Line::from(spans)).bg(dusk), area);
+        frame.render_widget(Paragraph::new(Line::from(hint_spans)).bg(dusk), area);
     }
 }
 

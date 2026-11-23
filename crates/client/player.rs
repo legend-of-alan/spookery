@@ -125,11 +125,11 @@ async fn reconnect(
         }
     };
     let args = json!({ "token": token.as_str(), "last_seq": terminal.last_seq() });
-    let (new_view, new_token) =
+    let (new_view, reconnect_token) =
         claim_pc(&mut new_connection, args, terminal, Some(view.clone())).await?;
     *connection = new_connection;
     *view = new_view;
-    *token = new_token;
+    *token = reconnect_token;
     Ok(true)
 }
 
@@ -142,7 +142,7 @@ async fn claim_pc(
     mut view: Option<protocol::View>,
 ) -> Result<(protocol::View, String), Error> {
     let request_id = connection.send("claim", args).await?;
-    let mut claim_token = String::new();
+    let mut reconnect_token = String::new();
     loop {
         let Some(server_message) = connection.recv().await.transpose()? else {
             return Err(Error::Message("NOT_IN_SPEC".into()));
@@ -170,8 +170,8 @@ async fn claim_pc(
             terminal.show(message, view.as_ref())?;
         }
         match server_message.body {
-            ServerBody::Claimed { token, .. } => claim_token = token,
-            ServerBody::View(body) => return Ok((*body, claim_token)),
+            ServerBody::Claimed { token, .. } => reconnect_token = token,
+            ServerBody::View(body) => return Ok((*body, reconnect_token)),
             _ => {}
         }
     }

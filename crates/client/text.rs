@@ -224,26 +224,26 @@ pub fn render_view(view: &protocol::View) -> String {
         notes.iter().map(|note| note.text.as_str()),
     );
     if !items.is_empty() {
-        let lines: Vec<String> = items.iter().map(item_line).collect();
+        let lines: Vec<String> = items.iter().map(render_item).collect();
         sections.push(format!("Items:\n{}", lines.join("\n")));
     }
     for (title, meters) in [("Meters:", meters), ("The world:", world_meters)] {
         if !meters.is_empty() {
-            let lines: Vec<String> = meters.iter().map(meter_line).collect();
+            let lines: Vec<String> = meters.iter().map(render_meter).collect();
             sections.push(format!("{title}\n{}", lines.join("\n")));
         }
     }
-    sections.push(exit_section(exits));
+    sections.push(render_exit_section(exits));
     sections.join("\n\n")
 }
 
 /// One command per line: `look`, `ask Briar`, or `strike <actor>: Briar, Aldric`.
 pub fn render_help(commands: &[CommandView]) -> String {
-    let lines: Vec<String> = commands.iter().map(command_line).collect();
+    let lines: Vec<String> = commands.iter().map(render_command).collect();
     lines.join("\n")
 }
 
-fn command_line(command: &CommandView) -> String {
+fn render_command(command: &CommandView) -> String {
     let id = &command.id;
     if let Some(owner) = &command.owner {
         let owner = command.names.first().unwrap_or(owner);
@@ -352,7 +352,7 @@ pub fn render_map(places: &[PlaceView]) -> String {
     for place in places {
         lines.push(place.name.clone());
         for exit in &place.exits {
-            lines.push(format!("  {}", exit_phrase(exit)));
+            lines.push(format!("  {}", render_exit(exit)));
         }
     }
     lines.join("\n")
@@ -360,7 +360,7 @@ pub fn render_map(places: &[PlaceView]) -> String {
 
 /// `stairs (locked) — 2 ticks`, or `Docks Street — 0 ticks` for an exit named by where it
 /// goes.
-pub(crate) fn exit_phrase(exit: &ExitView) -> String {
+pub(crate) fn render_exit(exit: &ExitView) -> String {
     let (name, ticks) = (&exit.name, exit.ticks);
     if exit.locked {
         format!("{name} (locked) — {ticks} ticks")
@@ -370,11 +370,11 @@ pub(crate) fn exit_phrase(exit: &ExitView) -> String {
 }
 
 /// `Exits:` and one exit per line, or `none`.
-fn exit_section(exits: &[ExitView]) -> String {
+fn render_exit_section(exits: &[ExitView]) -> String {
     if exits.is_empty() {
         return "Exits:\nnone".to_string();
     }
-    let lines: Vec<String> = exits.iter().map(exit_phrase).collect();
+    let lines: Vec<String> = exits.iter().map(render_exit).collect();
     format!("Exits:\n{}", lines.join("\n"))
 }
 
@@ -397,12 +397,12 @@ pub(crate) fn actor_ids_and_names(
 }
 
 /// `Lamp oil: 4`: the item's name and count.
-pub(crate) fn item_line(item: &ItemStack) -> String {
+pub(crate) fn render_item(item: &ItemStack) -> String {
     format!("{}: {}", item.name, item.count)
 }
 
 /// `Hp: 8/16`: the meter's name, value and max.
-pub(crate) fn meter_line(meter: &MeterView) -> String {
+pub(crate) fn render_meter(meter: &MeterView) -> String {
     format!("{}: {}/{}", humanize(&meter.id), meter.value, meter.max)
 }
 
