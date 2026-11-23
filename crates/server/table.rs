@@ -9,9 +9,9 @@ use serde_json::{Map, Value};
 use spookery_engine::{emit_tape_record, ActorId, Presence, Reason, RecipientLine, TapeRecord};
 use tokio::sync::{oneshot, watch};
 
-use super::frames;
 use super::gm::{self, Reply};
 use super::idle::{self, now_stamp};
+use super::message_body;
 use super::seat::{Claim, ConnId, Connection, FrameSender, Seats};
 use super::Error;
 use crate::protocol::{
@@ -279,7 +279,7 @@ impl Table {
             },
             "look" if read::<NoArgs>(&args).is_some() => {
                 match self.session.perceive(&presence, actor_id.as_str()) {
-                    Ok(view) => frames::render_view(&view),
+                    Ok(view) => message_body::build_view(&view),
                     Err(code) => ServerBody::Refused(code.into()),
                 }
             }
@@ -350,7 +350,8 @@ impl Table {
         }
         let scrollback = self.session.player_scrollback(&actor)?;
         let claim = Claim::new(uuid::Uuid::new_v4().simple().to_string(), actor.clone());
-        let claim_reply = frames::render_claim_reply(self.session.world(), &claim, &scrollback, 0);
+        let claim_reply =
+            message_body::build_claim_reply(self.session.world(), &claim, &scrollback, 0);
         let token = claim.token.clone();
         self.seats.claims.push(claim);
         Ok((token, actor, claim_reply))
@@ -370,7 +371,8 @@ impl Table {
             .find(|claim| claim.token == token)
             .ok_or(Reason::UnknownId)?;
         claim.conn = None;
-        let claim_reply = frames::render_claim_reply(self.session.world(), claim, &[], last_seq);
+        let claim_reply =
+            message_body::build_claim_reply(self.session.world(), claim, &[], last_seq);
         Ok((token.to_string(), claim.actor.clone(), claim_reply))
     }
 
@@ -424,13 +426,13 @@ impl Table {
                     target,
                 },
                 Err(refused) if gm.is_none() && refused.code == Reason::Busy => {
-                    ServerBody::Refused(frames::render_refused_move(&refused))
+                    ServerBody::Refused(message_body::build_refused_move(&refused))
                 }
                 Err(refused) => {
                     return self.reply(
                         conn,
                         id,
-                        ServerBody::Refused(frames::render_refused_move(&refused)),
+                        ServerBody::Refused(message_body::build_refused_move(&refused)),
                     );
                 }
             };
@@ -514,7 +516,7 @@ impl Table {
         for actor_id in players {
             let mut bodies: Vec<ServerBody> = outputs
                 .iter()
-                .flat_map(|output| frames::render_checks(&output.reports, &actor_id))
+                .flat_map(|output| message_body::build_checks(&output.reports, &actor_id))
                 .collect();
             match refresh(&self.session, &presence, &actor_id) {
                 Ok(refreshed) => bodies.extend(refreshed),
@@ -566,11 +568,11 @@ impl Table {
             .map(|claim| (claim.actor.clone(), claim.conn))
             .collect();
         if let Some(gm) = self.seats.gm {
-            let body = frames::render_speech(speech, true);
+            let body = ServerBody::Say(message_body::build_speech(speech, true));
             self.send(gm, stamp_message(seq, reply_to(gm), body));
         }
         for (actor_id, conn) in hears {
-            let body = frames::render_speech(speech, false);
+            let body = ServerBody::Say(message_body::build_speech(speech, false));
             let message = stamp_message(seq, conn.and_then(reply_to), body);
             self.send_to_pc(&actor_id, message);
         }
@@ -706,5 +708,8 @@ fn refresh(
     actor_id: &ActorId,
 ) -> Result<[ServerBody; 2], Reason> {
     let view = session.perceive(presence, actor_id.as_str())?;
-    Ok([frames::render_resume(&view), frames::render_view(&view)])
+    Ok([
+        message_body::build_resume(&view),
+        message_body::build_view(&view),
+    ])
 }

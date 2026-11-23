@@ -1,4 +1,4 @@
-//! Engine output as message bodies. The one place a `protocol::Refusal` is rendered.
+//! Engine output as message bodies. The one place a `protocol::Refusal` is built.
 
 use super::seat::Claim;
 use crate::protocol::{
@@ -9,20 +9,15 @@ use spookery_engine::{self as engine, ActorId, Intent, MoveReport, Presence, Tap
 
 /// A move the gate or a round refused. Its `detail` is the meter or item id, or the
 /// sentence a locked exit shows.
-pub(super) fn render_refused_move(refusal: &engine::Refusal) -> protocol::Refusal {
+pub(super) fn build_refused_move(refusal: &engine::Refusal) -> protocol::Refusal {
     protocol::Refusal {
         code: protocol::Code::Known(refusal.code),
         detail: refusal.detail.clone(),
     }
 }
 
-/// One line of speech as a seat hears it: a `say` message. Only the GM's copy lists the
-/// recipients.
-pub(super) fn render_speech(tape: &TapeRecord, gm: bool) -> ServerBody {
-    ServerBody::Say(build_speech(tape, gm))
-}
-
-fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
+/// One line of speech as a seat hears it. Only the GM's copy lists the recipients.
+pub(super) fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
     Speech {
         from: tape.from.clone(),
         from_name: tape.from_name.clone(),
@@ -38,7 +33,7 @@ fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
 
 /// The reply to a claim: the PC, its token, the round and tick of `now`, `scrollback`, and the
 /// messages `claim` kept after `last_seq`.
-pub(super) fn render_claim_reply(
+pub(super) fn build_claim_reply(
     now: &engine::ecs::World,
     claim: &Claim,
     scrollback: &[TapeRecord],
@@ -60,7 +55,7 @@ pub(super) fn render_claim_reply(
 }
 
 /// The `check` and `refused` bodies of this actor's moves.
-pub(super) fn render_checks(reports: &[MoveReport], actor_id: &ActorId) -> Vec<ServerBody> {
+pub(super) fn build_checks(reports: &[MoveReport], actor_id: &ActorId) -> Vec<ServerBody> {
     reports
         .iter()
         .filter_map(|report| match report {
@@ -72,7 +67,7 @@ pub(super) fn render_checks(reports: &[MoveReport], actor_id: &ActorId) -> Vec<S
             MoveReport::Refused {
                 actor_id: id,
                 refusal,
-            } if id == actor_id => Some(ServerBody::Refused(render_refused_move(refusal))),
+            } if id == actor_id => Some(ServerBody::Refused(build_refused_move(refusal))),
             _ => None,
         })
         .collect()
@@ -85,7 +80,7 @@ fn rolls<'a>(reports: impl IntoIterator<Item = &'a MoveReport>) -> impl Iterator
     })
 }
 
-pub(super) fn render_resume(view: &engine::View) -> ServerBody {
+pub(super) fn build_resume(view: &engine::View) -> ServerBody {
     let actor_id = view.viewer.actor_id();
     let notes = view
         .notes
@@ -96,7 +91,7 @@ pub(super) fn render_resume(view: &engine::View) -> ServerBody {
     ServerBody::Resume { notes }
 }
 
-pub(super) fn render_view(view: &engine::View) -> ServerBody {
+pub(super) fn build_view(view: &engine::View) -> ServerBody {
     ServerBody::View(Box::new(protocol::View {
         viewer: view.viewer.actor_id().to_string(),
         place: view.place.clone(),
@@ -119,7 +114,7 @@ pub(super) fn render_view(view: &engine::View) -> ServerBody {
     }))
 }
 
-pub(super) fn render_committed(
+pub(super) fn build_committed(
     state_rev: u64,
     changed_keys: &[String],
     journal_path: Option<&str>,
@@ -141,7 +136,7 @@ pub(super) fn render_committed(
     })
 }
 
-pub(super) fn render_status(
+pub(super) fn build_status(
     now: &engine::ecs::World,
     presence: &Presence,
     queued: &[Intent],

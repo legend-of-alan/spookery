@@ -6,7 +6,7 @@ use rmcp::handler::server::tool::schema_for_type;
 use serde_json::{Map, Value};
 use spookery_engine::{ActorId, Presence, Reason, TapeRecord};
 
-use super::frames;
+use super::message_body;
 use super::table::commit_then_fast_forward;
 use crate::protocol::{
     parse_args, CommitArgs, NoArgs, PerceiveArgs, QueueArgs, SayArgs, ServerBody,
@@ -103,7 +103,7 @@ fn say(
     let args: SayArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
     let npc_id = args.npc_id.as_deref().map(ActorId::from);
     let speech = session.say_as_gm(presence, npc_id.as_ref(), args.to.as_ref(), &args.text)?;
-    let mut reply = Reply::new(frames::render_speech(&speech, true));
+    let mut reply = Reply::new(ServerBody::Say(message_body::build_speech(&speech, true)));
     reply.speech = Some(speech);
     Ok(reply)
 }
@@ -149,7 +149,7 @@ fn commit(
         }
         None => (session.world().state_rev, &[][..], None),
     };
-    let body = frames::render_committed(state_rev, changed_keys, journal_path, &outputs);
+    let body = message_body::build_committed(state_rev, changed_keys, journal_path, &outputs);
     Ok(Reply {
         outputs,
         ..Reply::new(body)
@@ -168,7 +168,7 @@ fn perceive(
         .map_or(Ok(PERCEIVE_BODY_CHARS), usize::try_from)
         .map_err(|_| Reason::Schema)?;
     let view = session.perceive_trimmed(presence, &viewer_id, budget)?;
-    Ok(Reply::new(frames::render_view(&view)))
+    Ok(Reply::new(message_body::build_view(&view)))
 }
 
 fn status(
@@ -177,7 +177,7 @@ fn status(
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
     parse_args::<NoArgs>(arguments).map_err(|_| Reason::Schema)?;
-    Ok(Reply::new(frames::render_status(
+    Ok(Reply::new(message_body::build_status(
         session.world(),
         presence,
         session.queued_intents(),
