@@ -19,9 +19,9 @@
 {"seat":"gm","get":{"seq":9,"reply_to":"g3","body":{"kind":"view","viewer":"rowan","place":"docks_shop","place_name":"Docks Shop","body":"The shop faces the water. Tins sit in a row.","actor_names":["Aldric","Rowan"],"visible_actors":["aldric","rowan"],"known_facts":[{"id":"fact_oil_on_shelf","text":"Oil is on the shelf.","owner_body":"The shop faces the water. Tins sit in a row.\n"}],"notes":[],"unknown_mentions":[],"items":[{"id":"lamp_oil","count":4,"name":"Lamp oil"}],"meters":[{"id":"assassination_debt","value":2,"max":6},{"id":"hp","value":8,"max":16},{"id":"might","value":1,"max":45},{"id":"rest","value":3,"max":5},{"id":"vigor","value":1,"max":110}],"habits":[],"exits":[{"exit_id":"docks_street","name":"Docks Street","place_id":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"exit_id":"stairs","name":"stairs","place_id":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}}}
 {"seat":"gm","send":{"id":"g4","body":{"kind":"perceive"}}}
 {"seat":"gm","get":{"seq":10,"reply_to":"g4","body":{"kind":"refused","code":"UNSCOPED_PERCEIVE"}}}
-{"seat":"gm","send":{"id":"g5","body":{"kind":"queue","args":{"actor_id":"rowan","move":"wait"}}}}
+{"seat":"gm","send":{"id":"g5","body":{"kind":"queue","args":{"actor":"rowan","move":"wait"}}}}
 {"seat":"gm","get":{"seq":11,"reply_to":"g5","body":{"kind":"refused","code":"ACTOR_MISMATCH"}}}
-{"seat":"gm","send":{"id":"g6","body":{"kind":"queue","args":{"actor_id":"aldric","move":"wait","id":"gm-wait"}}}}
+{"seat":"gm","send":{"id":"g6","body":{"kind":"queue","args":{"actor":"aldric","move":"wait","id":"gm-wait"}}}}
 {"seat":"gm","get":{"seq":12,"reply_to":"g6","body":{"kind":"queued","intent":"gm-wait","actor":"aldric","move":"wait"}}}
 {"seat":"player:rowan","send":{"id":"r4","body":{"kind":"exert"}}}
 {"seat":"gm","get":{"seq":13,"body":{"kind":"queued","intent":"150ad41608eafe8bfb76d88485e665c77021363782bbb8bc1f5eafb2345ac8b6","actor":"rowan","move":"exert"}}}

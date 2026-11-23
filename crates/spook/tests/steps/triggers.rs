@@ -1016,7 +1016,7 @@ pub(crate) fn play_round(
     }
 }
 
-/// The GM's `queue` command: `actor_id` plays `verb` at `target`, under the id `id`.
+/// The GM's `queue` command: `actor` plays `verb` at `target`, under the id `id`.
 pub(crate) fn intent(
     id: &str,
     actor_id: &str,

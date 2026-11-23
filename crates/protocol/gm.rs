@@ -77,7 +77,7 @@ pub struct QueueArgs {
     /// The actor the move is for. The schema requires it, and the table refuses a call without
     /// it as `SCHEMA`.
     #[cfg_attr(feature = "schema", schemars(required))]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "actor", skip_serializing_if = "Option::is_none")]
     pub actor_id: Option<String>,
     /// The move to queue. The schema requires it, and the table refuses a call without it as
     /// `SCHEMA`.
@@ -207,14 +207,14 @@ mod tests {
             r#"{"state_rev":3,"changed_keys":["d"],"journal_path":null,"rolls":[{"total":8,"success_at":7,"outcome":"partial","x":1}],"x":1}"#,
         );
         let m =
-            serde_json::from_str(r#"{"actor_id":"a","move":"m","target":"t","to":["b"]}"#).unwrap();
+            serde_json::from_str(r#"{"actor":"a","move":"m","target":"t","to":["b"]}"#).unwrap();
         let c: QueueArgs = parse_args(Some(&m)).unwrap();
         assert_eq!(c.actor_id.as_deref(), Some("a"));
         assert_eq!(c.move_id.as_deref(), Some("m"));
         assert_eq!(c.target.as_deref(), Some("t"));
         assert_eq!(c.message_to, Some(vec!["b".to_string()]));
         let nested =
-            serde_json::from_str(r#"{"actor_id":"a","move":"m","args":{"to":["b"]}}"#).unwrap();
+            serde_json::from_str(r#"{"actor":"a","move":"m","args":{"to":["b"]}}"#).unwrap();
         assert!(parse_args::<QueueArgs>(Some(&nested)).is_err());
     }
 
@@ -224,9 +224,9 @@ mod tests {
             let args = serde_json::from_str(raw).unwrap();
             serde_json::to_string(&parse_args::<QueueArgs>(Some(&args)).unwrap()).unwrap()
         };
-        let bare = r#"{"actor_id":"mira","move":"restock_lamp_oil"}"#;
+        let bare = r#"{"actor":"mira","move":"restock_lamp_oil"}"#;
         assert_eq!(call(bare), bare);
-        let aimed = r#"{"actor_id":"rowan","move":"travel","target":"docks_street"}"#;
+        let aimed = r#"{"actor":"rowan","move":"travel","target":"docks_street"}"#;
         assert_eq!(call(aimed), aimed);
     }
 
