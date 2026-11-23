@@ -6,6 +6,7 @@ meters:
     max: 110
     base: 1
   - id: hp
+    name: Health
     min: 0
     base_cap: 12
     max: 16

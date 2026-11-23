@@ -11,6 +11,8 @@ use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Descriptor {
+    /// What a player reads for the meter, or empty when the pack gives none.
+    pub name: String,
     pub min: i64,
     pub base_cap: i64,
     pub max: i64,
@@ -120,7 +122,9 @@ impl Ref<'_, Save, Meter> {
     pub fn value(&self, entry_id: &str) -> Result<i64, Reason> {
         let (save, canon) = (self.entities.components, self.entities.canon);
         match self.id {
-            Id::Actor(actor) => modifier::value(Reader::new(&save.actors, canon), actor, entry_id),
+            Id::Actor(actor_id) => {
+                modifier::value(Reader::new(&save.actors, canon), actor_id, entry_id)
+            }
             id => {
                 let desc = canon
                     .meter_desc(id.as_ref(), entry_id)
@@ -162,6 +166,7 @@ mod tests {
 
     fn vigor() -> Descriptor {
         Descriptor {
+            name: String::new(),
             min: 0,
             base_cap: 100,
             max: 110,

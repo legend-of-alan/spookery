@@ -28,7 +28,13 @@ pub struct View {
     pub known_facts: Vec<KnownFact>,
     pub notes: Vec<NoteView>,
     pub unknown_mentions: Vec<String>,
+    /// The items lying in the viewer's place.
     pub items: Vec<ItemStack>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub items_carried: Vec<ItemStack>,
+    /// Which of `items_carried` the viewer wields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wielded_item_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub meters: Vec<MeterView>,
     /// The world's meters this viewer may see, at their current values.
@@ -91,11 +97,14 @@ pub struct ItemStack {
     pub name: String,
 }
 
-/// Part of a `View`, sent from the table to a player client.
+/// Part of a `View`, sent from the table to a player client. `name` is the pack's name for the
+/// meter, left out when it gives none.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct MeterView {
     pub id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
     pub value: i64,
     pub max: i64,
 }
@@ -104,8 +113,8 @@ pub struct MeterView {
 /// names what changed, such as `meter`, `item` or `place`. `entity_id` is whose it is as a
 /// rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`.
 /// `entity_name` is that actor's, place's or story's name. `entry_id` is which one of the
-/// entity's, such as the meter or item id, and `entry_name` the item's name, or for `place` the
-/// name of the place moved to. `before` and `after` are left out when there was none.
+/// entity's, such as the meter or item id, and `entry_name` the item's or meter's name, or for
+/// `place` the name of the place moved to. `before` and `after` are left out when there was none.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ChangeView {
@@ -172,10 +181,12 @@ pub struct CommandView {
     pub owner: Option<String>,
 }
 
-/// One place of a `map` reply: its name and the exits the player may see there.
+/// One place of a `map` reply: its id, its name and the exits the player may see there.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PlaceView {
+    #[serde(default)]
+    pub place_id: String,
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exits: Vec<ExitView>,

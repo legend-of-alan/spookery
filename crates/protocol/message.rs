@@ -30,10 +30,10 @@ pub struct Message<Body> {
 }
 
 /// Sent from a client to the table.
-pub type ClientMessage = Message<ClientBody>;
+pub type ClientMessage = Message<ClientBody>; // repeats module: re-exported at the crate root
 
 /// Sent from the table to a client.
-pub type ServerMessage = Message<ServerBody>;
+pub type ServerMessage = Message<ServerBody>; // repeats module: re-exported at the crate root
 
 /// One command, named by `kind`, and its arguments. Each command reads `args` as its own
 /// argument type.
@@ -82,19 +82,25 @@ pub enum ServerBody {
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
         pc_names: BTreeMap<String, String>,
     },
-    /// The reply to `claim`. `token` takes this PC back after a dropped connection. A new
-    /// claim carries `scrollback`, the speech this PC heard before, oldest first. A claim by
-    /// token carries `missed`, the messages sent to this PC after the `last_seq` it named, and
-    /// `gap` when more than `MISSED_MESSAGE_CAP` messages were missed.
+    /// The reply to `claim`. `token` takes this PC back after a dropped connection.
+    /// `round_index` and `world_time` are the table's round and tick. A new claim carries
+    /// `scrollback`, the speech this PC heard before, oldest first. A claim by token carries
+    /// `missed_messages`, the messages sent to this PC after the `last_seq` it named, and
+    /// `is_missed_truncated` when more than `MISSED_MESSAGE_CAP` messages were missed.
     Claimed {
-        actor: String,
+        #[serde(rename = "actor")]
+        actor_id: String,
         token: String,
+        #[serde(default)]
+        round_index: u64,
+        #[serde(default)]
+        world_time: u64,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         scrollback: Vec<Speech>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        missed: Vec<ServerMessage>,
+        missed_messages: Vec<ServerMessage>,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        gap: bool,
+        is_missed_truncated: bool,
     },
     Released,
     /// Sent to the GM whenever a claim starts or ends.
@@ -104,7 +110,8 @@ pub enum ServerBody {
     Refused(Refusal),
     Queued {
         intent: String,
-        actor: String,
+        #[serde(rename = "actor")]
+        actor_id: String,
         #[serde(rename = "move")]
         move_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -216,7 +223,8 @@ pub fn is_built_in(seat: Seat, kind: &str) -> bool {
 #[serde(untagged, deny_unknown_fields)]
 pub enum ClaimArgs {
     Actor {
-        actor: String,
+        #[serde(rename = "actor")]
+        actor_id: String,
     },
     Token {
         token: String,
@@ -319,7 +327,7 @@ mod tests {
     fn a_claim_names_an_actor_or_a_token() {
         let read = |text: &str| serde_json::from_str::<ClaimArgs>(text);
         let actor = ClaimArgs::Actor {
-            actor: "rowan".into(),
+            actor_id: "rowan".into(),
         };
         assert_eq!(read(r#"{"actor":"rowan"}"#).unwrap(), actor);
         let token = ClaimArgs::Token {

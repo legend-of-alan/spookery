@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::ecs::component::{Component, Ref};
 use crate::ecs::entity;
-use crate::intent::Viewer;
 
 /// Who controls an actor: a player, for a PC, or the engine, for an NPC. An actor exists when it
 /// has one.
@@ -29,13 +28,5 @@ impl Ref<'_, entity::Actors, ControlType> {
     /// Whether a player controls the actor. An actor the save lacks is not a PC.
     pub fn is_pc(&self) -> bool {
         self.get() == Some(ControlType::Pc)
-    }
-
-    /// The seat the actor acts from. An actor the save lacks has none.
-    pub fn viewer(&self) -> Option<Viewer> {
-        self.get().map(|control| match control {
-            ControlType::Pc => Viewer::Player(self.id.clone()),
-            ControlType::Npc => Viewer::Npc(self.id.clone()),
-        })
     }
 }

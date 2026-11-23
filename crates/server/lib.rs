@@ -1,11 +1,11 @@
 //! The Spookery table server: bind the game port's WebSocket endpoint and the MCP endpoint,
 //! then run the table.
 
-mod frames;
 mod gm;
 mod idle;
 mod limits;
 mod mcp;
+mod message_body;
 mod seat;
 mod table;
 mod ws;

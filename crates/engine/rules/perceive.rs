@@ -8,7 +8,6 @@ use crate::ecs::component::Note;
 use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component, Presence};
 use crate::entity;
-use crate::intent::Viewer;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
 use crate::session;
@@ -20,16 +19,20 @@ pub(crate) use spookery_protocol::{ItemStack, KnownFact, MeterView};
 /// a player or GM view.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct View {
-    pub viewer: Viewer,
+    pub viewer_id: ActorId,
     pub place: String,
     pub place_name: String,
-    pub prose: String,
+    pub place_prose: String,
     pub visible_actors: Vec<ActorId>,
     pub actor_names: Vec<String>,
     pub known_facts: Vec<KnownFact>,
     pub notes: Vec<NoteView>,
     pub unknown_mentions: Vec<String>,
+    /// The items lying in the viewer's place.
     pub items: Vec<ItemStack>,
+    pub items_carried: Vec<ItemStack>,
+    /// Which of `items_carried` the viewer wields.
+    pub wielded_item_id: Option<String>,
     /// The viewer's own meters. A hidden meter is not here.
     pub meters: Vec<MeterView>,
     /// The world's meters. A hidden one is not here.
@@ -55,54 +58,55 @@ pub(crate) fn build_view_by_id<Lock>(
     }
     let (canon, world) = (session.canon(), session.world());
     let id = ActorId::from(viewer_id);
-    let control = world.actors().get::<component::ControlType>(&id);
-    let viewer = control.viewer().ok_or(Reason::UnknownId)?;
-    build_capped_view(canon, world, presence, &viewer, max_body_chars)
+    if !world.actors().contains(&id) {
+        return Err(Reason::UnknownId);
+    }
+    build_capped_view(canon, world, presence, &id, max_body_chars)
 }
 
 pub(crate) fn build_view(
     canon: &Canon,
     world: &ecs::World,
     presence: &Presence,
-    viewer: &Viewer,
+    viewer_id: &ActorId,
 ) -> Result<View, Reason> {
-    build_capped_view(canon, world, presence, viewer, PERCEIVE_BODY_CHARS)
+    build_capped_view(canon, world, presence, viewer_id, PERCEIVE_BODY_CHARS)
 }
 
 fn build_capped_view(
     canon: &Canon,
     world: &ecs::World,
     presence: &Presence,
-    viewer: &Viewer,
+    viewer_id: &ActorId,
     max_body_chars: usize,
 ) -> Result<View, Reason> {
     let place_id = PlaceId::from(
         world
             .actors()
-            .get::<component::Place>(viewer.actor_id())
+            .get::<component::Place>(viewer_id)
             .get()
             .ok_or(Reason::UnknownId)?,
     );
     let mut visible_actors: Vec<ActorId> = world.actors_at(place_id.as_str());
     visible_actors.sort();
 
-    let mut ids = BTreeSet::new();
+    let mut fact_ids = BTreeSet::new();
     for id in canon.facts.keys() {
-        ids.insert(id.clone());
+        fact_ids.insert(id.clone());
     }
     for id in world
         .actors()
-        .get::<component::KnownFacts>(viewer.actor_id())
+        .get::<component::KnownFacts>(viewer_id)
         .get()
         .into_iter()
         .flatten()
     {
-        ids.insert(id.clone());
+        fact_ids.insert(id.clone());
     }
     let mut known_facts = Vec::new();
     let mut public_flags = Vec::new();
-    for id in ids {
-        if !can_see_fact(canon, world, viewer, &id) {
+    for id in fact_ids {
+        if !can_see_fact(canon, world, viewer_id, &id) {
             continue;
         }
         let text = canon
@@ -131,15 +135,15 @@ fn build_capped_view(
 
     let mut notes = Vec::new();
     for (note_id, note) in world.globals().get::<Note>(&GlobalId).iter() {
-        let here = note.place_id.as_ref() == Some(&place_id);
-        let addressed = note.to_ids.contains(viewer.actor_id());
-        if !here && !addressed {
+        let is_here = note.place_id.as_ref() == Some(&place_id);
+        let is_addressed = note.to_ids.contains(viewer_id);
+        if !is_here && !is_addressed {
             continue;
         }
         if note
             .fact_ids
             .iter()
-            .any(|fact| !can_see_fact(canon, world, viewer, fact))
+            .any(|fact| !can_see_fact(canon, world, viewer_id, fact))
         {
             continue;
         }
@@ -152,24 +156,23 @@ fn build_capped_view(
         });
     }
 
-    let items = (world.places().get::<component::Item>(&place_id).iter())
-        .map(|(id, count)| {
-            Ok(ItemStack {
-                id: id.to_string(),
-                count: *count,
-                name: canon.name(id).ok_or(Reason::UnknownId)?.to_string(),
-            })
-        })
-        .collect::<Result<_, Reason>>()?;
+    let place_store = world.places();
+    let actor_store = world.actors();
+    let items = build_item_stacks(canon, place_store.get::<component::Item>(&place_id).iter())?;
+    let items_carried =
+        build_item_stacks(canon, actor_store.get::<component::Item>(viewer_id).iter())?;
+    let wielded_item_id =
+        (actor_store.get::<component::WieldedItem>(viewer_id).get()).map(str::to_string);
 
-    let meters = shown_meters(canon, world, &entity::Id::Actor(viewer.actor_id().clone()));
+    let meters = shown_meters(canon, world, &entity::Id::Actor(viewer_id.clone()));
     let world_meters = shown_meters(canon, world, &entity::Id::Global);
 
-    let habits = match viewer {
-        Viewer::Player(_) => Vec::new(),
-        Viewer::Npc(id) => list_whose_if_holds(canon, world, presence, id),
+    let habits = if actor_store.get::<component::ControlType>(viewer_id).is_pc() {
+        Vec::new()
+    } else {
+        list_whose_if_holds(canon, world, presence, viewer_id)
     };
-    let exits = crate::rules::travel::visible_exits(canon, world, viewer.actor_id());
+    let exits = crate::rules::travel::visible_exits(canon, world, viewer_id);
     let actor_names = visible_actors
         .iter()
         .map(|id| canon.name(id.as_str()).map(str::to_string))
@@ -177,26 +180,44 @@ fn build_capped_view(
         .ok_or(Reason::UnknownId)?;
     let place_name =
         crate::rules::lines::find_place_name(canon, place_id.as_str()).ok_or(Reason::UnknownId)?;
-    let prose = crate::rules::lines::place_prose(canon, world, viewer.actor_id());
-    let busy = crate::rules::lines::busy_line(canon, world, viewer.actor_id()).unwrap_or_default();
+    let place_prose = crate::rules::lines::place_prose(canon, world, viewer_id);
+    let busy = crate::rules::lines::busy_line(canon, world, viewer_id).unwrap_or_default();
 
     Ok(View {
-        viewer: viewer.clone(),
+        viewer_id: viewer_id.clone(),
         place: place_id.into(),
         place_name,
-        prose,
+        place_prose,
         visible_actors,
         actor_names,
         known_facts,
         notes,
         unknown_mentions,
         items,
+        items_carried,
+        wielded_item_id,
         meters,
         world_meters,
         habits,
         exits,
         busy,
     })
+}
+
+/// Each item of `item_counts`, with its count and name.
+fn build_item_stacks<'a>(
+    canon: &Canon,
+    item_counts: impl Iterator<Item = (&'a str, &'a u32)>,
+) -> Result<Vec<ItemStack>, Reason> {
+    item_counts
+        .map(|(id, count)| {
+            Ok(ItemStack {
+                id: id.to_string(),
+                count: *count,
+                name: canon.name(id).ok_or(Reason::UnknownId)?.to_string(),
+            })
+        })
+        .collect()
 }
 
 /// The meters `carrier` carries that are not hidden, in id order.
@@ -215,6 +236,7 @@ fn shown_meters(canon: &Canon, world: &ecs::World, carrier: &entity::Id) -> Vec<
             let value = world.entities().get::<Meter>(carrier).value(id).ok()?;
             Some(MeterView {
                 id: id.to_string(),
+                name: desc.name.clone(),
                 value,
                 max: desc.max,
             })

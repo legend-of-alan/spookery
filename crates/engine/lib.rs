@@ -23,7 +23,7 @@ pub use ecs::component::modifier::Modifier;
 pub use ecs::component::Note;
 pub use ecs::id::{ActorId, ExitId, GlobalId, PlaceId, StoryId};
 pub use ecs::{Presence, Reader, Save, Writer};
-pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
+pub use intent::{Intent, IntentArgs, Source, Target};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick};
 pub use rules::gate::Refusal;
 pub use rules::perceive::View;

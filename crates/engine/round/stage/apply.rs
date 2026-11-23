@@ -2,7 +2,7 @@
 
 use crate::canon::{Canon, Exit};
 use crate::ecs::{self, component, PendingAction, Presence};
-use crate::intent::{Intent, Viewer};
+use crate::intent::Intent;
 use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::effect::{Effect, EffectKind};
@@ -40,10 +40,11 @@ pub(crate) fn run(
     let mut keys_spent = false;
     for Candidate { intent, resolution } in candidates {
         let intent = &intent;
-        let spends_slot = matches!(intent.actor, Some(Viewer::Npc(_)));
+        let is_pc = |id| world.actors().get::<component::ControlType>(id).is_pc();
+        let spends_slot = intent.actor_id.as_ref().is_some_and(|id| !is_pc(id));
         if keys_spent || (spends_slot && slots >= max_npcs) {
             let refusal = gate::Refusal::new(intent, Reason::Budget);
-            refuse(ledger, intent, refusal);
+            refuse(world, ledger, intent, refusal);
             continue;
         }
         let point = world.savepoint();
@@ -51,7 +52,7 @@ pub(crate) fn run(
             Resolution::Ready { rule } => {
                 let context = Context::new(canon, world, presence, intent);
                 if let Err(refusal) = gate::admit(&context, rule, None) {
-                    refuse(ledger, intent, refusal);
+                    refuse(world, ledger, intent, refusal);
                     continue;
                 }
                 let at = clock.world_time_before;
@@ -59,7 +60,7 @@ pub(crate) fn run(
             }
             Resolution::Cancel => cancel(canon, world, presence, intent, ledger),
             Resolution::Refused(refusal) => {
-                refuse(ledger, intent, refusal);
+                refuse(world, ledger, intent, refusal);
                 continue;
             }
         };
@@ -95,7 +96,7 @@ fn start(
     let ticks = match travel::span(&context, rule) {
         Ok(ticks) => ticks,
         Err(code) => {
-            refuse(ledger, intent, gate::Refusal::new(intent, code));
+            refuse(world, ledger, intent, gate::Refusal::new(intent, code));
             return landing_of(code);
         }
     };
@@ -124,7 +125,7 @@ fn start(
         });
     }
     if let Err(code) = started {
-        refuse(ledger, intent, gate::Refusal::new(intent, code));
+        refuse(world, ledger, intent, gate::Refusal::new(intent, code));
         return landing_of(code);
     }
     if ticks > 0 {
@@ -145,15 +146,15 @@ fn cancel(
 ) -> Landing {
     let context = Context::new(canon, world, presence, intent);
     if let Err(refusal) = gate::admit_cancel(&context) {
-        refuse(ledger, intent, refusal);
+        refuse(world, ledger, intent, refusal);
         return Landing::Refused;
     }
-    let actor_id = intent.actor_id().ok_or(Reason::UnknownId);
+    let actor_id = intent.actor_id.as_ref().ok_or(Reason::UnknownId);
     match actor_id.and_then(|id| (world.actors_mut().get_mut::<component::Act>(id)).take_pending())
     {
         Ok(_) => Landing::Landed,
         Err(code) => {
-            refuse(ledger, intent, gate::Refusal::new(intent, code));
+            refuse(world, ledger, intent, gate::Refusal::new(intent, code));
             landing_of(code)
         }
     }
@@ -171,7 +172,7 @@ fn pend(
     until: u64,
     ledger: &mut Ledger,
 ) -> Result<(), Reason> {
-    let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
+    let actor_id = intent.actor_id.as_ref().ok_or(Reason::UnknownId)?;
     if let Some(exit) = exit {
         let from = world.actors().get::<component::Place>(actor_id).get();
         let kind = EffectKind::Location {
@@ -180,7 +181,7 @@ fn pend(
             to: travel::on_exit(exit),
             arrived_at: None,
         };
-        let effect = Effect::new(intent.actor.as_ref(), &intent.id, kind);
+        let effect = Effect::new(intent.actor_id.as_ref(), &intent.id, kind);
         effect.clone().apply(canon, world, presence, intent)?;
         ledger.effects.push(effect);
     }
@@ -208,11 +209,11 @@ pub(crate) fn finish(
     ledger: &mut Ledger,
 ) -> Landing {
     let context = Context::new(canon, world, presence, intent);
-    let roller = dice.roller(ledger, &rule.id, intent.actor_id());
+    let roller = dice.roller(ledger, &rule.id, intent.actor_id.as_ref());
     let mut expansion = match expand::expand(&context, rule, Cause::Finish, roller) {
         Ok(expansion) => expansion,
         Err(code) => {
-            refuse(ledger, intent, gate::Refusal::new(intent, code));
+            refuse(world, ledger, intent, gate::Refusal::new(intent, code));
             return landing_of(code);
         }
     };
@@ -231,14 +232,14 @@ pub(crate) fn finish(
     }
     if rule.cooldown > 0 {
         finished = finished.and_then(|()| {
-            let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
+            let actor_id = intent.actor_id.as_ref().ok_or(Reason::UnknownId)?;
             let mut actors = world.actors_mut();
             (actors.get_mut::<component::Act>(actor_id)).set_busy(at + rule.cooldown, None)
         });
     }
     if let Err(code) = finished {
         world.rollback(point);
-        refuse(ledger, intent, gate::Refusal::new(intent, code));
+        refuse(world, ledger, intent, gate::Refusal::new(intent, code));
         return landing_of(code);
     }
     let landing = land(canon, world, presence, intent, rule, expansion, ledger);
@@ -249,7 +250,7 @@ pub(crate) fn finish(
 }
 
 fn count_act(world: &mut ecs::World, presence: &Presence, intent: &Intent) -> Result<(), Reason> {
-    let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
+    let actor_id = intent.actor_id.as_ref().ok_or(Reason::UnknownId)?;
     let round_index = world.round_index;
     let mut actors = world.actors_mut();
     (actors.get_mut::<component::Act>(actor_id)).count(round_index, presence.players)
@@ -291,21 +292,29 @@ pub(crate) fn land(
         world.rollback(point);
         let refusal = gate::Refusal::new(intent, code);
         match cause {
-            Cause::Finish => refuse(ledger, intent, refusal),
+            Cause::Finish => refuse(world, ledger, intent, refusal),
             Cause::Trigger => ledger.refused.push(refusal),
         }
         return landing_of(code);
     }
     ledger.effects.extend(expansion.effects);
-    ledger.report_roll(expansion.rolled, intent.actor_id());
+    ledger.report_roll(expansion.rolled, intent.actor_id.as_ref());
     ledger.reports.extend(expansion.reports);
     ledger.extra_steps.push(Step::Rule(rule.id.clone()));
     Landing::Landed
 }
 
 /// Journal the refusal, and tell its code and detail to the actor when that is a player.
-pub(crate) fn refuse(ledger: &mut Ledger, intent: &Intent, refusal: gate::Refusal) {
-    if let Some(Viewer::Player(actor_id)) = &intent.actor {
+pub(crate) fn refuse(
+    world: &ecs::World,
+    ledger: &mut Ledger,
+    intent: &Intent,
+    refusal: gate::Refusal,
+) {
+    let actor_id = intent.actor_id.as_ref();
+    if let Some(actor_id) =
+        actor_id.filter(|id| world.actors().get::<component::ControlType>(id).is_pc())
+    {
         ledger.reports.push(MoveReport::Refused {
             actor_id: actor_id.clone(),
             refusal: refusal.clone(),

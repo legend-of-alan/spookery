@@ -773,7 +773,7 @@ rules:
 
 ## Meters
 
-`min` is the floor, `base_cap` is the trained cap, and `max` is as high as current can go. Current is base plus offset, and it is not stored. A meter's entity is the one whose file declares it:
+`min` is the floor, `base_cap` is the trained cap, and `max` is as high as current can go. Current is base plus offset, and it is not stored. An optional `name` is what a player reads for the meter in a view and a change sentence. Without it, `spook play` shows the id with spaces for underscores and a capital first letter, so `assassination_debt` reads `Assassination debt`. A meter's entity is the one whose file declares it:
 
 - `rules/meters.yaml` gives the meter to every actor.
 - `meters:` in `cast/<name>.md` gives it to that one actor. The id is refused when `rules/meters.yaml` or another cast file has it too. `cast/keeper.md` declares `shop_day`.
@@ -790,6 +790,7 @@ Visibility: the GM sees every meter change. An actor's meter change is shown to 
 schema: meters
 meters:
   - id: nerve
+    name: Nerve
     min: 0
     base_cap: 100
     max: 110

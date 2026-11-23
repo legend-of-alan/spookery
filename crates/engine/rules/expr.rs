@@ -279,7 +279,7 @@ pub(crate) fn resolve_actor<'a>(
     actor: &'a grammar::Actor,
 ) -> Result<&'a ActorId, Reason> {
     match actor {
-        grammar::Actor::Self_ => context.intent.actor_id().ok_or(Reason::Schema),
+        grammar::Actor::Self_ => context.intent.actor_id.as_ref().ok_or(Reason::Schema),
         grammar::Actor::Target => match &context.intent.target {
             Target::Actor(id) => Ok(id),
             Target::Empty => Err(Reason::Schema),
@@ -291,7 +291,7 @@ pub(crate) fn resolve_actor<'a>(
 
 /// Where the acting actor stands: a place id, or an exit's address while they walk.
 pub(crate) fn resolve_here<'a>(context: &Context<'_, 'a>) -> Result<&'a str, Reason> {
-    let actor_id = context.intent.actor_id().ok_or(Reason::Schema)?;
+    let actor_id = context.intent.actor_id.as_ref().ok_or(Reason::Schema)?;
     let place = context.world.actors().get::<component::Place>(actor_id);
     place.get().ok_or(Reason::UnknownId)
 }

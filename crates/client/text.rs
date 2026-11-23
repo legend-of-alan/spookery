@@ -186,7 +186,9 @@ pub fn render_view(view: &protocol::View) -> String {
         visible_actors,
         known_facts,
         notes,
-        items,
+        items: items_here,
+        items_carried,
+        wielded_item_id,
         meters,
         world_meters,
         exits,
@@ -223,9 +225,25 @@ pub fn render_view(view: &protocol::View) -> String {
         "Notes:",
         notes.iter().map(|note| note.text.as_str()),
     );
-    if !items.is_empty() {
-        let lines: Vec<String> = items.iter().map(render_item).collect();
-        sections.push(format!("Items:\n{}", lines.join("\n")));
+    let items_here_lines: Vec<String> = items_here.iter().map(render_item).collect();
+    let items_carried_lines: Vec<String> = items_carried
+        .iter()
+        .map(|item| {
+            let line = render_item(item);
+            if wielded_item_id.as_ref() == Some(&item.id) {
+                format!("{line} (in hand)")
+            } else {
+                line
+            }
+        })
+        .collect();
+    for (title, lines) in [
+        ("Items here:", items_here_lines),
+        ("You carry:", items_carried_lines),
+    ] {
+        if !lines.is_empty() {
+            sections.push(format!("{title}\n{}", lines.join("\n")));
+        }
     }
     for (title, meters) in [("Meters:", meters), ("The world:", world_meters)] {
         if !meters.is_empty() {
@@ -271,7 +289,8 @@ fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
                 as_number(change.after.as_ref()),
             ) {
                 ("meter", Some(after)) => {
-                    Some(format!("{whose} {} is now {after}.", change.entry_id))
+                    let name = meter_name(&change.entry_id, &change.entry_name);
+                    Some(format!("{whose} {name} is now {after}."))
                 }
                 ("item", Some(_)) => render_item_change(viewer, change, changes),
                 ("place", _) if !change.entry_name.is_empty() => {
@@ -401,9 +420,19 @@ pub(crate) fn render_item(item: &ItemStack) -> String {
     format!("{}: {}", item.name, item.count)
 }
 
-/// `Hp: 8/16`: the meter's name, value and max.
+/// `Health: 8/16`: the meter's name, value and max.
 pub(crate) fn render_meter(meter: &MeterView) -> String {
-    format!("{}: {}/{}", humanize(&meter.id), meter.value, meter.max)
+    let name = meter_name(&meter.id, &meter.name);
+    format!("{name}: {}/{}", meter.value, meter.max)
+}
+
+/// The meter's `name`, or its `id` made readable when the pack gives it none.
+fn meter_name(id: &str, name: &str) -> String {
+    if name.is_empty() {
+        humanize(id)
+    } else {
+        name.to_string()
+    }
 }
 
 /// `docks_shop` becomes "Docks shop".
@@ -479,8 +508,10 @@ fn speaker_name(speech: &Speech) -> &str {
 pub fn render_gm(body: &ServerBody) -> String {
     match body {
         ServerBody::Say(speech) => format!("{}: {}", speaker_name(speech), speech.text),
-        ServerBody::Queued { actor, move_id, .. } => {
-            format!("{} queued: {move_id}", humanize(actor))
+        ServerBody::Queued {
+            actor_id, move_id, ..
+        } => {
+            format!("{} queued: {move_id}", humanize(actor_id))
         }
         ServerBody::Status(status) => render_status(status),
         ServerBody::View(view) => render_view(view),

@@ -151,8 +151,7 @@ async fn claim_pc(
         }
         let missed_messages = match &server_message.body {
             ServerBody::Claimed {
-                missed: missed_messages,
-                ..
+                missed_messages, ..
             } => missed_messages.as_slice(),
             _ => &[],
         };

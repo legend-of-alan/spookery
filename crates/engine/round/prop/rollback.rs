@@ -23,7 +23,7 @@ use crate::ecs::component::{self, Component};
 use crate::ecs::id::{ActorId, ExitId};
 use crate::ecs::{self, ActCounter, Presence, Save};
 use crate::entity;
-use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
+use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::rules::effect::{Effect, EffectKind};
 use crate::session;
 use crate::testing::copy_pack;
@@ -99,6 +99,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     ];
     for (carrier, key) in &carried {
         let desc = meter::Descriptor {
+            name: String::new(),
             min: 0,
             base_cap: 10,
             max: 10,
@@ -238,18 +239,18 @@ fn every_moved_meter_is_reported(
     now: &ecs::World,
     changes: &[Change],
 ) -> Result<(), TestCaseError> {
-    let read = |world: &ecs::World, actor: &ActorId, key: &str| {
-        let value = modifier::value(world.actors(), actor, key);
+    let read = |world: &ecs::World, actor_id: &ActorId, key: &str| {
+        let value = modifier::value(world.actors(), actor_id, key);
         value.ok().map(ChangeValue::Number)
     };
     let meters = now.actors().query::<&Meter>();
-    for (actor, key, _) in meters.iter().flat_map(|held| held.iter_with_id()) {
-        let (before, after) = (read(taken, actor, key), read(now, actor, key));
+    for (actor_id, key, _) in meters.iter().flat_map(|held| held.iter_with_id()) {
+        let (before, after) = (read(taken, actor_id, key), read(now, actor_id, key));
         if before == after {
             continue;
         }
         let moved = Change {
-            key: change::Key::new(Meter::ID, entity::IdRef::Actor(actor), Some(key)),
+            key: change::Key::new(Meter::ID, entity::IdRef::Actor(actor_id), Some(key)),
             before,
             after,
         };
@@ -337,14 +338,14 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
             unreachable!("not an effect")
         }
     };
-    Effect::new(Some(&Viewer::Npc("mira".into())), "rollback", kind)
+    Effect::new(Some(&"mira".into()), "rollback", kind)
 }
 
 fn mira_intent() -> Intent {
     Intent {
         id: "rollback".to_string(),
         round_index: 0,
-        actor: Some(Viewer::Npc("mira".into())),
+        actor_id: Some("mira".into()),
         source: Source::Engine,
         move_id: "rollback".to_string(),
         target: Target::Empty,

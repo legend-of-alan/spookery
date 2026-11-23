@@ -12,7 +12,7 @@ use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Dia
 use crate::ecs::id::{ActorId, PlaceId};
 use crate::ecs::{self, component, Presence, Save};
 use crate::entity;
-use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
+use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
@@ -117,8 +117,7 @@ impl Session {
         let Audience::Actor(opening) = audience else {
             return Ok(self.append_speech(presence, from, Some(actor_id), Some(audience), text)?);
         };
-        let viewer = Viewer::Player(actor_id.clone());
-        let mut ids = gate::list_ids(self.canon(), &self.world, presence, &viewer);
+        let mut ids = gate::list_ids(self.canon(), &self.world, presence, actor_id);
         let actors = self.world.actors();
         ids.retain(|named_id| actors.contains(&ActorId::from(named_id.id.as_str())));
         let line = format!("{opening} {text}");
@@ -273,9 +272,8 @@ impl<Lock> Session<Lock> {
         target: Option<&str>,
     ) -> Result<(QueuedMove, Option<String>), gate::Refusal> {
         let words = target.filter(|token| !token.is_empty());
-        let viewer = Viewer::Player(actor_id.clone());
         let ids = match words {
-            Some(_) => gate::list_ids(self.canon(), &self.world, presence, &viewer),
+            Some(_) => gate::list_ids(self.canon(), &self.world, presence, actor_id),
             None => Vec::new(),
         };
         let match_id = match words {
@@ -322,15 +320,22 @@ impl<Lock> Session<Lock> {
     /// The rule a PC's line picks, and the target the line names for it. A line already
     /// queued is `SCHEMA`.
     fn shape_line(&self, line: &Intent, token: Option<&str>) -> Result<(&Rule, Target), Reason> {
-        let Some(viewer) = &line.actor else {
+        let Some(actor_id) = &line.actor_id else {
             return Err(Reason::Schema);
         };
         let actors = self.world.actors();
-        if !(actors.get::<component::ControlType>(viewer.actor_id())).is_pc() {
+        if !(actors.get::<component::ControlType>(actor_id)).is_pc() {
             return Err(Reason::Schema);
         }
-        let (actor, verb) = (viewer, &line.move_id);
-        let rule = gate::pick(self.canon(), &self.world, actor, line.source, verb, token)?;
+        let verb = &line.move_id;
+        let rule = gate::pick(
+            self.canon(),
+            &self.world,
+            actor_id,
+            line.source,
+            verb,
+            token,
+        )?;
         let target = target_for(rule, token)?;
         if self.queue.iter().any(|queued| queued.id == line.id) {
             return Err(Reason::Schema);
@@ -355,11 +360,12 @@ impl<Lock> Session<Lock> {
             .move_id
             .filter(|m| !m.is_empty())
             .ok_or(Reason::Schema)?;
-        let control = self.world.actors().get::<component::ControlType>(&actor_id);
-        let viewer = control.viewer().ok_or(Reason::UnknownId)?;
+        if !self.world.actors().contains(&actor_id) {
+            return Err(Reason::UnknownId);
+        }
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
         let (canon, world) = (self.canon(), &self.world);
-        let rule = gate::pick(canon, world, &viewer, Source::Gm, &move_id, token)?;
+        let rule = gate::pick(canon, world, &actor_id, Source::Gm, &move_id, token)?;
         let target = target_for(rule, token)?;
         let id = match spec.id {
             Some(id) if !id.is_empty() => id,
@@ -385,7 +391,7 @@ impl<Lock> Session<Lock> {
         let intent = Intent {
             id: id.clone(),
             round_index,
-            actor: Some(viewer),
+            actor_id: Some(actor_id.clone()),
             source: Source::Gm,
             move_id: move_id.clone(),
             target,

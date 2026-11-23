@@ -14,7 +14,8 @@ use crate::Reason;
 pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal> {
     let (world, intent) = (context.world, context.intent);
     let actor_id = intent
-        .actor_id()
+        .actor_id
+        .as_ref()
         .ok_or_else(|| gate::Refusal::new(intent, Reason::UnknownId))?;
     let cant_afford = |missing: &str| gate::Refusal {
         id: intent.id.clone(),
@@ -61,7 +62,7 @@ pub(crate) fn pay(
     intent: &Intent,
     cost: &Cost,
 ) -> Result<(), Reason> {
-    let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
+    let actor_id = intent.actor_id.as_ref().ok_or(Reason::UnknownId)?;
     for (key, expr) in &cost.meters {
         let context = Context::new(canon, world, presence, intent);
         let amount = expr::eval(&context, expr)?;

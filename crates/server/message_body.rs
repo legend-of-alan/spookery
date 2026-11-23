@@ -1,5 +1,6 @@
-//! Engine output as message bodies. The one place a `protocol::Refusal` is rendered.
+//! Engine output as message bodies. The one place a `protocol::Refusal` is built.
 
+use super::seat::Claim;
 use crate::protocol::{
     self, CommitBody, PackSummary, QueuedMove, Roll, ServerBody, Speech, StatusPresence,
     TableStatus,
@@ -8,20 +9,15 @@ use spookery_engine::{self as engine, ActorId, Intent, MoveReport, Presence, Tap
 
 /// A move the gate or a round refused. Its `detail` is the meter or item id, or the
 /// sentence a locked exit shows.
-pub(super) fn render_refused_move(refusal: &engine::Refusal) -> protocol::Refusal {
+pub(super) fn build_refused_move(refusal: &engine::Refusal) -> protocol::Refusal {
     protocol::Refusal {
         code: protocol::Code::Known(refusal.code),
         detail: refusal.detail.clone(),
     }
 }
 
-/// One line of speech as a seat hears it: a `say` message. Only the GM's copy lists the
-/// recipients.
-pub(super) fn render_speech(tape: &TapeRecord, gm: bool) -> ServerBody {
-    ServerBody::Say(build_speech(tape, gm))
-}
-
-fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
+/// One line of speech as a seat hears it. Only the GM's copy lists the recipients.
+pub(super) fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
     Speech {
         from: tape.from.clone(),
         from_name: tape.from_name.clone(),
@@ -35,26 +31,31 @@ fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
     }
 }
 
-/// The reply to a new claim: the PC, its token, and the speech it heard before.
-pub(super) fn render_claimed(
-    actor: &ActorId,
-    token: &str,
+/// The reply to a claim: the PC, its token, the round and tick of `now`, `scrollback`, and the
+/// messages `claim` kept after `last_seq`.
+pub(super) fn build_claim_reply(
+    now: &engine::ecs::World,
+    claim: &Claim,
     scrollback: &[TapeRecord],
+    last_seq: u64,
 ) -> ServerBody {
+    let (missed_messages, is_missed_truncated) = claim.messages_after(last_seq);
     ServerBody::Claimed {
-        actor: actor.to_string(),
-        token: token.to_string(),
+        actor_id: claim.actor_id.to_string(),
+        token: claim.token.clone(),
+        round_index: now.round_index,
+        world_time: now.world_time,
         scrollback: scrollback
             .iter()
             .map(|tape| build_speech(tape, false))
             .collect(),
-        missed: Vec::new(),
-        gap: false,
+        missed_messages,
+        is_missed_truncated,
     }
 }
 
 /// The `check` and `refused` bodies of this actor's moves.
-pub(super) fn render_checks(reports: &[MoveReport], actor_id: &ActorId) -> Vec<ServerBody> {
+pub(super) fn build_checks(reports: &[MoveReport], actor_id: &ActorId) -> Vec<ServerBody> {
     reports
         .iter()
         .filter_map(|report| match report {
@@ -66,7 +67,7 @@ pub(super) fn render_checks(reports: &[MoveReport], actor_id: &ActorId) -> Vec<S
             MoveReport::Refused {
                 actor_id: id,
                 refusal,
-            } if id == actor_id => Some(ServerBody::Refused(render_refused_move(refusal))),
+            } if id == actor_id => Some(ServerBody::Refused(build_refused_move(refusal))),
             _ => None,
         })
         .collect()
@@ -79,8 +80,8 @@ fn rolls<'a>(reports: impl IntoIterator<Item = &'a MoveReport>) -> impl Iterator
     })
 }
 
-pub(super) fn render_resume(view: &engine::View) -> ServerBody {
-    let actor_id = view.viewer.actor_id();
+pub(super) fn build_resume(view: &engine::View) -> ServerBody {
+    let actor_id = &view.viewer_id;
     let notes = view
         .notes
         .iter()
@@ -90,12 +91,12 @@ pub(super) fn render_resume(view: &engine::View) -> ServerBody {
     ServerBody::Resume { notes }
 }
 
-pub(super) fn render_view(view: &engine::View) -> ServerBody {
+pub(super) fn build_view(view: &engine::View) -> ServerBody {
     ServerBody::View(Box::new(protocol::View {
-        viewer: view.viewer.actor_id().to_string(),
+        viewer: view.viewer_id.to_string(),
         place: view.place.clone(),
         place_name: view.place_name.clone(),
-        body: view.prose.clone(),
+        body: view.place_prose.clone(),
         actor_names: view.actor_names.clone(),
         cant_act: String::new(),
         busy: view.busy.clone(),
@@ -104,6 +105,8 @@ pub(super) fn render_view(view: &engine::View) -> ServerBody {
         notes: view.notes.clone(),
         unknown_mentions: view.unknown_mentions.clone(),
         items: view.items.clone(),
+        items_carried: view.items_carried.clone(),
+        wielded_item_id: view.wielded_item_id.clone(),
         meters: view.meters.clone(),
         world_meters: view.world_meters.clone(),
         habits: view.habits.clone(),
@@ -111,7 +114,7 @@ pub(super) fn render_view(view: &engine::View) -> ServerBody {
     }))
 }
 
-pub(super) fn render_committed(
+pub(super) fn build_committed(
     state_rev: u64,
     changed_keys: &[String],
     journal_path: Option<&str>,
@@ -133,7 +136,7 @@ pub(super) fn render_committed(
     })
 }
 
-pub(super) fn render_status(
+pub(super) fn build_status(
     now: &engine::ecs::World,
     presence: &Presence,
     queued: &[Intent],
@@ -158,7 +161,7 @@ pub(super) fn render_status(
             .filter_map(|intent| {
                 Some(QueuedMove {
                     id: intent.id.clone(),
-                    actor_id: intent.actor_id()?.to_string(),
+                    actor_id: intent.actor_id.as_ref()?.to_string(),
                     move_id: intent.move_id.clone(),
                 })
             })
