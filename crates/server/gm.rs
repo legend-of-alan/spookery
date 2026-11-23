@@ -206,7 +206,7 @@ fn queue(
     let queued = session.queue_gm_intent(presence, call, new_id)?;
     Ok(Reply::new(ServerBody::Queued {
         intent: queued.id,
-        actor: queued.actor_id,
+        actor_id: queued.actor_id,
         move_id: queued.move_id,
         target,
     }))

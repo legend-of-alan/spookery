@@ -228,7 +228,7 @@ impl Table {
             !presence
                 .actors_present
                 .iter()
-                .any(|actor| actor == id.as_str())
+                .any(|actor_id| actor_id == id.as_str())
         })
     }
 
@@ -265,7 +265,11 @@ impl Table {
         if command == "claim" {
             return self.claim(conn, id, &args);
         }
-        let Some(actor_id) = self.seats.claim_of(conn).map(|claim| claim.actor.clone()) else {
+        let Some(actor_id) = self
+            .seats
+            .claim_of(conn)
+            .map(|claim| claim.actor_id.clone())
+        else {
             return self.reply(conn, id, ServerBody::Refused(Reason::ChoosePc.into()));
         };
         let presence = self.seats.presence();
@@ -308,15 +312,15 @@ impl Table {
         let args = read::<ClaimArgs>(args).filter(|_| self.seats.claim_of(conn).is_none());
         let fresh = matches!(args, Some(ClaimArgs::Actor { .. }));
         let taken = match args {
-            Some(ClaimArgs::Actor { actor }) => self.claim_free_pc(&actor),
+            Some(ClaimArgs::Actor { actor_id }) => self.claim_free_pc(&actor_id),
             Some(ClaimArgs::Token { token, last_seq }) => self.claim_by_token(&token, last_seq),
             None => Err(Reason::Schema),
         };
-        let (token, actor, claim_reply) = match taken {
+        let (token, actor_id, claim_reply) = match taken {
             Ok(taken) => taken,
             Err(code) => return self.reply(conn, id, ServerBody::Refused(code.into())),
         };
-        let [resume, view] = match refresh(&self.session, &self.seats.presence(), &actor) {
+        let [resume, view] = match refresh(&self.session, &self.seats.presence(), &actor_id) {
             Ok(bodies) => bodies,
             Err(code) => {
                 if fresh {
@@ -326,8 +330,8 @@ impl Table {
             }
         };
         self.reply(conn, id, claim_reply);
-        tracing::info!(conn_id = %conn, actor_id = %actor, by_token = !fresh, "PC claimed");
-        if let Some(claim) = self.seats.claim_of_actor_mut(&actor) {
+        tracing::info!(conn_id = %conn, actor_id = %actor_id, by_token = !fresh, "PC claimed");
+        if let Some(claim) = self.seats.claim_of_actor_mut(&actor_id) {
             claim.conn = Some(conn);
         }
         self.notify(conn, resume);
@@ -344,17 +348,17 @@ impl Table {
         if presence.actors_present.len() >= MAX_PLAYER_SEATS {
             return Err(Reason::TableFull);
         }
-        let actor = self.session.find_pc(text)?.ok_or(Reason::Schema)?;
-        if presence.actors_present.contains(&actor) {
+        let actor_id = self.session.find_pc(text)?.ok_or(Reason::Schema)?;
+        if presence.actors_present.contains(&actor_id) {
             return Err(Reason::SeatTaken);
         }
-        let scrollback = self.session.player_scrollback(&actor)?;
-        let claim = Claim::new(uuid::Uuid::new_v4().simple().to_string(), actor.clone());
+        let scrollback = self.session.player_scrollback(&actor_id)?;
+        let claim = Claim::new(uuid::Uuid::new_v4().simple().to_string(), actor_id.clone());
         let claim_reply =
             message_body::build_claim_reply(self.session.world(), &claim, &scrollback, 0);
         let token = claim.token.clone();
         self.seats.claims.push(claim);
-        Ok((token, actor, claim_reply))
+        Ok((token, actor_id, claim_reply))
     }
 
     /// The held claim `token` names, with what was sent to it after `last_seq`. A connection
@@ -373,12 +377,12 @@ impl Table {
         claim.conn = None;
         let claim_reply =
             message_body::build_claim_reply(self.session.world(), claim, &[], last_seq);
-        Ok((token.to_string(), claim.actor.clone(), claim_reply))
+        Ok((token.to_string(), claim.actor_id.clone(), claim_reply))
     }
 
     fn release_claim(&mut self, conn: ConnId, id: Option<String>) {
         if let Some(claim) = self.seats.claim_of(conn) {
-            tracing::info!(conn_id = %conn, actor_id = %claim.actor, "PC released");
+            tracing::info!(conn_id = %conn, actor_id = %claim.actor_id, "PC released");
         }
         self.seats.claims.retain(|claim| claim.conn != Some(conn));
         self.reply(conn, id, ServerBody::Released);
@@ -421,7 +425,7 @@ impl Table {
             {
                 Ok((queued, target)) => ServerBody::Queued {
                     intent: queued.id,
-                    actor: queued.actor_id,
+                    actor_id: queued.actor_id,
                     move_id: queued.move_id,
                     target,
                 },
@@ -496,7 +500,7 @@ impl Table {
             .seats
             .claims
             .iter()
-            .map(|claim| claim.actor.clone())
+            .map(|claim| claim.actor_id.clone())
             .collect();
         for commit in outputs.iter().filter_map(|output| output.commit.as_ref()) {
             let seq = self.next_seq();
@@ -562,10 +566,10 @@ impl Table {
             .claims
             .iter()
             .filter(|claim| {
-                speech.recipient_ids.iter().any(|id| claim.actor == **id)
+                speech.recipient_ids.iter().any(|id| claim.actor_id == **id)
                     || claim.conn.is_some_and(|conn| sender == Some(conn))
             })
-            .map(|claim| (claim.actor.clone(), claim.conn))
+            .map(|claim| (claim.actor_id.clone(), claim.conn))
             .collect();
         if let Some(gm) = self.seats.gm {
             let body = ServerBody::Say(message_body::build_speech(speech, true));
@@ -610,7 +614,11 @@ impl Table {
         }
         let seq = self.next_seq();
         let message = stamp_message(seq, id, body);
-        match self.seats.claim_of(conn).map(|claim| claim.actor.clone()) {
+        match self
+            .seats
+            .claim_of(conn)
+            .map(|claim| claim.actor_id.clone())
+        {
             Some(actor_id) => self.send_to_pc(&actor_id, message),
             None => self.send(conn, message),
         }

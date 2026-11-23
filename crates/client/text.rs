@@ -508,8 +508,10 @@ fn speaker_name(speech: &Speech) -> &str {
 pub fn render_gm(body: &ServerBody) -> String {
     match body {
         ServerBody::Say(speech) => format!("{}: {}", speaker_name(speech), speech.text),
-        ServerBody::Queued { actor, move_id, .. } => {
-            format!("{} queued: {move_id}", humanize(actor))
+        ServerBody::Queued {
+            actor_id, move_id, ..
+        } => {
+            format!("{} queued: {move_id}", humanize(actor_id))
         }
         ServerBody::Status(status) => render_status(status),
         ServerBody::View(view) => render_view(view),

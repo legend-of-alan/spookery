@@ -49,7 +49,7 @@ impl Seats {
         let mut actors_present: Vec<ActorId> = self
             .claims
             .iter()
-            .map(|claim| claim.actor.clone())
+            .map(|claim| claim.actor_id.clone())
             .collect();
         actors_present.sort();
         Presence {
@@ -70,8 +70,10 @@ impl Seats {
     }
 
     /// The claim on the PC `actor`.
-    pub(super) fn claim_of_actor_mut(&mut self, actor: &ActorId) -> Option<&mut Claim> {
-        self.claims.iter_mut().find(|claim| claim.actor == *actor)
+    pub(super) fn claim_of_actor_mut(&mut self, actor_id: &ActorId) -> Option<&mut Claim> {
+        self.claims
+            .iter_mut()
+            .find(|claim| claim.actor_id == *actor_id)
     }
 
     pub(super) fn connection(&self, conn: ConnId) -> Option<&Connection> {
@@ -101,7 +103,7 @@ pub(super) struct Connection {
 /// claim by its `token` takes it back, with the messages it kept.
 pub(super) struct Claim {
     pub(super) token: String,
-    pub(super) actor: ActorId,
+    pub(super) actor_id: ActorId,
     /// The connection that drives it, while one does.
     pub(super) conn: Option<ConnId>,
     /// The newest `MISSED_MESSAGE_CAP` messages sent to this claim, oldest first.
@@ -111,10 +113,10 @@ pub(super) struct Claim {
 }
 
 impl Claim {
-    pub(super) fn new(token: String, actor: ActorId) -> Self {
+    pub(super) fn new(token: String, actor_id: ActorId) -> Self {
         Self {
             token,
-            actor,
+            actor_id,
             conn: None,
             kept: VecDeque::new(),
             last_lost_seq: 0,

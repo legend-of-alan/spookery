@@ -41,7 +41,7 @@ pub(super) fn build_claim_reply(
 ) -> ServerBody {
     let (missed_messages, is_missed_truncated) = claim.messages_after(last_seq);
     ServerBody::Claimed {
-        actor: claim.actor.to_string(),
+        actor_id: claim.actor_id.to_string(),
         token: claim.token.clone(),
         round_index: now.round_index,
         world_time: now.world_time,

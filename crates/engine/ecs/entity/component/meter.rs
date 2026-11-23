@@ -122,7 +122,9 @@ impl Ref<'_, Save, Meter> {
     pub fn value(&self, entry_id: &str) -> Result<i64, Reason> {
         let (save, canon) = (self.entities.components, self.entities.canon);
         match self.id {
-            Id::Actor(actor) => modifier::value(Reader::new(&save.actors, canon), actor, entry_id),
+            Id::Actor(actor_id) => {
+                modifier::value(Reader::new(&save.actors, canon), actor_id, entry_id)
+            }
             id => {
                 let desc = canon
                     .meter_desc(id.as_ref(), entry_id)

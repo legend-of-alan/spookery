@@ -73,27 +73,27 @@ pub(crate) fn show_to(
     changes: &[Change],
     effects: &[Effect],
 ) -> Delivery {
-    let actor = match seat {
+    let actor_id = match seat {
         Recipient::Gm => None,
         Recipient::Actor(id) => Some(id),
     };
     let visible: Vec<Change> = changes
         .iter()
-        .filter(|change| actor.is_none_or(|id| can_see(canon, world, id, change)))
+        .filter(|change| actor_id.is_none_or(|id| can_see(canon, world, id, change)))
         .cloned()
         .collect();
     let mut keys = BTreeSet::new();
     let mut views = Vec::new();
     for change in &visible {
         keys.insert(change.key.to_string());
-        if actor.is_some() {
+        if actor_id.is_some() {
             views.extend(to_change_view(canon, change));
         }
     }
     Delivery {
         changed_keys: keys.into_iter().collect(),
         changes: views,
-        narrations: narrations(canon, world, effects, actor),
+        narrations: narrations(canon, world, effects, actor_id),
     }
 }
 
@@ -177,23 +177,23 @@ fn can_see(canon: &Canon, world: &ecs::World, viewer: &ActorId, change: &Change)
             place_of(world, viewer) == Some(place.as_str())
                 && is_shown(canon, &key.entity_id, entry)
         }
-        (Meter::ID, entity::Id::Actor(actor)) => {
-            viewer == actor && is_shown(canon, &key.entity_id, entry)
+        (Meter::ID, entity::Id::Actor(actor_id)) => {
+            viewer == actor_id && is_shown(canon, &key.entity_id, entry)
         }
-        (KnownFacts::ID, entity::Id::Actor(actor)) => viewer == actor,
-        (Modifier::ID, entity::Id::Actor(actor)) => {
-            viewer == actor && canon.modifiers.get(entry).is_some_and(|desc| !desc.hidden)
+        (KnownFacts::ID, entity::Id::Actor(actor_id)) => viewer == actor_id,
+        (Modifier::ID, entity::Id::Actor(actor_id)) => {
+            viewer == actor_id && canon.modifiers.get(entry).is_some_and(|desc| !desc.hidden)
         }
         (Item::ID, entity::Id::Place(place)) => place_of(world, viewer) == Some(place.as_str()),
         (Note::ID, entity::Id::Global) => can_see_note(canon, world, viewer, entry),
-        (Place::ID, entity::Id::Actor(actor)) => {
-            viewer == actor
-                || same_place(world, viewer, actor)
+        (Place::ID, entity::Id::Actor(actor_id)) => {
+            viewer == actor_id
+                || same_place(world, viewer, actor_id)
                 || is_at(world, viewer, change.before.as_ref())
                 || is_at(world, viewer, change.after.as_ref())
         }
-        (Act::BUSY | Item::ID | WieldedItem::ID, entity::Id::Actor(actor)) => {
-            viewer == actor || same_place(world, viewer, actor)
+        (Act::BUSY | Item::ID | WieldedItem::ID, entity::Id::Actor(actor_id)) => {
+            viewer == actor_id || same_place(world, viewer, actor_id)
         }
         _ => false,
     }
@@ -211,8 +211,8 @@ fn place_of<'a>(world: &'a ecs::World, viewer: &'a ActorId) -> Option<&'a str> {
     world.actors().get::<component::Place>(viewer).get()
 }
 
-fn same_place(world: &ecs::World, viewer: &ActorId, actor: &ActorId) -> bool {
-    let actor_place = world.actors().get::<component::Place>(actor).get();
+fn same_place(world: &ecs::World, viewer: &ActorId, actor_id: &ActorId) -> bool {
+    let actor_place = world.actors().get::<component::Place>(actor_id).get();
     match (place_of(world, viewer), actor_place) {
         (Some(left), Some(right)) => left == right,
         _ => false,

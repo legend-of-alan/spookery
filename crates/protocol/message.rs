@@ -88,7 +88,8 @@ pub enum ServerBody {
     /// `missed_messages`, the messages sent to this PC after the `last_seq` it named, and
     /// `is_missed_truncated` when more than `MISSED_MESSAGE_CAP` messages were missed.
     Claimed {
-        actor: String,
+        #[serde(rename = "actor")]
+        actor_id: String,
         token: String,
         #[serde(default)]
         round_index: u64,
@@ -109,7 +110,8 @@ pub enum ServerBody {
     Refused(Refusal),
     Queued {
         intent: String,
-        actor: String,
+        #[serde(rename = "actor")]
+        actor_id: String,
         #[serde(rename = "move")]
         move_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -221,7 +223,8 @@ pub fn is_built_in(seat: Seat, kind: &str) -> bool {
 #[serde(untagged, deny_unknown_fields)]
 pub enum ClaimArgs {
     Actor {
-        actor: String,
+        #[serde(rename = "actor")]
+        actor_id: String,
     },
     Token {
         token: String,
@@ -324,7 +327,7 @@ mod tests {
     fn a_claim_names_an_actor_or_a_token() {
         let read = |text: &str| serde_json::from_str::<ClaimArgs>(text);
         let actor = ClaimArgs::Actor {
-            actor: "rowan".into(),
+            actor_id: "rowan".into(),
         };
         assert_eq!(read(r#"{"actor":"rowan"}"#).unwrap(), actor);
         let token = ClaimArgs::Token {

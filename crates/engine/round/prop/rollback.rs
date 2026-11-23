@@ -239,18 +239,18 @@ fn every_moved_meter_is_reported(
     now: &ecs::World,
     changes: &[Change],
 ) -> Result<(), TestCaseError> {
-    let read = |world: &ecs::World, actor: &ActorId, key: &str| {
-        let value = modifier::value(world.actors(), actor, key);
+    let read = |world: &ecs::World, actor_id: &ActorId, key: &str| {
+        let value = modifier::value(world.actors(), actor_id, key);
         value.ok().map(ChangeValue::Number)
     };
     let meters = now.actors().query::<&Meter>();
-    for (actor, key, _) in meters.iter().flat_map(|held| held.iter_with_id()) {
-        let (before, after) = (read(taken, actor, key), read(now, actor, key));
+    for (actor_id, key, _) in meters.iter().flat_map(|held| held.iter_with_id()) {
+        let (before, after) = (read(taken, actor_id, key), read(now, actor_id, key));
         if before == after {
             continue;
         }
         let moved = Change {
-            key: change::Key::new(Meter::ID, entity::IdRef::Actor(actor), Some(key)),
+            key: change::Key::new(Meter::ID, entity::IdRef::Actor(actor_id), Some(key)),
             before,
             after,
         };
