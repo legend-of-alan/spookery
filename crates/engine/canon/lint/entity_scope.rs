@@ -20,9 +20,9 @@ pub(in crate::canon) fn check_meter_reads(
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let exprs = rule.exprs();
-        let path = format!("rules[{}]", rule.index);
+        let at = format!("rules[{}]", rule.index);
         let source = FileText::named(&rule.file);
-        scope.push_unknown_reads(&source, &path, fixed_self_id(rule), &exprs, &mut diags);
+        scope.push_unknown_reads(&source, &at, fixed_self_id(rule), &exprs, &mut diags);
     }
     for (row, path) in scope.paths.iter().enumerate() {
         let at = format!("paths[{row}]");
@@ -97,7 +97,11 @@ pub(in crate::canon) struct EntityScope<'c> {
 impl EntityScope<'_> {
     /// The one entity `of` names whatever the round: `world`, a place, a story, a cast id, or
     /// `self` on a cast member's own habit. `None` when only play time knows it.
-    fn fixed_entity_id(&self, self_id: Option<&str>, of: &grammar::Object) -> Option<entity::Id> {
+    fn fixed_entity_id(
+        &self,
+        fixed_self_id: Option<&str>,
+        of: &grammar::Object,
+    ) -> Option<entity::Id> {
         match of {
             grammar::Object::Global => Some(entity::Id::Global),
             grammar::Object::Place(id) => Some(entity::Id::Place(id.clone())),
@@ -106,7 +110,7 @@ impl EntityScope<'_> {
                 Some(entity::Id::Actor(id.clone()))
             }
             grammar::Object::Actor(grammar::Actor::Self_) => {
-                self_id.map(|id| entity::Id::Actor(id.into()))
+                fixed_self_id.map(|id| entity::Id::Actor(id.into()))
             }
             _ => None,
         }
@@ -135,7 +139,7 @@ impl EntityScope<'_> {
     /// An entity known only at play time is not guessed: only its key is checked.
     fn why_meter_not_carried(
         &self,
-        self_id: Option<&str>,
+        fixed_self_id: Option<&str>,
         of: &grammar::Object,
         key: &str,
     ) -> Option<String> {
@@ -143,7 +147,7 @@ impl EntityScope<'_> {
         if let grammar::Object::Exit(exit) = of {
             return Some(format!("{exit} carries no meter '{key}'"));
         }
-        match self.fixed_entity_id(self_id, of) {
+        match self.fixed_entity_id(fixed_self_id, of) {
             Some(entity::Id::Global) if self.world_meters.contains_key(key) => None,
             Some(entity::Id::Global) => Some(format!("the world carries no meter '{key}'")),
             Some(id) if !desc.is_some_and(|desc| desc.is_on(id.as_ref())) => {
@@ -183,7 +187,7 @@ impl EntityScope<'_> {
         &self,
         source: &FileText,
         path: &str,
-        self_id: Option<&str>,
+        fixed_self_id: Option<&str>,
         exprs: &[&Expr],
         diags: &mut Vec<Diagnostic>,
     ) {
@@ -203,7 +207,7 @@ impl EntityScope<'_> {
                     }
                     .into_diagnostic()
                 };
-                if let Some(why) = self.why_meter_not_carried(self_id, of, key) {
+                if let Some(why) = self.why_meter_not_carried(fixed_self_id, of, key) {
                     diags.push(refuse(
                         format!("expression reads meter '{key}', but {why}"),
                         "declare the meter on that entity, or read one that exists",

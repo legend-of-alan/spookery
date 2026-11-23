@@ -50,7 +50,7 @@ enum Step {
     Note,
     Reveal(&'static str),
     Act(u32),
-    ResetActs,
+    ResetIdleWindowCount,
     Busy(bool),
     NoteExits,
     SeeExits(bool),
@@ -110,8 +110,8 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     let mut world = ecs::World::new(Save::clone(opened.world()), Arc::new(canon));
     for (carrier, key) in &carried {
         let desc = world.canon().meter_desc(carrier.as_ref(), key);
-        let start = Meter::at_base(desc.expect("the meter's descriptor"));
-        let put = (world.entities_mut().get_mut::<Meter>(carrier)).set(key, Some(start));
+        let base = Meter::at_base(desc.expect("the meter's descriptor"));
+        let put = (world.entities_mut().get_mut::<Meter>(carrier)).set(key, Some(base));
         put.expect("the meter goes on");
     }
     world.accept();
@@ -167,7 +167,7 @@ fn play_steps(session: &session::Session<()>, steps: &[Step]) -> Result<(), Test
                     .get_mut::<component::Act>(&mira)
                     .count(1, *players);
             }
-            Step::ResetActs => {
+            Step::ResetIdleWindowCount => {
                 let _ = (world.actors_mut()).reset_window_count(WindowCount::Idle);
             }
             Step::Busy(true) => {
@@ -323,7 +323,7 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
         | Step::Take
         | Step::Expire
         | Step::Act(_)
-        | Step::ResetActs
+        | Step::ResetIdleWindowCount
         | Step::Busy(_)
         | Step::NoteExits
         | Step::SeeExits(_) => {
@@ -385,7 +385,7 @@ fn pick_step() -> impl Strategy<Value = Step> {
         1 => Just(Step::Note),
         1 => select(vec!["fact_oil_on_shelf", "fact_room_lamp"]).prop_map(Step::Reveal),
         1 => (0u32..=1).prop_map(Step::Act),
-        1 => Just(Step::ResetActs),
+        1 => Just(Step::ResetIdleWindowCount),
         1 => any::<bool>().prop_map(Step::Busy),
         1 => Just(Step::NoteExits),
         1 => any::<bool>().prop_map(Step::SeeExits),

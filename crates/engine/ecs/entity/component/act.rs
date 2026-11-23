@@ -123,14 +123,14 @@ impl Mut<'_, entity::Actors, Act> {
 }
 
 impl Writer<'_, entity::Actors> {
-    /// Set `count` back to 0 on every actor.
-    pub(crate) fn reset_window_count(&mut self, count: WindowCount) -> Result<(), Reason> {
+    /// Set the `window` count back to 0 on every actor.
+    pub(crate) fn reset_window_count(&mut self, window: WindowCount) -> Result<(), Reason> {
         let actors = Reader::new(&*self.components, self.canon).query::<ActorId>();
         let actors: Vec<ActorId> = actors.iter().cloned().collect();
         for actor in &actors {
-            let read = |act: &Act| Some(count_value(count.get(act).into()));
+            let read = |act: &Act| Some(count_value(window.get(act).into()));
             let mut action_state = self.get_mut::<Act>(actor);
-            action_state.write(count.id(), read, |act| *count.get_mut(act) = 0)?;
+            action_state.write(window.id(), read, |act| *window.get_mut(act) = 0)?;
         }
         Ok(())
     }

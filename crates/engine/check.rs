@@ -12,7 +12,7 @@ use crate::store::save;
 use crate::Reason;
 
 /// Hash of the newest migrate in `live` past the checkpoint, or the save's own hash.
-fn tip_pack_rev<'a>(live: &'a [Record], save: &'a Save) -> &'a str {
+fn find_tip_pack_rev<'rec>(live: &'rec [Record], save: &'rec Save) -> &'rec str {
     live.iter()
         .rev()
         .filter(|entry| entry.state_rev_after() > save.state_rev)
@@ -81,7 +81,7 @@ pub(crate) fn load_save_file(
     let save = save::parse(text)?;
     let live = journal::read_live_records(root).unwrap_or_default();
     let mut problems = find_save_text_problems(&save, bytes);
-    if let Some(diag) = find_pack_rev_mismatch(root, tip_pack_rev(&live, &save), bytes) {
+    if let Some(diag) = find_pack_rev_mismatch(root, find_tip_pack_rev(&live, &save), bytes) {
         problems.insert(0, diag);
     }
     let migrate_follows = live.iter().any(|entry| {

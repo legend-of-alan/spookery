@@ -8,13 +8,13 @@ use crate::rules::rule::{ChangeWatch, EffectTemplate, LocationTo, NarrateTo, Rul
 use crate::Reason;
 
 /// Change rules that set each other's watched values.
-pub(super) fn check_trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
+pub(super) fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
     let rules: Vec<&Rule> = canon
         .rules
         .iter()
         .filter(|rule| matches!(rule.when, When::Change(_)))
         .collect();
-    let written: Vec<Vec<Write>> = rules
+    let written: Vec<Vec<EffectWrite>> = rules
         .iter()
         .map(|rule| {
             let mut writes = Vec::new();
@@ -54,7 +54,7 @@ pub(super) fn check_trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// Narrate and note on a change rule that can reach a viewer who cannot see the change.
-pub(super) fn check_trigger_leaks(canon: &Canon) -> Vec<Diagnostic> {
+pub(super) fn check_leaks(canon: &Canon) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in canon.rules.iter() {
         let When::Change(watch) = &rule.when else {
@@ -86,8 +86,9 @@ pub(super) fn check_trigger_leaks(canon: &Canon) -> Vec<Diagnostic> {
     diags
 }
 
+/// A value an effect writes, as a change watch matches it.
 #[derive(Clone)]
-enum Write {
+enum EffectWrite {
     Flag { key: String, value: bool },
     Meter(String),
     Item { id: String, gained: bool },
@@ -111,25 +112,25 @@ enum Sight {
     World,
 }
 
-fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<Write>) {
+fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<EffectWrite>) {
     match effect {
         EffectTemplate::Modifier { id, .. } => {
             if let Some(desc) = canon.modifiers.get(id) {
-                out.push(Write::Meter(desc.meter.clone()));
+                out.push(EffectWrite::Meter(desc.meter.clone()));
             }
         }
         EffectTemplate::Flag { key, value, .. } => {
-            out.push(Write::Flag {
+            out.push(EffectWrite::Flag {
                 key: key.clone(),
                 value: *value,
             });
         }
-        EffectTemplate::Meter { key, .. } => out.push(Write::Meter(key.clone())),
+        EffectTemplate::Meter { key, .. } => out.push(EffectWrite::Meter(key.clone())),
         EffectTemplate::Item { id, add, .. } => {
             let constant_sign = add.constant().map(i64::signum);
             for (gained, sign) in [(true, 1), (false, -1)] {
                 if constant_sign.is_none_or(|constant| constant == sign) {
-                    out.push(Write::Item {
+                    out.push(EffectWrite::Item {
                         id: id.clone(),
                         gained,
                     });
@@ -139,38 +140,38 @@ fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<Write>) {
         EffectTemplate::Location {
             to: LocationTo::Place(id),
             ..
-        } => out.push(Write::Arrive(id.clone())),
-        EffectTemplate::Reveal { fact, .. } => out.push(Write::Knows(fact.clone())),
+        } => out.push(EffectWrite::Arrive(id.clone())),
+        EffectTemplate::Reveal { fact, .. } => out.push(EffectWrite::Knows(fact.clone())),
         EffectTemplate::Memory { fact_ids, .. } => {
             for fact in fact_ids {
-                out.push(Write::Knows(fact.clone()));
+                out.push(EffectWrite::Knows(fact.clone()));
             }
         }
         _ => {}
     }
 }
 
-fn sets_watch(watch: &ChangeWatch, rule: &Rule, write: &Write) -> bool {
+fn sets_watch(watch: &ChangeWatch, rule: &Rule, write: &EffectWrite) -> bool {
     match (watch, write) {
         (
             ChangeWatch::Flag { key, becomes },
-            Write::Flag {
+            EffectWrite::Flag {
                 key: written,
                 value,
             },
         ) => key == written && becomes == value,
-        (ChangeWatch::Meter { key, .. }, Write::Meter(written)) => key == written,
+        (ChangeWatch::Meter { key, .. }, EffectWrite::Meter(written)) => key == written,
         (
             ChangeWatch::Item { id, gained },
-            Write::Item {
+            EffectWrite::Item {
                 id: written,
                 gained: up,
             },
         ) => id == written && gained == up,
-        (ChangeWatch::Arrive { place, .. }, Write::Arrive(dest)) => {
+        (ChangeWatch::Arrive { place, .. }, EffectWrite::Arrive(dest)) => {
             rule.watched_place(place) == dest
         }
-        (ChangeWatch::Knows { fact }, Write::Knows(written)) => fact == written,
+        (ChangeWatch::Knows { fact }, EffectWrite::Knows(written)) => fact == written,
         _ => false,
     }
 }

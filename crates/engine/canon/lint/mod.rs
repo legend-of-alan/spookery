@@ -15,7 +15,6 @@ use crate::rules::grammar;
 use crate::rules::rule::{self, Cond, EffectTemplate, Owner};
 
 pub(super) use entity_scope::{check_carriers, check_meter_reads, EntityScope};
-use trigger::{check_trigger_cycles, check_trigger_leaks, check_world_change_subjects};
 
 /// Paths whose ends are not places, and facts or items a path names but the pack does not.
 pub(super) fn check_paths(
@@ -143,9 +142,9 @@ pub(super) fn check_reveals(
 pub(crate) fn check_canon(canon: &Canon, held_flags: &BTreeSet<&str>) -> Vec<Diagnostic> {
     let mut diags = check_reachable_places(canon);
     diags.extend(check_teleport_verbs(canon));
-    diags.extend(check_trigger_cycles(canon));
-    diags.extend(check_trigger_leaks(canon));
-    diags.extend(check_world_change_subjects(canon));
+    diags.extend(trigger::check_cycles(canon));
+    diags.extend(trigger::check_leaks(canon));
+    diags.extend(trigger::check_world_change_subjects(canon));
     diags.extend(check_cycle_conditions(canon));
     diags.extend(check_gm_notes_length(canon));
     diags.extend(check_unset_flags(canon, held_flags));
@@ -304,14 +303,14 @@ fn check_teleport_verbs(canon: &Canon) -> Vec<Diagnostic> {
 
 /// The entities a rule can make hold flag `key`: the `of` of each flag effect that writes it.
 fn find_flag_holders<'c>(canon: &'c Canon, key: &str) -> impl Iterator<Item = &'c grammar::Object> {
-    let mut owners = Vec::new();
+    let mut holders = Vec::new();
     for rule in canon.rules.iter() {
         rule.visit_templates(|effect| match effect {
             EffectTemplate::Flag {
                 of, key: written, ..
-            } if written == key => owners.push(of),
+            } if written == key => holders.push(of),
             _ => {}
         });
     }
-    owners.into_iter()
+    holders.into_iter()
 }

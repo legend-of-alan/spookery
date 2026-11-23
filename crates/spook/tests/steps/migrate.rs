@@ -82,12 +82,12 @@ fn the_save_is_hand_edited(world: &mut World) {
     a_canon_file_gains_a_byte(world);
 }
 
-#[when(expr = "the pack adds meter {string} with start {int}")]
-fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
+#[when(expr = "the pack adds meter {string} with base {int}")]
+fn the_pack_adds_meter(world: &mut World, id: String, base: i64) {
     let path = table::pack(world).join("rules/meters.yaml");
     let mut text = fs::read_to_string(&path).unwrap();
     text.push_str(&format!(
-        "  - id: {id}\n    min: 0\n    base_cap: 10\n    max: 10\n    base: {start}\n"
+        "  - id: {id}\n    min: 0\n    base_cap: 10\n    max: 10\n    base: {base}\n"
     ));
     fs::write(&path, text).unwrap();
 }

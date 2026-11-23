@@ -18,7 +18,7 @@ Feature: A hand edit waits for migrate
   Scenario: Migrate keeps a hand edit and rewrites pack_rev
     Given a docks table
     When the save is hand edited and the canon gains a byte
-    And the pack adds meter "stamina" with start 6
+    And the pack adds meter "stamina" with base 6
     And the operator runs migrate
     Then the command exits 0
     And stdout is empty
@@ -57,7 +57,7 @@ Feature: A hand edit waits for migrate
     Given a docks table
     And one round has committed
     When a canon file gains a byte
-    And the pack adds meter "stamina" with start 6
+    And the pack adds meter "stamina" with base 6
     And the operator runs migrate
     Then the command exits 0
     When the operator runs spook check
@@ -87,7 +87,7 @@ Feature: A hand edit waits for migrate
     And the operator runs migrate
     And the operator tries a round
     And a canon file gains a byte
-    And the pack adds meter "stamina" with start 6
+    And the pack adds meter "stamina" with base 6
     And the operator runs migrate
     Then the command exits 0
     When the operator runs spook check
