@@ -186,8 +186,8 @@ pub fn render_view(view: &protocol::View) -> String {
         visible_actors,
         known_facts,
         notes,
-        items,
-        carried,
+        items: items_here,
+        items_carried,
         wielded_item_id,
         meters,
         world_meters,
@@ -225,8 +225,8 @@ pub fn render_view(view: &protocol::View) -> String {
         "Notes:",
         notes.iter().map(|note| note.text.as_str()),
     );
-    let item_lines: Vec<String> = items.iter().map(render_item).collect();
-    let carried_lines: Vec<String> = carried
+    let items_here_lines: Vec<String> = items_here.iter().map(render_item).collect();
+    let items_carried_lines: Vec<String> = items_carried
         .iter()
         .map(|item| {
             let line = render_item(item);
@@ -237,7 +237,10 @@ pub fn render_view(view: &protocol::View) -> String {
             }
         })
         .collect();
-    for (title, lines) in [("Items here:", item_lines), ("You carry:", carried_lines)] {
+    for (title, lines) in [
+        ("Items here:", items_here_lines),
+        ("You carry:", items_carried_lines),
+    ] {
         if !lines.is_empty() {
             sections.push(format!("{title}\n{}", lines.join("\n")));
         }

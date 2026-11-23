@@ -256,7 +256,7 @@ pub(crate) fn list_ids(
     let named_items = |items: Vec<perceive::ItemStack>| {
         (items.into_iter()).map(|item| NamedId::new(&item.id, item.name))
     };
-    let mut ids: Vec<NamedId> = named_items(view.carried).collect();
+    let mut ids: Vec<NamedId> = named_items(view.items_carried).collect();
     ids.push(NamedId::new(&view.place, view.place_name));
     let me = viewer.actor_id();
     let actors = view.visible_actors.iter().zip(view.actor_names);

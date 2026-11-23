@@ -31,9 +31,8 @@ pub struct View {
     pub unknown_mentions: Vec<String>,
     /// The items lying in the viewer's place.
     pub items: Vec<ItemStack>,
-    /// The items the viewer holds.
-    pub carried: Vec<ItemStack>,
-    /// Which of `carried` the viewer wields.
+    pub items_carried: Vec<ItemStack>,
+    /// Which of `items_carried` the viewer wields.
     pub wielded_item_id: Option<String>,
     /// The viewer's own meters. A hidden meter is not here.
     pub meters: Vec<MeterView>,
@@ -159,7 +158,7 @@ fn build_capped_view(
 
     let (places, actors, me) = (world.places(), world.actors(), viewer.actor_id());
     let items = item_stacks(canon, places.get::<component::Item>(&place_id).iter())?;
-    let carried = item_stacks(canon, actors.get::<component::Item>(me).iter())?;
+    let items_carried = item_stacks(canon, actors.get::<component::Item>(me).iter())?;
     let wielded_item_id = (actors.get::<component::WieldedItem>(me).get()).map(str::to_string);
 
     let meters = shown_meters(canon, world, &entity::Id::Actor(viewer.actor_id().clone()));
@@ -191,7 +190,7 @@ fn build_capped_view(
         notes,
         unknown_mentions,
         items,
-        carried,
+        items_carried,
         wielded_item_id,
         meters,
         world_meters,

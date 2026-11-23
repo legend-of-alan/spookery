@@ -30,10 +30,9 @@ pub struct View {
     pub unknown_mentions: Vec<String>,
     /// The items lying in the viewer's place.
     pub items: Vec<ItemStack>,
-    /// The items the viewer holds.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub carried: Vec<ItemStack>,
-    /// Which of `carried` the viewer wields, if any.
+    pub items_carried: Vec<ItemStack>,
+    /// Which of `items_carried` the viewer wields.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wielded_item_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

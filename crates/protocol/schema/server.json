@@ -958,15 +958,14 @@
             "$ref": "#/$defs/ItemStack"
           }
         },
-        "carried": {
-          "description": "The items the viewer holds.",
+        "items_carried": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/ItemStack"
           }
         },
         "wielded_item_id": {
-          "description": "Which of `carried` the viewer wields, if any.",
+          "description": "Which of `items_carried` the viewer wields.",
           "type": [
             "string",
             "null"

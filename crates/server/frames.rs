@@ -111,7 +111,7 @@ pub(super) fn render_view(view: &engine::View) -> ServerBody {
         notes: view.notes.clone(),
         unknown_mentions: view.unknown_mentions.clone(),
         items: view.items.clone(),
-        carried: view.carried.clone(),
+        items_carried: view.items_carried.clone(),
         wielded_item_id: view.wielded_item_id.clone(),
         meters: view.meters.clone(),
         world_meters: view.world_meters.clone(),
