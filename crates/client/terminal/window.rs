@@ -296,14 +296,22 @@ impl Screen {
             ServerBody::Refused(refusal) => {
                 self.push_text(&text::render_refusal(refusal, false), ROSE);
             }
-            _ => {
-                let color = match body {
-                    ServerBody::Changes { .. } | ServerBody::Queued { .. } => ASH,
-                    _ => PARCHMENT,
-                };
+            ServerBody::Changes { .. } | ServerBody::Queued { .. } => {
                 let content = self.renderer.render_without_separator(body);
-                self.push_text(&content, color);
+                self.push_text(&content, ASH);
             }
+            ServerBody::Claimed { .. }
+            | ServerBody::Resume { .. }
+            | ServerBody::Lines { .. }
+            | ServerBody::Help { .. }
+            | ServerBody::Map { .. } => {
+                let content = self.renderer.render_without_separator(body);
+                self.push_text(&content, PARCHMENT);
+            }
+            ServerBody::Released
+            | ServerBody::Presence { .. }
+            | ServerBody::Committed(_)
+            | ServerBody::Status(_) => {}
         }
     }
 

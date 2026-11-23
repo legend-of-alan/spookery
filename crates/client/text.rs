@@ -485,7 +485,18 @@ pub fn render_gm(body: &ServerBody) -> String {
         ServerBody::Status(status) => render_status(status),
         ServerBody::View(view) => render_view(view),
         ServerBody::Committed(body) => render_commit(body),
-        _ => String::new(),
+        ServerBody::Hello { .. }
+        | ServerBody::Claimed { .. }
+        | ServerBody::Released
+        | ServerBody::Presence { .. }
+        | ServerBody::Refused(_)
+        | ServerBody::Round { .. }
+        | ServerBody::Check { .. }
+        | ServerBody::Resume { .. }
+        | ServerBody::Lines { .. }
+        | ServerBody::Changes { .. }
+        | ServerBody::Help { .. }
+        | ServerBody::Map { .. } => String::new(),
     }
 }
 
