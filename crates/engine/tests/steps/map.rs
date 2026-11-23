@@ -7,7 +7,7 @@ use spookery_engine::{component, Presence};
 
 use crate::World;
 
-/// Rowan sits at the table so each round is a short seated one.
+/// Rowan holds a seat, so each round is a short seated one.
 fn rowan_seated() -> Presence {
     Presence {
         players: 1,
@@ -41,7 +41,7 @@ fn mira_plays(pack: &Path, verb: &str, target: Option<&str>) {
 }
 
 /// The exit ids Mira's map lists for the Docks Shop.
-fn shop_exits_on_miras_map(pack: &Path) -> Vec<String> {
+fn shop_exits_mira_knows(pack: &Path) -> Vec<String> {
     let saved = spookery_engine::Session::peek(pack).unwrap();
     let places = saved.map(&"mira".into()).unwrap();
     let shop = places
@@ -113,7 +113,7 @@ fn mira_has_visited_the_shop_and_left(world: &mut World) {
 #[given(expr = "Mira is standing in the shop")]
 fn mira_is_standing_in_the_shop(world: &mut World) {
     mira_plays(world.pack(), "wait", None);
-    assert!(!shop_exits_on_miras_map(world.pack()).contains(&"trapdoor".to_string()));
+    assert!(!shop_exits_mira_knows(world.pack()).contains(&"trapdoor".to_string()));
 }
 
 #[when(expr = "Mira learns fact_trapdoor on the street")]
@@ -142,13 +142,13 @@ fn mira_walks_back(world: &mut World) {
 
 #[then(expr = "Mira's map shows the shop without the trapdoor")]
 fn the_map_has_no_trapdoor(world: &mut World) {
-    let exits = shop_exits_on_miras_map(world.pack());
+    let exits = shop_exits_mira_knows(world.pack());
     assert_eq!(exits, ["docks_street", "stairs"]);
 }
 
 #[then(expr = "Mira's map shows the shop with the trapdoor")]
 fn the_map_has_the_trapdoor(world: &mut World) {
-    let exits = shop_exits_on_miras_map(world.pack());
+    let exits = shop_exits_mira_knows(world.pack());
     assert_eq!(exits, ["docks_street", "stairs", "trapdoor"]);
 }
 

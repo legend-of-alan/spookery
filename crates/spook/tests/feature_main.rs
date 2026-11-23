@@ -41,7 +41,7 @@ pub struct World {
     pub(crate) http_gm: Option<mcp_client::GmClient>,
     /// An MCP session opened over plain HTTP, and its event streams.
     pub(crate) mcp_session: Option<mcp_client::RawSession>,
-    /// The table the WebSocket GM sits at, beside `live`, and the pack copy it runs.
+    /// The table the WebSocket GM connects to, beside `live`, and the pack copy it runs.
     pub ws_table: Option<(table::Process, PathBuf)>,
     /// A recorded session's lines, each one message a seat sent or got.
     pub recorded: Vec<serde_json::Value>,
@@ -49,7 +49,7 @@ pub struct World {
     pub replayed: Vec<(String, table::Seat)>,
     /// The scripted model a scenario's AI GM plays with.
     pub model: scripted_gm::ScriptedModel,
-    /// The AI GM once it sits, run in this process.
+    /// The AI GM once it connects, run in this process.
     pub ai_gm: Option<scripted_gm::AiGm>,
     /// What a scenario's HTTP model stub has read.
     pub stub_seen: Option<std::sync::Arc<std::sync::Mutex<scripted_gm::Seen>>>,

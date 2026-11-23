@@ -8,7 +8,7 @@
 //!   cargo test -p spook --test integration live_round:: --locked -- --ignored --nocapture
 //! ```
 //!
-//! The test hosts a copy of the docks pack with `spook run`, sits `spook ai-gm`,
+//! The test hosts a copy of the docks pack with `spook run`, connects `spook ai-gm`,
 //! and queues one player move. A small pass-through proxy sits between
 //! `ai-gm` and the provider so the test can see each model call and its HTTP
 //! status. The round passes when every model call returned 2xx, `ai-gm`
@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::support::{copy_pack, drain, fresh_dir, pack_arg, text_of, Process};
+use crate::support::{copy_pack, drain, fresh_dir, pack_arg, text_of, Process, WAIT_LIMIT};
 
 /// Long enough for one call, one retry, and a slow CPU-only model.
 const ROUND_BOUND: Duration = Duration::from_secs(240);
@@ -52,26 +52,21 @@ fn a_live_model_plays_one_round() {
     let (proxy, calls) = start_proxy(upstream);
     let gm_dir = fresh_dir("live-round-ai-gm");
     let mut host = spawn_ai_gm(&gm_dir, &addr, &key, &format!("http://{proxy}"), &model);
-    wait_text(&host, &host.stderr, "listening", Duration::from_secs(20));
+    wait_text(&host, &host.stderr, "listening");
 
-    let sit = world_time(&pack);
+    let start_ticks = world_time(&pack);
     let mut player = crate::support::spawn(&["--addr", &addr, "play"]);
     let stdin = player.stdin.as_mut().expect("player stdin");
     stdin.write_all(b"rowan\n").expect("pick rowan");
     stdin.flush().expect("flush pick");
-    wait_text(
-        &player,
-        &player.stdout,
-        "You are in",
-        Duration::from_secs(20),
-    );
+    wait_text(&player, &player.stdout, "You are in");
     let stdin = player.stdin.as_mut().expect("player stdin");
     stdin
         .write_all(b"travel docks_street\n")
         .expect("send travel");
     stdin.flush().expect("flush travel");
 
-    let advanced = wait_advance(&pack, sit, &mut host);
+    let advanced = wait_advance(&pack, start_ticks, &mut host);
     let host_err = text_of(&host.stderr);
     let up = host.child.try_wait().ok().flatten().is_none();
     let recorded: Vec<(u16, String)> = calls
@@ -210,7 +205,7 @@ fn start_proxy(upstream: String) -> (String, Arc<Mutex<Vec<Call>>>) {
 }
 
 fn read_request(stream: &mut TcpStream) -> (Option<String>, Vec<u8>) {
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
+    let _ = stream.set_read_timeout(Some(WAIT_LIMIT));
     let mut buf = Vec::new();
     let mut byte = [0u8; 1];
     while !buf.ends_with(b"\r\n\r\n") {
@@ -250,17 +245,17 @@ fn wait_port(addr: &str, server: &mut Process) {
         if let Some(status) = server.child.try_wait().unwrap() {
             panic!("spook run exited {status:?}\n{}", text_of(&server.stderr));
         }
-        if start.elapsed() > Duration::from_secs(20) {
+        if start.elapsed() > WAIT_LIMIT {
             panic!("spook run did not listen");
         }
         thread::sleep(Duration::from_millis(50));
     }
 }
 
-fn wait_text(proc: &Process, slot: &Arc<Mutex<String>>, needle: &str, bound: Duration) {
+fn wait_text(proc: &Process, slot: &Arc<Mutex<String>>, needle: &str) {
     let start = Instant::now();
     while !text_of(slot).contains(needle) {
-        if start.elapsed() > bound {
+        if start.elapsed() > WAIT_LIMIT {
             panic!(
                 "missing {needle:?}\nstdout:\n{}\nstderr:\n{}",
                 text_of(&proc.stdout),
@@ -279,13 +274,13 @@ fn world_time(pack: &Path) -> u64 {
         .world_time
 }
 
-fn wait_advance(pack: &Path, sit: u64, host: &mut Process) -> bool {
+fn wait_advance(pack: &Path, start_ticks: u64, host: &mut Process) -> bool {
     let start = Instant::now();
     while start.elapsed() < ROUND_BOUND {
         if let Ok(report) = spookery_engine::testing::replay_pack(pack) {
             if let Ok(text) = std::str::from_utf8(&report.now_yaml) {
                 if let Ok(now) = spookery_engine::parse_save(text) {
-                    if now.world_time > sit {
+                    if now.world_time > start_ticks {
                         return true;
                     }
                 }

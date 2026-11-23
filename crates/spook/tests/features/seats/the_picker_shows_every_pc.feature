@@ -15,7 +15,7 @@ Feature: The character picker shows every PC
 
   Scenario: With every seat held play lists a free PC and picking it is refused as full
     Given a docks table whose pack defines four PCs
-    When three players sit
+    When three players claim
     And another play picks lark on that table
     Then the command exits 1
     And stderr shows "The table is full. [TABLE_FULL]"

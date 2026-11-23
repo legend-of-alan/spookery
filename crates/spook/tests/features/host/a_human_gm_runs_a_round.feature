@@ -38,26 +38,26 @@ Feature: A human GM runs a round
 
   Scenario: Raw frames are JSON lines
     Given a docks table
-    When a human GM sits with raw frames on a free loopback port
+    When a human GM connects with raw frames on a free loopback port
     Then the GM shows protocol JSON
 
   Scenario: A second GM is told the table is full
     Given a docks table
-    When a human GM sits on a free loopback port
+    When a human GM connects on a free loopback port
     And another GM joins that seat
     Then the command exits 1
     And stderr shows "The table is full. [TABLE_FULL]"
 
   Scenario: A killed GM frees the seat for the next GM
     Given a docks table
-    When a human GM sits on a free loopback port
+    When a human GM connects on a free loopback port
     And the GM is killed
-    And another GM sits in that seat
+    And another GM connects to that seat
     Then the GM shows "Commands:"
 
   Scenario: An unknown move is refused in a sentence
     Given a docks table
-    When a human GM sits on a free loopback port
+    When a human GM connects on a free loopback port
     And the GM queues an unknown move
     Then the GM's stderr shows "That is not a move. [UNKNOWN_MOVE]"
 
@@ -69,7 +69,7 @@ Feature: A human GM runs a round
 
   Scenario: spook gm exits when spook run stops
     Given a docks table
-    When a human GM sits on a free loopback port
+    When a human GM connects on a free loopback port
     And spook run stops
     Then the GM exits
 
@@ -85,7 +85,7 @@ Feature: A human GM runs a round
 
   Scenario: The GM perceives as an actor and sees no ids, habits or fact bodies
     Given a docks table
-    When a human GM sits on a free loopback port
+    When a human GM connects on a free loopback port
     And the GM types "perceive mira"
     Then the GM shows each of these blocks:
       """
@@ -107,12 +107,12 @@ Feature: A human GM runs a round
 
   Scenario: An unknown GM command points at help
     Given a docks table
-    When a human GM sits on a free loopback port
+    When a human GM connects on a free loopback port
     And the GM types "dance"
     Then the GM's stderr shows "The table does not understand that. Type help."
 
   Scenario: A GM command with wrong arguments is refused
     Given a docks table
-    When a human GM sits on a free loopback port
+    When a human GM connects on a free loopback port
     And the GM types "perceive a b"
     Then the GM's stderr shows "That line is not valid. [SCHEMA]"

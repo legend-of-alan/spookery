@@ -7,7 +7,7 @@ Spookery is a text RPG engine for shared, living worlds. Let a model run an RPG 
 
 Creativity isn't utter discord, it's controlled chaos.
 
-You write a world as a pack of plain YAML rules and Markdown pages for places and people. Coding agents like Claude Code and Cursor can build one with `spook new` and `spook check`. Then you host it and sit down with up to three players and a GM.
+You write a world as a pack of plain YAML rules and Markdown pages for places and people. Coding agents like Claude Code and Cursor can build one with `spook new` and `spook check`. Then you host it and play with up to three players and a GM.
 
 Bring a friend to GM or bring your own model key. Either way, the engine is the only thing that changes the world. The GM tells the story and asks the engine to commit.
 
@@ -91,7 +91,7 @@ Test packs live in `tests/packs`. `tests/packs/docks` is the one the engine and 
 | `spook new <dir>` | Writes a starter pack you can edit |
 | `spook check <pack>` | Reports pack problems without writing anything |
 | `spook verify <pack>` | Replays the journal and checks that it rebuilds the save |
-| `spook gm` | Sits you in the GM seat |
+| `spook gm` | Plays the GM seat |
 | `spook ai-gm` | Puts a model in the GM seat |
 
 Run `spook --help` for the full list.

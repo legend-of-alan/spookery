@@ -1,7 +1,6 @@
 use spookery_engine::testing::world_of;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::time::Duration;
 
 use cucumber::gherkin::Step;
 use cucumber::{given, then, when};
@@ -51,7 +50,7 @@ fn the_response_is_forbidden(world: &mut World) {
     );
 }
 
-#[then(expr = "a GM hello still sits")]
+#[then(expr = "a GM hello still holds the seat")]
 async fn a_gm_hello_still_sits(world: &mut World) {
     table::seat_gm(world).await;
 }
@@ -62,20 +61,24 @@ async fn an_http_request_arrives_with_host(world: &mut World, host: String) {
     world.scratch = post_initialize(http, &host, None);
 }
 
-#[when(expr = "a human GM sits on the game port")]
-async fn a_human_gm_sits_on_the_game_port(world: &mut World) {
+#[when(expr = "a human GM connects on the game port")]
+async fn a_human_gm_connects_on_the_game_port(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack).await;
     let addr = table::game_addr(world);
     world.gm = Some(support::spawn(&["gm", "--addr", &addr]));
     world.mark = usize::from(table::live_mut(world).mcp_port);
     let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
-    super::common::wait_proc_until(gm, |stdout| stdout.contains("Commands:"), "the gm to sit")
-        .await;
+    super::common::wait_proc_until(
+        gm,
+        |stdout| stdout.contains("Commands:"),
+        "the gm to connect",
+    )
+    .await;
 }
 
-#[when(expr = "a coding agent tries to sit at that MCP endpoint")]
-fn a_coding_agent_tries_to_sit_at_that_mcp_endpoint(world: &mut World) {
+#[when(expr = "a coding agent tries to connect at that MCP endpoint")]
+fn a_coding_agent_tries_to_connect_at_that_mcp_endpoint(world: &mut World) {
     let mut session = RawSession::open(port(world));
     world.scratch = session.open_event_stream();
 }
@@ -103,10 +106,10 @@ fn the_human_gm_leaves(world: &mut World) {
     assert!(status.success(), "gm release exited {status:?}");
 }
 
-#[then(expr = "a coding agent can sit at that MCP endpoint")]
-async fn a_coding_agent_can_sit_at_that_mcp_endpoint(world: &mut World) {
+#[then(expr = "a coding agent can connect at that MCP endpoint")]
+async fn a_coding_agent_can_connect_at_that_mcp_endpoint(world: &mut World) {
     let http = port(world);
-    table::poll_until("the agent to sit", || try_sit_gm(http)).await;
+    table::poll_until("the agent to connect", || try_connect_gm(http)).await;
 }
 
 #[when(expr = "spook run listens with no MCP flag")]
@@ -117,7 +120,7 @@ async fn spook_run_listens_with_no_mcp_flag(world: &mut World) {
 }
 
 #[then(expr = "the reported MCP address serves \\/mcp")]
-fn the_reported_mcp_addr_serves_mcp(world: &mut World) {
+fn the_reported_mcp_addr_answers(world: &mut World) {
     // repeats module: mirrors its step text
     let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no MCP port"));
     let raw = post_initialize(http, "127.0.0.1", None);
@@ -277,14 +280,14 @@ async fn the_http_gm_leaves(world: &mut World) {
     holder.close().await;
 }
 
-#[then(expr = "a GM can sit over HTTP")]
-async fn a_gm_can_sit_over_http(world: &mut World) {
-    if let Err(err) = try_sit_gm(port(world)).await {
-        panic!("no GM could sit over HTTP: {err}");
+#[then(expr = "a GM can connect over HTTP")]
+async fn a_gm_can_connect_over_http(world: &mut World) {
+    if let Err(err) = try_connect_gm(port(world)).await {
+        panic!("no GM could connect over HTTP: {err}");
     }
 }
 
-async fn try_sit_gm(port: u16) -> Result<(), String> {
+async fn try_connect_gm(port: u16) -> Result<(), String> {
     let mut gm = GmClient::connect(to_addr(port)).await?;
     let status = call(&mut gm, "status", json!({})).await;
     assert_not_refused(&status, "status");
@@ -468,7 +471,7 @@ fn post_initialize_with_version(port: u16, version: &str) -> String {
     let mut stream =
         TcpStream::connect(("127.0.0.1", port)).unwrap_or_else(|err| panic!("connect HTTP: {err}"));
     stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
+        .set_read_timeout(Some(support::WAIT_LIMIT))
         .unwrap_or_else(|err| panic!("timeout: {err}"));
     stream
         .write_all(request.as_bytes())
@@ -494,7 +497,7 @@ pub(crate) fn post_initialize(port: u16, host: &str, origin: Option<&str>) -> St
     let mut stream =
         TcpStream::connect(("127.0.0.1", port)).unwrap_or_else(|err| panic!("connect HTTP: {err}"));
     stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
+        .set_read_timeout(Some(support::WAIT_LIMIT))
         .unwrap_or_else(|err| panic!("timeout: {err}"));
     stream
         .write_all(request.as_bytes())

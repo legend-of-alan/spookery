@@ -1,0 +1,28 @@
+---
+source: crates/client/terminal/window.rs
+expression: shown
+---
+ SPOOKERY                                           Rowan · round 2 · tick 1090
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+╭ Transcript ───────────────────────────────────────╮╭ Docks Shop ─────────────╮
+│› look                                             ││Here: Aldric, You        │
+│› say evening                                      ││                         │
+│You: evening                                       ││Exits                    │
+│GM: good evening                                   ││Docks Street — 0 ticks   │
+│› exert                                            ││stairs (locked) — 2 ticks│
+│Your action is queued.                             ││                         │
+│── round 1 · tick 1085 ──                          ││Items                    │
+│◆ Your roll succeeded.                             ││Lamp oil: 3              │
+│› take lamp_oil                                    ││                         │
+│Your action is queued.                             ││Meters                   │
+│── round 2 · tick 1090 ──                          ││Assassination debt: 2/6  │
+│You picked up the Lamp oil.                        ││━━━───────               │
+│› travel stairs                                    ││Hp: 8/16 ━━━━━─────      │
+│The stair door is locked. [NO_EXIT]                ││Might: 1/45 ──────────   │
+│› fly                                              ││Rest: 3/5 ━━━━━━────     │
+│That line is not valid. [SCHEMA]                   ││Vigor: 1/110 ──────────  │
+╰───────────────────────────────────────────────────╯╰─────────────────────────╯
+╭──────────────────────────────────────────────────────────────────────────────╮
+│›                                                                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ Enter send  Tab complete  ↑↓ history  PgUp PgDn scroll  Ctrl+C quit

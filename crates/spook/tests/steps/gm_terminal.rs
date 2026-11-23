@@ -14,25 +14,25 @@ const HELLO_JSON: &str = r#"{"body":{"kind":"hello""#;
 
 #[when(expr = "play and a human GM share a free loopback port")]
 async fn play_and_a_human_gm_share_a_port(world: &mut World) {
-    let addr = sit_gm(world, false).await;
-    join_play_at(world, &addr, None).await;
+    let addr = connect_gm(world, false).await;
+    play_as_pc_at(world, &addr, None).await;
 }
 
 #[when(expr = "two players and a human GM share a free loopback port")]
 async fn two_players_and_a_human_gm_share_a_port(world: &mut World) {
-    let addr = sit_gm(world, false).await;
-    join_play_at(world, &addr, Some("rowan")).await;
-    join_play_at(world, &addr, Some("wren")).await;
+    let addr = connect_gm(world, false).await;
+    play_as_pc_at(world, &addr, Some("rowan")).await;
+    play_as_pc_at(world, &addr, Some("wren")).await;
 }
 
-#[when(expr = "a human GM sits on a free loopback port")]
-async fn a_human_gm_sits(world: &mut World) {
-    let _ = sit_gm(world, false).await;
+#[when(expr = "a human GM connects on a free loopback port")]
+async fn a_human_gm_connects(world: &mut World) {
+    let _ = connect_gm(world, false).await;
 }
 
-#[when(expr = "a human GM sits with raw frames on a free loopback port")]
-async fn a_human_gm_sits_raw(world: &mut World) {
-    let _ = sit_gm(world, true).await;
+#[when(expr = "a human GM connects with raw frames on a free loopback port")]
+async fn a_human_gm_connects_raw(world: &mut World) {
+    let _ = connect_gm(world, true).await;
 }
 
 #[when(expr = "the player says hello to the GM")]
@@ -137,8 +137,8 @@ async fn the_gm_is_killed(world: &mut World) {
     .await;
 }
 
-#[when(expr = "another GM sits in that seat")]
-fn another_gm_sits_in_that_seat(world: &mut World) {
+#[when(expr = "another GM connects to that seat")]
+fn another_gm_connects_to_that_seat(world: &mut World) {
     let addr = table::game_addr(world);
     world.gm = Some(support::spawn(&["gm", "--addr", &addr]));
 }
@@ -248,7 +248,7 @@ async fn the_gm_stderr_shows(world: &mut World, text: String) {
     .await;
 }
 
-async fn sit_gm(world: &mut World, raw: bool) -> String {
+async fn connect_gm(world: &mut World, raw: bool) -> String {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack).await;
     let addr = table::game_addr(world);
@@ -263,7 +263,7 @@ async fn sit_gm(world: &mut World, raw: bool) -> String {
     addr
 }
 
-async fn join_play_at(world: &mut World, addr: &str, as_player: Option<&str>) {
+async fn play_as_pc_at(world: &mut World, addr: &str, as_player: Option<&str>) {
     let mut play = common::spawn_play(addr, as_player.unwrap_or("rowan"), &[]);
     common::wait_proc_until(
         &mut play,

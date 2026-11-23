@@ -256,6 +256,16 @@ fn break_pack(pack: &Path, fault: &str) {
             "control_type: pc_template\n",
             "kind: pc_template\n",
         ),
+        "an empty tags key" => replace_in_file(
+            &pack.join("world/items/latch.md"),
+            "tags: []\n",
+            "tags:\n",
+        ),
+        "an empty modifiers key" => replace_in_file(
+            &pack.join("state/save.yaml"),
+            "  modifiers: {}\n",
+            "  modifiers:\n",
+        ),
         "flags under idle" => replace_in_file(
             &pack.join("cast/pc-rowan.md"),
             "  eligible: false\n",
@@ -385,7 +395,7 @@ fn break_pack(pack: &Path, fault: &str) {
             "    do:\n      - modifier: { to: self, id: scorch, add: -1, ticks: 10 }\n",
         ),
         "an undeclared story flag" => {
-            write_file(pack, "story/siege.yaml", "schema: story\nid: siege\nrules:\n");
+            write_file(pack, "story/siege.yaml", "schema: story\nid: siege\nrules: []\n");
             add_verb_rule(
                 pack,
                 "set_mark",
@@ -411,7 +421,7 @@ fn break_pack(pack: &Path, fault: &str) {
             "    do:\n      - meter: { of: \"place:docks_street\", key: light, add: 1 }\n",
         ),
         "a repeated story id" => {
-            write_file(pack, "story/later.yaml", "schema: story\nid: ending\nrules:\n");
+            write_file(pack, "story/later.yaml", "schema: story\nid: ending\nrules: []\n");
         }
         "an empty story id" => {
             replace_in_file(&pack.join("story/ending.yaml"), "id: ending\n", "id: \"\"\n");
@@ -471,19 +481,18 @@ fn break_pack(pack: &Path, fault: &str) {
     }
 }
 
-/// Hosts the pack and runs play on it, picking `pc`, with `--raw` when `raw` is set.
-pub(crate) async fn join_play(world: &mut World, pc: &str, raw: bool) {
+/// Hosts the pack and plays as `pc` with `flags`.
+pub(crate) async fn play_as_pc(world: &mut World, pc: &str, flags: &[&str]) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack).await;
     let addr = table::game_addr(world);
-    let flags: &[&str] = if raw { &["--raw"] } else { &[] };
     world.play = Some(spawn_play(&addr, pc, flags));
-    let needle = if raw {
+    let first_view = if flags.contains(&"--raw") {
         "\"kind\":\"view\""
     } else {
         "You are in"
     };
-    wait_play(world, needle).await;
+    wait_play(world, first_view).await;
 }
 
 /// Starts `spook play` on `addr` with `flags`, and types `pc` at its picker the way a player
@@ -650,12 +659,12 @@ fn the_report_says(world: &mut World, text: String) {
 
 #[when(expr = "play joins the table on a free loopback address")]
 async fn play_joins_the_table_on_a_free_loopback_address(world: &mut World) {
-    join_play(world, "rowan", false).await;
+    play_as_pc(world, "rowan", &[]).await;
 }
 
 #[when(expr = "play joins the table as {string}")]
 async fn play_joins_the_table_as(world: &mut World, pick: String) {
-    join_play(world, &pick, false).await;
+    play_as_pc(world, &pick, &[]).await;
 }
 
 #[when(expr = "play types {string}")]

@@ -17,7 +17,6 @@ const FILE: &str = "state/save.yaml";
 
 pub(crate) fn emit_options() -> SerializerOptions {
     serde_saphyr::ser_options! {
-        empty_as_braces: true,
         indent_step: 2,
         compact_list_indent: false,
         anchor_generator: None,

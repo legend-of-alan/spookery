@@ -16,6 +16,8 @@ cargo test --workspace --test features_host --test features_world
 
 `rust-toolchain.toml` pins the Rust version, and rustup installs it for you. Pull requests only run CI on Linux. Pushes to main also run it on macOS and Windows.
 
+Dependencies use normal caret versions, like `"1.4"`. An exact `=` pin needs a written reason in a comment next to it.
+
 ## Issues and PRs
 
 Issue titles are plain sentences. Every issue gets an area label and a size label.
@@ -44,6 +46,7 @@ A test earns its place by failing when something a player, GM or pack author wou
 - **Don't guard the past.** Don't test that a removed flag, field or behavior stays gone, and don't re-run a fixed bug's old steps to prove it stays fixed. The scenario for the new behavior already fails if the old code comes back.
 - **Leave other scenarios alone.** Don't add setup or checks to a scenario about something else just to re-test your change. Extend the scenario whose subject is your change.
 - **Assert what people see.** Check output, refusals, the save or `spook verify`. Don't check journal keys, private fields, call counts or the order of internal steps when a visible outcome already shows the result. A refactor that keeps behavior should break no test.
+- **Wait for events, not time.** A step waits for the reply, status or line of output it needs, never for a fixed time. Let time pass only when a timeout is what the scenario checks, and then write the check so it fails one way only. A timer never fires early, so check that a timeout happened by waiting well past it, and check that it hasn't happened yet with a timeout far longer than the scenario's waits. A scenario that checks two timers fired waits past the later one.
 - **Unit tests only where no scenario can reach.** A parser edge case is a good one. A parser test for an argument that doesn't exist is not.
 - **Name it for what the steps prove.** A scenario title says what its `Then` lines check. If they disagree, fix one of them.
 
@@ -54,8 +57,8 @@ A test earns its place by failing when something a player, GM or pack author wou
 A **log** is everything else: a `tracing` event that records what the program did, read only to find out why it behaved as it did. Turning logs off never costs a user information.
 
 - **The test.** If `RUST_LOG=off` would hide something a user needs, it is output. A line a user can do nothing with except report it is a log.
-- **Where logs go.** `spook run` and `spook ai-gm` write their logs to `logs/<command>-<time>-<pid>.log` under the directory they were started in, and `spook run` prints that path on stderr once its pack is open. Every other command logs to stderr. Logs never go to stdout and never under a pack's `state/`.
-- **Only the terminals print.** `spook`'s `main.rs` and the `spook play` and `spook gm` terminals (`client/play.rs`, `client/gm.rs`) write to stdout and stderr. Other crates hand their output to a writer or callback the caller passes in: `spookery_server::Config::out` for the host console, and the AI GM's `report`. Output never goes through `tracing`, and a log never stands in for output.
+- **Where logs go.** `spook run`, `spook ai-gm` and `spook play` in its window write their logs to `logs/<command>-<time>-<pid>.log` under the directory they were started in, and `spook run` prints that path on stderr once its pack is open. Every other command logs to stderr. Logs never go to stdout and never under a pack's `state/`.
+- **Only the terminals print.** `spook`'s `main.rs` and the `spook play` and `spook gm` terminals (`client/terminal.rs`, `client/gm.rs`) write to stdout and stderr. Other crates hand their output to a writer or callback the caller passes in: `spookery_server::Config::out` for the host console, and the AI GM's `report`. Output never goes through `tracing`, and a log never stands in for output.
 - **Refusals and errors are output.** Logging one again at `warn` or `error` would report it twice. If it lacks its cause, such as the disk error behind `STORE_IO`, log the cause at `debug`.
 - **Logs never copy the game record.** The tape holds what was said and the journal holds what each round did. A log names a round, seat or command by its id. It never carries speech, effects, dice, views or message bodies.
 - **Logs never carry secrets or prompts.** No key, claim token, model prompt, model reply text or fact body, at any level.

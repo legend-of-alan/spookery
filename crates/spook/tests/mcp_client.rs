@@ -318,7 +318,7 @@ fn connect_http(port: u16) -> std::net::TcpStream {
     let stream = std::net::TcpStream::connect(("127.0.0.1", port))
         .unwrap_or_else(|err| panic!("connect HTTP: {err}"));
     stream
-        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .set_read_timeout(Some(crate::support::WAIT_LIMIT))
         .unwrap_or_else(|err| panic!("timeout: {err}"));
     stream
 }

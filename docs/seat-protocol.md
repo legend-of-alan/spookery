@@ -2,7 +2,7 @@
 
 This page is the wire a player client or a GM speaks to `spook run`. [Engine guarantees](engine-guarantees.md) says what the engine promises. Three things make up the wire, and CI checks each one against the build:
 
-- this page, whose examples are one live sitting of `tests/packs/docks`. A test plays that sitting and fails when an example and the table disagree.
+- this page, whose examples are one live session of `tests/packs/docks`. A test plays that session and fails when an example and the table disagree.
 - the JSON Schema, [`client.json`](../crates/protocol/schema/client.json) for what a client sends and [`server.json`](../crates/protocol/schema/server.json) for what the table sends. A test fails when the schema `spookery-protocol` derives with its `schema` feature is not the published one.
 - the recorded session, [`v2.jsonl`](../crates/protocol/sessions/v2.jsonl), a player and a GM recorded against version 2. The `compatibility-replay` CI job replays it against each build.
 
@@ -54,7 +54,7 @@ The table speaks first, with `version`, the `commands` this seat may send, and, 
 {"body":{"kind":"hello","version":2,"commands":["status","perceive","queue","say","commit","release"]}}
 ```
 
-One GM sits at a time, on `/gm` or on `/mcp`. A second GM on `/gm` gets one `refused` with `TABLE_FULL`, and the connection closes.
+One GM holds the seat at a time, on `/gm` or on `/mcp`. A second GM on `/gm` gets one `refused` with `TABLE_FULL`, and the connection closes.
 
 ## Commands
 
