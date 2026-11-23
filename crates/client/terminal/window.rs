@@ -700,6 +700,13 @@ mod tests {
         rows.join("\n")
     }
 
+    /// Compares `shown` to the snapshot named `name` in `crates/client/tests/snapshots`.
+    fn assert_snapshot(name: &str, shown: &str) {
+        insta::with_settings!({ snapshot_path => "../tests/snapshots" }, {
+            insta::assert_snapshot!(name, shown);
+        });
+    }
+
     fn assert_screen(name: &str, screen: &mut Screen, view: Option<&protocol::View>) {
         assert_screen_at(name, screen, view, 80, 24);
     }
@@ -712,7 +719,7 @@ mod tests {
         height: u16,
     ) {
         let shown = screen_text(screen, view, width, height);
-        insta::assert_snapshot!(format!("{name}_{width}x{height}"), shown);
+        assert_snapshot(&format!("{name}_{width}x{height}"), &shown);
     }
 
     /// Snapshots the one part of the 80 by 24 screen that `pick_rect` takes from its areas.
@@ -722,7 +729,7 @@ mod tests {
         view: &protocol::View,
         pick_rect: fn(&ScreenAreas) -> Option<Rect>,
     ) {
-        insta::assert_snapshot!(name, region_text(screen, Some(view), pick_rect));
+        assert_snapshot(name, &region_text(screen, Some(view), pick_rect));
     }
 
     /// Docks Street from Rowan's `map` reply in that session, after a walk there and back.
