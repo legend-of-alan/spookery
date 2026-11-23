@@ -74,9 +74,9 @@ impl Terminal {
 
     /// Takes the request id play sent the last line from `next_line` under, so the window knows
     /// the reply to its own request.
-    pub(crate) fn sent(&mut self, request_id: String) {
+    pub(crate) fn record_request_id(&mut self, request_id: String) {
         if let Surface::Window(window) = &mut self.surface {
-            window.sent(request_id);
+            window.record_request_id(request_id);
         }
     }
 
