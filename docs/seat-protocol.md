@@ -93,7 +93,7 @@ Only `release` ends a claim. A connection that closes or is dropped leaves its P
 {"seq":4,"body":{"kind":"presence","actors_present":["rowan"]}}
 ```
 
-`round_index` and `world_time` in `claimed` are the table's round and tick when it answers, so a client can show them before the next `round`. `token` in `claimed` takes the PC back from a new connection, so treat it as a secret. A held claim keeps the newest 256 messages sent to it. `claim` with `token` and `last_seq`, the last `seq` the old connection read, answers with `missed`, the kept messages after `last_seq`, oldest first. A missing `last_seq` means 0. `gap` is `true` when a message after `last_seq` was dropped. The `resume` and `view` after it are current either way. A connection that held the claim before lets go of it and stays up. A released claim's token is `UNKNOWN_ID`.
+`round_index` and `world_time` in `claimed` are the table's round and tick when it answers, so a client can show them before the next `round`. `token` in `claimed` takes the PC back from a new connection, so treat it as a secret. A held claim keeps the newest 256 messages sent to it. `claim` with `token` and `last_seq`, the last `seq` the old connection read, answers with `missed_messages`, the kept messages after `last_seq`, oldest first. A missing `last_seq` means 0. `is_missed_truncated` is `true` when a message after `last_seq` was dropped. The `resume` and `view` after it are current either way. A connection that held the claim before lets go of it and stays up. A released claim's token is `UNKNOWN_ID`.
 
 <!-- example: player-claim-token -->
 ```json
@@ -102,7 +102,7 @@ Only `release` ends a claim. A connection that closes or is dropped leaves its P
 
 <!-- example: player-claimed-token -->
 ```json
-{"seq":24,"reply_to":"c1","body":{"kind":"claimed","actor":"rowan","token":"<token>","round_index":2,"world_time":1090,"missed":[{"seq":23,"body":{"kind":"say","from":"gm","to":"table","text":"still there?"}}]}}
+{"seq":24,"reply_to":"c1","body":{"kind":"claimed","actor":"rowan","token":"<token>","round_index":2,"world_time":1090,"missed_messages":[{"seq":23,"body":{"kind":"say","from":"gm","to":"table","text":"still there?"}}]}}
 ```
 
 A new claim's `claimed` carries `scrollback` instead, the speech this PC heard before, oldest first.
@@ -342,7 +342,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 | Kind | Who gets it | What it says |
 |---|---|---|
 | `hello` | the new connection | `version`, `commands`, `open`, `taken` |
-| `claimed` | the claiming player | `actor`, `token`, `round_index`, `world_time`, and `scrollback` or `missed` and `gap` |
+| `claimed` | the claiming player | `actor`, `token`, `round_index`, `world_time`, and `scrollback` or `missed_messages` and `is_missed_truncated` |
 | `released` | the releasing seat | the claim or the GM seat is free |
 | `presence` | the GM | `actors_present` after a claim starts or ends |
 | `refused` | the sender | `code` and, when the refusal names something, `detail` |

@@ -44,7 +44,7 @@ pub(super) fn render_claim_reply(
     scrollback: &[TapeRecord],
     last_seq: u64,
 ) -> ServerBody {
-    let (missed, gap) = claim.messages_after(last_seq);
+    let (missed_messages, is_missed_truncated) = claim.messages_after(last_seq);
     ServerBody::Claimed {
         actor: claim.actor.to_string(),
         token: claim.token.clone(),
@@ -54,8 +54,8 @@ pub(super) fn render_claim_reply(
             .iter()
             .map(|tape| build_speech(tape, false))
             .collect(),
-        missed,
-        gap,
+        missed_messages,
+        is_missed_truncated,
     }
 }
 

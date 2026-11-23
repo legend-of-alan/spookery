@@ -147,16 +147,20 @@ fn the_reconnect_is_refused(world: &mut World, code: String) {
     assert_eq!(reply["body"]["code"], code.as_str(), "{reply}");
 }
 
-/// The reconnect's `claimed` reply holds Rowan under the same token, with `gap` as given.
-/// Returns its `missed` messages, each after the old connection's last `seq`.
-fn held_again(world: &World, gap: bool) -> Vec<Value> {
+/// The reconnect's `claimed` reply holds Rowan under the same token, with `is_missed_truncated`
+/// equal to `is_truncated`. Returns its `missed_messages`, each after the old connection's last `seq`.
+fn held_again(world: &World, is_truncated: bool) -> Vec<Value> {
     let reply = parse(&world.player_added);
     let body = &reply["body"];
     assert_eq!(body["kind"], "claimed", "{reply}");
     assert_eq!(body["actor"], "rowan", "{reply}");
     assert_eq!(body["token"], world.scratch.as_str(), "{reply}");
-    assert_eq!(body["gap"].as_bool().unwrap_or(false), gap, "{reply}");
-    let missed = body["missed"].as_array().cloned().unwrap_or_default();
+    let is_missed_truncated = body["is_missed_truncated"].as_bool().unwrap_or(false);
+    assert_eq!(is_missed_truncated, is_truncated, "{reply}");
+    let missed = body["missed_messages"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     let seqs: Vec<u64> = missed.iter().map(seq_of).collect();
     assert!(seqs.is_sorted(), "{seqs:?}");
     assert!(seqs.iter().all(|&seq| seq > world.mark as u64), "{seqs:?}");
@@ -164,7 +168,7 @@ fn held_again(world: &World, gap: bool) -> Vec<Value> {
     missed
 }
 
-/// The text of each `say` among `missed`, in order.
+/// The text of each `say` among `missed_messages`, in order.
 fn texts_in(missed: &[Value]) -> Vec<String> {
     let says = missed
         .iter()

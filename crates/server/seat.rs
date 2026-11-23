@@ -133,13 +133,13 @@ impl Claim {
 
     /// The kept messages after `last_seq`, and whether any were dropped past `MISSED_MESSAGE_CAP`.
     pub(super) fn messages_after(&self, last_seq: u64) -> (Vec<ServerMessage>, bool) {
-        let missed = self
+        let missed_messages = self
             .kept
             .iter()
             .filter(|message| message.seq.is_some_and(|seq| seq > last_seq))
             .cloned()
             .collect();
-        (missed, last_seq < self.last_lost_seq)
+        (missed_messages, last_seq < self.last_lost_seq)
     }
 }
 

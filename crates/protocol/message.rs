@@ -85,8 +85,8 @@ pub enum ServerBody {
     /// The reply to `claim`. `token` takes this PC back after a dropped connection.
     /// `round_index` and `world_time` are the table's round and tick. A new claim carries
     /// `scrollback`, the speech this PC heard before, oldest first. A claim by token carries
-    /// `missed`, the messages sent to this PC after the `last_seq` it named, and `gap` when
-    /// more than `MISSED_MESSAGE_CAP` messages were missed.
+    /// `missed_messages`, the messages sent to this PC after the `last_seq` it named, and
+    /// `is_missed_truncated` when more than `MISSED_MESSAGE_CAP` messages were missed.
     Claimed {
         actor: String,
         token: String,
@@ -97,9 +97,9 @@ pub enum ServerBody {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         scrollback: Vec<Speech>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        missed: Vec<ServerMessage>,
+        missed_messages: Vec<ServerMessage>,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        gap: bool,
+        is_missed_truncated: bool,
     },
     Released,
     /// Sent to the GM whenever a claim starts or ends.
