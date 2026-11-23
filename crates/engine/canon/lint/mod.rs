@@ -178,7 +178,7 @@ fn check_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
                     return;
                 };
                 let is_ever_set =
-                    |key| held.contains(key) || flag_owners(canon, key).next().is_some();
+                    |key| held.contains(key) || find_flag_owners(canon, key).next().is_some();
                 if matches!(of, grammar::Object::Exit(_)) || is_ever_set(key.as_str()) {
                     return;
                 }
@@ -303,7 +303,7 @@ fn check_teleport_verbs(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// The `of` of each flag effect in the pack's rules that writes flag `key`.
-fn flag_owners<'c>(canon: &'c Canon, key: &str) -> impl Iterator<Item = &'c grammar::Object> {
+fn find_flag_owners<'c>(canon: &'c Canon, key: &str) -> impl Iterator<Item = &'c grammar::Object> {
     let mut owners = Vec::new();
     for rule in canon.rules.iter() {
         rule.visit_templates(|effect| match effect {

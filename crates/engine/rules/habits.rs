@@ -69,20 +69,20 @@ fn is_eligible(canon: &Canon, world: &ecs::World, presence: &Presence, npc_id: &
         return false;
     }
     let act = world.actors().get::<component::Act>(npc_id);
-    let counters = act.get();
+    let act_state = act.get();
     let Some(place) = world.actors().get::<component::Place>(npc_id).get() else {
         return false;
     };
     if act.is_busy(world.world_time) || is_player_at(world, presence, place) {
         return false;
     }
-    if counters.last_act_round == world.round_index {
+    if act_state.last_act_round == world.round_index {
         return false;
     }
     if presence.players == 0 {
-        u64::from(counters.idle_acts_this_window) < canon.budget.idle_acts_per_window
+        u64::from(act_state.idle_acts_this_window) < canon.budget.idle_acts_per_window
     } else {
-        u64::from(counters.live_acts_this_window) < canon.budget.live_acts_per_window
+        u64::from(act_state.live_acts_this_window) < canon.budget.live_acts_per_window
     }
 }
 

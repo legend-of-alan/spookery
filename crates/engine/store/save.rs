@@ -99,7 +99,7 @@ fn held_meters(world: &ecs::World) -> impl Iterator<Item = (entity::Id, &str, &M
 }
 
 /// Every flag key the save lists, on any actor, place, story or the world.
-pub(crate) fn held_flag_keys(world: &ecs::World) -> BTreeSet<&str> {
+pub(crate) fn find_held_flags(world: &ecs::World) -> BTreeSet<&str> {
     let actors = world.actors().query::<&component::Flag>();
     let places = world.places().query::<&component::Flag>();
     let stories = world.stories().query::<&component::Flag>();
@@ -134,7 +134,7 @@ pub(crate) fn find_stale_modifiers(world: &ecs::World) -> Vec<(&ActorId, &str, &
 /// Migrate a save as `record` says, through the writers a round uses: take the dropped modifiers
 /// off every actor and each dropped meter off its entity, then stamp the record's `pack_rev_after`
 /// and `state_rev_after`. A meter an entity holds keeps its value, and one it has no row for reads
-/// the pack's start. Live migrate and replay both call this. It does not touch the disk, and it
+/// the pack's base. Live migrate and replay both call this. It does not touch the disk, and it
 /// reads no hash or chain from the record.
 pub(crate) fn migrate(mut world: ecs::World, record: &MigrateRecord) -> Result<ecs::World, Reason> {
     let actors = world.actors().query::<&Modifier>();

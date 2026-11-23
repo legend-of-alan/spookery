@@ -65,7 +65,7 @@ pub(super) fn meter_descs(
                 min: entry.min,
                 base_cap: entry.base_cap,
                 max: entry.max,
-                start: entry.base,
+                base: entry.base,
                 hidden: entry.hidden.unwrap_or(hidden_by_default),
                 carrier: carrier.clone(),
             },

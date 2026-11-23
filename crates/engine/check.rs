@@ -24,7 +24,7 @@ fn tip_pack_rev<'a>(live: &'a [Record], save: &'a Save) -> &'a str {
 }
 
 /// `Some` when the canon files are not the journal tip's hash.
-fn check_pack_rev(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagnostic> {
+fn find_pack_rev_mismatch(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagnostic> {
     match pack_rev(root) {
         Ok(rev) if tip != rev => {
             let mut diag = error(
@@ -80,8 +80,8 @@ pub(crate) fn load_save_file(
     })?;
     let save = save::parse(text)?;
     let live = journal::read_live_records(root).unwrap_or_default();
-    let mut problems = check_save_text(&save, bytes);
-    if let Some(diag) = check_pack_rev(root, tip_pack_rev(&live, &save), bytes) {
+    let mut problems = find_save_text_problems(&save, bytes);
+    if let Some(diag) = find_pack_rev_mismatch(root, tip_pack_rev(&live, &save), bytes) {
         problems.insert(0, diag);
     }
     let migrate_follows = live.iter().any(|entry| {
@@ -128,6 +128,7 @@ pub(crate) fn load_save_file(
 
 /// Read the pack and report every loader and lint problem. Writes nothing.
 pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
+    // repeats module: re-exported at the crate root
     let mut diags = Vec::new();
     let canon = match load_canon(root) {
         Ok(canon) => Some(Arc::new(canon)),
@@ -155,13 +156,17 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     }
     if let Some(canon) = &canon {
         let world = save.map(|save| ecs::World::new(save, Arc::clone(canon)));
-        let held_flags = world.as_ref().map(save::held_flag_keys).unwrap_or_default();
+        let held_flags = world
+            .as_ref()
+            .map(save::find_held_flags)
+            .unwrap_or_default();
         diags.extend(crate::canon::check_canon(canon, &held_flags));
     }
     diags
 }
 
-fn check_save_text(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
+/// The reserved actor id `world` in the save, and a save that is not its own canonical text.
+fn find_save_text_problems(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let saved = serde_json::to_value(save).unwrap_or_default();
     if saved["actors"]["control_type"].get("world").is_some() {

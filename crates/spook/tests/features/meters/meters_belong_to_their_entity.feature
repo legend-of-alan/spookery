@@ -16,7 +16,7 @@ Feature: Meters belong to their entity
     Then Mira's change line shows shop_day
     And rowan's change line does not
 
-  Scenario: The save lists a meter or act only while it differs from the pack's start
+  Scenario: The save lists a meter or act only while it differs from the pack's base
     Given rowan has verbs that add 2 to and take 2 from her vigor
     When rowan adds 2 to her vigor
     Then rowan's vigor is at base 1 and offset 2

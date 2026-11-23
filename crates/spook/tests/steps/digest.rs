@@ -66,7 +66,7 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
     );
     let rowan = "rowan".into();
     let meters = now.actors().get::<Meter>(&rowan);
-    let debt = meters.get_or_start("assassination_debt").unwrap();
+    let debt = meters.get_or_base("assassination_debt").unwrap();
     assert_eq!((debt.base, debt.offset), (2, 0));
 }
 

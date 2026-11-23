@@ -155,7 +155,7 @@ Feature: A hand edit waits for migrate
     Then stderr names HAND_EDIT
     And the host refuses to start with HAND_EDIT
 
-  Scenario: An actor with no meter or act rows reads the pack's start
+  Scenario: An actor with no meter or act rows reads the pack's base
     Given a docks table
     When Rowan's vigor offset is hand edited to 3 and Nell joins with no meter or act rows
     And the operator runs migrate

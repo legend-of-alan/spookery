@@ -15,7 +15,7 @@ pub(crate) fn edit_meter(
     edit: impl FnOnce(&mut Meter),
 ) {
     let actor = ActorId::from(actor);
-    let held = now.actors().get::<Meter>(&actor).get_or_start(key);
+    let held = now.actors().get::<Meter>(&actor).get_or_base(key);
     let mut meter = held.unwrap_or_else(|| panic!("{actor} has no {key}"));
     edit(&mut meter);
     let mut actors = now.actors_mut();

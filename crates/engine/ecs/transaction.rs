@@ -195,7 +195,7 @@ impl ecs::World {
         let now = entity::in_collection!(id, [&save], |entities, id| {
             Reader::new(entities, canon)
                 .get::<Meter>(id)
-                .get_or_start(entry_id)
+                .get_or_base(entry_id)
         });
         let sum_now = match id {
             entity::Id::Actor(actor) => self.actors().get::<Modifier>(actor).sum(entry_id),

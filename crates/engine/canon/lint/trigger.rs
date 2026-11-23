@@ -223,7 +223,8 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
         }
         ChangeWatch::Flag { key, .. } => {
             (key == OPEN && canon.paths.iter().any(PathDef::is_conditional))
-                || super::flag_owners(canon, key).any(|of| !matches!(of, grammar::Object::Actor(_)))
+                || super::find_flag_owners(canon, key)
+                    .any(|of| !matches!(of, grammar::Object::Actor(_)))
         }
         _ => false,
     }
@@ -238,7 +239,7 @@ fn watches_actor_key(canon: &Canon, watch: &ChangeWatch) -> bool {
             .get(key)
             .is_some_and(meter::Descriptor::is_actor_meter),
         ChangeWatch::Flag { key, .. } => {
-            super::flag_owners(canon, key).any(|of| matches!(of, grammar::Object::Actor(_)))
+            super::find_flag_owners(canon, key).any(|of| matches!(of, grammar::Object::Actor(_)))
         }
         _ => false,
     }

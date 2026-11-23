@@ -16,7 +16,7 @@ pub struct Descriptor {
     pub min: i64,
     pub base_cap: i64,
     pub max: i64,
-    pub start: i64,
+    pub base: i64,
     /// Kept off the players' views.
     pub hidden: bool,
     /// Who carries it, from the file that declares it. `None` is every actor.
@@ -46,10 +46,10 @@ pub struct Meter {
 }
 
 impl Meter {
-    /// The meter a carrier with no save row reads: `desc`'s start, with no offset.
-    pub fn at_start(desc: &Descriptor) -> Meter {
+    /// The meter a carrier with no save row reads: `desc`'s base, with no offset.
+    pub fn at_base(desc: &Descriptor) -> Meter {
         Meter {
-            base: desc.start,
+            base: desc.base,
             offset: 0,
         }
     }
@@ -92,30 +92,30 @@ impl Component for Meter {
     const ID: &'static str = "meter";
 }
 
-impl<'a, E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Ref<'a, E, Meter> {
-    /// Meter `entry_id` as the entity holds it: its save row, or `Meter::at_start` when it has
+impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Ref<'_, E, Meter> {
+    /// Meter `entry_id` as the entity holds it: its save row, or `Meter::at_base` when it has
     /// none. `None` when the entity does not carry the meter.
-    pub fn get_or_start(&self, entry_id: &str) -> Option<Meter> {
+    pub fn get_or_base(&self, entry_id: &str) -> Option<Meter> {
         let desc = (self.entities.canon).meter_desc(self.id.as_id_ref(), entry_id)?;
         let held = self.get(entry_id).copied();
-        (self.entities.contains(self.id)).then(|| held.unwrap_or(Meter::at_start(desc)))
+        (self.entities.contains(self.id)).then(|| held.unwrap_or(Meter::at_base(desc)))
     }
 }
 
 impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter> {
-    /// Move meter `entry_id` by `delta` inside its bounds. A meter back at its start leaves the
+    /// Move meter `entry_id` by `delta` inside its bounds. A meter back at the pack's base leaves the
     /// save. It reports the meter's key with the meter it replaced; the change is read, as rules
     /// read the meter, when the changes are taken.
     pub fn shift(&mut self, entry_id: &str, delta: i64) -> Result<(), Reason> {
         self.check_exists()?;
         let id = self.id.as_id_ref();
         let desc = (self.writer.canon.meter_desc(id, entry_id)).ok_or(Reason::UnknownId)?;
-        let start = Meter::at_start(desc);
+        let pack_base = Meter::at_base(desc);
         let entry = (self.id.clone(), entry_id.to_string());
-        let held = self.store().get(&entry).copied().unwrap_or(start);
+        let held = self.store().get(&entry).copied().unwrap_or(pack_base);
         let next = shift(held, desc, delta)?;
         let report = change::Report::Meter(self.key(Some(entry_id)), Some(held));
-        let next = (next != start).then_some(next);
+        let next = (next != pack_base).then_some(next);
         let (store, transaction) = self.store_mut();
         store.set(transaction, entry, next, [report])
     }
@@ -152,7 +152,7 @@ impl Ref<'_, Save, Meter> {
                 let held = in_collection!(id, [&save], |entities, id| {
                     Reader::new(entities, canon)
                         .get::<Meter>(id)
-                        .get_or_start(entry_id)
+                        .get_or_base(entry_id)
                 });
                 value(desc?, &held.ok_or(Reason::UnknownId)?, 0)
             }
@@ -192,7 +192,7 @@ mod tests {
             min: 0,
             base_cap: 100,
             max: 110,
-            start: 1,
+            base: 1,
             hidden: false,
             carrier: None,
         }

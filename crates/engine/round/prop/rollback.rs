@@ -98,7 +98,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
             min: 0,
             base_cap: 10,
             max: 10,
-            start: 5,
+            base: 5,
             hidden: false,
             carrier: Some(carrier.clone()),
         };
@@ -110,10 +110,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     let mut world = ecs::World::new(Save::clone(opened.world()), Arc::new(canon));
     for (carrier, key) in &carried {
         let desc = world.canon().meter_desc(carrier.as_ref(), key);
-        let start = Meter {
-            base: desc.expect("the meter's descriptor").start,
-            offset: 0,
-        };
+        let start = Meter::at_base(desc.expect("the meter's descriptor"));
         let put = (world.entities_mut().get_mut::<Meter>(carrier)).set(key, Some(start));
         put.expect("the meter goes on");
     }
