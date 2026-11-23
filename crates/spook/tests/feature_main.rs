@@ -19,7 +19,7 @@ pub struct World {
     pub wren_mark: usize,
     pub player_added: String,
     /// The `claimed` reply of a pick, before any claim by token.
-    pub pick_reply: serde_json::Value,
+    pub pc_picked_reply: serde_json::Value,
     pub silent_closed: bool,
     pub flood_paced: usize,
     pub flood_refilled: usize,

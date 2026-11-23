@@ -29,7 +29,7 @@ async fn a_player_claimed_rowan(world: &mut World) {
         .unwrap_or_else(|| panic!("no token\n{reply}"))
         .to_string();
     world.mark = seq_of(&view) as usize;
-    world.pick_reply = reply;
+    world.pc_picked_reply = reply;
     table::live_mut(world).players.push(PlayerClient {
         actor_id: "rowan".to_string(),
         seat,
@@ -108,7 +108,7 @@ fn each_claim_said_the_clock(
     token_tick: u64,
 ) {
     let clocks = [
-        (&world.pick_reply, pick_round, pick_tick),
+        (&world.pc_picked_reply, pick_round, pick_tick),
         (&parse(&world.player_added), token_round, token_tick),
     ];
     for (reply, round_index, world_time) in clocks {
