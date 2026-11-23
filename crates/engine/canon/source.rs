@@ -18,6 +18,7 @@ pub(super) const VERBS_SCHEMA: &str = "verbs";
 pub(super) const ITEM_SCHEMA: &str = "item";
 pub(super) const STORY_SCHEMA: &str = "story";
 pub(super) const BUDGET_SCHEMA: &str = "budget";
+pub(super) const MAP_SCHEMA: &str = "map";
 
 /// One pack file as the loader sees it: its pack-relative name and its YAML text, which
 /// starts on the file's first line.
@@ -273,7 +274,7 @@ pub(super) fn load_tagged<T: serde::de::DeserializeOwned>(
     }
     let holds_rule_lines = matches!(
         expected,
-        VERBS_SCHEMA | CAST_SCHEMA | ITEM_SCHEMA | PLACE_SCHEMA | STORY_SCHEMA
+        VERBS_SCHEMA | CAST_SCHEMA | ITEM_SCHEMA | PLACE_SCHEMA | STORY_SCHEMA | MAP_SCHEMA
     );
     parse_file(file, text, holds_rule_lines)
 }

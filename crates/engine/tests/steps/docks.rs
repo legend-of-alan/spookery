@@ -323,6 +323,12 @@ start:
 ",
     );
     write_text(
+        &pack.join("world/map.yaml"),
+        "schema: map
+paths: []
+",
+    );
+    write_text(
         &pack.join("world/places/gate.md"),
         "\
 ---
@@ -423,6 +429,12 @@ title: Crowd
 system: crowd
 start:
   place: yard
+",
+    );
+    write_text(
+        &pack.join("world/map.yaml"),
+        "schema: map
+paths: []
 ",
     );
     write_text(

@@ -60,21 +60,15 @@ fn stairs_open(pack: &Path) -> bool {
 #[given(expr = "the stair door in the shop needs brass_key")]
 fn the_stair_door_needs_the_key(world: &mut World) {
     let pack = support::copy_pack("docks", "door");
-    let path = pack.join("world/places/docks_shop.md");
-    let text = fs::read_to_string(&path).unwrap();
-    let bolt = "rules:
-  - id: bolt
+    let bolt = "  - id: bolt
     when: { verb: bolt }
     do:
       - flag: { of: \"exit:docks_shop.stairs\", key: open, value: false }
   - id: creak
     when: { change: { flag: open, becomes: true } }
     do:
-      - flag: { of: world, key: creaked, value: true }
-exits:";
-    let next = text.replacen("exits:", bolt, 1);
-    assert_ne!(next, text);
-    fs::write(&path, next).unwrap();
+      - flag: { of: world, key: creaked, value: true }";
+    super::round_play::add_place_rules(&pack, "docks_shop", bolt);
     let path = pack.join("cast/mira.md");
     let text = fs::read_to_string(&path).unwrap();
     fs::write(

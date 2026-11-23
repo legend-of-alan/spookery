@@ -7,7 +7,7 @@ use cucumber::{given, then, when};
 use spookery_engine::testing::{place_of, world_of};
 use spookery_engine::{component, entity, Presence};
 
-use super::common::{add_verb, format_meter_row, replace_in_file};
+use super::common::{add_verb, format_meter_row};
 use super::meters::migrate_and_play;
 use super::triggers::{edit_table, intent, seen_of, set_place, set_present};
 use crate::support::copy_pack;
@@ -44,9 +44,11 @@ fn append_story_rule(pack: &Path, story: &str, effect: &str) {
 /// Write `world/places/attic.md`, above the shop, with these extra keys.
 fn write_attic(world: &mut World, keys: &str) {
     let text = format!(
-        "---\nschema: place\nid: attic\nname: Attic\nfacts:\n  - id: fact_attic_dust\n    text: Dust lies on the boards.\nexits:\n  - to: docks_shop\n    id: ladder\n{keys}---\nThe attic is over the shop.\n"
+        "---\nschema: place\nid: attic\nname: Attic\nfacts:\n  - id: fact_attic_dust\n    text: Dust lies on the boards.\n{keys}---\nThe attic is over the shop.\n"
     );
     fs::write(pack(world).join("world/places/attic.md"), text).unwrap();
+    let ladder = "  - path: attic -> docks_shop\n    id: ladder\n";
+    crate::support::append(&pack(world).join("world/map.yaml"), ladder);
 }
 
 fn meter_effect(of: &str, key: &str) -> String {
@@ -305,16 +307,8 @@ fn a_rule_leaves_a_note_in_the_attic(world: &mut World) {
     set_present(&mut seated, &["rowan"]);
     world.seated.push((pack.clone(), seated));
     add_verb_doing(&pack, "scrawl", effect);
-    let ladder = "exits:
-  - to: attic
-    id: ladder
-";
-    replace_in_file(
-        &pack.join("world/places/docks_shop.md"),
-        "exits:
-",
-        ladder,
-    );
+    let ladder = "  - path: docks_shop -> attic\n    id: ladder\n";
+    crate::support::append(&pack.join("world/map.yaml"), ladder);
     migrate_and_play(world, vec![intent("scrawl", "mira", "scrawl", None)]);
     let climb = intent("climb", "rowan", "travel", Some("ladder"));
     migrate_and_play(world, vec![climb]);

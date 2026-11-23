@@ -1,0 +1,29 @@
+schema: map
+paths:
+  - path: docks_shop <-> docks_street
+  - path: docks_shop <-> mira_rooms
+    id: stairs
+    cost:
+      ticks: 2
+    if:
+      - has_item:
+          subject: self
+          id: brass_key
+    locked_text: The stair door is locked.
+  - path: gate_yard -> mill_lane
+    cost:
+      ticks: 15
+    if:
+      - flag:
+          of: world
+          key: passage
+          is: true
+      - flag:
+          of: world
+          key: chocked
+          is: true
+    locked_text: The lane is shut.
+  - path: mill_lane -> gate_yard
+  - path: gate_yard <-> loft
+  - path: gate_yard <-> wheel_shed
+  - path: docks_street <-> gate_yard

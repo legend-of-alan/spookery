@@ -24,12 +24,8 @@ async fn a_docks_table_with_a_gm_and_a_busy_pc(world: &mut World) {
 
 async fn listen_with_wren(world: &mut World, travelling: bool) {
     let pack = copy_pack("docks", "round-output");
-    let path = pack.join("world/places/docks_shop.md");
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read shop: {err}"));
-    let from = "  - to: docks_street\n    id: docks_street\n";
-    let to = "  - to: docks_street\n    id: docks_street\n    cost:\n      ticks: 10\n";
-    assert!(text.contains(from), "{text}");
-    fs::write(&path, text.replacen(from, to, 1)).unwrap_or_else(|err| panic!("write shop: {err}"));
+    let cost = "    cost:\n      ticks: 10\n";
+    support::split_path(&pack, ["docks_shop", "docks_street"], [cost, ""]);
     let verbs = pack.join("rules/verbs.yaml");
     let mut rules = fs::read_to_string(&verbs).unwrap_or_else(|err| panic!("read verbs: {err}"));
     rules.push_str(

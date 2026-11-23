@@ -34,12 +34,14 @@ const VERB_KEYS: &[&str] = &[
     "ticks:",
 ];
 
-const EXIT_KEYS: &[&str] = &[
+const PATH_KEYS: &[&str] = &[
+    "<->",
+    "->",
+    "id:",
     "revealed_by:",
     "hidden: true",
     "locked_text:",
     "ticks:",
-    "teleport: true",
 ];
 
 const CONDITION_KEYS: &[&str] = &[
@@ -126,7 +128,8 @@ fn a_drifted_example_fails_spook_check() {
 fn assert_catalog(examples: &[Example]) {
     assert_keys(examples, "rules/verbs.yaml", EFFECT_KEYS);
     assert_keys(examples, "rules/verbs.yaml", VERB_KEYS);
-    assert_keys(examples, "world/places/yard.md", EXIT_KEYS);
+    assert_keys(examples, "world/map.yaml", PATH_KEYS);
+    assert_keys(examples, "world/places/yard.md", &["teleport: true"]);
     assert_keys(examples, "cast/keeper.md", CONDITION_KEYS);
     assert!(
         examples

@@ -114,21 +114,10 @@ fn push_and_shove_cost_vigor(world: &mut World) {
 #[given(expr = "a docks table where dropping the tonic locks the loft")]
 fn dropping_the_tonic_locks_the_loft(world: &mut World) {
     let pack = support::copy_pack("docks", "locked-loft");
+    let door = "    if:\n      - has_item: { subject: self, id: tonic }\n    locked_text: The loft door is locked.\n";
+    support::split_path(&pack, ["gate_yard", "loft"], [door, ""]);
     let path = pack.join("world/places/gate_yard.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read yard: {err}"));
-    let next = text.replacen(
-        "  - to: loft\n    id: loft\n",
-        "\
-\n  - to: loft
-    id: loft
-    if:
-      - has_item:
-          subject: self
-          id: tonic
-    locked_text: The loft door is locked.
-",
-        1,
-    );
     let drop = "rules:
   - id: drop
     when: { verb: drop, target: item }
@@ -137,7 +126,7 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
       - item: { of: here, id: target, add: 1 }
       - flag: { of: \"exit:gate_yard.loft\", key: open, value: false }
 ";
-    let next = next.replacen("rules:\n", drop, 1);
+    let next = text.replacen("rules:\n", drop, 1);
     assert_ne!(text, next, "the loft exit was not locked");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write yard: {err}"));
     edit_save(&pack, |now| {

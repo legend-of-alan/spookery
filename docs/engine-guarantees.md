@@ -159,7 +159,7 @@ Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 
 A change rule fires in the same round that makes its watch true, and not again
 while the watch stays true. Change rules run right after each action starts and
-after each one finishes, so a door opened twice in one round fires its watcher
+after each one finishes, so an exit opened twice in one round fires its watcher
 twice, and a rule can refuse a later action in that round. The depth limit
 counts the passes after each action, not the round. Arrival fires a rule on that place, including an
 author teleport. A meter that crosses the watched line can set a flag in that
@@ -235,8 +235,9 @@ Tested in `features/meters/modifiers_stack_and_expire.feature` and
 
 ## Travel
 
-A missing exit and a locked exit change nothing. A locked exit shows its locked
-text. An exit with an `if` is locked until, at the end of a round, some actor in
+A place's exits are the paths in `world/map.yaml` that leave it. A two-way
+path's `if`, cost and locked text hold from both ends. A missing exit and a
+locked exit change nothing. A locked exit shows its locked text. An exit with an `if` is locked until, at the end of a round, some actor in
 its place meets that `if`. Then the exit opens and the GM sees the
 `place_exit_open` change, and the exit stays open for every actor until a rule
 sets `open` to false. A hidden exit the traveller does not know stays off the view and `help`.

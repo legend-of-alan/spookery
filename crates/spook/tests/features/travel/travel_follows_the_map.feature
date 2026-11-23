@@ -5,15 +5,16 @@ Feature: Travel follows the map
     When rowan travels to mira_rooms from docks_street
     Then the intent is refused with NO_EXIT and rowan stays put
 
-  Scenario Outline: A locked exit shows its text and changes nothing
-    Given the stairs exit needs brass_key, rowan has none, and travel walks <walk>
+  Scenario Outline: A locked exit shows its text from either end and changes nothing
+    Given rowan stands in <place>, the stairs exit needs brass_key, rowan has none, and travel walks <walk>
     When rowan travels via stairs
     Then rowan sees "The stair door is locked." and no state changes
 
     Examples:
-      | walk                  |
-      | at once               |
-      | inside a nested check |
+      | place      | walk                  |
+      | docks_shop | at once               |
+      | docks_shop | inside a nested check |
+      | mira_rooms | at once               |
 
   Scenario: Hidden exit
     Given the trapdoor is hidden and rowan does not know fact_trapdoor

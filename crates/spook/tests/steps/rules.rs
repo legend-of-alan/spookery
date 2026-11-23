@@ -5,7 +5,7 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::roll;
 
-use crate::support::{edit_as_saved, edit_meter, put_items, put_meter};
+use crate::support::{edit_as_saved, edit_meter, insert_before_fence, put_items, put_meter};
 use spookery_engine::MoveReport;
 use spookery_engine::{component, entity, ActorId, GlobalId, Meter, Note, Presence, Reason};
 
@@ -955,23 +955,6 @@ pub(super) fn open(pack: &Path) -> spookery_engine::Session {
                 .join("\n")
         )
     })
-}
-
-fn insert_before_fence(path: &Path, block: &str) {
-    let text = fs::read_to_string(path).unwrap();
-    let index = text
-        .find("\n---\n")
-        .unwrap_or_else(|| panic!("no fence in {}", path.display()));
-    let mut next = text[..index].to_string();
-    if !next.ends_with('\n') {
-        next.push('\n');
-    }
-    next.push_str(block);
-    if !block.ends_with('\n') {
-        next.push('\n');
-    }
-    next.push_str(&text[index + 1..]);
-    fs::write(path, next).unwrap();
 }
 
 fn write(path: &Path, text: &str) {
