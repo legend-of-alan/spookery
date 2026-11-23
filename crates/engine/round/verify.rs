@@ -200,7 +200,7 @@ fn set_save_line(mut diverged: Divergence, live: &[u8]) -> Error {
     diverged.save_line = diverged.replayed.as_deref().and_then(|replayed| {
         let live_text = std::str::from_utf8(live).ok()?;
         let replayed_text = std::str::from_utf8(replayed).ok()?;
-        crate::session::first_diff_line(live_text, replayed_text)
+        crate::check::first_diff_line(live_text, replayed_text)
     });
     diverged.into()
 }
