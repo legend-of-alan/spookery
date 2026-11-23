@@ -15,7 +15,7 @@ use ratatui::{DefaultTerminal, Frame};
 use tui_input::backend::crossterm::EventHandler;
 use tui_input::Input;
 
-use crate::protocol::{self, Outcome, ServerBody, Speaker, Speech};
+use crate::protocol::{self, Outcome, ServerBody, ServerMessage, Speaker, Speech};
 use crate::text;
 use crate::Error;
 
@@ -97,16 +97,6 @@ impl Tab {
             Tab::Known => "Known",
         }
     }
-}
-
-/// Where the window's own `map` request stands. It asks once on arrival at a new place, so
-/// the place panel can list what lies past the exits, and keeps the reply out of the
-/// transcript.
-#[derive(PartialEq)]
-enum MapRequest {
-    NotDue,
-    Due,
-    Sent,
 }
 
 /// One transcript line, and whether it is a round divider, which the compact layout leaves
@@ -236,14 +226,19 @@ impl Window {
         })
     }
 
-    /// Adds one body to the screen and draws it.
+    /// Adds one message to the screen and draws it.
     pub(crate) fn show(
         &mut self,
-        body: &ServerBody,
+        message: &ServerMessage,
         view: Option<&protocol::View>,
     ) -> Result<(), Error> {
-        self.screen.show(body);
+        self.screen.show(message);
         self.draw(view)
+    }
+
+    /// Takes the request id play sent the last line under.
+    pub(crate) fn sent(&mut self, request_id: String) {
+        self.screen.sent(request_id);
     }
 
     /// Handles keys until the player sends a line: a PC id at the PC picker, else a typed line,
@@ -254,8 +249,8 @@ impl Window {
         view: Option<&protocol::View>,
         commands: &[String],
     ) -> Result<Option<String>, Error> {
-        if self.screen.take_map_request() {
-            return Ok(Some("map".into()));
+        if let Some(line) = self.screen.take_own_line() {
+            return Ok(Some(line));
         }
         self.draw(view)?;
         while let Some(event) = self.event_stream.next().await {
@@ -313,7 +308,13 @@ struct Screen {
     open_tab: Option<Tab>,
     /// The last `help` reply as text, shown in a popup until Esc.
     help_text: Option<String>,
-    map_request: MapRequest,
+    /// Whether the PC has arrived somewhere since the window last sent its own `map`.
+    is_map_due: bool,
+    /// Whether the last line the window handed play is its own `map`, until play says which
+    /// request id it went under.
+    is_own_map_unsent: bool,
+    /// The request ids of the window's own `map` requests that have no reply yet.
+    own_map_request_ids: Vec<String>,
     /// The places of the last `map` reply.
     place_views: Vec<protocol::PlaceView>,
     /// How many wrapped rows the transcript is scrolled up from its bottom.
@@ -367,7 +368,9 @@ impl Screen {
             transcript: Vec::new(),
             open_tab: Some(Tab::Stats),
             help_text: None,
-            map_request: MapRequest::NotDue,
+            is_map_due: false,
+            is_own_map_unsent: false,
+            own_map_request_ids: Vec::new(),
             place_views: Vec::new(),
             scroll_offset_rows: 0,
             scroll_step_rows: 1,
@@ -399,18 +402,34 @@ impl Screen {
         self.transcript.push(line.into());
     }
 
-    /// Whether the window should send `map` now, which it does once per arrival.
-    fn take_map_request(&mut self) -> bool {
-        if self.map_request != MapRequest::Due {
-            return false;
-        }
-        self.map_request = MapRequest::Sent;
-        true
+    /// The line the window sends without a key: `map` once after each arrival, so the place
+    /// panel can list what lies past the exits.
+    fn take_own_line(&mut self) -> Option<String> {
+        self.is_own_map_unsent = std::mem::take(&mut self.is_map_due);
+        self.is_own_map_unsent.then(|| "map".into())
     }
 
-    /// Adds what `body` shows to the transcript, after the scrollback separator when the
-    /// renderer says one is due.
-    fn show(&mut self, body: &ServerBody) {
+    /// Takes the request id play sent the last line under, which marks the reply to the
+    /// window's own `map`.
+    fn sent(&mut self, request_id: String) {
+        if std::mem::take(&mut self.is_own_map_unsent) {
+            self.own_map_request_ids.push(request_id);
+        }
+    }
+
+    /// Adds what the message shows to the transcript, after the scrollback separator when the
+    /// renderer says one is due. A reply to the window's own `map` only updates the place panel.
+    fn show(&mut self, message: &ServerMessage) {
+        let body = &message.body;
+        if let ServerBody::Map { places } = body {
+            self.place_views = places.clone();
+        }
+        let own_reply_index = (self.own_map_request_ids.iter())
+            .position(|request_id| message.reply_to.as_ref() == Some(request_id));
+        if let Some(index) = own_reply_index {
+            self.own_map_request_ids.remove(index);
+            return;
+        }
         let first_new_line = self.transcript.len();
         self.push_body(body);
         let has_text = self.transcript.len() > first_new_line;
@@ -448,7 +467,7 @@ impl Screen {
             ServerBody::View(view) => {
                 if view.place != self.last_place_id {
                     self.last_place_id = view.place.clone();
-                    self.map_request = MapRequest::Due;
+                    self.is_map_due = true;
                     self.push_place_arrival(view);
                 }
             }
@@ -473,14 +492,7 @@ impl Screen {
                 self.push_text(&content, ASH);
             }
             ServerBody::Help { commands } => self.help_text = Some(text::render_help(commands)),
-            ServerBody::Map { places } => {
-                self.place_views = places.clone();
-                if self.map_request == MapRequest::Sent {
-                    self.map_request = MapRequest::NotDue;
-                } else {
-                    self.push_text(&text::render_map(places), PARCHMENT);
-                }
-            }
+            ServerBody::Map { places } => self.push_text(&text::render_map(places), PARCHMENT),
             ServerBody::Claimed { .. } | ServerBody::Resume { .. } | ServerBody::Lines { .. } => {
                 let content = self.renderer.render_without_separator(body);
                 self.push_text(&content, PARCHMENT);
@@ -618,12 +630,16 @@ impl Screen {
         self.input = Input::new(line.unwrap_or_default());
     }
 
+    /// Where each part of the screen goes in `area` with the tab box as it stands.
+    fn areas(&self, area: Rect, view: Option<&protocol::View>) -> ScreenAreas {
+        ScreenAreas::new(area, self.open_tab.map(|_| stats_rows(view)))
+    }
+
     fn draw(&mut self, frame: &mut Frame, view: Option<&protocol::View>) {
         let area = frame.area();
         let void = VOID.to_color(self.is_truecolor);
         frame.render_widget(Block::new().style(Style::new().bg(void)), area);
-        let tab_box_content_rows = self.open_tab.map(|_| stats_rows(view));
-        let areas = ScreenAreas::new(area, tab_box_content_rows);
+        let areas = self.areas(area, view);
         self.draw_title(frame, areas.title_rect, view);
         self.draw_rule(frame, areas.rule_rect);
         if self.pc_picker.is_some() {
@@ -1025,10 +1041,12 @@ impl Screen {
 mod tests {
     use crossterm::event::{KeyCode, KeyEvent};
     use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
     use ratatui::Terminal;
     use serde_json::Value;
 
-    use super::{KeyRequest, Screen};
+    use super::{KeyRequest, Screen, ScreenAreas};
     use crate::protocol::{self, ServerBody, ServerMessage};
 
     const RECORDING: &str = include_str!("../../protocol/sessions/v2.jsonl");
@@ -1076,7 +1094,7 @@ mod tests {
             if let ServerBody::View(body) = &message.body {
                 view = Some((**body).clone());
             }
-            screen.show(&message.body);
+            screen.show(&message);
             if matches!(message.body, ServerBody::Hello { .. }) {
                 press(screen, KeyCode::Down, &commands);
                 assert_eq!(
@@ -1095,12 +1113,34 @@ mod tests {
         width: u16,
         height: u16,
     ) -> String {
+        let buffer = draw(screen, view, width, height);
+        text_inside(&buffer, buffer.area)
+    }
+
+    /// The screen's text at 80 by 24 inside the one part `pick_rect` takes from its areas.
+    fn region_text(
+        screen: &mut Screen,
+        view: Option<&protocol::View>,
+        pick_rect: fn(&ScreenAreas) -> Option<Rect>,
+    ) -> String {
+        let buffer = draw(screen, view, 80, 24);
+        let rect = pick_rect(&screen.areas(buffer.area, view)).unwrap();
+        text_inside(&buffer, rect)
+    }
+
+    fn draw(screen: &mut Screen, view: Option<&protocol::View>, width: u16, height: u16) -> Buffer {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal.draw(|frame| screen.draw(frame, view)).unwrap();
-        let buffer = terminal.backend().buffer();
-        let rows: Vec<String> = (0..height)
+        terminal.backend().buffer().clone()
+    }
+
+    /// The text `buffer` holds inside `rect`, one row per line.
+    fn text_inside(buffer: &Buffer, rect: Rect) -> String {
+        let rows: Vec<String> = (rect.top()..rect.bottom())
             .map(|y| {
-                let row: String = (0..width).map(|x| buffer[(x, y)].symbol()).collect();
+                let row: String = (rect.left()..rect.right())
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect();
                 row.trim_end().to_string()
             })
             .collect();
@@ -1125,7 +1165,7 @@ mod tests {
     /// Shows one message written as its JSON line, and returns its view when it is one.
     fn show_json(screen: &mut Screen, message: &str) -> Option<protocol::View> {
         let message: ServerMessage = serde_json::from_str(message).unwrap();
-        screen.show(&message.body);
+        screen.show(&message);
         match message.body {
             ServerBody::View(view) => Some(*view),
             _ => None,
@@ -1137,12 +1177,35 @@ mod tests {
     /// has no world meter.
     const VIEW_CARRYING_OIL: &str = r#"{"seq":24,"body":{"kind":"view","viewer":"rowan","place":"docks_shop","place_name":"Docks Shop","body":"The shop faces the water. Tins sit in a row.","actor_names":["Aldric","Rowan"],"visible_actors":["aldric","rowan"],"known_facts":[{"id":"fact_oil_on_shelf","text":"Oil is on the shelf.","owner_body":"The shop faces the water. Tins sit in a row.\n"}],"notes":[{"id":"note_mira_door","to_ids":["rowan"],"place_id":"docks_shop","fact_ids":[],"text":"Back at dusk. Oil on the shelf."}],"unknown_mentions":[],"items":[{"id":"lamp_oil","count":3,"name":"Lamp oil"}],"items_carried":[{"id":"lamp_oil","count":1,"name":"Lamp oil"}],"wielded_item_id":"lamp_oil","meters":[{"id":"assassination_debt","value":2,"max":6},{"id":"hp","name":"Health","value":8,"max":16},{"id":"might","value":1,"max":45},{"id":"rest","value":3,"max":5},{"id":"vigor","value":1,"max":110}],"world_meters":[{"id":"tide","name":"Tide","value":3,"max":10}],"habits":[],"exits":[{"exit_id":"docks_street","name":"Docks Street","place_id":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"exit_id":"stairs","name":"stairs","place_id":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}}"#;
 
-    /// Rowan's `map` reply in that session, after a walk to Docks Street and back.
-    const MAP_REPLY: &str = r#"{"seq":26,"reply_to":"c8","body":{"kind":"map","places":[{"place_id":"docks_shop","name":"Docks Shop","exits":[{"exit_id":"docks_street","name":"Docks Street","place_id":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"exit_id":"stairs","name":"stairs","place_id":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]},{"place_id":"docks_street","name":"Docks Street","exits":[{"exit_id":"docks_shop","name":"Docks Shop","place_id":"docks_shop","place_name":"Docks Shop","ticks":0,"locked":false},{"exit_id":"gate_yard","name":"Gate Yard","place_id":"gate_yard","place_name":"Gate Yard","ticks":0,"locked":false}]}]}}"#;
+    /// Docks Street from Rowan's `map` reply in that session, after a walk there and back.
+    const MAP_REPLY: &str = r#"{"seq":26,"body":{"kind":"map","places":[{"place_id":"docks_street","name":"Docks Street","exits":[{"exit_id":"docks_shop","name":"Docks Shop","place_id":"docks_shop","place_name":"Docks Shop","ticks":0,"locked":false},{"exit_id":"gate_yard","name":"Gate Yard","place_id":"gate_yard","place_name":"Gate Yard","ticks":0,"locked":false}]}]}}"#;
 
     /// Rowan's `help` reply in the Docks Shop after taking a tin of lamp oil, from another docks
     /// session against this build.
     const HELP_REPLY: &str = r#"{"seq":9,"reply_to":"c3","body":{"kind":"help","commands":[{"id":"release","target":"none"},{"id":"say","target":"none"},{"id":"look","target":"none"},{"id":"help","target":"none"},{"id":"map","target":"none"},{"id":"cancel","target":"none"},{"id":"drop","target":"item","names":["Lamp oil"]},{"id":"exert","target":"none"},{"id":"strike","target":"actor","names":["Aldric"]},{"id":"take","target":"item","names":["Lamp oil"]},{"id":"travel","target":"exit","names":["Docks Street","stairs"]},{"id":"unwield","target":"none"},{"id":"wait","target":"none"},{"id":"wield","target":"item","names":["Lamp oil"]}]}}"#;
+
+    /// `MAP_REPLY` as the reply to `request_id`.
+    fn map_reply(request_id: &str) -> ServerMessage {
+        let mut reply: ServerMessage = serde_json::from_str(MAP_REPLY).unwrap();
+        reply.reply_to = Some(request_id.into());
+        reply
+    }
+
+    fn view_message(view: protocol::View) -> ServerMessage {
+        ServerMessage {
+            id: None,
+            seq: None,
+            reply_to: None,
+            body: ServerBody::View(Box::new(view)),
+        }
+    }
+
+    /// Takes the line the window sends on its own, which must be `map`, and sends it under
+    /// `request_id`.
+    fn send_own_map(screen: &mut Screen, request_id: &str) {
+        assert_eq!(screen.take_own_line().as_deref(), Some("map"));
+        screen.sent(request_id.into());
+    }
 
     /// Rowan's recorded session up to `release`, then the view carrying lamp oil.
     fn seat_rowan_carrying_oil(screen: &mut Screen) -> (Option<protocol::View>, Vec<String>) {
@@ -1198,19 +1261,50 @@ mod tests {
     }
 
     #[test]
-    fn arriving_at_a_place_asks_for_the_map_once() {
+    fn the_windows_own_map_reply_fills_nearby_and_stays_out_of_the_transcript() {
         let mut screen = Screen::new(true);
-        seat_rowan_carrying_oil(&mut screen);
-        assert!(screen.take_map_request());
-        assert!(!screen.take_map_request());
+        let (view, commands) = seat_rowan_carrying_oil(&mut screen);
+        let view = view.unwrap();
+        send_own_map(&mut screen, "c8");
+        let street_view = protocol::View {
+            place: "docks_street".into(),
+            place_name: "Docks Street".into(),
+            ..view.clone()
+        };
+        screen.show(&view_message(street_view));
+        send_own_map(&mut screen, "c9");
+        screen.show(&view_message(view.clone()));
+        send_own_map(&mut screen, "c10");
+        let transcript_rect = |areas: &ScreenAreas| Some(areas.transcript_rect);
+        let transcript_before = region_text(&mut screen, Some(&view), transcript_rect);
+        for request_id in ["c8", "c9", "c10"] {
+            screen.show(&map_reply(request_id));
+        }
+        assert_eq!(
+            region_text(&mut screen, Some(&view), transcript_rect),
+            transcript_before
+        );
+        let place_panel_rect = |areas: &ScreenAreas| Some(areas.place_panel_rect);
+        let place_panel = region_text(&mut screen, Some(&view), place_panel_rect);
+        assert!(place_panel.contains("Docks Street → Gate Yard"));
+        type_text(&mut screen, "map", &commands);
+        assert_eq!(
+            press(&mut screen, KeyCode::Enter, &commands),
+            Some(KeyRequest::Send("map".into()))
+        );
+        assert_eq!(screen.take_own_line(), None);
+        screen.sent("c11".into());
+        screen.show(&map_reply("c11"));
+        let transcript_after = region_text(&mut screen, Some(&view), transcript_rect);
+        assert!(transcript_after.contains("Gate Yard — 0 ticks"));
     }
 
     #[test]
     fn the_place_panel_lists_nearby_places_from_the_map() {
         let mut screen = Screen::new(true);
         let (view, _) = seat_rowan_carrying_oil(&mut screen);
-        screen.take_map_request();
-        show_json(&mut screen, MAP_REPLY);
+        send_own_map(&mut screen, "c8");
+        screen.show(&map_reply("c8"));
         assert_screen("nearby", &mut screen, view.as_ref());
     }
 
@@ -1218,8 +1312,8 @@ mod tests {
     fn a_wide_terminal_shows_the_story_the_place_and_the_tab_box_side_by_side() {
         let mut screen = Screen::new(true);
         let (view, _) = seat_rowan_carrying_oil(&mut screen);
-        screen.take_map_request();
-        show_json(&mut screen, MAP_REPLY);
+        send_own_map(&mut screen, "c8");
+        screen.show(&map_reply("c8"));
         assert_screen_at("wide", &mut screen, view.as_ref(), 140, 40);
     }
 
@@ -1232,7 +1326,7 @@ mod tests {
             .unwrap();
         let hello: Value = serde_json::from_str(hello).unwrap();
         let hello: ServerMessage = serde_json::from_value(hello["get"].clone()).unwrap();
-        screen.show(&hello.body);
+        screen.show(&hello);
         assert_screen("picker", &mut screen, None);
     }
 
@@ -1278,7 +1372,7 @@ mod tests {
         ];
         for message in messages {
             let message: ServerMessage = serde_json::from_str(message).unwrap();
-            screen.show(&message.body);
+            screen.show(&message);
         }
         assert_screen("scrollback_separator", &mut screen, None);
     }
