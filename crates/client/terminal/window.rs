@@ -602,7 +602,7 @@ mod tests {
     use super::{KeyRequest, Screen, ScreenAreas};
     use crate::protocol::{self, ServerBody, ServerMessage};
 
-    const RECORDING: &str = include_str!("../../protocol/sessions/v2.jsonl");
+    const RECORDING: &str = include_str!("../../protocol/sessions/v3.jsonl");
 
     fn press(screen: &mut Screen, code: KeyCode, commands: &[String]) -> Option<KeyRequest> {
         screen.on_key(KeyEvent::from(code), commands)
@@ -808,7 +808,7 @@ mod tests {
     }
 
     #[test]
-    fn f4_shows_the_facts_and_notes_the_pc_knows() {
+    fn f4_shows_the_notes_the_pc_reads() {
         let mut screen = Screen::new(true);
         let (view, commands) = seat_rowan_carrying_oil(&mut screen);
         press(&mut screen, KeyCode::F(4), &commands);
@@ -889,11 +889,10 @@ mod tests {
     #[test]
     fn the_picker_lists_each_pc_by_name() {
         let mut screen = Screen::new(true);
-        let hello = RECORDING
-            .lines()
-            .find(|row| row.contains(r#""kind":"hello","version":2,"commands":["claim""#))
+        let hello = (RECORDING.lines())
+            .map(|row| serde_json::from_str::<Value>(row).unwrap())
+            .find(|row| row["seat"] == "player:rowan" && row["get"]["body"]["kind"] == "hello")
             .unwrap();
-        let hello: Value = serde_json::from_str(hello).unwrap();
         let hello: ServerMessage = serde_json::from_value(hello["get"].clone()).unwrap();
         screen.show(&hello);
         assert_screen("picker", &mut screen, None);

@@ -206,9 +206,6 @@ fn verb_travel_and_the_ferry_rule(world: &mut World) {
 schema: place
 id: ferry_dock
 name: Ferry Dock
-facts:
-  - id: fact_ferry_waits
-    text: The ferry waits.
 rules:
   - id: travel
     when:

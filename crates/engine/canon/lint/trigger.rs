@@ -93,7 +93,6 @@ enum EffectWrite {
     Meter(String),
     Item { id: String, gained: bool },
     Arrive(String),
-    Knows(String),
 }
 
 /// Who a narrate or note reaches: the subject, the room, or anyone else it names.
@@ -107,7 +106,6 @@ enum Reach {
 /// because a rule that narrates it is the pack choosing to tell the room. A world change has
 /// no room, so the pack tells whoever it names.
 enum Sight {
-    Subject,
     Room,
     World,
 }
@@ -141,12 +139,6 @@ fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<EffectWrite
             to: LocationTo::Place(id),
             ..
         } => out.push(EffectWrite::Arrive(id.clone())),
-        EffectTemplate::Reveal { fact, .. } => out.push(EffectWrite::Knows(fact.clone())),
-        EffectTemplate::Memory { fact_ids, .. } => {
-            for fact in fact_ids {
-                out.push(EffectWrite::Knows(fact.clone()));
-            }
-        }
         _ => {}
     }
 }
@@ -171,7 +163,6 @@ fn sets_watch(watch: &ChangeWatch, rule: &Rule, write: &EffectWrite) -> bool {
         (ChangeWatch::Arrive { place, .. }, EffectWrite::Arrive(dest)) => {
             rule.watched_place(place) == dest
         }
-        (ChangeWatch::Knows { fact }, EffectWrite::Knows(written)) => fact == written,
         _ => false,
     }
 }
@@ -180,14 +171,7 @@ fn sight_of(canon: &Canon, watch: &ChangeWatch) -> Sight {
     if watches_world(canon, watch) && !watches_actor_key(canon, watch) {
         return Sight::World;
     }
-    match watch {
-        ChangeWatch::Knows { .. } => Sight::Subject,
-        ChangeWatch::Arrive { .. }
-        | ChangeWatch::Leave { .. }
-        | ChangeWatch::Meter { .. }
-        | ChangeWatch::Flag { .. }
-        | ChangeWatch::Item { .. } => Sight::Room,
-    }
+    Sight::Room
 }
 
 fn reach_of(effect: &EffectTemplate) -> Option<Reach> {
@@ -204,7 +188,6 @@ fn reach_of(effect: &EffectTemplate) -> Option<Reach> {
 
 fn is_too_wide(sight: &Sight, reach: &Reach) -> bool {
     match sight {
-        Sight::Subject => !matches!(reach, Reach::Subject),
         Sight::Room => !matches!(reach, Reach::Subject | Reach::Room),
         Sight::World => false,
     }

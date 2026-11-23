@@ -106,15 +106,14 @@ Tested in `features/replay/the_journal_verifies.feature`,
 
 ## Visibility
 
-A player sees a hidden fact only when that character knows it. Stripping prose
-does not reveal a hidden sentence. Saying a hidden fact does not
-teach it. Dice faces,
+A player reads a note only when it is left to that character or lies where
+they stand, and never sees a flag. Saying a note's words does not leave the
+note to anyone else. Dice faces,
 a check's among them, go to the GM. The player hears success, partial, or miss, and does not see those faces. An NPC's roll sends
 the player no roll line. Host status shows the host-only trace. The player's
 resume leaves that trace out. The resume digest shows only notes the view shows. A place lists only its own stock.
 
 Tested in `features/seats/one_gm_and_three_players.feature`,
-`features/visibility/a_hidden_fact_stays_hidden.feature`,
 `features/rolls/the_player_sees_success_and_the_gm_sees_faces.feature`,
 `features/rolls/an_npc_rolls_its_own_check.feature`,
 `features/digest/status_is_the_host_view.feature`, and
@@ -163,7 +162,7 @@ after each one finishes, so an exit opened twice in one round fires its watcher
 twice, and a rule can refuse a later action in that round. The depth limit
 counts the passes after each action, not the round. Arrival fires a rule on that place, including an
 author teleport. A meter that crosses the watched line can set a flag in that
-round. An arrival that also meets a flag can grant a fact and move a world
+round. An arrival that also meets a flag can set a flag and move a world
 meter in that round. Two rules that set each other's flags stop at depth 4, and the round
 still commits. Check warns when change rules set each other's watched
 values. A narrate or note on a change rule that can reach a viewer who cannot
@@ -173,14 +172,12 @@ meter change fires each watching rule once, whoever is seated, with no one as
 its subject, so check refuses `self` and `here` in that rule. Its narrate with
 no `to` reaches every player present.
 
-A narrate line reaches each person it names, unless the line would show a fact
-that person is not allowed to know. Someone in another room does not hear a line
-addressed to the room. Reveal gives the person it names a fact, and a hidden exit
-that fact uncovers then shows up for them. A world flag can be set, and a rule
-that watches it fires once. Each viewer gets their own change
-summary. The GM sees every change. Tick counters stay with the GM. A learned
-fact is told only to that person. An item change in a place is seen by the
-players there. A message is seen only by the people allowed to see it.
+A narrate line reaches each person it names. Someone in another room does not
+hear a line addressed to the room. An exit a flag reveals shows up for an actor
+once that actor carries the flag, and for everyone once the world does. A world
+flag can be set, and a rule that watches it fires once. Each viewer gets their
+own change summary. The GM sees every change. Tick counters stay with the GM. An
+item change in a place is seen by the players there. A message is seen only by the people allowed to see it.
 Entering and leaving are seen by the players in the room left, the players in
 the room entered, and the mover. Another person's busy status, items, or
 wielded weapon is seen by the players in the same place. No player sees a flag
@@ -383,8 +380,8 @@ to read, the names of who is there, and the visible exits with travel
 time. The same view lists that player's own meters. A meter marked hidden stays
 off it, and so does anyone else's. After a round, the player sees one line of
 what changed, built from the change records they are allowed to know. That line
-names a meter change and an item gained or lost. A hidden fact stays off the
-line. A hidden exit stays off the exit list. `look` answers with a fresh view and
+names a meter change and an item gained or lost. An exit not yet revealed to
+them stays off the exit list. `look` answers with a fresh view and
 does not take a round, and nor do `help` and `map`. The table sends both as
 data and the client prints them: `help` lists the commands this player can use
 here and now, each with what it takes and what they can name for it, and `map`
@@ -410,7 +407,7 @@ Tested in `features/seats/a_player_knows_the_place.feature`,
 
 ## What the engine does not do
 
-Speech does not grant a fact. A second GM is refused, and so is a fourth player.
+Speech does not leave a note. A second GM is refused, and so is a fourth player.
 The table does not open on a public address. A call that is not on the GM menu
 is refused, so a seat cannot patch the save by naming a tool. A player who stops
 reading is dropped, and the other seats keep going.

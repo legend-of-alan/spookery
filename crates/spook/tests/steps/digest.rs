@@ -20,10 +20,10 @@ meter mira shop_day 1 1
 /// `shop_day` sorts last, so its meter line ends every host printout.
 const PRINTOUT_END: &str = "meter mira shop_day ";
 
-const DOOR_NOTE: &str = "effect note 1 {\"note_id\":\"note_mira_door\",\"to_ids\":[\"rowan\"],\"place_id\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}";
+const DOOR_NOTE: &str = "effect note 1 {\"note_id\":\"note_mira_door\",\"to_ids\":[\"rowan\"],\"place_id\":\"docks_shop\",\"text\":\"Back at dusk. Oil on the shelf.\"}";
 
 const HOST: &str = "\
-effect note 1 {\"note_id\":\"note_mira_door\",\"to_ids\":[\"rowan\"],\"place_id\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
+effect note 1 {\"note_id\":\"note_mira_door\",\"to_ids\":[\"rowan\"],\"place_id\":\"docks_shop\",\"text\":\"Back at dusk. Oil on the shelf.\"}
 meter rowan assassination_debt 2 6
 meter place:docks_shop comfort 2 3
 meter mira shop_day 1 1
@@ -166,13 +166,13 @@ fn the_hosts_last_printout_lists_the_meters(world: &mut World) {
     );
 }
 
-#[given(expr = "the docks pack where Mira's door note carries the hidden fact {string}")]
-fn the_docks_pack_where_miras_door_note_carries(world: &mut World, fact_id: String) {
+#[given(expr = "the docks pack where Mira's door note is left to Wren in Mira's rooms")]
+fn the_docks_pack_where_miras_door_note_is_left_to_wren(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "hidden-note");
     rewrite_mira(
         &pack,
-        "          fact_ids: []\n",
-        &format!("          fact_ids:\n            - {fact_id}\n"),
+        "            - rowan\n          place_id: docks_shop\n",
+        "            - wren\n          place_id: mira_rooms\n",
     );
     world.pack = Some(pack);
 }
@@ -189,7 +189,6 @@ async fn the_player_resume_lists_the_door_message(world: &mut World) {
                     "id": "note_mira_door",
                     "to_ids": ["rowan"],
                     "place_id": "docks_shop",
-                    "fact_ids": [],
                     "text": "Back at dusk. Oil on the shelf."
                 }
             ]
@@ -219,40 +218,6 @@ fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: S
         view.notes.iter().all(|message| message.id != note),
         "view listed {note}"
     );
-}
-
-#[given(expr = "the docks pack where {string} is written without hidden")]
-fn the_docks_pack_where_a_fact_has_no_hidden(world: &mut World, fact_id: String) {
-    let pack = crate::support::copy_pack("docks", "no-hidden");
-    let shop = fs::read_to_string(pack.join("world/places/docks_shop.md")).unwrap();
-    let (_, row) = shop
-        .split_once(&format!("  - id: {fact_id}\n"))
-        .unwrap_or_else(|| panic!("the shop has no {fact_id}"));
-    let row = row.split("  - id:").next().unwrap_or(row);
-    assert!(!row.contains("hidden:"), "{fact_id} has a hidden key");
-    world.pack = Some(pack);
-}
-
-#[then(expr = "the perceive view for {string} lists the fact {string}")]
-fn the_perceive_view_lists_the_fact(world: &mut World, actor: String, fact_id: String) {
-    assert!(
-        view_has_fact(world, &actor, &fact_id),
-        "view lacks {fact_id}"
-    );
-}
-
-#[then(expr = "the perceive view for {string} does not list the fact {string}")]
-fn the_perceive_view_does_not_list_the_fact(world: &mut World, actor: String, fact_id: String) {
-    assert!(
-        !view_has_fact(world, &actor, &fact_id),
-        "view listed {fact_id}"
-    );
-}
-
-fn view_has_fact(world: &World, actor: &str, fact_id: &str) -> bool {
-    let opened = spookery_engine::Session::peek(table::pack(world)).unwrap();
-    let view = opened.perceive(&Presence::default(), actor).unwrap();
-    view.known_facts.iter().any(|fact| fact.id == fact_id)
 }
 
 /// The resume frame the host sends when `actor` is claimed at a table on this pack.

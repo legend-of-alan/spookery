@@ -1,4 +1,4 @@
-//! `crates/protocol/sessions/v2.jsonl`, a session recorded against the previous release,
+//! `crates/protocol/sessions/v3.jsonl`, a session recorded against the previous release,
 //! replayed against this build. Each line is one message a seat sent or got. A seat's id is
 //! its endpoint, `gm` or `player:<actor>`, and it connects at its first line. The seats send
 //! theirs in order, each after the reply to the one before, and every message a seat got
@@ -18,7 +18,7 @@ use super::table::{self, Seat};
 #[given(expr = "a session recorded against the previous release")]
 fn a_recorded_session(world: &mut World) {
     // repeats module: mirrors its step text
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../protocol/sessions/v2.jsonl");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../protocol/sessions/v3.jsonl");
     let text =
         std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
     world.recorded = parse_lines(&text);

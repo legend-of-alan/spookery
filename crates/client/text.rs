@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 
 use crate::protocol::{
-    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, ItemStack, KnownFact,
-    MeterView, NoteView, Outcome, PlaceView, Roll, ServerBody, Speaker, Speech, TableStatus,
+    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, ItemStack, MeterView,
+    NoteView, Outcome, PlaceView, Roll, ServerBody, Speaker, Speech, TableStatus,
 };
 
 /// The PC picker's heading.
@@ -184,7 +184,6 @@ pub fn render_view(view: &protocol::View) -> String {
         cant_act,
         busy,
         visible_actors,
-        known_facts,
         notes,
         items: items_here,
         items_carried,
@@ -192,7 +191,6 @@ pub fn render_view(view: &protocol::View) -> String {
         meters,
         world_meters,
         exits,
-        unknown_mentions: _,
         habits: _,
     } = view;
     let mut sections = Vec::new();
@@ -215,7 +213,7 @@ pub fn render_view(view: &protocol::View) -> String {
             .join(", ");
         sections.push(format!("Here: {names}"));
     }
-    sections.extend(render_facts_and_notes(known_facts, notes));
+    sections.extend(render_notes(notes));
     let items_here_lines: Vec<String> = items_here.iter().map(render_item).collect();
     let items_carried_lines: Vec<String> = items_carried
         .iter()
@@ -399,20 +397,15 @@ pub(crate) fn actor_ids_and_names(
     view.visible_actors.iter().zip(&view.actor_names)
 }
 
-/// The `You know:` and `Notes:` sections, each left out when it has no lines.
-pub(crate) fn render_facts_and_notes(known_facts: &[KnownFact], notes: &[NoteView]) -> Vec<String> {
+/// The `Notes:` section, or `None` when it has no lines.
+pub(crate) fn render_notes(notes: &[NoteView]) -> Option<String> {
     let mut sections = Vec::new();
-    push_lines(
-        &mut sections,
-        "You know:",
-        known_facts.iter().map(|fact| fact.text.as_str()),
-    );
     push_lines(
         &mut sections,
         "Notes:",
         notes.iter().map(|note| note.text.as_str()),
     );
-    sections
+    sections.pop()
 }
 
 /// `Lamp oil: 4`: the item's name and count.

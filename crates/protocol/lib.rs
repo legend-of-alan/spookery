@@ -41,8 +41,8 @@ pub use message::{
     ServerBody, ServerMessage, Speech, COMMANDS, VERSION,
 };
 pub use player::{
-    is_named, ChangeValue, ChangeView, CommandView, ExitView, ItemStack, KnownFact, MeterView,
-    NoteView, PlaceView, View,
+    is_named, ChangeValue, ChangeView, CommandView, ExitView, ItemStack, MeterView, NoteView,
+    PlaceView, View,
 };
 
 /// The listening line `spook run` prints on stdout once both ports are bound: the game port
@@ -63,10 +63,6 @@ pub fn default_mcp_addr(game: std::net::SocketAddr) -> Option<std::net::SocketAd
 /// The published client schema, `schema/client.json`. Its `$defs` hold each command's `args`.
 pub const CLIENT_SCHEMA: &str = include_str!("schema/client.json");
 
-/// The perceive body budget in characters: the `perceive` default, the engine's trim
-/// and the prompt's cast cut.
-pub const PERCEIVE_BODY_CHARS: usize = 800;
-
 /// Every refusal code. The `code` of a `refused` body, and the token the journal stores on
 /// a round line (`engine::Refusal`).
 /// Strict and `Copy` on purpose: `spook verify` must fail on a code it does not know.
@@ -75,7 +71,6 @@ pub const PERCEIVE_BODY_CHARS: usize = 800;
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Reason {
     UnknownEffect,
-    IllegalKnowledge,
     OutOfRange,
     Budget,
     UnknownId,
@@ -111,7 +106,6 @@ impl Reason {
     pub fn as_str(self) -> &'static str {
         match self {
             Reason::UnknownEffect => "UNKNOWN_EFFECT",
-            Reason::IllegalKnowledge => "ILLEGAL_KNOWLEDGE",
             Reason::OutOfRange => "OUT_OF_RANGE",
             Reason::Budget => "BUDGET",
             Reason::UnknownId => "UNKNOWN_ID",
@@ -219,7 +213,6 @@ impl fmt::Display for Refusal {
         };
         let sentence = match reason {
             Reason::UnknownEffect => "That action is not allowed.",
-            Reason::IllegalKnowledge => "You cannot know that.",
             Reason::OutOfRange => "That is out of range.",
             Reason::Budget => "That does not fit.",
             Reason::UnknownId => "That is not in the world.",
@@ -322,9 +315,8 @@ impl From<Speaker> for String {
 mod tests {
     use super::*;
 
-    const ALL: [Reason; 31] = [
+    const ALL: [Reason; 30] = [
         Reason::UnknownEffect,
-        Reason::IllegalKnowledge,
         Reason::OutOfRange,
         Reason::Budget,
         Reason::UnknownId,
@@ -360,7 +352,6 @@ mod tests {
     fn is_listed(reason: Reason) -> bool {
         match reason {
             Reason::UnknownEffect
-            | Reason::IllegalKnowledge
             | Reason::OutOfRange
             | Reason::Budget
             | Reason::UnknownId

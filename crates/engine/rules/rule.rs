@@ -95,9 +95,9 @@ impl Rule {
                 EffectTemplate::Meter { of, .. }
                 | EffectTemplate::Flag { of, .. }
                 | EffectTemplate::Item { of, .. } => mentions.add_owner("of:", of),
-                EffectTemplate::Modifier { to, .. }
-                | EffectTemplate::Memory { to, .. }
-                | EffectTemplate::Reveal { to, .. } => mentions.add_actor("to:", to),
+                EffectTemplate::Modifier { to, .. } | EffectTemplate::Memory { to, .. } => {
+                    mentions.add_actor("to:", to);
+                }
                 EffectTemplate::Wield { subject, .. } | EffectTemplate::Unwield { subject } => {
                     mentions.add_actor("subject:", subject);
                 }
@@ -148,9 +148,7 @@ impl<'l> Mentions<'l> {
                     mentions.add_actor("subject:", subject);
                     mentions.add_item_id("id:", id);
                 }
-                Cond::At { subject, .. } | Cond::Knows { subject, .. } => {
-                    mentions.add_actor("subject:", subject);
-                }
+                Cond::At { subject, .. } => mentions.add_actor("subject:", subject),
                 Cond::Meter { of, .. } | Cond::Flag { of, .. } => mentions.add_owner("of:", of),
                 _ => {}
             });
@@ -293,9 +291,6 @@ pub(crate) enum ChangeWatch {
         id: String,
         gained: bool,
     },
-    Knows {
-        fact: String,
-    },
 }
 
 /// A `check:`, a rule's or a nested one: `total` against `success_at`, with an optional lower
@@ -378,10 +373,6 @@ pub enum Cond {
     At {
         subject: grammar::Actor,
         place: String,
-    },
-    Knows {
-        subject: grammar::Actor,
-        fact: String,
     },
     /// A tick of cycle `id` in `from..to`, wrapping past the cycle's end when `from > to`.
     Cycle {
@@ -495,17 +486,14 @@ pub(crate) enum EffectTemplate {
         id: String,
         to_ids: Vec<ActorId>,
         place_id: Option<PlaceId>,
-        fact_ids: Vec<String>,
         text: String,
     },
     Narrate {
         to: NarrateTo,
         text: String,
-        fact_ids: Vec<String>,
     },
     Memory {
         to: grammar::Actor,
-        fact_ids: Vec<String>,
         text: Option<String>,
     },
     Item {
@@ -513,10 +501,6 @@ pub(crate) enum EffectTemplate {
         id: String,
         add: Expr,
         max: Option<Expr>,
-    },
-    Reveal {
-        to: grammar::Actor,
-        fact: String,
     },
     Wield {
         subject: grammar::Actor,

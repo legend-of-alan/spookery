@@ -1,7 +1,7 @@
 schema: save
 world_id: docks-001
-pack_rev: blake2s:589c993b77533a72cebcfb77ffda9e25a2240ea48a41ea8b5a06c4072b8a71aa
-rules_rev: 31
+pack_rev: blake2s:d7fca765ec8f29cb42fdd4bed0cfb83a7a6f2d868072e1504505d6084be2ef4a
+rules_rev: 32
 state_rev: 0
 round_index: 0
 world_time: 1080
@@ -23,9 +23,6 @@ actors:
     mira: mira_rooms
     rowan: docks_shop
     wren: docks_street
-  known_facts:
-    mira:
-      - fact_ledger_short
   visited:
     harbormouse:
       gate_yard:
@@ -72,4 +69,8 @@ stories:
 globals:
   meters: {}
   flags: []
-  notes: {}
+  notes:
+    note_ledger_short:
+      to_ids:
+        - mira
+      text: The lamp-oil ledger is short.

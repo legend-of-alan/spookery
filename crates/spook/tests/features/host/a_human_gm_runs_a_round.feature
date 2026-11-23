@@ -83,7 +83,7 @@ Feature: A human GM runs a round
       Queue: empty
       """
 
-  Scenario: The GM perceives as an actor and sees no ids, habits or fact bodies
+  Scenario: The GM perceives as an actor and sees no ids or habits
     Given a docks table
     When a human GM connects on a free loopback port
     And the GM types "perceive mira"
@@ -91,7 +91,7 @@ Feature: A human GM runs a round
       """
       You are in Mira's Rooms.
 
-      You know:
+      Notes:
       The lamp-oil ledger is short.
 
       Meters:
@@ -100,10 +100,7 @@ Feature: A human GM runs a round
     And the GM does not show "The shop faces the water."
     And the GM does not show "leave_door_note"
     And the GM does not show "mira_rooms"
-    And the GM does not show "fact_"
-    When the GM types 'perceive {"as": "mira", "max_body_chars": 0}'
-    Then the GM shows "You are in Mira's Rooms." twice
-    And the GM does not show "fact_"
+    And the GM does not show "note_"
 
   Scenario: An unknown GM command points at help
     Given a docks table

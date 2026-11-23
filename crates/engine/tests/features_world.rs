@@ -6,8 +6,8 @@ mod docks;
 mod doors;
 #[path = "steps/map.rs"]
 mod map;
-#[path = "steps/no_facts.rs"]
-mod no_facts;
+#[path = "steps/moves_and_habits.rs"]
+mod moves_and_habits;
 #[path = "steps/read_lock.rs"]
 mod read_lock;
 #[path = "steps/round_play.rs"]

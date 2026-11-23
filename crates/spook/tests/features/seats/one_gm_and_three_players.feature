@@ -47,16 +47,16 @@ Feature: One GM seat and up to three player seats
     Then players is 2
     And the present actors are harbormouse and wren
 
-  Scenario: A player perceives only a fact that PC knows
-    Given a docks table where one PC knows a hidden fact
+  Scenario: A player perceives only the notes left to that PC
+    Given a docks table where one PC has a private note
     When three players claim
-    Then only that PC's perceive shows the hidden fact
+    Then only that PC's perceive shows the private note
 
-  Scenario: Saying a hidden fact does not teach it
-    Given a docks table where one PC knows a hidden fact
+  Scenario: Saying a note's words does not leave the note to the others
+    Given a docks table where one PC has a private note
     When three players claim
-    And that PC says the hidden fact and another PC waits
-    Then only that PC's perceive shows the hidden fact
+    And that PC says the note's words and another PC waits
+    Then only that PC's perceive shows the private note
 
   Scenario: With no GM each player line commits its own round
     Given a docks table with two seated players

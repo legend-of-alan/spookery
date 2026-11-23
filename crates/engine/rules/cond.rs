@@ -91,11 +91,6 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let at = world.actors().get::<component::Place>(actor).get();
             Ok(at.is_some_and(|at| at == place))
         }
-        Cond::Knows { subject, fact } => {
-            let actor = expr::resolve_actor(context, subject)?;
-            let known = world.actors().get::<component::KnownFacts>(actor).get();
-            Ok(known.is_some_and(|facts| facts.iter().any(|id| id == fact)))
-        }
         Cond::Cycle { id, from, to } => {
             let cycles = &context.canon.budget.cycles;
             let length = *cycles.get(id).ok_or(Reason::UnknownId)?;

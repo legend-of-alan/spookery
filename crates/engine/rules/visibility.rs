@@ -6,32 +6,11 @@ use spookery_protocol::ChangeView;
 
 use crate::canon::Canon;
 use crate::ecs::change::{Change, ChangeValue};
-use crate::ecs::component::{
-    Act, Component, Item, KnownFacts, Meter, Modifier, Note, Place, WieldedItem,
-};
+use crate::ecs::component::{Act, Component, Item, Meter, Modifier, Note, Place, WieldedItem};
 use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component};
 use crate::entity;
 use crate::rules::effect::{Effect, EffectKind};
-
-pub(crate) fn can_see_fact(
-    canon: &Canon,
-    world: &ecs::World,
-    actor_id: &ActorId,
-    fact_id: &str,
-) -> bool {
-    let Some(place) = world.actors().get::<component::Place>(actor_id).get() else {
-        return false;
-    };
-    let known = world.actors().get::<component::KnownFacts>(actor_id).get();
-    if known.is_some_and(|facts| facts.iter().any(|id| id == fact_id)) {
-        return true;
-    }
-    let Some(fact) = canon.facts.get(fact_id) else {
-        return false;
-    };
-    !fact.hidden && fact.place_id == *place
-}
 
 /// Who is asking.
 pub(crate) enum Recipient {
@@ -91,7 +70,7 @@ pub(crate) fn show_to(
     Delivery {
         changed_keys: keys.into_iter().collect(),
         changes: views,
-        narrations: narrations(canon, world, effects, actor_id),
+        narrations: narrations(effects, actor_id),
     }
 }
 
@@ -130,37 +109,17 @@ fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
     })
 }
 
-fn narrations(
-    canon: &Canon,
-    world: &ecs::World,
-    effects: &[Effect],
-    viewer: Option<&ActorId>,
-) -> Vec<String> {
+fn narrations(effects: &[Effect], viewer: Option<&ActorId>) -> Vec<String> {
     let mut lines = Vec::new();
     for effect in effects {
-        let EffectKind::Narrate { to, fact_ids, text } = &effect.kind else {
+        let EffectKind::Narrate { to, text } = &effect.kind else {
             continue;
         };
-        let Some(id) = viewer else {
-            lines.push(text.clone());
-            continue;
-        };
-        if to.iter().any(|actor_id| actor_id == id) && can_see_facts(canon, world, id, fact_ids) {
+        if viewer.is_none_or(|id| to.contains(id)) {
             lines.push(text.clone());
         }
     }
     lines
-}
-
-fn can_see_facts(
-    canon: &Canon,
-    world: &ecs::World,
-    viewer_id: &ActorId,
-    fact_ids: &[String],
-) -> bool {
-    fact_ids
-        .iter()
-        .all(|fact| can_see_fact(canon, world, viewer_id, fact))
 }
 
 fn can_see(canon: &Canon, world: &ecs::World, viewer_id: &ActorId, change: &Change) -> bool {
@@ -180,12 +139,11 @@ fn can_see(canon: &Canon, world: &ecs::World, viewer_id: &ActorId, change: &Chan
         (Meter::ID, entity::Id::Actor(actor_id)) => {
             viewer_id == actor_id && is_shown(canon, &key.entity_id, entry)
         }
-        (KnownFacts::ID, entity::Id::Actor(actor_id)) => viewer_id == actor_id,
         (Modifier::ID, entity::Id::Actor(actor_id)) => {
             viewer_id == actor_id && canon.modifiers.get(entry).is_some_and(|desc| !desc.hidden)
         }
         (Item::ID, entity::Id::Place(place)) => place_of(world, viewer_id) == Some(place.as_str()),
-        (Note::ID, entity::Id::Global) => can_see_note(canon, world, viewer_id, entry),
+        (Note::ID, entity::Id::Global) => can_see_note(world, viewer_id, entry),
         (Place::ID, entity::Id::Actor(actor_id)) => {
             viewer_id == actor_id
                 || same_place(world, viewer_id, actor_id)
@@ -226,16 +184,10 @@ fn is_at(world: &ecs::World, viewer: &ActorId, value: Option<&ChangeValue>) -> b
     }
 }
 
-fn can_see_note(canon: &Canon, world: &ecs::World, viewer_id: &ActorId, id: &str) -> bool {
+fn can_see_note(world: &ecs::World, viewer_id: &ActorId, id: &str) -> bool {
     let Some(note) = world.globals().get::<Note>(&GlobalId).get(id) else {
         return false;
     };
     let in_room = note.place_id.as_ref().map(PlaceId::as_str) == place_of(world, viewer_id);
-    let addressed = note.to_ids.contains(viewer_id);
-    if !in_room && !addressed {
-        return false;
-    }
-    note.fact_ids
-        .iter()
-        .all(|fact| can_see_fact(canon, world, viewer_id, fact))
+    in_room || note.to_ids.contains(viewer_id)
 }

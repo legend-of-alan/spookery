@@ -481,7 +481,6 @@
       "type": "string",
       "enum": [
         "UNKNOWN_EFFECT",
-        "ILLEGAL_KNOWLEDGE",
         "OUT_OF_RANGE",
         "BUDGET",
         "UNKNOWN_ID",
@@ -760,26 +759,6 @@
         "pack"
       ]
     },
-    "KnownFact": {
-      "description": "Part of a `View`, sent from the table to a player client.",
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "text": {
-          "type": "string"
-        },
-        "owner_body": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "id",
-        "text",
-        "owner_body"
-      ]
-    },
     "NoteView": {
       "description": "Part of a `View`, sent from the table to a player client.",
       "type": "object",
@@ -799,12 +778,6 @@
             "null"
           ]
         },
-        "fact_ids": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
         "text": {
           "type": "string"
         }
@@ -812,7 +785,6 @@
       "required": [
         "id",
         "to_ids",
-        "fact_ids",
         "text"
       ]
     },
@@ -933,22 +905,10 @@
             "type": "string"
           }
         },
-        "known_facts": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/KnownFact"
-          }
-        },
         "notes": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/NoteView"
-          }
-        },
-        "unknown_mentions": {
-          "type": "array",
-          "items": {
-            "type": "string"
           }
         },
         "items": {
@@ -1001,9 +961,7 @@
         "viewer",
         "place",
         "visible_actors",
-        "known_facts",
         "notes",
-        "unknown_mentions",
         "items",
         "habits"
       ]

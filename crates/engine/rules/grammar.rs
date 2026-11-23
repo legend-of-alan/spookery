@@ -11,8 +11,8 @@ pub(crate) enum Subject {
     Id(String),
 }
 
-/// The actor a slot that needs one names: `subject:`, `to:` on a modifier, a memory or a
-/// reveal, and a nested check's `by:`, the actor told that check's outcome.
+/// The actor a slot that needs one names: `subject:`, `to:` on a modifier or a memory, and a
+/// nested check's `by:`, the actor told that check's outcome.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Actor {
     Self_,

@@ -37,22 +37,15 @@ pub(crate) fn give_key(now: &mut ecs::World) {
     now.places_mut().set_exit_open(&stairs, true).unwrap();
 }
 
+/// A trapdoor from the shop to a cellar, shown only to whoever carries `found_trapdoor`.
 pub(crate) fn add_trapdoor(pack: &Path) {
-    let path = pack.join("world/places/docks_shop.md");
-    let text = fs::read_to_string(&path).unwrap();
-    let next = text.replace(
-        "    text: Oil is on the shelf.\n",
-        "    text: Oil is on the shelf.\n  - id: fact_trapdoor\n    text: A trapdoor is under the rug.\n    hidden: true\n",
-    );
-    assert_ne!(text, next);
-    fs::write(&path, next).unwrap();
     crate::support::append(
         &pack.join("world/map.yaml"),
-        "  - path: docks_shop -> cellar\n    id: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
+        "  - path: docks_shop -> cellar\n    id: trapdoor\n    revealed_by: found_trapdoor\n",
     );
     fs::write(
         pack.join("world/places/cellar.md"),
-        "---\nschema: place\nid: cellar\nname: Cellar\nfacts: []\n---\nUnder the shop.\n",
+        "---\nschema: place\nid: cellar\nname: Cellar\n---\nUnder the shop.\n",
     )
     .unwrap();
 }
@@ -235,16 +228,6 @@ fn break_pack(pack: &Path, fault: &str) {
         "missing map" => {
             fs::remove_file(pack.join("world/map.yaml")).unwrap();
         }
-        "duplicate place fact" => replace_in_file(
-            &pack.join("world/places/docks_shop.md"),
-            "    text: Oil is on the shelf.\n",
-            "    text: \"She said: oil.\"\n  - id: fact_oil_on_shelf\n    text: Oil again.\n",
-        ),
-        "cast facts" => replace_in_file(
-            &pack.join("cast/pc-rowan.md"),
-            "name: Rowan\n",
-            "name: Rowan\nfacts: []\n",
-        ),
         "a target alias" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "      target: item\n",
@@ -376,10 +359,10 @@ fn break_pack(pack: &Path, fault: &str) {
             "ring",
             "    do:\n      - narrate: { text: The bell rings. }\n",
         ),
-        "a room narrate of a known fact" => write_file(
+        "a named narrate of an arrival" => write_file(
             pack,
-            "story/secret.yaml",
-            "schema: story\nid: secret\nrules:\n  - id: tell\n    when:\n      change:\n        knows: fact_ledger\n    do:\n      - narrate: { to: here, text: A secret moved. }\n",
+            "story/greet.yaml",
+            "schema: story\nid: greet\nrules:\n  - id: tell\n    when:\n      change:\n        arrive: docks_shop\n    do:\n      - narrate: { to: wren, text: Someone came in. }\n",
         ),
         "max_stacks 0" => write_modifiers(
             pack,
@@ -473,11 +456,6 @@ fn break_pack(pack: &Path, fault: &str) {
             "---\nschema: cast\nid: world\ncontrol_type: npc\nname: World\nidle:\n  eligible: false\n---\nReserved.\n",
         ),
         "a saved actor world" => add_saved_actor(pack, "world"),
-        "a reveal of a missing fact" => add_verb_rule(
-            pack,
-            "bad",
-            "    do:\n      - reveal: { to: self, fact: missing_fact }\n",
-        ),
         other => panic!("unknown fault {other}"),
     }
 }
@@ -823,7 +801,7 @@ async fn the_operator_runs_verify(world: &mut World) {
     table::run(world, &["verify", pack.to_str().unwrap()]).await;
 }
 
-#[given(expr = "the trapdoor is hidden and rowan does not know fact_trapdoor")]
+#[given(expr = "the trapdoor is hidden and rowan does not carry found_trapdoor")]
 async fn the_trapdoor_is_hidden(world: &mut World) {
     let pack = copy_pack("docks", "trapdoor");
     add_trapdoor(&pack);

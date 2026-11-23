@@ -17,7 +17,6 @@ rules:
           to_ids:
             - corin
           place_id: yard
-          fact_ids: []
           text: The yard stays watched.
   - id: strike
     when:

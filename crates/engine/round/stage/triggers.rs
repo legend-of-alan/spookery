@@ -2,7 +2,7 @@
 
 use crate::canon::{Canon, OPEN};
 use crate::ecs::change::{Change, ChangeValue};
-use crate::ecs::component::{Component, Flag, Item, KnownFacts, Meter, OpenExit, Place};
+use crate::ecs::component::{Component, Flag, Item, Meter, OpenExit, Place};
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, entity, Presence};
 use crate::intent::Intent;
@@ -165,11 +165,6 @@ fn matches_watch(world: &ecs::World, rule: &Rule, watch: &ChangeWatch, change: &
                 (Some(before), Some(after)) => after < before,
                 _ => false,
             }
-        }
-        (ChangeWatch::Knows { fact }, KnownFacts::ID, _) => {
-            let lists_fact =
-                |value: Option<&ChangeValue>| value.is_some_and(|ids| ids.contains(fact));
-            lists_fact(after) && !lists_fact(before)
         }
         _ => false,
     }

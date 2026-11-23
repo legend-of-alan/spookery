@@ -5,7 +5,7 @@
 //!
 //!   Scenario: Random writes to every store under nested savepoints roll back to each savepoint's save
 //!     Given the docks pack, with Mira holding one brass key, a flag Mira can carry, two flags and a meter the street can carry, a story with a meter and a flag, a world meter, and a fatigue on vigor
-//!     When random effects on every store, the actor's place, wielded item, known facts, visited places and action state included, land under savepoints opened and rolled back at random, Mira's memory of the shop's exits written over among them
+//!     When random effects on every store, the actor's place, wielded item, visited places and action state included, land under savepoints opened and rolled back at random, Mira's memory of the shop's exits written over among them
 //!     Then each rollback leaves the save and the counted keys as they were when its savepoint was taken
 //!     And each take reports every meter whose value moved since the last take
 //!     And rolling back to the first savepoint leaves no change to report
@@ -48,7 +48,6 @@ enum Step {
     Wield(&'static str),
     Unwield,
     Note,
-    Reveal(&'static str),
     Act(u32),
     ResetIdleWindowCount,
     Busy(bool),
@@ -311,12 +310,7 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
             note_id: format!("note_rollback_{index}"),
             to_ids: vec!["rowan".into()],
             place_id: Some("docks_shop".into()),
-            fact_ids: Vec::new(),
             text: "A test note.".to_string(),
-        },
-        Step::Reveal(fact) => EffectKind::Reveal {
-            actor_id: mira,
-            fact: fact.to_string(),
         },
         Step::Savepoint
         | Step::Rollback
@@ -383,7 +377,6 @@ fn pick_step() -> impl Strategy<Value = Step> {
         1 => select(vec!["brass_key", "lamp_oil"]).prop_map(Step::Wield),
         1 => Just(Step::Unwield),
         1 => Just(Step::Note),
-        1 => select(vec!["fact_oil_on_shelf", "fact_room_lamp"]).prop_map(Step::Reveal),
         1 => (0u32..=1).prop_map(Step::Act),
         1 => Just(Step::ResetIdleWindowCount),
         1 => any::<bool>().prop_map(Step::Busy),

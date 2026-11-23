@@ -1,5 +1,5 @@
-//! The tab box: one tab at a time of the PC's meters, what it carries, or the facts and notes
-//! it knows, and hidden when the player presses the open tab's key.
+//! The tab box: one tab at a time of the PC's meters, what it carries, or the notes it reads,
+//! and hidden when the player presses the open tab's key.
 
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
@@ -102,7 +102,7 @@ impl TabBox {
         match open_tab {
             Tab::Stats => draw_meters(frame, content_area, view, palette),
             Tab::Carried => draw_carried_items(frame, content_area, view, palette),
-            Tab::Known => draw_facts_and_notes(frame, content_area, view, palette),
+            Tab::Known => draw_notes(frame, content_area, view, palette),
         }
     }
 }
@@ -174,13 +174,11 @@ fn draw_carried_items(frame: &mut Frame, area: Rect, view: &protocol::View, pale
     frame.render_widget(List::new(item_list_items), area);
 }
 
-/// The facts the PC knows and its notes, worded as the line client words them.
-fn draw_facts_and_notes(frame: &mut Frame, area: Rect, view: &protocol::View, palette: Palette) {
-    let sections = text::render_facts_and_notes(&view.known_facts, &view.notes);
-    let facts_and_notes = if sections.is_empty() {
-        Paragraph::new(palette.span("Nothing yet", ASH))
-    } else {
-        Paragraph::new(sections.join("\n\n")).style(palette.style(PARCHMENT))
+/// The PC's notes, worded as the line client words them.
+fn draw_notes(frame: &mut Frame, area: Rect, view: &protocol::View, palette: Palette) {
+    let notes = match text::render_notes(&view.notes) {
+        Some(section) => Paragraph::new(section).style(palette.style(PARCHMENT)),
+        None => Paragraph::new(palette.span("Nothing yet", ASH)),
     };
-    frame.render_widget(facts_and_notes.wrap(Wrap { trim: true }), area);
+    frame.render_widget(notes.wrap(Wrap { trim: true }), area);
 }

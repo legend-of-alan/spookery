@@ -214,7 +214,6 @@ fn push_effects(
             id,
             to_ids,
             place_id,
-            fact_ids,
             text,
         } => {
             effects.push(Effect::new(
@@ -224,12 +223,11 @@ fn push_effects(
                     note_id: id.clone(),
                     to_ids: to_ids.clone(),
                     place_id: place_id.clone(),
-                    fact_ids: fact_ids.clone(),
                     text: text.clone(),
                 },
             ));
         }
-        EffectTemplate::Narrate { to, text, fact_ids } => {
+        EffectTemplate::Narrate { to, text } => {
             let to = match to {
                 NarrateTo::Here => world.actors_at(expr::resolve_here(context)?),
                 NarrateTo::Self_ => {
@@ -243,32 +241,19 @@ fn push_effects(
                 &intent.id,
                 EffectKind::Narrate {
                     to,
-                    fact_ids: fact_ids.clone(),
                     text: text.clone(),
                 },
             ));
         }
-        EffectTemplate::Memory { to, fact_ids, text } => {
+        EffectTemplate::Memory { to, text } => {
             let actor_id = expr::resolve_actor(context, to)?.clone();
             effects.push(Effect::new(
                 intent.actor_id.as_ref(),
                 &intent.id,
                 EffectKind::Memory {
                     actor_id,
-                    fact_ids: fact_ids.clone(),
                     tags: Vec::new(),
                     text: text.clone(),
-                },
-            ));
-        }
-        EffectTemplate::Reveal { to, fact } => {
-            let actor_id = expr::resolve_actor(context, to)?.clone();
-            effects.push(Effect::new(
-                intent.actor_id.as_ref(),
-                &intent.id,
-                EffectKind::Reveal {
-                    actor_id,
-                    fact: fact.clone(),
                 },
             ));
         }

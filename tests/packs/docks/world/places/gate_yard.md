@@ -2,7 +2,6 @@
 schema: place
 id: gate_yard
 name: Gate Yard
-facts: []
 rules:
   - id: chock
     when:

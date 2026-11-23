@@ -1,9 +1,6 @@
-//! A place with no facts still accepts moves and habits.
+//! A docks round plays a PC's moves and an NPC's habit.
 
-use std::fs;
-use std::path::Path;
-
-use cucumber::{given, then, when};
+use cucumber::{then, when};
 use spookery_engine::testing as support;
 use spookery_engine::{GlobalId, Note, Presence};
 
@@ -29,41 +26,14 @@ fn the_wait_lands_with_nothing_refused(world: &mut World) {
     assert_eq!(support::act_of(&now, "harbormouse").last_act_round, 1);
 }
 
-#[given(expr = "Mira stands in a place with no facts")]
-fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
-    // repeats module: mirrors its step text
-    let pack = support::copy_pack("docks", "no-facts");
-    strip_room_facts(&pack);
-    support::edit_save(&pack, |ecs_world| {
-        let mut save = serde_json::to_value(&**ecs_world).unwrap();
-        if let Some(known) = save["actors"]["known_facts"].as_object_mut() {
-            known.remove("mira");
-        }
-        **ecs_world = serde_json::from_value(save).unwrap();
-    });
-    let opened = spookery_engine::Session::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
-    let view = opened
-        .perceive(&Presence::default(), "mira")
-        .unwrap_or_else(|err| panic!("perceive: {err}"));
-    assert!(
-        view.known_facts.is_empty(),
-        "Mira still sees {:?}",
-        view.known_facts
-            .iter()
-            .map(|fact| fact.id.as_str())
-            .collect::<Vec<_>>()
-    );
-    world.pack = Some(pack);
-}
-
 #[when(expr = "a docks round plays")]
 fn a_docks_round_plays(world: &mut World) {
     let pack = world.pack();
     spookery_engine::play_pack_once(pack).unwrap_or_else(|err| panic!("round: {err}"));
 }
 
-#[then(expr = "Mira's habit fires")]
-fn miras_habit_fires(world: &mut World) {
+#[then(expr = "Mira's habit leaves her door note")]
+fn miras_habit_leaves_her_door_note(world: &mut World) {
     let pack = world.pack();
     let ecs_world = support::world_of(pack);
     let notes = ecs_world.globals().get::<Note>(&GlobalId);
@@ -92,14 +62,4 @@ fn play(world: &mut World, actor: &str, line: &str) {
         .unwrap_or_else(|err| panic!("{line}: {err}"));
     let reports = outputs.iter().flat_map(|output| &output.reports);
     world.scratch = super::round_play::list_refusals(reports);
-}
-
-fn strip_room_facts(pack: &Path) {
-    let path = pack.join("world/places/mira_rooms.md");
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read rooms: {err}"));
-    let unix = text.replace("\r\n", "\n");
-    let from = "facts:\n  - id: fact_room_lamp\n    text: A lamp burns in the room.\n";
-    assert!(unix.contains(from), "room facts were not found\n{unix}");
-    fs::write(&path, unix.replace(from, "facts: []\n"))
-        .unwrap_or_else(|err| panic!("write rooms: {err}"));
 }

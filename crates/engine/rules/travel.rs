@@ -1,7 +1,7 @@
 //! Exits, admission, and the journeys that follow them.
 
 use crate::canon::{Canon, Exit};
-use crate::ecs::id::ActorId;
+use crate::ecs::id::{ActorId, GlobalId};
 use crate::ecs::{self, component, PendingAction, Presence};
 use crate::intent::{Intent, Source, Target};
 use crate::round::Ledger;
@@ -12,7 +12,6 @@ use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::gate;
 use crate::rules::lines::find_place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
-use crate::rules::visibility::can_see_fact;
 use crate::Reason;
 use spookery_protocol::ExitView;
 
@@ -75,12 +74,12 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal>
     let Some(exit) = exit_of(context, rule)? else {
         return Ok(());
     };
-    let (canon, world, intent) = (context.canon, context.world, context.intent);
+    let (world, intent) = (context.world, context.intent);
     let actor_id = intent
         .actor_id
         .as_ref()
         .ok_or_else(|| gate::Refusal::new(intent, Reason::UnknownId))?;
-    if !is_revealed(canon, world, actor_id, exit) {
+    if !is_revealed(world, actor_id, exit) {
         return Err(gate::Refusal::new(intent, Reason::NoExit));
     }
     if is_locked(world, exit) {
@@ -98,14 +97,18 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal>
     cost::afford(context, &exit.path.cost)
 }
 
-fn is_revealed(canon: &Canon, world: &ecs::World, actor_id: &ActorId, exit: Exit<'_>) -> bool {
-    if !exit.path.hidden {
+fn is_revealed(world: &ecs::World, actor_id: &ActorId, exit: Exit<'_>) -> bool {
+    let Some(key) = &exit.path.revealed_by else {
         return true;
-    }
-    let Some(fact) = &exit.path.revealed_by else {
-        return false;
     };
-    can_see_fact(canon, world, actor_id, fact)
+    world
+        .actors()
+        .get::<component::Flag>(actor_id)
+        .contains(key)
+        || world
+            .globals()
+            .get::<component::Flag>(&GlobalId)
+            .contains(key)
 }
 
 /// An exit with an `if` is locked until it opens. An exit with no `if` is always open.
@@ -166,7 +169,8 @@ pub(crate) fn open_conditional_exits(
     }
 }
 
-/// The exits of `place` this actor is allowed to see. A hidden exit stays off the list.
+/// The exits of `place` this actor is allowed to see. An exit not yet revealed to them stays
+/// off the list.
 pub(crate) fn exits_at(
     canon: &Canon,
     world: &ecs::World,
@@ -174,7 +178,7 @@ pub(crate) fn exits_at(
     place: &str,
 ) -> Vec<ExitView> {
     (canon.exits(place))
-        .filter(|exit| is_revealed(canon, world, actor_id, *exit))
+        .filter(|exit| is_revealed(world, actor_id, *exit))
         .map(|exit| exit_view(canon, world, actor_id, exit))
         .collect()
 }
@@ -209,7 +213,7 @@ pub(crate) fn exit_view(
 }
 
 /// Every actor notes the exits they see where they stand, for `map`. Runs once at the end
-/// of each round, after triggers, so a reveal is seen in the round it lands.
+/// of each round, after triggers, so an exit a flag reveals is seen in the round the flag is set.
 pub(crate) fn note_exits(canon: &Canon, world: &mut ecs::World) -> Result<(), Reason> {
     let actors = world.actors().query::<(ActorId, &component::Place)>();
     let seen: Vec<(ActorId, String, Vec<String>)> = (actors.iter())

@@ -25,8 +25,6 @@ pub struct Actors {
     place: undo::DenseStore<String>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     wielded: undo::Store<BTreeMap<ActorId, String>>,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    known_facts: undo::Store<BTreeMap<ActorId, BTreeSet<String>>>,
     /// Each place an actor has stood at the end of a round, with the names of the exits they
     /// saw there then.
     #[serde(with = "nested_map", skip_serializing_if = "BTreeMap::is_empty")]
@@ -64,7 +62,6 @@ entity::has!(Actors, component::Visit, visited);
 entity::has!(Actors, component::ControlType, control_type: undo::Store<BTreeMap<ActorId, component::ControlType>>);
 entity::has!(Actors, component::Place, place: undo::DenseStore<String>);
 entity::has!(Actors, component::WieldedItem, wielded: undo::Store<BTreeMap<ActorId, String>>);
-entity::has!(Actors, component::KnownFacts, known_facts: undo::Store<BTreeMap<ActorId, BTreeSet<String>>>);
 entity::has!(Actors, Act, acts: undo::Store<BTreeMap<ActorId, Act>>);
 
 impl Reader<'_, Actors> {
@@ -75,7 +72,6 @@ impl Reader<'_, Actors> {
             control_type: _,
             place,
             wielded,
-            known_facts,
             visited,
             acts,
             items,
@@ -85,7 +81,6 @@ impl Reader<'_, Actors> {
         } = self.components;
         (place.keys().map(|id| ("place", id)))
             .chain(wielded.keys().map(|id| ("wielded", id)))
-            .chain(known_facts.keys().map(|id| ("known_facts", id)))
             .chain(visited.keys().map(|(id, _)| ("visited", id)))
             .chain(acts.keys().map(|id| ("acts", id)))
             .chain(items.keys().map(|(id, _)| ("items", id)))
@@ -98,12 +93,11 @@ impl Reader<'_, Actors> {
 
 impl Actors {
     /// Every store, as the history a rollback undoes and an accept clears.
-    pub(in crate::ecs) fn history_mut(&mut self) -> [&mut dyn undo::History; 10] {
+    pub(in crate::ecs) fn history_mut(&mut self) -> [&mut dyn undo::History; 9] {
         let Actors {
             control_type,
             place,
             wielded,
-            known_facts,
             visited,
             acts,
             items,
@@ -115,7 +109,6 @@ impl Actors {
             control_type,
             place,
             wielded,
-            known_facts,
             visited,
             acts,
             items,

@@ -19,7 +19,7 @@ fn rowan_starts_in_docks_street(world: &mut World) {
 }
 
 /// The latch is tagged a weapon so Rowan may wield it. The street's exits stay hidden behind
-/// the ledger fact, which Rowan does not know.
+/// the `street_mapped` flag, which Rowan does not carry.
 #[given(
     expr = "a docks copy where rowan carries two tonics and wields the latch, the world shows dawn and the street's exits are hidden"
 )]
@@ -29,7 +29,7 @@ fn rowan_wields_the_latch_and_the_world_shows_dawn(world: &mut World) {
     common::replace_in_file(&pack.join("world/items/latch.md"), "tags: []\n", weapon);
     let dawn = "schema: meters\nmeters:\n  - id: dawn\n    min: 0\n    base_cap: 6\n    max: 6\n    base: 6\n    hidden: false\n";
     fs::write(pack.join("world/meters.yaml"), dawn).unwrap();
-    let hidden = "    hidden: true\n    revealed_by: fact_ledger_short\n";
+    let hidden = "    revealed_by: street_mapped\n";
     crate::support::split_path(&pack, ["docks_shop", "docks_street"], ["", hidden]);
     crate::support::split_path(&pack, ["docks_street", "gate_yard"], [hidden, ""]);
     crate::support::edit_save(&pack, |now| {

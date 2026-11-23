@@ -44,7 +44,7 @@ pub mod testing {
     use crate::ecs::component::Place;
     use crate::store::lock::WriteGuard;
 
-    pub use crate::canon::{strip_body, Canon};
+    pub use crate::canon::Canon;
     pub use crate::ecs::entity::Actors;
     pub use crate::ecs::{Act, PendingAction};
 

@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::fact::{FactYaml, Facts};
 use crate::canon::meters::{meter_descs, MeterYaml};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, PLACE_SCHEMA};
@@ -19,11 +18,9 @@ use crate::rules::rule::{Owner, Rule};
 /// every actor carries have loaded.
 pub(super) type Meters = Vec<(String, BTreeMap<String, meter::Descriptor>)>;
 
-/// One place page into `places`, its facts into `facts` and its meters into `meters`, and its
-/// rules. A bad fact stops the file.
+/// One place page into `places` and its meters into `meters`, and its rules.
 pub(super) fn add(
     page: Page,
-    facts: &mut Facts,
     places: &mut BTreeMap<PlaceId, PlaceDef>,
     meters: &mut Meters,
     diags: &mut Diags,
@@ -33,7 +30,6 @@ pub(super) fn add(
         file: &page.file,
         text: &page.text,
     };
-    diags.keep(facts.add(&whole, file.facts, &file.id))?;
     let twice = ("place", "is already defined", "keep one place with this id");
     let taken = places.contains_key(file.id.as_str());
     if let Some(diag) =
@@ -78,7 +74,6 @@ struct PlaceDoc {
     _schema: String,
     id: String,
     name: Option<String>,
-    facts: Vec<FactYaml>,
     #[serde(default)]
     meters: Vec<MeterYaml>,
     #[serde(default)]

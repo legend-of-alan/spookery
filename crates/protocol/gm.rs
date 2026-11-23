@@ -24,8 +24,6 @@ pub struct PerceiveArgs {
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(rename = "as", skip_serializing_if = "Option::is_none")]
     pub viewer_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_body_chars: Option<u64>,
 }
 
 /// The GM's `commit` command arguments, sent from a GM client to the table.
@@ -234,9 +232,8 @@ mod tests {
     #[test]
     fn missing_arguments_are_an_empty_object() {
         let args = |raw: &str| serde_json::from_str::<Map<String, Value>>(raw).unwrap();
-        let read =
-            parse_args::<PerceiveArgs>(Some(&args(r#"{"as":"rowan","max_body_chars":200}"#)));
-        assert_eq!(read.unwrap().max_body_chars, Some(200));
+        let read = parse_args::<PerceiveArgs>(Some(&args(r#"{"as":"rowan"}"#)));
+        assert_eq!(read.unwrap().viewer_id.as_deref(), Some("rowan"));
         assert!(
             parse_args::<PerceiveArgs>(Some(&args(r#"{"as":"rowan","focus":"place"}"#))).is_err()
         );

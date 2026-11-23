@@ -10,15 +10,13 @@ use crate::ecs::entity;
 use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::Reason;
 
-/// A note: who it is for, where it lies, and the facts it carries. The world holds it under its
-/// id.
+/// A note: who it is for, where it lies, and what it says. The world holds it under its id.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Note {
     pub to_ids: BTreeSet<ActorId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub place_id: Option<PlaceId>,
-    pub fact_ids: BTreeSet<String>,
     pub text: String,
 }
 

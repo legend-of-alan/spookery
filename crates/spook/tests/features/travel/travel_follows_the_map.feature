@@ -17,7 +17,7 @@ Feature: Travel follows the map
       | mira_rooms | at once               |
 
   Scenario: Hidden exit
-    Given the trapdoor is hidden and rowan does not know fact_trapdoor
+    Given the trapdoor is hidden and rowan does not carry found_trapdoor
     Then rowan's view does not list the trapdoor
 
   Scenario: Explicit teleport

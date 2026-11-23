@@ -1,5 +1,5 @@
-use spookery_engine::component;
 use spookery_engine::testing::{act_of, world_of};
+use spookery_engine::{component, GlobalId, Note};
 use std::fs;
 
 use cucumber::{given, then, when};
@@ -116,8 +116,8 @@ async fn nobody_is_present(world: &mut World) {
 }
 
 const DOCKS_PCS: [&str; 3] = ["harbormouse", "rowan", "wren"];
-const HIDDEN_FACT: &str = "fact_wren_channel";
-const HIDDEN_TEXT: &str = "The tide chart marks a private channel.";
+const PRIVATE_NOTE_ID: &str = "note_wren_channel";
+const PRIVATE_NOTE_TEXT: &str = "The tide chart marks a private channel.";
 
 #[when(expr = "three players claim and a GM connects")]
 async fn three_players_claim_and_a_gm_connects(world: &mut World) {
@@ -217,49 +217,47 @@ async fn the_present_actors_are_harbormouse_and_wren(world: &mut World) {
     );
 }
 
-#[given(expr = "a docks table where one PC knows a hidden fact")]
-fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
-    let pack = crate::support::copy_pack("docks", "hidden-fact");
-    let path = pack.join("world/places/docks_shop.md");
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read shop: {err}"));
-    let from = "    text: Oil is on the shelf.\n";
-    assert!(text.contains(from), "{text}");
-    let text = text.replace(
-        from,
-        &format!("{from}  - id: {HIDDEN_FACT}\n    text: {HIDDEN_TEXT}\n    hidden: true\n"),
-    );
-    fs::write(&path, text).unwrap_or_else(|err| panic!("write shop: {err}"));
+#[given(expr = "a docks table where one PC has a private note")]
+fn a_docks_table_where_one_pc_has_a_private_note(world: &mut World) {
+    let pack = crate::support::copy_pack("docks", "private-note");
     crate::support::edit_save(&pack, |now| {
         assert!(now.actors().contains(&"wren".into()), "wren");
-        let mut actors = now.actors_mut();
-        actors
-            .get_mut::<component::KnownFacts>(&"wren".into())
-            .learn(&[HIDDEN_FACT.to_string()])
-            .unwrap();
+        let note = Note {
+            to_ids: ["wren".into()].into(),
+            place_id: None,
+            text: PRIVATE_NOTE_TEXT.to_string(),
+        };
+        let mut globals = now.globals_mut();
+        let left = globals
+            .get_mut::<Note>(&GlobalId)
+            .leave(PRIVATE_NOTE_ID, note);
+        left.unwrap();
     });
-    spookery_engine::Session::open(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
     world.pack = Some(pack);
 }
 
-#[then(expr = "only that PC's perceive shows the hidden fact")]
-fn only_that_pcs_perceive_shows_the_hidden_fact(world: &mut World) {
+#[then(expr = "only that PC's perceive shows the private note")]
+fn only_that_pcs_perceive_shows_the_private_note(world: &mut World) {
     let wren = table::actor_text(world, "wren");
-    assert!(wren.contains(HIDDEN_FACT), "{wren}");
+    assert!(wren.contains(PRIVATE_NOTE_ID), "{wren}");
     for id in ["rowan", "harbormouse"] {
         let text = table::actor_text(world, id);
-        assert!(!text.contains(HIDDEN_FACT), "{id}\n{text}");
+        assert!(!text.contains(PRIVATE_NOTE_ID), "{id}\n{text}");
     }
 }
 
-#[when(expr = "that PC says the hidden fact and another PC waits")]
-async fn that_pc_says_the_hidden_fact(world: &mut World) {
+#[when(expr = "that PC says the note's words and another PC waits")]
+async fn that_pc_says_the_notes_words(world: &mut World) {
     let marks = ["rowan", "harbormouse"].map(|id| (id, table::actor_text(world, id).len()));
-    let say = format!("say {HIDDEN_TEXT}");
+    let say = format!("say {PRIVATE_NOTE_TEXT}");
     table::actor_send(world, "wren", &say, "\"kind\":\"say\"").await;
     table::actor_send(world, "rowan", "wait", "\"kind\":\"view\"").await;
     for (id, mark) in marks {
         let heard = table::wait_actor_from(world, id, mark, "\"kind\":\"view\"").await;
-        assert!(heard.contains(HIDDEN_TEXT), "{id} did not hear it\n{heard}");
+        assert!(
+            heard.contains(PRIVATE_NOTE_TEXT),
+            "{id} did not hear it\n{heard}"
+        );
     }
 }
 

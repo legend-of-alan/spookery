@@ -75,11 +75,6 @@ fn nell_arrives_with_the_key(world: &mut World) {
     let pack = copy_pack("docks", "trigger-ledger");
     add_rooms(&pack);
     write_world_meter_rows(&pack, &[("tide", 0, None)]);
-    replace_in_file(
-        &pack.join("world/places/mira_rooms.md"),
-        "    text: A lamp burns in the room.\n",
-        "    text: A lamp burns in the room.\n  - id: fact_ledger\n    text: The ledger is in the desk.\n",
-    );
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(
         pack.join("story/smuggler.yaml"),
@@ -98,10 +93,10 @@ rules:
           key: found_key
           is: true
     do:
-      - memory:
-          to: self
-          fact_ids:
-            - fact_ledger
+      - flag:
+          of: self
+          key: found_ledger
+          value: true
       - meter:
           of: world
           key: tide
@@ -127,15 +122,12 @@ rules:
     world.pack = Some(pack);
 }
 
-#[then(expr = "nell knows fact_ledger and the world's tide is {int}")]
-fn nell_knows_the_ledger(world: &mut World, tide: i64) {
+#[then(expr = "nell has flag found_ledger and the world's tide is {int}")]
+fn nell_found_the_ledger(world: &mut World, tide: i64) {
     let now = world_of(world.pack.as_ref().unwrap());
-    let (nell, ledger) = ("nell".into(), "fact_ledger".to_string());
-    let known_facts = now.actors().get::<component::KnownFacts>(&nell).get();
-    assert!(
-        known_facts.unwrap().contains(&ledger),
-        "nell does not know fact_ledger"
-    );
+    let nell = "nell".into();
+    let flags = now.actors().get::<component::Flag>(&nell);
+    assert!(flags.contains("found_ledger"), "nell has no found_ledger");
     let world_meters = now.globals().query::<&component::Meter>();
     let tide_meter = world_meters.iter().find_map(|held| held.get("tide"));
     let live = tide_meter.expect("the world's tide");
@@ -226,24 +218,24 @@ fn a_round_stops_at_depth_4(world: &mut World) {
     assert_eq!(vigor, Ok(5), "four passes add 4");
 }
 
-#[given(expr = "a rule on a known fact narrates to the subject")]
-fn a_known_fact_narrates_to_the_subject(world: &mut World) {
+#[given(expr = "a rule on an arrival narrates to the subject")]
+fn an_arrival_narrates_to_the_subject(world: &mut World) {
     let pack = copy_pack("docks", "trigger-leak-self");
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(
-        pack.join("story/secret.yaml"),
+        pack.join("story/greet.yaml"),
         "\
 schema: story
-id: secret
+id: greet
 rules:
   - id: tell
     when:
       change:
-        knows: fact_ledger
+        arrive: docks_shop
     do:
       - narrate:
           to: self
-          text: A secret moved.
+          text: You came in.
 ",
     )
     .unwrap();
@@ -265,7 +257,6 @@ fn nell_enters_the_bog(world: &mut World) {
 schema: place
 id: bog
 name: Bog
-facts: []
 rules:
   - id: sink
     when:
@@ -369,34 +360,25 @@ fn the_viewer_is_told(world: &mut World, viewer: String, text: String) {
     );
 }
 
-#[given(expr = "the street has a hidden trapdoor")]
-fn the_street_has_a_hidden_trapdoor(world: &mut World) {
-    let pack = copy_pack("docks", "trigger-reveal");
+/// A trapdoor from the street to a cellar that `found_trapdoor` reveals, and an `uncover` verb
+/// that sets that flag on `carrier`, `self` or `world`.
+#[given(
+    expr = "the street has an exit revealed by the found_trapdoor flag, which uncover sets on {word}"
+)]
+fn the_street_has_a_trapdoor(world: &mut World, carrier: String) {
+    let pack = copy_pack("docks", "trigger-uncover");
     support::append(
         &pack.join("world/map.yaml"),
-        "  - path: docks_street -> cellar\n    id: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
-    );
-    replace_in_file(
-        &pack.join("world/places/docks_street.md"),
-        "    text: The street is quiet.\n",
-        "    text: The street is quiet.\n  - id: fact_trapdoor\n    text: A trapdoor sits under the boards.\n    hidden: true\n",
+        "  - path: docks_street -> cellar\n    id: trapdoor\n    revealed_by: found_trapdoor\n",
     );
     fs::write(
         pack.join("world/places/cellar.md"),
-        "\
----
-schema: place
-id: cellar
-name: Cellar
-facts: []
----
-Under the street.
-",
+        "---\nschema: place\nid: cellar\nname: Cellar\n---\nUnder the street.\n",
     )
     .unwrap();
     add_verb(
         &pack,
-        "\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - reveal:\n          to: self\n          fact: fact_trapdoor\n",
+        &format!("\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - flag:\n          of: {carrier}\n          key: found_trapdoor\n          value: true\n"),
     );
     write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
@@ -405,40 +387,30 @@ Under the street.
     world.pack = Some(pack);
 }
 
-#[when(expr = "nell reveals fact_trapdoor")]
-fn nell_reveals_the_trapdoor(world: &mut World) {
+#[when(expr = "nell uncovers the trapdoor")]
+fn nell_uncovers_the_trapdoor(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
-    let (now, _) = play(
+    play(
         world,
         &pack,
         vec![intent("nell-uncover", "nell", "uncover", None)],
     );
-    let nell = "nell".into();
-    let known_facts = now.actors().get::<component::KnownFacts>(&nell).get();
-    world.scratch = Vec::from_iter(known_facts.unwrap().clone()).join(",");
     world.pack = Some(pack);
 }
 
-#[then(expr = "nell knows fact_trapdoor")]
-fn nell_knows_the_trapdoor(world: &mut World) {
-    assert!(
-        world.scratch.split(',').any(|id| id == "fact_trapdoor"),
-        "{}",
-        world.scratch
-    );
-}
-
-#[then(expr = "nell can see the trapdoor")]
-fn nell_can_see_the_trapdoor(world: &mut World) {
+#[then(regex = r"^(nell|wren) (can|cannot) see the trapdoor$")]
+fn the_viewer_sees_the_trapdoor(world: &mut World, viewer: String, can_or_cannot: String) {
     let pack = world.pack.as_ref().unwrap();
     let world_now = spookery_engine::Session::peek(pack).unwrap();
     let exits = world_now
-        .perceive(&Presence::default(), "nell")
+        .perceive(&Presence::default(), &viewer)
         .unwrap()
         .exits;
-    assert!(
-        exits.iter().any(|exit| exit.exit_id == "trapdoor"),
-        "trapdoor stayed hidden: {exits:?}"
+    let sees = exits.iter().any(|exit| exit.exit_id == "trapdoor");
+    let should_see = can_or_cannot == "can";
+    assert_eq!(
+        sees, should_see,
+        "{viewer} {can_or_cannot} see it: {exits:?}"
     );
 }
 
@@ -568,30 +540,6 @@ fn the_viewer_summary_omits_round_counters(world: &mut World, viewer: String) {
     assert!(
         changes.iter().all(|item| !is_act_counter(item)),
         "{viewer} saw a round counter\n{changes:?}"
-    );
-}
-
-#[when(expr = "nell learns fact_trapdoor while wren is in the same room")]
-fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
-    let pack = copy_pack("docks", "trigger-known-fact");
-    replace_in_file(
-        &pack.join("world/places/docks_street.md"),
-        "    text: The street is quiet.\n",
-        "    text: The street is quiet.\n  - id: fact_trapdoor\n    text: A trapdoor sits under the boards.\n    hidden: true\n",
-    );
-    add_verb(
-        &pack,
-        "\n  - id: learn\n    when:\n      verb: learn\n    do:\n      - reveal:\n          to: self\n          fact: fact_trapdoor\n",
-    );
-    write_nell(&pack);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
-        set_present(seated, &["nell", "wren"]);
-    });
-    play_and_keep_summaries(
-        world,
-        pack,
-        vec![intent("nell-learn", "nell", "learn", None)],
     );
 }
 
