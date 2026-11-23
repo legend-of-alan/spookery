@@ -20,11 +20,11 @@ async fn mark_needs_a_knife(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "the verbs file gains a rumor row")]
-fn gains_a_rumor_row(world: &mut World) {
+#[when(expr = "the verbs file gains a shout row")]
+fn gains_a_shout_row(world: &mut World) {
     append_verbs(
         world,
-        "\n  - id: mark\n    when: habit\n    do:\n      - rumor:\n          rumor: r_184\n          to: aldric\n          heat: 1\n",
+        "\n  - id: mark\n    when: habit\n    do:\n      - shout:\n          shout: r_184\n          to: aldric\n          heat: 1\n",
     );
 }
 

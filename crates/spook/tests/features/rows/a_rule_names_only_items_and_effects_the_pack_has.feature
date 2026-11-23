@@ -2,7 +2,7 @@ Feature: A rule names only items and effects the pack has
 
   Scenario: An effect kind the engine does not have does not load
     Given a docks table
-    When the verbs file gains a rumor row
+    When the verbs file gains a shout row
     Then the load refusal is SCHEMA
 
   Scenario: A mark without the knife does not play a round
