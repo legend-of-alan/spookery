@@ -58,7 +58,7 @@ async fn the_connection_drops_and_messages_pass(world: &mut World, count: usize)
 
 #[when(expr = "the GM commits a round of Aldric's wait")]
 async fn the_gm_commits_aldrics_wait(world: &mut World) {
-    let wait = r#"{"actor_id":"aldric","move":"wait"}"#;
+    let wait = r#"{"actor":"aldric","move":"wait"}"#;
     let queued = table::call_gm_tool(world, "queue", wait).await;
     assert_eq!(queued["kind"], "queued", "{queued}");
     let committed = table::call_gm_tool(world, "commit", r#"{"include_round":true}"#).await;
@@ -181,7 +181,7 @@ async fn queue_rowan_wait(world: &mut World) -> Value {
     if table::live_mut(world).gm.is_none() {
         table::seat_gm(world).await;
     }
-    table::call_gm_tool(world, "queue", r#"{"actor_id":"rowan","move":"wait"}"#).await
+    table::call_gm_tool(world, "queue", r#"{"actor":"rowan","move":"wait"}"#).await
 }
 
 fn parse(line: &str) -> Value {
