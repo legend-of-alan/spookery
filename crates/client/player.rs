@@ -43,13 +43,8 @@ pub async fn play(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReaso
         return Err(Error::Message("SCHEMA".into()));
     }
     let mut connection = websocket::Connection::open(addr, "player").await?.0;
-    let (mut view, mut token) = claim_pc(
-        &mut connection,
-        json!({ "actor": actor_id }),
-        terminal,
-        None,
-    )
-    .await?;
+    let args = json!({ "actor": actor_id });
+    let (mut view, mut token) = claim_pc(&mut connection, args, terminal, None).await?;
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
     loop {
@@ -147,7 +142,7 @@ async fn claim_pc(
     mut view: Option<protocol::View>,
 ) -> Result<(protocol::View, String), Error> {
     let request_id = connection.send("claim", args).await?;
-    let mut token = String::new();
+    let mut claim_token = String::new();
     loop {
         let Some(server_message) = connection.recv().await.transpose()? else {
             return Err(Error::Message("NOT_IN_SPEC".into()));
@@ -175,10 +170,8 @@ async fn claim_pc(
             terminal.show(message, view.as_ref())?;
         }
         match server_message.body {
-            ServerBody::Claimed {
-                token: claim_token, ..
-            } => token = claim_token,
-            ServerBody::View(body) => return Ok((*body, token)),
+            ServerBody::Claimed { token, .. } => claim_token = token,
+            ServerBody::View(body) => return Ok((*body, claim_token)),
             _ => {}
         }
     }

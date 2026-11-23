@@ -20,15 +20,12 @@ use crate::Error;
 #[derive(Clone, Copy)]
 struct PaletteColor {
     rgb: u32,
-    fallback_index: u8,
+    ansi_index: u8,
 }
 
 impl PaletteColor {
-    const fn new(rgb: u32, fallback_index: u8) -> Self {
-        Self {
-            rgb,
-            fallback_index,
-        }
+    const fn new(rgb: u32, ansi_index: u8) -> Self {
+        Self { rgb, ansi_index }
     }
 
     fn to_color(self, is_truecolor: bool) -> Color {
@@ -36,7 +33,7 @@ impl PaletteColor {
             let [_, r, g, b] = self.rgb.to_be_bytes();
             Color::Rgb(r, g, b)
         } else {
-            Color::Indexed(self.fallback_index)
+            Color::Indexed(self.ansi_index)
         }
     }
 }
