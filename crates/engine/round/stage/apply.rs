@@ -168,7 +168,7 @@ fn pend(
         let kind = EffectKind::Location {
             actor_id: actor_id.clone(),
             from: from.ok_or(Reason::UnknownId)?.to_string(),
-            to: travel::on_exit(exit),
+            to: exit.exit_id().to_string(),
             arrived_at: None,
         };
         let effect = Effect::new(intent.actor_id.as_ref(), &intent.id, kind);

@@ -108,8 +108,8 @@ impl AsIdRef for GlobalId {
     }
 }
 
-/// One exit's door, by its place and its exit id. An address, not an entity: it holds nothing but
-/// whether the door is open.
+/// One exit, by its place and its exit id. An address, not an entity: it holds nothing but
+/// whether the exit is open.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ExitId {
     pub place: PlaceId,

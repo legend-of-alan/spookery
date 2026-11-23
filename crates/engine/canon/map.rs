@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::canon::rule_list;
 use crate::canon::source::{load_tagged, Diags, FileText, MAP_SCHEMA};
-use crate::canon::PathDef;
+use crate::canon::{Exit, PathDef};
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::id::PlaceId;
 use crate::rules::expr::Expr;
@@ -110,21 +110,61 @@ pub(super) fn index_exits(
     let mut taken = BTreeSet::new();
     let mut diags = Diags::default();
     for (row, path) in paths.iter().enumerate() {
-        let leaves = if path.bidirectional { 2 } else { 1 };
-        for exit in path.ends[..leaves]
+        let ends = path
+            .ends
             .iter()
-            .filter_map(|end| path.exit_from(end.as_str()))
-        {
+            .take(if path.bidirectional { 2 } else { 1 });
+        for exit in ends.filter_map(|end| path.exit_from(end.as_str())) {
             if taken.insert((exit.from, exit.id)) {
                 exit_rows.entry(exit.from.clone()).or_default().push(row);
                 continue;
             }
             let problem = format!("exit '{}' is listed twice at {}", exit.id, exit.from);
             let hint = "give one of these paths its own id";
-            diags.push(schema_error(MAP_FILE, &problem, hint).at_path(format!("paths[{row}].id")));
+            let field = if path.id.is_some() { ".id" } else { ".path" };
+            diags.push(
+                schema_error(MAP_FILE, &problem, hint).at_path(format!("paths[{row}]{field}")),
+            );
         }
     }
     diags.into_result(exit_rows)
+}
+
+/// The pack's paths, and the index of each place's exits.
+#[derive(Clone, Debug)]
+pub struct Paths {
+    paths: Vec<PathDef>,
+    exit_rows: BTreeMap<PlaceId, Vec<usize>>,
+}
+
+impl Paths {
+    /// Index each place's exits from `paths`, in file order.
+    pub(super) fn index(paths: Vec<PathDef>) -> Result<Self, Vec<Diagnostic>> {
+        let exit_rows = index_exits(&paths)?;
+        Ok(Self { paths, exit_rows })
+    }
+
+    /// The exits of `place`, in the file order of their paths.
+    pub(crate) fn exits(&self, place: &str) -> impl Iterator<Item = Exit<'_>> {
+        let place_rows = self.exit_rows.get_key_value(place).into_iter();
+        place_rows.flat_map(|(from, rows)| {
+            rows.iter()
+                .filter_map(|&row| self.paths[row].exit_from(from.as_str()))
+        })
+    }
+
+    /// The exit at `place` that a player names `id`.
+    pub(crate) fn find_exit(&self, place: &str, id: &str) -> Option<Exit<'_>> {
+        self.exits(place).find(|exit| exit.id == id)
+    }
+}
+
+impl std::ops::Deref for Paths {
+    type Target = [PathDef];
+
+    fn deref(&self) -> &[PathDef] {
+        &self.paths
+    }
 }
 
 #[derive(Deserialize)]

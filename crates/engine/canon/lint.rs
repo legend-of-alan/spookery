@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::map::MAP_FILE;
 use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{
-    declared_flags, find_exit, Canon, CastDef, Exit, FactDef, ItemDef, PathDef, PlaceDef, StoryDef,
+    declared_flags, Canon, CastDef, Exit, FactDef, ItemDef, PathDef, Paths, PlaceDef, StoryDef,
     OPEN,
 };
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
@@ -37,7 +37,7 @@ pub(super) fn broken_paths(
             diags.push(schema_error(MAP_FILE, &problem, hint).at_path(at));
         };
         for end in path.ends.iter().filter(|end| !places.contains_key(*end)) {
-            let problem = format!("path '{line}' goes to '{end}', which is not a place");
+            let problem = format!("path '{line}' names '{end}', which is not a place");
             refuse(".path", problem, "name a place from world/places");
         }
         if path.hidden && path.revealed_by.is_none() {
@@ -212,8 +212,7 @@ pub(super) struct EntityScope<'a> {
     pub world_meters: &'a BTreeMap<String, meter::Descriptor>,
     pub cast: &'a BTreeMap<ActorId, CastDef>,
     pub places: &'a BTreeMap<PlaceId, PlaceDef>,
-    pub paths: &'a [PathDef],
-    pub exit_rows: &'a BTreeMap<PlaceId, Vec<usize>>,
+    pub paths: &'a Paths,
     pub stories: &'a BTreeMap<StoryId, StoryDef>,
 }
 
@@ -248,10 +247,10 @@ impl EntityScope<'_> {
             } else if key != OPEN {
                 Some(format!("an exit carries only the flag '{OPEN}'"))
             } else {
-                let door = self
+                let is_conditional = self
                     .find_exit(exit)
                     .is_some_and(|exit| !exit.path.if_.is_empty());
-                (!door).then(|| format!("{exit} has no if, so it is always open"))
+                (!is_conditional).then(|| format!("{exit} has no if, so it is always open"))
             };
         }
         let id = self.fixed_entity(fixed_self, of)?;
@@ -289,7 +288,7 @@ impl EntityScope<'_> {
 
     /// The exit `exit` names, when its place has one by that word.
     fn find_exit(&self, exit: &ExitId) -> Option<Exit<'_>> {
-        find_exit(self.paths, self.exit_rows, exit.place.as_str(), &exit.exit)
+        self.paths.find_exit(exit.place.as_str(), &exit.exit)
     }
 
     /// The id `of` gives when no place, exit, story or cast member has it.
@@ -395,7 +394,7 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
     let paths = (canon.paths.iter().enumerate())
         .map(|(row, path)| (MAP_FILE, format!("paths[{row}].if"), &path.if_));
     let mut diags = Vec::new();
-    for (file, path, conds) in rules.chain(paths) {
+    for (file, at, conds) in rules.chain(paths) {
         let mut cycles = Vec::new();
         for cond in conds {
             cond.visit(|cond| {
@@ -412,7 +411,7 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
                         &format!("there is no cycle {id}"),
                         "name a cycle from cycles in rules/budget.yaml, or add it there",
                     )
-                    .at_path(path.clone()),
+                    .at_path(at.clone()),
                 );
                 continue;
             };
@@ -424,7 +423,7 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
                         &format!("cycle bound is not below cycle {id}, which is {length} ticks"),
                         "set from and to to ticks of the cycle, below its length",
                     )
-                    .at_path(path.clone()),
+                    .at_path(at.clone()),
                 );
             }
         }

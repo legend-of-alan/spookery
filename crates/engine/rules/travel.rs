@@ -70,11 +70,6 @@ pub(crate) fn exit_stood_on<'c>(canon: &'c Canon, place: &str) -> Option<Exit<'c
     canon.find_exit(from, exit_id)
 }
 
-/// Where a walker stands while they walk through `exit`: `exit:<place>.<exit>`.
-pub(crate) fn on_exit(exit: Exit<'_>) -> String {
-    exit.qualified_id().to_string()
-}
-
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
 pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal> {
     let Some(exit) = exit_of(context, rule)? else {
@@ -113,15 +108,15 @@ fn is_revealed(canon: &Canon, world: &ecs::World, actor_id: &ActorId, exit: Exit
     can_see_fact(canon, world, actor_id, fact)
 }
 
-/// A door is locked until it opens. An exit with no `if` is no door, so it is always open.
+/// An exit with an `if` is locked until it opens. An exit with no `if` is always open.
 fn is_locked(world: &ecs::World, exit: Exit<'_>) -> bool {
-    !exit.path.if_.is_empty() && !world.places().is_exit_open(&exit.qualified_id())
+    !exit.path.if_.is_empty() && !world.places().is_exit_open(&exit.exit_id())
 }
 
-/// Open each locked door whose `if` some actor in its place meets, with an `exit_open` effect
-/// written as no one, under the intent `door:<place>.<exit>`. Runs at the end of each round,
+/// Open each locked exit whose `if` some actor in its place meets, with an `exit_open` effect
+/// written as no one, under the intent `open:<place>.<exit>`. Runs at the end of each round,
 /// after triggers.
-pub(crate) fn open_doors(
+pub(crate) fn unlocked_exits(
     canon: &Canon,
     world: &mut ecs::World,
     presence: &Presence,
@@ -150,10 +145,10 @@ pub(crate) fn open_doors(
             if !met {
                 continue;
             }
-            let id = format!("door:{place}.{}", exit.id);
-            let intent = Intent::new(id, world.round_index, None, Source::Engine, "door", target);
+            let id = format!("open:{place}.{}", exit.id);
+            let intent = Intent::new(id, world.round_index, None, Source::Engine, "open", target);
             let kind = EffectKind::ExitOpen {
-                exit: exit.qualified_id(),
+                exit: exit.exit_id(),
                 open: true,
             };
             opens.push((Effect::new(None, &intent.id, kind), intent));

@@ -42,7 +42,7 @@ enum Step {
     Meter(entity::Id, &'static str, i64),
     Fatigue(i64),
     Expire,
-    Door(bool),
+    ExitOpen(bool),
     Flag(entity::Id, &'static str, bool),
     Walk(&'static str),
     Wield(&'static str),
@@ -290,7 +290,7 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
             add: *add,
             ticks: 3,
         },
-        Step::Door(open) => EffectKind::ExitOpen {
+        Step::ExitOpen(open) => EffectKind::ExitOpen {
             exit: ExitId {
                 place: "docks_shop".into(),
                 exit: "stairs".to_string(),
@@ -384,7 +384,7 @@ fn pick_step() -> impl Strategy<Value = Step> {
             .prop_map(|((carrier, key), delta)| Step::Meter(carrier, key, delta)),
         1 => (-2i64..=2).prop_map(Step::Fatigue),
         1 => Just(Step::Expire),
-        1 => any::<bool>().prop_map(Step::Door),
+        1 => any::<bool>().prop_map(Step::ExitOpen),
         2 => (select(flags), any::<bool>())
             .prop_map(|((carrier, key), value)| Step::Flag(carrier, key, value)),
         1 => select(vec!["docks_shop", "docks_street", "mira_rooms"]).prop_map(Step::Walk),
