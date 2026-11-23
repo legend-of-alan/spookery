@@ -179,12 +179,12 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             } else {
                 spookery::terminal::Terminal::plain(raw)
             };
-            let exit_reason = spookery::player::play(addr, &mut terminal).await;
+            let play_result = spookery::player::play(addr, &mut terminal).await;
             drop(terminal);
-            if let Ok(spookery::player::ExitReason::HostClosed) = exit_reason {
+            if let Ok(spookery::player::ExitReason::HostClosed) = play_result {
                 eprintln!("host closed");
             }
-            exit_reason.map(drop).map_err(|err| err.to_string())
+            play_result.map(drop).map_err(|err| err.to_string())
         }
         #[cfg(feature = "client")]
         Command::Gm { raw } => spookery::gm::play(addr, raw)

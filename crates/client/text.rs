@@ -179,7 +179,7 @@ pub fn render_view(view: &protocol::View) -> String {
         place: _,
         place_name,
         body,
-        actor_names,
+        actor_names: _,
         cant_act,
         busy,
         visible_actors,
@@ -206,9 +206,7 @@ pub fn render_view(view: &protocol::View) -> String {
         sections.push(prose.to_string());
     }
     if !visible_actors.is_empty() {
-        let names = visible_actors
-            .iter()
-            .zip(actor_names)
+        let names = actor_ids_and_names(view)
             .map(|(id, name)| if id == viewer { "You" } else { name })
             .collect::<Vec<_>>()
             .join(", ");
@@ -388,6 +386,13 @@ fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<
         return;
     }
     sections.push(format!("{title}\n{}", lines.join("\n")));
+}
+
+/// Each actor `view` shows, as its id and its name.
+pub(crate) fn actor_ids_and_names(
+    view: &protocol::View,
+) -> impl Iterator<Item = (&String, &String)> {
+    view.visible_actors.iter().zip(&view.actor_names)
 }
 
 /// `Lamp oil: 4`: the item's name and count.

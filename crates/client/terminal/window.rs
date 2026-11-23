@@ -481,10 +481,7 @@ impl Screen {
                 .add_modifier(Modifier::BOLD)
         }));
         let mut pc_label = view
-            .and_then(|view| {
-                let mut actors = view.visible_actors.iter().zip(&view.actor_names);
-                actors.find(|(id, _)| **id == view.viewer)
-            })
+            .and_then(|view| text::actor_ids_and_names(view).find(|(id, _)| **id == view.viewer))
             .map(|(_, name)| name.clone())
             .unwrap_or_default();
         if let Some(round_index) = self.last_round_index {
@@ -575,12 +572,7 @@ impl Screen {
             }
         }
         let mut here_spans = vec![self.span("Here: ", PARCHMENT)];
-        for (index, (id, name)) in view
-            .visible_actors
-            .iter()
-            .zip(&view.actor_names)
-            .enumerate()
-        {
+        for (index, (id, name)) in text::actor_ids_and_names(view).enumerate() {
             if index > 0 {
                 here_spans.push(self.span(", ", PARCHMENT));
             }
