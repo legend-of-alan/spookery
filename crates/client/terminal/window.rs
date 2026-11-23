@@ -239,7 +239,18 @@ impl Screen {
         self.transcript.extend(lines);
     }
 
+    /// Adds what `body` shows to the transcript, after the scrollback separator when the
+    /// renderer says one is due.
     fn show(&mut self, body: &ServerBody) {
+        let first_new_line = self.transcript.len();
+        self.push_body(body);
+        let has_text = self.transcript.len() > first_new_line;
+        if self.renderer.take_scrollback_separator(body, has_text) {
+            self.transcript.insert(first_new_line, Line::default());
+        }
+    }
+
+    fn push_body(&mut self, body: &ServerBody) {
         match body {
             ServerBody::Hello {
                 open,
@@ -278,7 +289,7 @@ impl Screen {
                     Outcome::Partial => EMBER,
                     Outcome::Miss => SCARLET,
                 };
-                let sentence = text::render(body);
+                let sentence = self.renderer.render_without_separator(body);
                 self.transcript
                     .push(Line::styled(format!("◆ {sentence}"), self.style(color)));
             }
@@ -290,7 +301,7 @@ impl Screen {
                     ServerBody::Changes { .. } | ServerBody::Queued { .. } => ASH,
                     _ => PARCHMENT,
                 };
-                let content = self.renderer.render(body);
+                let content = self.renderer.render_without_separator(body);
                 self.push_text(&content, color);
             }
         }
@@ -811,5 +822,19 @@ mod tests {
         let mut screen = Screen::new(true);
         let (view, _) = replay_until(&mut screen, "release");
         assert_screen("refused", &mut screen, view.as_ref());
+    }
+
+    #[test]
+    fn a_blank_line_follows_the_scrollback() {
+        let mut screen = Screen::new(true);
+        let messages = [
+            r#"{"body":{"kind":"claimed","actor":"rowan","token":"t1","scrollback":[{"from":"gm","to":"table","text":"good evening"}]}}"#,
+            r#"{"seq":3,"body":{"kind":"say","from":"player:rowan","to":"table","text":"evening"}}"#,
+        ];
+        for message in messages {
+            let message: ServerMessage = serde_json::from_str(message).unwrap();
+            screen.show(&message.body);
+        }
+        assert_screen("scrollback_separator", &mut screen, None);
     }
 }

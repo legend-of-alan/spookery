@@ -116,11 +116,12 @@ fn render_scrollback(scrollback: &[Speech]) -> String {
     )
 }
 
-/// Turns the messages of one sitting into readable text.
+/// Turns the messages of one session into readable text, and owns the blank line that both
+/// the plain surface and the window put between a claim's scrollback and the first live text.
 #[derive(Default)]
 pub struct Renderer {
     seen_resume: bool,
-    after_scrollback: bool,
+    is_separator_due: bool,
 }
 
 impl Renderer {
@@ -131,32 +132,32 @@ impl Renderer {
     /// Text for this body. Empty means print nothing.
     /// A leading newline is the blank line between the scrollback and the first live text.
     pub fn render(&mut self, body: &ServerBody) -> String {
-        match body {
-            ServerBody::Claimed { scrollback, .. } => {
-                self.after_scrollback = !scrollback.is_empty();
-                render(body)
-            }
-            ServerBody::Resume { notes } => {
-                if self.seen_resume {
-                    return String::new();
-                }
-                self.seen_resume = true;
-                self.after_scrollback(render_resume(notes))
-            }
-            _ => self.after_scrollback(render(body)),
+        let text = self.render_without_separator(body);
+        if self.take_scrollback_separator(body, !text.is_empty()) {
+            return format!("\n{text}");
         }
+        text
     }
 
-    /// Live text, after a blank line when it is the first after the scrollback.
-    fn after_scrollback(&mut self, text: String) -> String {
-        if text.is_empty() || !self.after_scrollback {
-            return text;
+    /// Text for this body without the scrollback separator, and nothing for a repeated resume.
+    pub(crate) fn render_without_separator(&mut self, body: &ServerBody) -> String {
+        if matches!(body, ServerBody::Resume { .. })
+            && std::mem::replace(&mut self.seen_resume, true)
+        {
+            return String::new();
         }
-        self.after_scrollback = false;
-        format!(
-            "
-{text}"
-        )
+        render(body)
+    }
+
+    /// Whether a blank line goes before this body's text: true once, for the first body that
+    /// shows text after a claim that carried scrollback. `has_text` says whether this body
+    /// shows any.
+    pub(crate) fn take_scrollback_separator(&mut self, body: &ServerBody, has_text: bool) -> bool {
+        if let ServerBody::Claimed { scrollback, .. } = body {
+            self.is_separator_due = !scrollback.is_empty();
+            return false;
+        }
+        has_text && std::mem::take(&mut self.is_separator_due)
     }
 }
 
