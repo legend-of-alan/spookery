@@ -12,15 +12,15 @@ expression: shown
 │You: evening                                ││Items here                      │
 │GM: good evening                            ││Lamp oil: 3                     │
 │› exert                                     ││                                │
-│Your action is queued.                      ││                                │
-│◆ Your roll succeeded.                      │╰────────────────────────────────╯
-│› take lamp_oil                             │╭────────────────────────────────╮
-│Your action is queued.                      ││ Stats │ Carried │ Known        │
-│You picked up the Lamp oil.                 ││You know:                       │
-│› travel stairs                             ││Oil is on the shelf.            │
-│The stair door is locked. [NO_EXIT]         ││                                │
-│› fly                                       ││Notes:                          │
-│That line is not valid. [SCHEMA]            ││Back at dusk. Oil on the shelf. │
+│Your action is queued.                      │╰────────────────────────────────╯
+│◆ Your roll succeeded.                      │╭ Stats │ Carried │ Known ───────╮
+│› take lamp_oil                             ││You know:                       │
+│Your action is queued.                      ││Oil is on the shelf.            │
+│You picked up the Lamp oil.                 ││                                │
+│› travel stairs                             ││Notes:                          │
+│The stair door is locked. [NO_EXIT]         ││Back at dusk. Oil on the shelf. │
+│› fly                                       ││                                │
+│That line is not valid. [SCHEMA]            ││                                │
 ╰────────────────────────────────────────────╯╰F2 F3 F4 switch · same key hides╯
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │›                                                                             │

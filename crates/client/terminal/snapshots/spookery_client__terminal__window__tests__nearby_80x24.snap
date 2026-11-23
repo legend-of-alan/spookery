@@ -12,15 +12,15 @@ expression: shown
 │You: evening                                ││Nearby                          │
 │GM: good evening                            ││Docks Street → Gate Yard        │
 │› exert                                     ││Items here                      │
-│Your action is queued.                      ││Lamp oil: 3                     │
-│◆ Your roll succeeded.                      │╰────────────────────────────────╯
-│› take lamp_oil                             │╭────────────────────────────────╮
-│Your action is queued.                      ││ Stats │ Carried │ Known        │
-│You picked up the Lamp oil.                 ││Assassination debt: 2/6 ━━──────│
-│› travel stairs                             ││Health: 8/16            ━━━━────│
-│The stair door is locked. [NO_EXIT]         ││Might: 1/45             ────────│
-│› fly                                       ││Rest: 3/5               ━━━━────│
-│That line is not valid. [SCHEMA]            ││Vigor: 1/110            ────────│
+│Your action is queued.                      │╰────────────────────────────────╯
+│◆ Your roll succeeded.                      │╭ Stats │ Carried │ Known ───────╮
+│› take lamp_oil                             ││Assassination debt: 2/6 ━━──────│
+│Your action is queued.                      ││Health: 8/16            ━━━━────│
+│You picked up the Lamp oil.                 ││Might: 1/45             ────────│
+│› travel stairs                             ││Rest: 3/5               ━━━━────│
+│The stair door is locked. [NO_EXIT]         ││Vigor: 1/110            ────────│
+│› fly                                       ││The world                       │
+│That line is not valid. [SCHEMA]            ││Tide: 3/10              ━━──────│
 ╰────────────────────────────────────────────╯╰F2 F3 F4 switch · same key hides╯
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │›                                                                             │

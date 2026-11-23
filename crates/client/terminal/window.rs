@@ -75,30 +75,26 @@ const WIDE_LAYOUT_COLUMNS: u16 = 120;
 /// How many columns the place panel and the tab box each take.
 const SIDE_PANE_COLUMNS: u16 = 34;
 
-/// How many rows the tab box takes in the compact layout: its borders, the tab row and five
-/// rows under it.
-const COMPACT_TAB_BOX_ROWS: u16 = 8;
-
 /// The meter whose gauge fills in scarlet. Every other meter's fills in gold.
 const HP_METER_ID: &str = "hp";
 
 /// What the tab box shows: the PC's meters, what it carries, or what it knows.
 #[derive(Clone, Copy, PartialEq)]
-enum TabBoxTab {
+enum Tab {
     Stats,
     Carried,
     Known,
 }
 
-impl TabBoxTab {
+impl Tab {
     /// Every tab in the order the tab row shows it, which is its key's order: F2, F3, F4.
-    const ALL: [TabBoxTab; 3] = [TabBoxTab::Stats, TabBoxTab::Carried, TabBoxTab::Known];
+    const ALL: [Tab; 3] = [Tab::Stats, Tab::Carried, Tab::Known];
 
     fn title(self) -> &'static str {
         match self {
-            TabBoxTab::Stats => "Stats",
-            TabBoxTab::Carried => "Carried",
-            TabBoxTab::Known => "Known",
+            Tab::Stats => "Stats",
+            Tab::Carried => "Carried",
+            Tab::Known => "Known",
         }
     }
 }
@@ -145,10 +141,11 @@ struct Panes {
 }
 
 /// The compact layout below `WIDE_LAYOUT_COLUMNS`: the transcript, and a right column with
-/// the place panel above the tab box. The wide layout: the transcript, the place panel and
-/// the tab box side by side, with round dividers in the transcript. A hidden tab box gives
-/// its rows to the place panel, or in the wide layout its columns to the transcript.
-fn layout(area: Rect, is_tab_box_open: bool) -> Panes {
+/// the place panel above the tab box, which gets `tab_box_content_rows` and its borders. The
+/// wide layout: the transcript, the place panel and the tab box side by side, with round
+/// dividers in the transcript. `tab_box_content_rows` is `None` while the tab box is hidden,
+/// which gives its rows to the place panel, or in the wide layout its columns to the transcript.
+fn layout(area: Rect, tab_box_content_rows: Option<u16>) -> Panes {
     let [title, rule, middle, input, key_bar] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
@@ -159,23 +156,21 @@ fn layout(area: Rect, is_tab_box_open: bool) -> Panes {
     .areas(area);
     let is_wide = area.width >= WIDE_LAYOUT_COLUMNS;
     let side_pane = Constraint::Length(SIDE_PANE_COLUMNS);
-    let (transcript, place, tab_box) = match (is_tab_box_open, is_wide) {
-        (true, true) => {
+    let (transcript, place, tab_box) = match (tab_box_content_rows, is_wide) {
+        (Some(_), true) => {
             let [transcript, place, tab_box] =
                 Layout::horizontal([Constraint::Fill(1), side_pane, side_pane]).areas(middle);
             (transcript, place, Some(tab_box))
         }
-        (true, false) => {
+        (Some(content_rows), false) => {
             let [transcript, right_column] =
                 Layout::horizontal([Constraint::Fill(1), side_pane]).areas(middle);
-            let [place, tab_box] = Layout::vertical([
-                Constraint::Fill(1),
-                Constraint::Length(COMPACT_TAB_BOX_ROWS),
-            ])
-            .areas(right_column);
+            let [place, tab_box] =
+                Layout::vertical([Constraint::Fill(1), Constraint::Length(content_rows + 2)])
+                    .areas(right_column);
             (transcript, place, Some(tab_box))
         }
-        (false, _) => {
+        (None, _) => {
             let [transcript, place] =
                 Layout::horizontal([Constraint::Fill(1), side_pane]).areas(middle);
             (transcript, place, None)
@@ -192,6 +187,19 @@ fn layout(area: Rect, is_tab_box_open: bool) -> Panes {
         key_bar,
         shows_round_dividers: is_wide,
     }
+}
+
+/// How many rows the Stats tab needs: one per meter, then `The world` and one per world meter.
+/// Every tab gets this many in the compact layout, so switching tabs keeps the tab box's size.
+fn stats_rows(view: Option<&protocol::View>) -> u16 {
+    let rows = view.map_or(0, |view| {
+        let world_rows = match view.world_meters.len() {
+            0 => 0,
+            world_meter_count => world_meter_count + 1,
+        };
+        view.meters.len() + world_rows
+    });
+    u16::try_from(rows.max(1)).unwrap_or(u16::MAX)
 }
 
 /// The terminal in raw mode on the alternate screen, its event stream and the screen drawn on
@@ -294,7 +302,7 @@ struct Screen {
     /// Every line the window has shown in the transcript pane, oldest first.
     transcript: Vec<TranscriptLine>,
     /// The tab the tab box shows, `None` while the player has it hidden.
-    open_tab: Option<TabBoxTab>,
+    open_tab: Option<Tab>,
     /// The last `help` reply as text, shown in a popup until Esc.
     help_popup: Option<String>,
     map_request: MapRequest,
@@ -349,7 +357,7 @@ impl Screen {
             world_time_ticks: 0,
             renderer: text::Renderer::new(),
             transcript: Vec::new(),
-            open_tab: Some(TabBoxTab::Stats),
+            open_tab: Some(Tab::Stats),
             help_popup: None,
             map_request: MapRequest::NotDue,
             map_places: Vec::new(),
@@ -517,7 +525,7 @@ impl Screen {
             KeyCode::Enter => return self.send_input(),
             KeyCode::F(1) => return Some(KeyRequest::Send("help".into())),
             KeyCode::F(function_key_number @ 2..=4) => {
-                let tab = TabBoxTab::ALL[usize::from(function_key_number - 2)];
+                let tab = Tab::ALL[usize::from(function_key_number - 2)];
                 self.open_tab = (self.open_tab != Some(tab)).then_some(tab);
             }
             KeyCode::Esc => self.help_popup = None,
@@ -606,7 +614,8 @@ impl Screen {
         let area = frame.area();
         let void = VOID.to_color(self.is_truecolor);
         frame.render_widget(Block::new().style(Style::new().bg(void)), area);
-        let panes = layout(area, self.open_tab.is_some());
+        let tab_box_content_rows = self.open_tab.map(|_| stats_rows(view));
+        let panes = layout(area, tab_box_content_rows);
         self.draw_title(frame, panes.title, view);
         self.draw_rule(frame, panes.rule);
         if self.pc_picker.is_some() {
@@ -619,7 +628,7 @@ impl Screen {
             return;
         }
         self.draw_transcript(frame, panes.transcript, panes.shows_round_dividers);
-        self.draw_place(frame, panes.place, view);
+        self.draw_place(frame, panes.place, view, panes.tab_box.is_none());
         if let (Some(tab_box_area), Some(tab)) = (panes.tab_box, self.open_tab) {
             self.draw_tab_box(frame, tab_box_area, tab, view);
         }
@@ -747,9 +756,22 @@ impl Screen {
     }
 
     /// Who is here, the exits, the places past them that the map knows, and the items here.
-    fn draw_place(&self, frame: &mut Frame, area: Rect, view: Option<&protocol::View>) {
+    /// With `shows_tab_keys`, while the tab box is hidden, the bottom border names the keys that
+    /// bring it back.
+    fn draw_place(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        view: Option<&protocol::View>,
+        shows_tab_keys: bool,
+    ) {
+        let title = view.map_or("Here", |view| view.place_name.as_str());
+        let mut border = self.pane_border(title, false);
+        if shows_tab_keys {
+            border = border.title_bottom(self.span("F2 F3 F4 tabs", TANGERINE));
+        }
         let Some(view) = view else {
-            frame.render_widget(self.pane_border("Here", false), area);
+            frame.render_widget(border, area);
             return;
         };
         let mut panel_lines: Vec<Line> = Vec::new();
@@ -797,7 +819,7 @@ impl Screen {
         }
         let panel = Paragraph::new(panel_lines)
             .wrap(Wrap { trim: true })
-            .block(self.pane_border(&view.place_name, false));
+            .block(border);
         frame.render_widget(panel, area);
     }
 
@@ -820,25 +842,23 @@ impl Screen {
         Line::from(spans)
     }
 
-    /// The tab row, `tab`'s content under it, and the tab keys on the bottom border.
-    fn draw_tab_box(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        tab: TabBoxTab,
-        view: Option<&protocol::View>,
-    ) {
+    /// The tab row on the top border, `tab`'s content under it, and the tab keys on the bottom
+    /// border.
+    fn draw_tab_box(&self, frame: &mut Frame, area: Rect, tab: Tab, view: Option<&protocol::View>) {
         let border = Block::bordered()
             .border_type(BorderType::Rounded)
             .border_style(self.style(MULBERRY))
             .title_bottom(self.span("F2 F3 F4 switch · same key hides", TANGERINE));
-        let [tabs_area, content_area] =
-            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)])
-                .areas(border.inner(area));
+        let content_area = border.inner(area);
+        let tabs_area = Rect {
+            y: area.y,
+            height: 1,
+            ..content_area
+        };
         frame.render_widget(border, area);
-        let tabs = Tabs::new(TabBoxTab::ALL.map(TabBoxTab::title))
+        let tab_titles = Tab::ALL.map(|listed_tab| self.span(listed_tab.title(), TANGERINE));
+        let tabs = Tabs::new(tab_titles)
             .select(tab as usize)
-            .style(self.style(TANGERINE))
             .highlight_style(self.style(AMBER).add_modifier(Modifier::BOLD))
             .divider(self.span("│", MULBERRY));
         frame.render_widget(tabs, tabs_area);
@@ -846,9 +866,9 @@ impl Screen {
             return;
         };
         match tab {
-            TabBoxTab::Stats => self.draw_stats(frame, content_area, view),
-            TabBoxTab::Carried => self.draw_carried(frame, content_area, view),
-            TabBoxTab::Known => self.draw_known(frame, content_area, view),
+            Tab::Stats => self.draw_stats(frame, content_area, view),
+            Tab::Carried => self.draw_carried(frame, content_area, view),
+            Tab::Known => self.draw_known(frame, content_area, view),
         }
     }
 
@@ -901,15 +921,11 @@ impl Screen {
 
     /// Each item the PC carries, the wielded one in gold.
     fn draw_carried(&self, frame: &mut Frame, area: Rect, view: &protocol::View) {
-        let wielded_item_id = view.wielded_item_id.as_ref();
         let mut item_list_items: Vec<ListItem> = (view.items_carried.iter())
             .map(|item| {
-                let color = if wielded_item_id == Some(&item.id) {
-                    GOLD
-                } else {
-                    PARCHMENT
-                };
-                let line = text::render_carried_item(item, wielded_item_id);
+                let is_wielded = view.wielded_item_id.as_ref() == Some(&item.id);
+                let color = if is_wielded { GOLD } else { PARCHMENT };
+                let line = text::render_carried_item(item, is_wielded);
                 ListItem::new(self.span(line, color))
             })
             .collect();
@@ -935,12 +951,15 @@ impl Screen {
         let border = self
             .pane_border("Help", true)
             .title_bottom(self.span(" Esc closes ", TANGERINE));
-        let height = u16::try_from(help_text.lines().count() + 2).unwrap_or(u16::MAX);
-        let popup_area = area.centered(Constraint::Max(60), Constraint::Max(height));
         let help = Paragraph::new(help_text.to_string())
             .style(self.style(PARCHMENT))
             .bg(DUSK.to_color(self.is_truecolor))
-            .block(border);
+            .wrap(Wrap { trim: false });
+        let width = area.width.min(60);
+        let wrapped_rows = help.line_count(width.saturating_sub(2)) + 2;
+        let height = u16::try_from(wrapped_rows).unwrap_or(u16::MAX);
+        let popup_area = area.centered(Constraint::Length(width), Constraint::Max(height));
+        let help = help.block(border);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(help, popup_area);
     }
@@ -1089,14 +1108,16 @@ mod tests {
     }
 
     /// Rowan's view after taking a tin of lamp oil, from a docks session against this build,
-    /// with `wielded_item_id` added since no docks item is a weapon.
-    const VIEW_CARRYING_OIL: &str = r#"{"seq":24,"body":{"kind":"view","viewer":"rowan","place":"docks_shop","place_name":"Docks Shop","body":"The shop faces the water. Tins sit in a row.","actor_names":["Aldric","Rowan"],"visible_actors":["aldric","rowan"],"known_facts":[{"id":"fact_oil_on_shelf","text":"Oil is on the shelf.","owner_body":"The shop faces the water. Tins sit in a row.\n"}],"notes":[{"id":"note_mira_door","to_ids":["rowan"],"place_id":"docks_shop","fact_ids":[],"text":"Back at dusk. Oil on the shelf."}],"unknown_mentions":[],"items":[{"id":"lamp_oil","count":3,"name":"Lamp oil"}],"items_carried":[{"id":"lamp_oil","count":1,"name":"Lamp oil"}],"wielded_item_id":"lamp_oil","meters":[{"id":"assassination_debt","value":2,"max":6},{"id":"hp","name":"Health","value":8,"max":16},{"id":"might","value":1,"max":45},{"id":"rest","value":3,"max":5},{"id":"vigor","value":1,"max":110}],"habits":[],"exits":[{"exit_id":"docks_street","name":"Docks Street","place_id":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"exit_id":"stairs","name":"stairs","place_id":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}}"#;
+    /// with `wielded_item_id` and a world meter added, since no docks item is a weapon and docks
+    /// has no world meter.
+    const VIEW_CARRYING_OIL: &str = r#"{"seq":24,"body":{"kind":"view","viewer":"rowan","place":"docks_shop","place_name":"Docks Shop","body":"The shop faces the water. Tins sit in a row.","actor_names":["Aldric","Rowan"],"visible_actors":["aldric","rowan"],"known_facts":[{"id":"fact_oil_on_shelf","text":"Oil is on the shelf.","owner_body":"The shop faces the water. Tins sit in a row.\n"}],"notes":[{"id":"note_mira_door","to_ids":["rowan"],"place_id":"docks_shop","fact_ids":[],"text":"Back at dusk. Oil on the shelf."}],"unknown_mentions":[],"items":[{"id":"lamp_oil","count":3,"name":"Lamp oil"}],"items_carried":[{"id":"lamp_oil","count":1,"name":"Lamp oil"}],"wielded_item_id":"lamp_oil","meters":[{"id":"assassination_debt","value":2,"max":6},{"id":"hp","name":"Health","value":8,"max":16},{"id":"might","value":1,"max":45},{"id":"rest","value":3,"max":5},{"id":"vigor","value":1,"max":110}],"world_meters":[{"id":"tide","name":"Tide","value":3,"max":10}],"habits":[],"exits":[{"exit_id":"docks_street","name":"Docks Street","place_id":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"exit_id":"stairs","name":"stairs","place_id":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}}"#;
 
     /// Rowan's `map` reply in that session, after a walk to Docks Street and back.
     const MAP_REPLY: &str = r#"{"seq":26,"reply_to":"c8","body":{"kind":"map","places":[{"place_id":"docks_shop","name":"Docks Shop","exits":[{"exit_id":"docks_street","name":"Docks Street","place_id":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"exit_id":"stairs","name":"stairs","place_id":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]},{"place_id":"docks_street","name":"Docks Street","exits":[{"exit_id":"docks_shop","name":"Docks Shop","place_id":"docks_shop","place_name":"Docks Shop","ticks":0,"locked":false},{"exit_id":"gate_yard","name":"Gate Yard","place_id":"gate_yard","place_name":"Gate Yard","ticks":0,"locked":false}]}]}}"#;
 
-    /// Rowan's `help` reply in that session, on Docks Street.
-    const HELP_REPLY: &str = r#"{"seq":20,"reply_to":"c6","body":{"kind":"help","commands":[{"id":"release","target":"none"},{"id":"say","target":"none"},{"id":"look","target":"none"},{"id":"help","target":"none"},{"id":"map","target":"none"},{"id":"cancel","target":"none"},{"id":"drop","target":"item","names":["Lamp oil"]},{"id":"exert","target":"none"},{"id":"strike","target":"actor","names":["Bram","Wren"]},{"id":"take","target":"item","names":["Lamp oil"]},{"id":"travel","target":"exit","names":["Docks Shop","Gate Yard"]},{"id":"unwield","target":"none"},{"id":"wait","target":"none"},{"id":"wield","target":"item","names":["Lamp oil"]}]}}"#;
+    /// Rowan's `help` reply in the Docks Shop after taking a tin of lamp oil, from another docks
+    /// session against this build.
+    const HELP_REPLY: &str = r#"{"seq":9,"reply_to":"c3","body":{"kind":"help","commands":[{"id":"release","target":"none"},{"id":"say","target":"none"},{"id":"look","target":"none"},{"id":"help","target":"none"},{"id":"map","target":"none"},{"id":"cancel","target":"none"},{"id":"drop","target":"item","names":["Lamp oil"]},{"id":"exert","target":"none"},{"id":"strike","target":"actor","names":["Aldric"]},{"id":"take","target":"item","names":["Lamp oil"]},{"id":"travel","target":"exit","names":["Docks Street","stairs"]},{"id":"unwield","target":"none"},{"id":"wait","target":"none"},{"id":"wield","target":"item","names":["Lamp oil"]}]}}"#;
 
     /// Rowan's recorded session up to `release`, then the view carrying lamp oil.
     fn seated_carrying_oil(screen: &mut Screen) -> (Option<protocol::View>, Vec<String>) {

@@ -219,7 +219,7 @@ pub fn render_view(view: &protocol::View) -> String {
     let items_here_lines: Vec<String> = items_here.iter().map(render_item).collect();
     let items_carried_lines: Vec<String> = items_carried
         .iter()
-        .map(|item| render_carried_item(item, wielded_item_id.as_ref()))
+        .map(|item| render_carried_item(item, wielded_item_id.as_ref() == Some(&item.id)))
         .collect();
     for (title, lines) in [
         ("Items here:", items_here_lines),
@@ -420,10 +420,10 @@ pub(crate) fn render_item(item: &ItemStack) -> String {
     format!("{}: {}", item.name, item.count)
 }
 
-/// `Lamp oil: 1`, or `Lamp oil: 1 (in hand)` for the item the viewer wields.
-pub(crate) fn render_carried_item(item: &ItemStack, wielded_item_id: Option<&String>) -> String {
+/// `Lamp oil: 1`, or `Lamp oil: 1 (in hand)` when the viewer wields it.
+pub(crate) fn render_carried_item(item: &ItemStack, is_wielded: bool) -> String {
     let line = render_item(item);
-    if wielded_item_id == Some(&item.id) {
+    if is_wielded {
         format!("{line} (in hand)")
     } else {
         line

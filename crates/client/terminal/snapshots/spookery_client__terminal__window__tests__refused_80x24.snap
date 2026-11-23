@@ -13,9 +13,9 @@ expression: shown
 │GM: good evening                            ││Lamp oil: 3                     │
 │› exert                                     ││                                │
 │Your action is queued.                      ││                                │
-│◆ Your roll succeeded.                      │╰────────────────────────────────╯
-│› take lamp_oil                             │╭────────────────────────────────╮
-│Your action is queued.                      ││ Stats │ Carried │ Known        │
+│◆ Your roll succeeded.                      ││                                │
+│› take lamp_oil                             │╰────────────────────────────────╯
+│Your action is queued.                      │╭ Stats │ Carried │ Known ───────╮
 │You picked up the Lamp oil.                 ││Assassination debt: 2/6 ━━──────│
 │› travel stairs                             ││Hp: 8/16                ━━━━────│
 │The stair door is locked. [NO_EXIT]         ││Might: 1/45             ────────│
