@@ -69,7 +69,7 @@ impl Seats {
             .find(|claim| claim.conn == Some(conn))
     }
 
-    /// The claim on the PC `actor`.
+    /// The claim on the PC `actor_id`.
     pub(super) fn claim_of_actor_mut(&mut self, actor_id: &ActorId) -> Option<&mut Claim> {
         self.claims
             .iter_mut()
