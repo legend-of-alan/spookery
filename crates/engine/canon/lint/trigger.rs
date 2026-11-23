@@ -17,13 +17,13 @@ pub(super) fn check_trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
     let written: Vec<Vec<Write>> = rules
         .iter()
         .map(|rule| {
-            let mut marks = Vec::new();
-            rule.visit_templates(|effect| push_writes(canon, effect, &mut marks));
-            marks
+            let mut writes = Vec::new();
+            rule.visit_templates(|effect| push_writes(canon, effect, &mut writes));
+            writes
         })
         .collect();
     let mut next = vec![Vec::new(); rules.len()];
-    for (from, marks) in written.iter().enumerate() {
+    for (from, writes) in written.iter().enumerate() {
         for (to, rule) in rules.iter().enumerate() {
             if from == to {
                 continue;
@@ -31,17 +31,17 @@ pub(super) fn check_trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
             let When::Change(watch) = &rule.when else {
                 continue;
             };
-            if marks.iter().any(|mark| sets_watch(watch, rule, mark)) {
+            if writes.iter().any(|write| sets_watch(watch, rule, write)) {
                 next[from].push(to);
             }
         }
     }
-    let mut hit = vec![false; rules.len()];
-    mark_cycles(&next, &mut hit);
+    let mut in_cycle = vec![false; rules.len()];
+    mark_cycles(&next, &mut in_cycle);
     rules
         .iter()
         .enumerate()
-        .filter(|(index, _)| hit[*index])
+        .filter(|(index, _)| in_cycle[*index])
         .map(|(_, rule)| {
             warning(
                 &rule.file,
@@ -150,8 +150,8 @@ fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<Write>) {
     }
 }
 
-fn sets_watch(watch: &ChangeWatch, rule: &Rule, mark: &Write) -> bool {
-    match (watch, mark) {
+fn sets_watch(watch: &ChangeWatch, rule: &Rule, write: &Write) -> bool {
+    match (watch, write) {
         (
             ChangeWatch::Flag { key, becomes },
             Write::Flag {
@@ -223,7 +223,7 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
         }
         ChangeWatch::Flag { key, .. } => {
             (key == OPEN && canon.paths.iter().any(PathDef::is_conditional))
-                || super::find_flag_owners(canon, key)
+                || super::find_flag_holders(canon, key)
                     .any(|of| !matches!(of, grammar::Object::Actor(_)))
         }
         _ => false,
@@ -239,7 +239,7 @@ fn watches_actor_key(canon: &Canon, watch: &ChangeWatch) -> bool {
             .get(key)
             .is_some_and(meter::Descriptor::is_actor_meter),
         ChangeWatch::Flag { key, .. } => {
-            super::find_flag_owners(canon, key).any(|of| matches!(of, grammar::Object::Actor(_)))
+            super::find_flag_holders(canon, key).any(|of| matches!(of, grammar::Object::Actor(_)))
         }
         _ => false,
     }
@@ -251,7 +251,7 @@ pub(super) fn check_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in canon.rules.iter() {
         let on_world = matches!(&rule.when, When::Change(watch) if watches_world(canon, watch));
-        let (message, hint) = if on_world && names_subject(rule) {
+        let (message, hint) = if on_world && needs_subject(rule) {
             (
                 "watches a world change, which has no self and no here",
                 "name the actor, or world",
@@ -293,7 +293,7 @@ fn narrates_to_present(rule: &Rule) -> bool {
 /// Whether `rule` needs a subject: `self` or `here` named as `of`, `subject` or `to`, a
 /// nested check's `by`, a narrate's `to`, a location effect, which moves the subject, or a
 /// check, which is the subject's.
-fn names_subject(rule: &Rule) -> bool {
+fn needs_subject(rule: &Rule) -> bool {
     let mut needs = rule.check.is_some();
     rule.visit_templates(|effect| match effect {
         EffectTemplate::Narrate { to, .. } => {
@@ -310,12 +310,12 @@ fn names_subject(rule: &Rule) -> bool {
     needs || self_or_here.iter().any(|of| owners.contains(of))
 }
 
-fn mark_cycles(next: &[Vec<usize>], hit: &mut [bool]) {
+fn mark_cycles(next: &[Vec<usize>], in_cycle: &mut [bool]) {
     let mut color = vec![0u8; next.len()];
     let mut stack = Vec::new();
     for start in 0..next.len() {
         if color[start] == 0 {
-            walk_cycle(start, next, &mut color, &mut stack, hit);
+            walk_cycle(start, next, &mut color, &mut stack, in_cycle);
         }
     }
 }
@@ -325,7 +325,7 @@ fn walk_cycle(
     next: &[Vec<usize>],
     color: &mut [u8],
     stack: &mut Vec<usize>,
-    hit: &mut [bool],
+    in_cycle: &mut [bool],
 ) {
     color[node] = 1;
     stack.push(node);
@@ -333,11 +333,11 @@ fn walk_cycle(
         if color[to] == 1 {
             if let Some(at) = stack.iter().position(|item| *item == to) {
                 for item in &stack[at..] {
-                    hit[*item] = true;
+                    in_cycle[*item] = true;
                 }
             }
         } else if color[to] == 0 {
-            walk_cycle(to, next, color, stack, hit);
+            walk_cycle(to, next, color, stack, in_cycle);
         }
     }
     stack.pop();

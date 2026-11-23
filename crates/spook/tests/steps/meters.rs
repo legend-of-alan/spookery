@@ -244,9 +244,9 @@ fn rowan_takes_from_her_vigor(world: &mut World) {
 }
 
 #[then(expr = "{word}'s vigor reads {int} and the save lists no vigor for her")]
-fn vigor_reads_with_no_row(world: &mut World, actor: String, start: i64) {
+fn vigor_reads_with_no_row(world: &mut World, actor: String, value: i64) {
     let id = entity::Id::Actor(actor.as_str().into());
-    assert_eq!(value_on(pack(world), &id, "vigor"), Some(start), "{actor}");
+    assert_eq!(value_on(pack(world), &id, "vigor"), Some(value), "{actor}");
     let row = &support::save_of(pack(world))["actors"]["meters"][&actor]["vigor"];
     assert!(row.is_null(), "{actor}: {row}");
 }

@@ -14,11 +14,11 @@ use crate::rules::cond;
 use crate::rules::grammar;
 use crate::rules::rule::{self, Cond, EffectTemplate, Owner};
 
-pub(super) use entity_scope::{unknown_carriers, unknown_reads, EntityScope};
+pub(super) use entity_scope::{check_carriers, check_meter_reads, EntityScope};
 use trigger::{check_trigger_cycles, check_trigger_leaks, check_world_change_subjects};
 
 /// Paths whose ends are not places, and facts or items a path names but the pack does not.
-pub(super) fn broken_paths(
+pub(super) fn check_paths(
     paths: &[PathDef],
     places: &BTreeMap<PlaceId, PlaceDef>,
     facts: &BTreeMap<String, FactDef>,
@@ -54,7 +54,7 @@ pub(super) fn broken_paths(
     diags
 }
 
-pub(super) fn unknown_rule_items(
+pub(super) fn check_rule_items(
     rules: &rule::Table,
     items: &BTreeMap<String, ItemDef>,
 ) -> Vec<Diagnostic> {
@@ -75,7 +75,7 @@ pub(super) fn unknown_rule_items(
 }
 
 /// Modifier effects naming a modifier `rules/modifiers.yaml` does not define.
-pub(super) fn unknown_modifiers(
+pub(super) fn check_modifiers(
     rules: &rule::Table,
     modifiers: &BTreeMap<String, modifier::Descriptor>,
 ) -> Vec<Diagnostic> {
@@ -110,7 +110,7 @@ pub(crate) fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
     .at_path(path)
 }
 
-pub(super) fn reveal_problems(
+pub(super) fn check_reveals(
     rules: &rule::Table,
     facts: &BTreeMap<String, FactDef>,
 ) -> Vec<Diagnostic> {
@@ -146,7 +146,7 @@ pub(crate) fn check_canon(canon: &Canon, held_flags: &BTreeSet<&str>) -> Vec<Dia
     diags.extend(check_trigger_cycles(canon));
     diags.extend(check_trigger_leaks(canon));
     diags.extend(check_world_change_subjects(canon));
-    diags.extend(check_cycles(canon));
+    diags.extend(check_cycle_conditions(canon));
     diags.extend(check_gm_notes_length(canon));
     diags.extend(check_unset_flags(canon, held_flags));
     diags
@@ -168,7 +168,7 @@ fn conditions(canon: &Canon) -> impl Iterator<Item = (&str, String, &[Cond])> {
 
 /// Flag conditions, on a rule or a path, that test a key no rule sets and `held` does not list,
 /// so its value never moves: most likely a misspelt key. An exit's `open` is left to
-/// `unknown_carriers`.
+/// `check_carriers`.
 fn check_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for (file, at, conds) in conditions(canon) {
@@ -178,7 +178,7 @@ fn check_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
                     return;
                 };
                 let is_ever_set =
-                    |key| held.contains(key) || find_flag_owners(canon, key).next().is_some();
+                    |key| held.contains(key) || find_flag_holders(canon, key).next().is_some();
                 if matches!(of, grammar::Object::Exit(_)) || is_ever_set(key.as_str()) {
                     return;
                 }
@@ -213,7 +213,7 @@ fn check_gm_notes_length(canon: &Canon) -> Option<Diagnostic> {
 
 /// `cycle` conditions, on a rule or a path, that name no cycle in the budget or have a bound
 /// at or past the cycle's length.
-fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
+fn check_cycle_conditions(canon: &Canon) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for (file, at, conds) in conditions(canon) {
         let mut cycles = Vec::new();
@@ -302,8 +302,8 @@ fn check_teleport_verbs(canon: &Canon) -> Vec<Diagnostic> {
         .collect()
 }
 
-/// The `of` of each flag effect in the pack's rules that writes flag `key`.
-fn find_flag_owners<'c>(canon: &'c Canon, key: &str) -> impl Iterator<Item = &'c grammar::Object> {
+/// The entities a rule can make hold flag `key`: the `of` of each flag effect that writes it.
+fn find_flag_holders<'c>(canon: &'c Canon, key: &str) -> impl Iterator<Item = &'c grammar::Object> {
     let mut owners = Vec::new();
     for rule in canon.rules.iter() {
         rule.visit_templates(|effect| match effect {

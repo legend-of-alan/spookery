@@ -93,13 +93,13 @@ fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
 }
 
 #[then(expr = "every actor reads {string} at {int} with no row in the save")]
-fn every_actor_reads_meter_at(world: &mut World, id: String, start: i64) {
+fn every_actor_reads_meter_at(world: &mut World, id: String, value: i64) {
     let pack = table::pack(world);
     let (now, saved) = (world_of(pack), support::save_of(pack));
     for actor in now.actors().query::<ActorId>().iter() {
         let carrier = entity::Id::Actor(actor.clone());
         let meter = now.entities().get::<component::Meter>(&carrier);
-        assert_eq!(meter.value(&id), Ok(start), "{actor} {id}");
+        assert_eq!(meter.value(&id), Ok(value), "{actor} {id}");
         let row = &saved["actors"]["meters"][actor.as_str()][&id];
         assert!(row.is_null(), "{actor} {id}: {row}");
     }

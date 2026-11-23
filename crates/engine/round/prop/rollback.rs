@@ -168,7 +168,7 @@ fn play_steps(session: &session::Session<()>, steps: &[Step]) -> Result<(), Test
                     .count(1, *players);
             }
             Step::ResetActs => {
-                let _ = (world.actors_mut()).reset_acts(WindowCount::Idle);
+                let _ = (world.actors_mut()).reset_window_count(WindowCount::Idle);
             }
             Step::Busy(true) => {
                 let _ = world

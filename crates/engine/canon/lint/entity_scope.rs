@@ -13,13 +13,16 @@ use crate::rules::expr::Expr;
 use crate::rules::grammar;
 use crate::rules::rule::{self, Cond, EffectTemplate, Owner, Rule, When};
 
-pub(in crate::canon) fn unknown_reads(scope: &EntityScope, rules: &rule::Table) -> Vec<Diagnostic> {
+pub(in crate::canon) fn check_meter_reads(
+    scope: &EntityScope,
+    rules: &rule::Table,
+) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let exprs = rule.exprs();
         let path = format!("rules[{}]", rule.index);
         let source = FileText::named(&rule.file);
-        scope.push_unknown_reads(&source, &path, fixed_self(rule), &exprs, &mut diags);
+        scope.push_unknown_reads(&source, &path, fixed_self_id(rule), &exprs, &mut diags);
     }
     for (row, path) in scope.paths.iter().enumerate() {
         let at = format!("paths[{row}]");
@@ -32,7 +35,7 @@ pub(in crate::canon) fn unknown_reads(scope: &EntityScope, rules: &rule::Table) 
 /// Meter effects and conditions whose entity is fixed by the pack and does not carry the meter,
 /// and flag effects and conditions on an exit that cannot carry the flag. Any other entity may
 /// carry any flag.
-pub(in crate::canon) fn unknown_carriers(
+pub(in crate::canon) fn check_carriers(
     scope: &EntityScope,
     rules: &rule::Table,
 ) -> Vec<Diagnostic> {
@@ -51,10 +54,10 @@ pub(in crate::canon) fn unknown_carriers(
             EffectTemplate::Flag { of, key, .. } => named.push(("flag", of, key.as_str())),
             _ => {}
         });
-        let fixed = fixed_self(rule);
+        let fixed = fixed_self_id(rule);
         for (kind, of, key) in named {
             let why = match kind {
-                "meter" => scope.why_not_carried(fixed, of, key),
+                "meter" => scope.why_meter_not_carried(fixed, of, key),
                 _ => scope.why_exit_lacks_flag(of, key),
             };
             let Some(why) = why else {
@@ -74,7 +77,7 @@ pub(in crate::canon) fn unknown_carriers(
 }
 
 /// The actor `self` always is on `rule`: the cast member, on its own habit.
-fn fixed_self(rule: &Rule) -> Option<&str> {
+fn fixed_self_id(rule: &Rule) -> Option<&str> {
     match (&rule.owner, &rule.when) {
         (Owner::Cast(id), When::Habit) => Some(id),
         _ => None,
@@ -82,19 +85,19 @@ fn fixed_self(rule: &Rule) -> Option<&str> {
 }
 
 /// The meters each entity carries, and the cast, places, exits and stories an `of` may name.
-pub(in crate::canon) struct EntityScope<'a> {
-    pub meters: &'a BTreeMap<String, meter::Descriptor>,
-    pub world_meters: &'a BTreeMap<String, meter::Descriptor>,
-    pub cast: &'a BTreeMap<ActorId, CastDef>,
-    pub places: &'a BTreeMap<PlaceId, PlaceDef>,
-    pub paths: &'a Paths,
-    pub stories: &'a BTreeMap<StoryId, StoryDef>,
+pub(in crate::canon) struct EntityScope<'c> {
+    pub meters: &'c BTreeMap<String, meter::Descriptor>,
+    pub world_meters: &'c BTreeMap<String, meter::Descriptor>,
+    pub cast: &'c BTreeMap<ActorId, CastDef>,
+    pub places: &'c BTreeMap<PlaceId, PlaceDef>,
+    pub paths: &'c Paths,
+    pub stories: &'c BTreeMap<StoryId, StoryDef>,
 }
 
 impl EntityScope<'_> {
     /// The one entity `of` names whatever the round: `world`, a place, a story, a cast id, or
     /// `self` on a cast member's own habit. `None` when only play time knows it.
-    fn fixed_entity(&self, fixed_self: Option<&str>, of: &grammar::Object) -> Option<entity::Id> {
+    fn fixed_entity_id(&self, self_id: Option<&str>, of: &grammar::Object) -> Option<entity::Id> {
         match of {
             grammar::Object::Global => Some(entity::Id::Global),
             grammar::Object::Place(id) => Some(entity::Id::Place(id.clone())),
@@ -103,7 +106,7 @@ impl EntityScope<'_> {
                 Some(entity::Id::Actor(id.clone()))
             }
             grammar::Object::Actor(grammar::Actor::Self_) => {
-                fixed_self.map(|id| entity::Id::Actor(id.into()))
+                self_id.map(|id| entity::Id::Actor(id.into()))
             }
             _ => None,
         }
@@ -115,7 +118,7 @@ impl EntityScope<'_> {
         let grammar::Object::Exit(exit) = of else {
             return None;
         };
-        if self.unknown_object(of).is_some() {
+        if self.unknown_object_id(of).is_some() {
             Some(format!("{exit} is not an exit"))
         } else if key != OPEN {
             Some(format!("an exit carries only the flag '{OPEN}'"))
@@ -130,9 +133,9 @@ impl EntityScope<'_> {
     /// Why meter `key` of the owner `of` names can never be read or written, or `None` when it
     /// may be.
     /// An entity known only at play time is not guessed: only its key is checked.
-    fn why_not_carried(
+    fn why_meter_not_carried(
         &self,
-        fixed_self: Option<&str>,
+        self_id: Option<&str>,
         of: &grammar::Object,
         key: &str,
     ) -> Option<String> {
@@ -140,7 +143,7 @@ impl EntityScope<'_> {
         if let grammar::Object::Exit(exit) = of {
             return Some(format!("{exit} carries no meter '{key}'"));
         }
-        match self.fixed_entity(fixed_self, of) {
+        match self.fixed_entity_id(self_id, of) {
             Some(entity::Id::Global) if self.world_meters.contains_key(key) => None,
             Some(entity::Id::Global) => Some(format!("the world carries no meter '{key}'")),
             Some(id) if !desc.is_some_and(|desc| desc.is_on(id.as_ref())) => {
@@ -160,7 +163,7 @@ impl EntityScope<'_> {
     }
 
     /// The id `of` gives when no place, exit, story or cast member has it.
-    fn unknown_object(&self, of: &grammar::Object) -> Option<String> {
+    fn unknown_object_id(&self, of: &grammar::Object) -> Option<String> {
         match of {
             grammar::Object::Actor(grammar::Actor::Self_ | grammar::Actor::Target)
             | grammar::Object::Here
@@ -180,7 +183,7 @@ impl EntityScope<'_> {
         &self,
         source: &FileText,
         path: &str,
-        fixed_self: Option<&str>,
+        self_id: Option<&str>,
         exprs: &[&Expr],
         diags: &mut Vec<Diagnostic>,
     ) {
@@ -200,13 +203,13 @@ impl EntityScope<'_> {
                     }
                     .into_diagnostic()
                 };
-                if let Some(why) = self.why_not_carried(fixed_self, of, key) {
+                if let Some(why) = self.why_meter_not_carried(self_id, of, key) {
                     diags.push(refuse(
                         format!("expression reads meter '{key}', but {why}"),
                         "declare the meter on that entity, or read one that exists",
                     ));
                 }
-                if let Some(id) = self.unknown_object(of) {
+                if let Some(id) = self.unknown_object_id(of) {
                     diags.push(refuse(
                         format!("expression names '{id}', which is not an owner"),
                         "use self, target, here, world, place:<id>, story:<id>, or a cast id",

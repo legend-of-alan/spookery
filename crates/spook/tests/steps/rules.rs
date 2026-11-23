@@ -348,17 +348,17 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
             .set("docks_shop")
             .unwrap();
         edit_as_saved(now, |save| {
-            save["actors"]["acts"]["mira"] = idle_acts_used(3)
+            save["actors"]["acts"]["mira"] = act_row_with_idle_acts(3)
         });
     });
     play_an_empty_round(&pack);
 }
 
-/// The save row of an actor who has not acted but has used `idle` idle acts this window.
-fn idle_acts_used(idle: u32) -> serde_json::Value {
+/// The save row of an actor who has not acted but has used `count` idle acts this window.
+fn act_row_with_idle_acts(count: u32) -> serde_json::Value {
     serde_json::json!({
         "last_act_round": 0,
-        "idle_acts_this_window": idle,
+        "idle_acts_this_window": count,
         "live_acts_this_window": 0,
     })
 }
@@ -412,7 +412,7 @@ fn every_actor_used_its_idle_acts(world: &mut World, window: u64, tick: u64) {
                 .cloned()
                 .collect();
             for actor in actors {
-                save["actors"]["acts"][actor] = idle_acts_used(3);
+                save["actors"]["acts"][actor] = act_row_with_idle_acts(3);
             }
         });
     });

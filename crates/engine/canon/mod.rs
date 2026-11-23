@@ -33,11 +33,11 @@ mod story;
 
 pub(crate) use budget::Budget;
 use fact::Facts;
-use lint::{
-    broken_paths, reveal_problems, unknown_carriers, unknown_modifiers, unknown_reads,
-    unknown_rule_items, EntityScope,
-};
 pub(crate) use lint::{check_canon, unknown_item};
+use lint::{
+    check_carriers, check_meter_reads, check_modifiers, check_paths, check_reveals,
+    check_rule_items, EntityScope,
+};
 pub(crate) use map::Paths;
 use map::MAP_FILE;
 use modifiers::MODIFIERS_FILE;
@@ -406,16 +406,16 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
             paths,
             stories: &stories,
         };
-        diags.extend(unknown_reads(&scope, &rules));
-        diags.extend(unknown_carriers(&scope, &rules));
+        diags.extend(check_meter_reads(&scope, &rules));
+        diags.extend(check_carriers(&scope, &rules));
     }
     if let Some(modifiers) = &modifiers {
-        diags.extend(unknown_modifiers(&rules, modifiers));
+        diags.extend(check_modifiers(&rules, modifiers));
     }
-    diags.extend(unknown_rule_items(&rules, &items));
-    diags.extend(reveal_problems(&rules, &facts.0));
+    diags.extend(check_rule_items(&rules, &items));
+    diags.extend(check_reveals(&rules, &facts.0));
     if let Some(path_lines) = &path_lines {
-        diags.extend(broken_paths(path_lines, &places, &facts.0, &items));
+        diags.extend(check_paths(path_lines, &places, &facts.0, &items));
     }
     let checkpoint_every = pack
         .as_ref()
