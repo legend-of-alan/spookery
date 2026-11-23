@@ -6,7 +6,7 @@ use spookery_protocol::is_named;
 use crate::canon::Canon;
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, Presence};
-use crate::intent::{Intent, Source, Target, Viewer};
+use crate::intent::{Intent, Source, Target};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
@@ -45,16 +45,20 @@ impl Refusal {
 pub(crate) fn pick<'a>(
     canon: &'a Canon,
     world: &ecs::World,
-    viewer: &Viewer,
+    actor_id: &ActorId,
     source: Source,
     verb_id: &str,
     hint: Option<&str>,
 ) -> Result<&'a Rule, Reason> {
-    let found = verb_for(canon, world, viewer.actor_id(), verb_id, hint);
-    if source == Source::Player && matches!(viewer, Viewer::Player(_)) {
+    let found = verb_for(canon, world, actor_id, verb_id, hint);
+    let is_pc = world
+        .actors()
+        .get::<component::ControlType>(actor_id)
+        .is_pc();
+    if source == Source::Player && is_pc {
         return found.ok_or(Reason::NotInSpec);
     }
-    let habits = canon.rules.habits_of(viewer.actor_id());
+    let habits = canon.rules.habits_of(actor_id);
     let habit = habits.into_iter().find(|rule| rule.local_id == verb_id);
     habit.or(found).ok_or(Reason::UnknownMove)
 }
@@ -113,14 +117,14 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb_id: &str) -> Option<&'a 
 pub(crate) fn rule_of<'c>(context: &Context<'c, '_>) -> Result<&'c Rule, Refusal> {
     let intent = context.intent;
     let (verb_id, hint) = (&intent.move_id, hint_of(&intent.target));
-    let viewer = intent
-        .actor
+    let actor_id = intent
+        .actor_id
         .as_ref()
         .ok_or_else(|| Refusal::new(intent, Reason::UnknownId))?;
     let picked = pick(
         context.canon,
         context.world,
-        viewer,
+        actor_id,
         intent.source,
         verb_id,
         hint,
@@ -138,7 +142,7 @@ pub(crate) fn admit(
     ids: Option<&[NamedId]>,
 ) -> Result<(), Refusal> {
     let (world, intent) = (context.world, context.intent);
-    if let Some(id) = intent.actor_id() {
+    if let Some(id) = intent.actor_id.as_ref() {
         let act = world.actors().get::<component::Act>(id);
         let acted = act
             .get()
@@ -186,7 +190,7 @@ pub(crate) fn is_cancel(intent: &Intent) -> bool {
 pub(crate) fn admit_cancel(context: &Context) -> Result<(), Refusal> {
     let intent = context.intent;
     let actors = context.world.actors();
-    let actor_id = intent.actor_id();
+    let actor_id = intent.actor_id.as_ref();
     let pending = actor_id
         .and_then(|id| actors.get::<component::Act>(id).get())
         .and_then(|act| act.pending.as_ref());
@@ -207,14 +211,14 @@ fn can_name(context: &Context, ids: Option<&[NamedId]>) -> bool {
     let Some(id) = intent.target.token() else {
         return true;
     };
-    let Some(viewer) = &intent.actor else {
+    let Some(actor_id) = &intent.actor_id else {
         return false;
     };
     let listed;
     let ids = match ids {
         Some(ids) => ids,
         None => {
-            listed = list_ids(context.canon, context.world, context.presence, viewer);
+            listed = list_ids(context.canon, context.world, context.presence, actor_id);
             &listed
         }
     };
@@ -248,17 +252,16 @@ pub(crate) fn list_ids(
     canon: &Canon,
     world: &ecs::World,
     presence: &Presence,
-    viewer: &Viewer,
+    actor_id: &ActorId,
 ) -> Vec<NamedId> {
-    let Ok(view) = perceive::build_view(canon, world, presence, viewer) else {
+    let Ok(view) = perceive::build_view(canon, world, presence, actor_id) else {
         return Vec::new();
     };
     let name_item = |item: perceive::ItemStack| NamedId::new(&item.id, item.name);
     let mut ids: Vec<NamedId> = view.items_carried.into_iter().map(name_item).collect();
     ids.push(NamedId::new(&view.place, view.place_name));
-    let me = viewer.actor_id();
     let actors = view.visible_actors.iter().zip(view.actor_names);
-    let others = actors.filter(|(id, _)| *id != me);
+    let others = actors.filter(|(id, _)| *id != actor_id);
     ids.extend(others.map(|(id, name)| NamedId::new(id.as_str(), name)));
     ids.extend(view.items.into_iter().map(name_item));
     ids.extend(view.exits.into_iter().map(|exit| NamedId {

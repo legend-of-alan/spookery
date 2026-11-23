@@ -3,7 +3,7 @@
 use crate::canon::Canon;
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, Presence};
-use crate::intent::{Intent, Target, Viewer};
+use crate::intent::{Intent, Target};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::expand;
@@ -46,12 +46,11 @@ pub(crate) fn list_whose_if_holds(
     presence: &Presence,
     npc_id: &ActorId,
 ) -> Vec<String> {
-    let npc = Viewer::Npc(npc_id.clone());
     let habits = canon.rules.habits_of(npc_id).into_iter();
     habits
         .filter(|rule| {
             let (verb, conds) = (&rule.local_id, &rule.if_);
-            cond::if_holds(canon, world, presence, &npc, verb, Target::Empty, conds)
+            cond::if_holds(canon, world, presence, npc_id, verb, Target::Empty, conds)
         })
         .map(|rule| rule.local_id.clone())
         .collect()

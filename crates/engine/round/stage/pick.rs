@@ -4,8 +4,9 @@
 use std::collections::BTreeSet;
 
 use crate::canon::Canon;
+use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, Presence};
-use crate::intent::{Intent, Target, Viewer};
+use crate::intent::{Intent, Target};
 use crate::rules::context::Context;
 use crate::rules::effect::EffectKind;
 use crate::rules::expand;
@@ -55,7 +56,7 @@ pub(crate) fn run<'c>(
     let limit = (canon.budget.max_intents_applied as usize).min(intents.len());
     for intent in intents.split_off(limit) {
         let refusal = gate::Refusal::new(&intent, Reason::Budget);
-        refuse(ledger, &intent, refusal);
+        refuse(world, ledger, &intent, refusal);
     }
     Ok(intents
         .into_iter()
@@ -86,10 +87,10 @@ fn resolve<'c>(
 /// with no target keeps it empty: a filled one would make the gate refuse `SCHEMA`.
 fn stamp_target(canon: &Canon, world: &ecs::World, presence: &Presence, intent: &mut Intent) {
     let (verb, hint) = (&intent.move_id, gate::hint_of(&intent.target));
-    let Some(actor) = &intent.actor else {
+    let Some(actor_id) = &intent.actor_id else {
         return;
     };
-    let Ok(rule) = gate::pick(canon, world, actor, intent.source, verb, hint) else {
+    let Ok(rule) = gate::pick(canon, world, actor_id, intent.source, verb, hint) else {
         return;
     };
     let context = Context::new(canon, world, presence, intent);
@@ -148,9 +149,10 @@ enum SeatedRank {
 
 /// Player lines that share a priority keep the queue order. NPC ties shuffle.
 fn priority(canon: &Canon, world: &ecs::World, presence: &Presence, intent: &Intent) -> Priority {
-    let (actor, shuffle) = match &intent.actor {
-        Some(Viewer::Player(_)) => (ActorRank::Player, [0u8; 32]),
-        Some(Viewer::Npc(id)) => (
+    let is_pc = |id: &ActorId| world.actors().get::<component::ControlType>(id).is_pc();
+    let (actor, shuffle) = match &intent.actor_id {
+        Some(id) if is_pc(id) => (ActorRank::Player, [0u8; 32]),
+        Some(id) => (
             ActorRank::Npc,
             shuffle_key(&world.seed, world.round_index, id),
         ),
@@ -180,7 +182,8 @@ fn touches_seated_player(
         Target::Item(id) => present.iter().any(|actor| *actor == **id),
         Target::Place(place) => is_player_at(world, presence, place.as_str()),
         Target::Exit(exit_id) => intent
-            .actor_id()
+            .actor_id
+            .as_ref()
             .and_then(|id| world.actors().get::<component::Place>(id).get())
             .and_then(|place| find_exit(canon, place, exit_id))
             .is_some_and(|exit| is_player_at(world, presence, &exit.to)),

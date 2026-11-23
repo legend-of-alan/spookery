@@ -18,7 +18,7 @@ use crate::canon::Canon;
 use crate::ecs::id::{ActorId, PlaceId};
 use crate::ecs::{self, component};
 use crate::entity;
-use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
+use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::rules::effect::{Effect, EffectKind};
 use crate::session;
 use crate::testing::copy_pack;
@@ -167,7 +167,7 @@ fn npc_intent() -> Intent {
     Intent {
         id: "shift-item".to_string(),
         round_index: 0,
-        actor: Some(Viewer::Npc("mira".into())),
+        actor_id: Some("mira".into()),
         source: Source::Engine,
         move_id: "shift_item".to_string(),
         target: Target::Empty,
@@ -190,7 +190,7 @@ fn item_effect(step: &ItemChange) -> Effect {
             delta: step.delta,
             max: step.max,
         },
-        viewer: Some(Viewer::Npc("mira".into())),
+        actor_id: Some("mira".into()),
         intent_id: "shift-item".to_string(),
     }
 }

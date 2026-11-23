@@ -5,7 +5,7 @@ use spookery_protocol::{CommandView, PlaceView, Seat, COMMANDS};
 use crate::canon::Canon;
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, Presence};
-use crate::intent::{Target, Viewer};
+use crate::intent::Target;
 use crate::rules::cond;
 use crate::rules::gate::{list_ids, verb_for, NamedId};
 use crate::rules::rule::{Owner, TargetKind, When};
@@ -25,7 +25,6 @@ pub(crate) fn help(
     if !world.actors().contains(actor_id) {
         return Err(Reason::UnknownId);
     }
-    let viewer = Viewer::Player(actor_id.clone());
     let mut commands: Vec<CommandView> = COMMANDS
         .iter()
         .filter(|command| command.seat == Seat::Player && command.id != "claim")
@@ -36,7 +35,7 @@ pub(crate) fn help(
             owner: None,
         })
         .collect();
-    let ids = list_ids(canon, world, presence, &viewer);
+    let ids = list_ids(canon, world, presence, actor_id);
     let name_of = |id: &String| match ids.iter().find(|named_id| named_id.id == *id) {
         Some(named_id) => Ok(named_id.name.clone()),
         None => find_place_name(canon, id).ok_or(Reason::UnknownId),
@@ -57,7 +56,9 @@ pub(crate) fn help(
                 (Owner::Item(id), Some(hint)) if id == hint => (Some(id), Target::Item(id.clone())),
                 _ => continue,
             };
-            if !cond::if_holds(canon, world, presence, &viewer, &verb_id, target, &rule.if_) {
+            if !cond::if_holds(
+                canon, world, presence, actor_id, &verb_id, target, &rule.if_,
+            ) {
                 continue;
             }
             let kind = match &rule.when {

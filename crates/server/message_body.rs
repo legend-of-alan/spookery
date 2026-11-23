@@ -81,7 +81,7 @@ fn rolls<'a>(reports: impl IntoIterator<Item = &'a MoveReport>) -> impl Iterator
 }
 
 pub(super) fn build_resume(view: &engine::View) -> ServerBody {
-    let actor_id = view.viewer.actor_id();
+    let actor_id = &view.viewer_id;
     let notes = view
         .notes
         .iter()
@@ -93,7 +93,7 @@ pub(super) fn build_resume(view: &engine::View) -> ServerBody {
 
 pub(super) fn build_view(view: &engine::View) -> ServerBody {
     ServerBody::View(Box::new(protocol::View {
-        viewer: view.viewer.actor_id().to_string(),
+        viewer: view.viewer_id.to_string(),
         place: view.place.clone(),
         place_name: view.place_name.clone(),
         body: view.prose.clone(),
@@ -161,7 +161,7 @@ pub(super) fn build_status(
             .filter_map(|intent| {
                 Some(QueuedMove {
                     id: intent.id.clone(),
-                    actor_id: intent.actor_id()?.to_string(),
+                    actor_id: intent.actor_id.as_ref()?.to_string(),
                     move_id: intent.move_id.clone(),
                 })
             })

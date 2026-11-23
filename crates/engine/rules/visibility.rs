@@ -12,16 +12,14 @@ use crate::ecs::component::{
 use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component};
 use crate::entity;
-use crate::intent::Viewer;
 use crate::rules::effect::{Effect, EffectKind};
 
 pub(crate) fn can_see_fact(
     canon: &Canon,
     world: &ecs::World,
-    viewer: &Viewer,
+    actor_id: &ActorId,
     fact_id: &str,
 ) -> bool {
-    let actor_id = viewer.actor_id();
     let Some(place) = world.actors().get::<component::Place>(actor_id).get() else {
         return false;
     };
@@ -155,12 +153,9 @@ fn narrations(
 }
 
 fn can_see_facts(canon: &Canon, world: &ecs::World, viewer: &ActorId, fact_ids: &[String]) -> bool {
-    let Some(seat) = (world.actors().get::<component::ControlType>(viewer)).viewer() else {
-        return false;
-    };
     fact_ids
         .iter()
-        .all(|fact| can_see_fact(canon, world, &seat, fact))
+        .all(|fact| can_see_fact(canon, world, viewer, fact))
 }
 
 fn can_see(canon: &Canon, world: &ecs::World, viewer: &ActorId, change: &Change) -> bool {
@@ -235,10 +230,7 @@ fn can_see_note(canon: &Canon, world: &ecs::World, viewer: &ActorId, id: &str) -
     if !in_room && !addressed {
         return false;
     }
-    let Some(seat) = (world.actors().get::<component::ControlType>(viewer)).viewer() else {
-        return false;
-    };
     note.fact_ids
         .iter()
-        .all(|fact| can_see_fact(canon, world, &seat, fact))
+        .all(|fact| can_see_fact(canon, world, viewer, fact))
 }

@@ -8,7 +8,6 @@ use crate::ecs::component::Note;
 use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component, Presence};
 use crate::entity;
-use crate::intent::Viewer;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
 use crate::session;
@@ -20,7 +19,7 @@ pub(crate) use spookery_protocol::{ItemStack, KnownFact, MeterView};
 /// a player or GM view.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct View {
-    pub viewer: Viewer,
+    pub viewer_id: ActorId,
     pub place: String,
     pub place_name: String,
     pub prose: String,
@@ -59,28 +58,30 @@ pub(crate) fn build_view_by_id<Lock>(
     }
     let (canon, world) = (session.canon(), session.world());
     let id = ActorId::from(viewer_id);
-    let control = world.actors().get::<component::ControlType>(&id);
-    let viewer = control.viewer().ok_or(Reason::UnknownId)?;
-    build_capped_view(canon, world, presence, &viewer, max_body_chars)
+    world
+        .actors()
+        .get::<component::ControlType>(&id)
+        .get()
+        .ok_or(Reason::UnknownId)?;
+    build_capped_view(canon, world, presence, &id, max_body_chars)
 }
 
 pub(crate) fn build_view(
     canon: &Canon,
     world: &ecs::World,
     presence: &Presence,
-    viewer: &Viewer,
+    viewer_id: &ActorId,
 ) -> Result<View, Reason> {
-    build_capped_view(canon, world, presence, viewer, PERCEIVE_BODY_CHARS)
+    build_capped_view(canon, world, presence, viewer_id, PERCEIVE_BODY_CHARS)
 }
 
 fn build_capped_view(
     canon: &Canon,
     world: &ecs::World,
     presence: &Presence,
-    viewer: &Viewer,
+    viewer_id: &ActorId,
     max_body_chars: usize,
 ) -> Result<View, Reason> {
-    let viewer_id = viewer.actor_id();
     let place_id = PlaceId::from(
         world
             .actors()
@@ -107,7 +108,7 @@ fn build_capped_view(
     let mut known_facts = Vec::new();
     let mut public_flags = Vec::new();
     for id in fact_ids {
-        if !can_see_fact(canon, world, viewer, &id) {
+        if !can_see_fact(canon, world, viewer_id, &id) {
             continue;
         }
         let text = canon
@@ -144,7 +145,7 @@ fn build_capped_view(
         if note
             .fact_ids
             .iter()
-            .any(|fact| !can_see_fact(canon, world, viewer, fact))
+            .any(|fact| !can_see_fact(canon, world, viewer_id, fact))
         {
             continue;
         }
@@ -168,9 +169,10 @@ fn build_capped_view(
     let meters = shown_meters(canon, world, &entity::Id::Actor(viewer_id.clone()));
     let world_meters = shown_meters(canon, world, &entity::Id::Global);
 
-    let habits = match viewer {
-        Viewer::Player(_) => Vec::new(),
-        Viewer::Npc(id) => list_whose_if_holds(canon, world, presence, id),
+    let habits = if actor_store.get::<component::ControlType>(viewer_id).is_pc() {
+        Vec::new()
+    } else {
+        list_whose_if_holds(canon, world, presence, viewer_id)
     };
     let exits = crate::rules::travel::visible_exits(canon, world, viewer_id);
     let actor_names = visible_actors
@@ -184,7 +186,7 @@ fn build_capped_view(
     let busy = crate::rules::lines::busy_line(canon, world, viewer_id).unwrap_or_default();
 
     Ok(View {
-        viewer: viewer.clone(),
+        viewer_id: viewer_id.clone(),
         place: place_id.into(),
         place_name,
         prose,

@@ -352,7 +352,6 @@ pub(crate) fn list_player_waits(pack: &Path, key: &str) -> Vec<String> {
         .map(|intent| {
             intent["actor"]
                 .as_str()
-                .and_then(|actor| actor.strip_prefix("player:"))
                 .unwrap_or_else(|| panic!("actor"))
                 .to_string()
         })

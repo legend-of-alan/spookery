@@ -113,7 +113,7 @@ fn push_effects(
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let (world, intent) = (context.world, context.intent);
-    let viewer = intent.actor.as_ref();
+    let viewer = intent.actor_id.as_ref();
     match template {
         EffectTemplate::Flag { of, key, value } => {
             let kind = match of {
@@ -322,7 +322,7 @@ fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
         .get();
     let from = from.ok_or(Reason::UnknownId)?.to_string();
     Ok(Effect::new(
-        intent.actor.as_ref(),
+        intent.actor_id.as_ref(),
         &intent.id,
         EffectKind::Location {
             actor_id,

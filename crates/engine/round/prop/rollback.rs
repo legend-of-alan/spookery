@@ -23,7 +23,7 @@ use crate::ecs::component::{self, Component};
 use crate::ecs::id::{ActorId, ExitId};
 use crate::ecs::{self, ActCounter, Presence, Save};
 use crate::entity;
-use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
+use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::rules::effect::{Effect, EffectKind};
 use crate::session;
 use crate::testing::copy_pack;
@@ -338,14 +338,14 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
             unreachable!("not an effect")
         }
     };
-    Effect::new(Some(&Viewer::Npc("mira".into())), "rollback", kind)
+    Effect::new(Some(&"mira".into()), "rollback", kind)
 }
 
 fn mira_intent() -> Intent {
     Intent {
         id: "rollback".to_string(),
         round_index: 0,
-        actor: Some(Viewer::Npc("mira".into())),
+        actor_id: Some("mira".into()),
         source: Source::Engine,
         move_id: "rollback".to_string(),
         target: Target::Empty,

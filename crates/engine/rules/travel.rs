@@ -3,7 +3,7 @@
 use crate::canon::{Canon, Exit, PlaceDef};
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, PendingAction, Presence};
-use crate::intent::{Intent, Source, Target, Viewer};
+use crate::intent::{Intent, Source, Target};
 use crate::round::Ledger;
 use crate::rules::cond;
 use crate::rules::context::Context;
@@ -58,7 +58,8 @@ pub(crate) fn exit_via<'a>(
     };
     let from = context
         .intent
-        .actor_id()
+        .actor_id
+        .as_ref()
         .and_then(|id| context.world.actors().get::<component::Place>(id).get())
         .unwrap_or("");
     if let Some(exit) = exit_stood_on(context.canon, from) {
@@ -88,7 +89,8 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal>
     };
     let (canon, world, intent) = (context.canon, context.world, context.intent);
     let actor_id = intent
-        .actor_id()
+        .actor_id
+        .as_ref()
         .ok_or_else(|| gate::Refusal::new(intent, Reason::UnknownId))?;
     if !is_revealed(canon, world, actor_id, exit) {
         return Err(gate::Refusal::new(intent, Reason::NoExit));
@@ -115,10 +117,7 @@ fn is_revealed(canon: &Canon, world: &ecs::World, actor_id: &ActorId, exit: &Exi
     let Some(fact) = &exit.revealed_by else {
         return false;
     };
-    let Some(viewer) = (world.actors().get::<component::ControlType>(actor_id)).viewer() else {
-        return false;
-    };
-    can_see_fact(canon, world, &viewer, fact)
+    can_see_fact(canon, world, actor_id, fact)
 }
 
 /// A door is locked until it opens. An exit with no `if` is no door, so it is always open.
@@ -137,16 +136,14 @@ pub(crate) fn open_doors(
 ) {
     let mut opens = Vec::new();
     for (place, def) in &canon.places {
-        let here: Vec<Viewer> = world
-            .actors_at(place.as_str())
-            .iter()
-            .filter_map(|id| world.actors().get::<component::ControlType>(id).viewer())
-            .collect();
+        let here = world.actors_at(place.as_str());
         for exit in def.exits.iter().filter(|exit| is_locked(world, exit)) {
             let target = Target::Exit(exit.id.clone());
-            let met = here.iter().any(|viewer| {
+            let met = here.iter().any(|actor_id| {
                 let target = target.clone();
-                cond::if_holds(canon, world, presence, viewer, "travel", target, &exit.if_)
+                cond::if_holds(
+                    canon, world, presence, actor_id, "travel", target, &exit.if_,
+                )
             });
             if !met {
                 continue;
@@ -196,12 +193,11 @@ pub(crate) fn exit_view(
     actor_id: &ActorId,
     exit: &Exit,
 ) -> ExitView {
-    let viewer = (world.actors().get::<component::ControlType>(actor_id)).viewer();
-    let ticks = viewer.and_then(|viewer| {
+    let ticks = {
         let probe = Intent::new(
             String::new(),
             world.round_index,
-            Some(viewer),
+            Some(actor_id.clone()),
             Source::Player,
             "travel",
             Target::Exit(exit.id.clone()),
@@ -209,7 +205,7 @@ pub(crate) fn exit_view(
         let presence = Presence::default();
         let context = Context::new(canon, world, &presence, &probe);
         cost::read_ticks(&context, &exit.cost).ok()
-    });
+    };
     ExitView {
         exit_id: exit.id.clone(),
         name: exit.name.clone(),

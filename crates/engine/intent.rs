@@ -1,71 +1,11 @@
 //! Who is asking, and the action they asked the round to take.
 
-use std::fmt;
-use std::str::FromStr;
-
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::ecs::id::{ActorId, PlaceId};
 use crate::ecs::{self, component};
 use crate::rules::rule::TargetKind;
 use crate::Reason;
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(into = "String")]
-pub enum Viewer {
-    Player(ActorId),
-    Npc(ActorId),
-}
-
-/// `player:<id>` or `npc:<id>`.
-impl FromStr for Viewer {
-    type Err = Reason;
-
-    fn from_str(raw: &str) -> Result<Self, Self::Err> {
-        let Some((kind, id)) = raw.split_once(':') else {
-            return Err(Reason::UnscopedPerceive);
-        };
-        if id.is_empty() {
-            return Err(Reason::UnscopedPerceive);
-        }
-        match kind {
-            "player" => Ok(Viewer::Player(id.into())),
-            "npc" => Ok(Viewer::Npc(id.into())),
-            _ => Err(Reason::UnscopedPerceive),
-        }
-    }
-}
-
-impl Viewer {
-    pub fn actor_id(&self) -> &ActorId {
-        match self {
-            Viewer::Player(id) | Viewer::Npc(id) => id,
-        }
-    }
-}
-
-impl fmt::Display for Viewer {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Viewer::Player(id) => write!(f, "player:{id}"),
-            Viewer::Npc(id) => write!(f, "npc:{id}"),
-        }
-    }
-}
-
-impl From<Viewer> for String {
-    fn from(id: Viewer) -> Self {
-        id.to_string()
-    }
-}
-
-impl<'de> Deserialize<'de> for Viewer {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        String::deserialize(deserializer)?
-            .parse()
-            .map_err(serde::de::Error::custom)
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -127,8 +67,8 @@ pub struct Intent {
     pub id: String,
     pub round_index: u64,
     /// Who acts. A change rule that watches a world change runs with no one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub actor: Option<Viewer>,
+    #[serde(rename = "actor", default, skip_serializing_if = "Option::is_none")]
+    pub actor_id: Option<ActorId>,
     pub source: Source,
     #[serde(rename = "move")]
     pub move_id: String,
@@ -142,7 +82,7 @@ impl Intent {
     pub(crate) fn new(
         id: String,
         round_index: u64,
-        actor: Option<Viewer>,
+        actor_id: Option<ActorId>,
         source: Source,
         move_id: &str,
         target: Target,
@@ -150,18 +90,13 @@ impl Intent {
         Self {
             id,
             round_index,
-            actor,
+            actor_id,
             source,
             move_id: move_id.to_string(),
             target,
             args: IntentArgs::default(),
             rationale_code: String::new(),
         }
-    }
-
-    /// The acting actor's id, or `None` for a change rule on a world change.
-    pub fn actor_id(&self) -> Option<&ActorId> {
-        self.actor.as_ref().map(Viewer::actor_id)
     }
 
     /// `actor_id`'s line `verb token` for the next round. The id is the line's, so the queue
@@ -178,16 +113,23 @@ impl Intent {
             None => verb.to_string(),
         };
         let id = intent_id(&world.world_id, round, actor_id.as_str(), &line);
-        let actor = Some(Viewer::Player(actor_id.clone()));
-        let intent = Self::new(id, round, actor, Source::Player, verb, Target::Empty);
+        let actor_id = Some(actor_id.clone());
+        let intent = Self::new(id, round, actor_id, Source::Player, verb, Target::Empty);
         Ok(intent)
     }
 
     /// The engine running `actor_id`'s habit `local_id` this round.
     pub(crate) fn habit(world: &ecs::World, actor_id: &ActorId, local_id: &str) -> Self {
-        let (round, npc) = (world.round_index, Some(Viewer::Npc(actor_id.clone())));
+        let round = world.round_index;
         let id = intent_id(&world.world_id, round, actor_id.as_str(), local_id);
-        Self::new(id, round, npc, Source::Engine, local_id, Target::Empty)
+        Self::new(
+            id,
+            round,
+            Some(actor_id.clone()),
+            Source::Engine,
+            local_id,
+            Target::Empty,
+        )
     }
 
     /// The engine firing change rule `rule_id` this round: for `subject` as
@@ -197,18 +139,21 @@ impl Intent {
         subject: Option<&ActorId>,
         rule_id: &str,
     ) -> Result<Self, Reason> {
-        let (actor, id) = match subject {
+        let (actor_id, id) = match subject {
             Some(actor_id) => {
                 let control = world.actors().get::<component::ControlType>(actor_id);
-                let actor = control.viewer().ok_or(Reason::UnknownId)?;
-                (Some(actor), format!("trigger:{rule_id}:{actor_id}"))
+                control.get().ok_or(Reason::UnknownId)?;
+                (
+                    Some(actor_id.clone()),
+                    format!("trigger:{rule_id}:{actor_id}"),
+                )
             }
             None => (None, format!("trigger:{rule_id}")),
         };
         let intent = Self::new(
             id,
             world.round_index,
-            actor,
+            actor_id,
             Source::Engine,
             rule_id,
             Target::Empty,
@@ -226,12 +171,12 @@ impl Intent {
         target: Target,
     ) -> Result<Self, Reason> {
         let control = world.actors().get::<component::ControlType>(actor_id);
-        let actor = Some(control.viewer().ok_or(Reason::UnknownId)?);
+        control.get().ok_or(Reason::UnknownId)?;
         let id = format!("finish:{actor_id}");
         Ok(Self::new(
             id,
             world.round_index,
-            actor,
+            Some(actor_id.clone()),
             source,
             verb,
             target,
