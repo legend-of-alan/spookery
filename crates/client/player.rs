@@ -35,16 +35,21 @@ pub async fn play(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReaso
     };
     terminal.show(&hello, None)?;
     drop(connection);
-    let Some(chosen) = terminal.next_line(None, &commands).await? else {
+    let Some(pc_choice) = terminal.next_line(None, &commands).await? else {
         return Ok(ExitReason::PlayerLeft);
     };
-    let actor = chosen.trim();
-    if actor.is_empty() {
+    let actor_id = pc_choice.trim();
+    if actor_id.is_empty() {
         return Err(Error::Message("SCHEMA".into()));
     }
     let mut connection = websocket::Connection::open(addr, "player").await?.0;
-    let (mut view, mut token) =
-        claim_pc(&mut connection, json!({ "actor": actor }), terminal, None).await?;
+    let (mut view, mut token) = claim_pc(
+        &mut connection,
+        json!({ "actor": actor_id }),
+        terminal,
+        None,
+    )
+    .await?;
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
     loop {
@@ -117,7 +122,7 @@ async fn reconnect(
     token: &mut String,
     terminal: &mut Terminal,
 ) -> Result<bool, Error> {
-    let mut opened = match websocket::Connection::open(addr, "player").await {
+    let mut new_connection = match websocket::Connection::open(addr, "player").await {
         Ok((connection, _)) => connection,
         Err(error) => {
             tracing::debug!(%error, "could not connect to the host again");
@@ -125,8 +130,9 @@ async fn reconnect(
         }
     };
     let args = json!({ "token": token.as_str(), "last_seq": terminal.last_seq() });
-    let (new_view, new_token) = claim_pc(&mut opened, args, terminal, Some(view.clone())).await?;
-    *connection = opened;
+    let (new_view, new_token) =
+        claim_pc(&mut new_connection, args, terminal, Some(view.clone())).await?;
+    *connection = new_connection;
     *view = new_view;
     *token = new_token;
     Ok(true)
@@ -169,7 +175,9 @@ async fn claim_pc(
             terminal.show(message, view.as_ref())?;
         }
         match server_message.body {
-            ServerBody::Claimed { token: held, .. } => token = held,
+            ServerBody::Claimed {
+                token: claim_token, ..
+            } => token = claim_token,
             ServerBody::View(body) => return Ok((*body, token)),
             _ => {}
         }

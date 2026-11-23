@@ -42,7 +42,7 @@ enum Command {
         #[arg(long = "mcp-addr", value_name = "127.0.0.1:<port>")]
         mcp_addr: Option<String>,
     },
-    /// Sit the player seat. At a terminal it opens the game window; piped, it prints lines.
+    /// Play a PC. At a terminal it opens the game window. Piped, it prints lines.
     #[cfg(feature = "client")]
     Play {
         /// Print each protocol frame as one JSON line. Implies `--plain`.
@@ -174,17 +174,17 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "client")]
         Command::Play { raw, plain } => {
-            let mut terminal = if opens_window(raw, plain) {
+            let mut terminal = if is_window_mode(raw, plain) {
                 spookery::terminal::Terminal::window().map_err(|err| err.to_string())?
             } else {
                 spookery::terminal::Terminal::plain(raw)
             };
-            let exit = spookery::player::play(addr, &mut terminal).await;
+            let exit_reason = spookery::player::play(addr, &mut terminal).await;
             drop(terminal);
-            if let Ok(spookery::player::ExitReason::HostClosed) = exit {
+            if let Ok(spookery::player::ExitReason::HostClosed) = exit_reason {
                 eprintln!("host closed");
             }
-            exit.map(drop).map_err(|err| err.to_string())
+            exit_reason.map(drop).map_err(|err| err.to_string())
         }
         #[cfg(feature = "client")]
         Command::Gm { raw } => spookery::gm::play(addr, raw)
@@ -285,7 +285,7 @@ fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
         #[cfg(feature = "client")]
         Command::AiGm => (Some("ai-gm"), "warn,spook=info"),
         #[cfg(feature = "client")]
-        Command::Play { raw, plain } if opens_window(*raw, *plain) => (Some("play"), "warn"),
+        Command::Play { raw, plain } if is_window_mode(*raw, *plain) => (Some("play"), "warn"),
         _ => (None, "warn"),
     };
     let directives = std::env::var("RUST_LOG")
@@ -314,7 +314,7 @@ fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
 
 /// Whether `spook play` opens its window: at a terminal, without `--raw` or `--plain`.
 #[cfg(feature = "client")]
-fn opens_window(raw: bool, plain: bool) -> bool {
+fn is_window_mode(raw: bool, plain: bool) -> bool {
     !raw && !plain && std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
 }
 
