@@ -9,12 +9,13 @@ use ratatui::Frame;
 use super::Palette;
 
 /// Every line the window has shown, oldest first, and how far the player has scrolled it back.
+#[derive(Default)]
 pub(super) struct Transcript {
     lines: Vec<TranscriptLine>,
     /// How many wrapped rows the transcript is scrolled up from its bottom.
     scroll_offset_rows: usize,
     /// How many rows PgUp adds to `scroll_offset_rows` and PgDn takes off: the pane's height less
-    /// one, as last drawn.
+    /// one, as last drawn. The window draws before it reads a key.
     scroll_step_rows: usize,
 }
 
@@ -26,14 +27,6 @@ struct TranscriptLine {
 }
 
 impl Transcript {
-    pub(super) fn new() -> Self {
-        Self {
-            lines: Vec::new(),
-            scroll_offset_rows: 0,
-            scroll_step_rows: 1,
-        }
-    }
-
     pub(super) fn line_count(&self) -> usize {
         self.lines.len()
     }

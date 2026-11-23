@@ -326,7 +326,7 @@ impl Screen {
             last_round_index: None,
             world_time_ticks: 0,
             renderer: text::Renderer::new(),
-            transcript: Transcript::new(),
+            transcript: Transcript::default(),
             place_panel: PlacePanel::default(),
             tab_box: TabBox::new(),
             help_text: None,
