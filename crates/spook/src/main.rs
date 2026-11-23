@@ -52,14 +52,14 @@ enum Command {
         #[arg(long)]
         plain: bool,
     },
-    /// Sit the GM seat.
+    /// Play the GM seat.
     #[cfg(feature = "client")]
     Gm {
         /// Print each protocol frame as one JSON line.
         #[arg(long)]
         raw: bool,
     },
-    /// Sit the GM seat on the game port and call the model.
+    /// Play the GM seat on the game port with the model.
     #[cfg(feature = "client")]
     #[command(name = "ai-gm")]
     AiGm,

@@ -9,7 +9,7 @@ use spookery_engine::{component, entity, Presence};
 
 use super::common::{add_verb, format_meter_row, replace_in_file};
 use super::meters::migrate_and_play;
-use super::triggers::{edit_table, intent, seen_of, set_place, sit};
+use super::triggers::{edit_table, intent, seen_of, set_place, set_present};
 use crate::support::copy_pack;
 use crate::World;
 
@@ -71,7 +71,7 @@ fn stand_in_the_attic(world: &mut World) {
     edit_table(world, &pack, |now, seated| {
         set_place(now, "rowan", "attic");
         set_place(now, "mira", "docks_shop");
-        sit(seated, &["rowan"]);
+        set_present(seated, &["rowan"]);
     });
 }
 
@@ -104,7 +104,7 @@ fn rowan_and_wren_are_seated_apart(world: &mut World) {
     edit_table(world, &pack, |now, seated| {
         assert_eq!(place_of(now, "rowan"), "docks_shop");
         assert_eq!(place_of(now, "wren"), "docks_street");
-        sit(seated, &["rowan", "wren"]);
+        set_present(seated, &["rowan", "wren"]);
     });
 }
 
@@ -233,7 +233,7 @@ fn a_rule_adds_light_and_draft(world: &mut World, of: String) {
     let pack = world.pack.clone().unwrap();
     let effects = meter_effect(&of, "light") + &meter_effect(&of, "draft");
     add_verb_doing(&pack, "air_out", &effects);
-    edit_table(world, &pack, |_, seated| sit(seated, &["rowan"]));
+    edit_table(world, &pack, |_, seated| set_present(seated, &["rowan"]));
     migrate_and_play(world, vec![intent("air", "rowan", "air_out", None)]);
 }
 
@@ -241,7 +241,7 @@ fn a_rule_adds_light_and_draft(world: &mut World, of: String) {
 fn a_verb_sets_and_runs(world: &mut World, key: String, of: String) {
     let pack = world.pack.clone().unwrap();
     add_verb_doing(&pack, "light_lamp", &flag_effect(&of, &key));
-    edit_table(world, &pack, |_, seated| sit(seated, &["rowan"]));
+    edit_table(world, &pack, |_, seated| set_present(seated, &["rowan"]));
     migrate_and_play(world, vec![intent("light", "rowan", "light_lamp", None)]);
 }
 
@@ -302,7 +302,7 @@ fn a_rule_leaves_a_note_in_the_attic(world: &mut World) {
 ";
     let pack = world.pack.clone().unwrap();
     let mut seated = Presence::default();
-    sit(&mut seated, &["rowan"]);
+    set_present(&mut seated, &["rowan"]);
     world.seated.push((pack.clone(), seated));
     add_verb_doing(&pack, "scrawl", effect);
     let ladder = "exits:

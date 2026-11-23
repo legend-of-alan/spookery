@@ -88,8 +88,8 @@ fn the_state_directory_is_unchanged(world: &mut World) {
     );
 }
 
-#[when(expr = "a player sits")]
-async fn a_player_sits(world: &mut World) {
+#[when(expr = "a player claims a PC")]
+async fn a_player_claims_a_pc(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack).await;
     table::seat_actor(world, &pack, "rowan").await;
@@ -119,8 +119,8 @@ const DOCKS_PCS: [&str; 3] = ["harbormouse", "rowan", "wren"];
 const HIDDEN_FACT: &str = "fact_wren_channel";
 const HIDDEN_TEXT: &str = "The tide chart marks a private channel.";
 
-#[when(expr = "three players and a GM sit")]
-async fn three_players_and_a_gm_sit(world: &mut World) {
+#[when(expr = "three players claim and a GM connects")]
+async fn three_players_claim_and_a_gm_connects(world: &mut World) {
     listen_pack(world).await;
     table::seat_gm(world).await;
     let pack = table::pack(world).to_path_buf();
@@ -151,8 +151,8 @@ Lark watches the street from a dry doorway.
     world.pack = Some(pack);
 }
 
-#[when(expr = "three players sit")]
-async fn three_players_sit(world: &mut World) {
+#[when(expr = "three players claim")]
+async fn three_players_claim(world: &mut World) {
     listen_pack(world).await;
     let pack = table::pack(world).to_path_buf();
     seat_three(world, &pack).await;
@@ -385,8 +385,8 @@ rules:
     world.pack = Some(pack);
 }
 
-#[when(expr = "{string} sits and a round commits")]
-async fn sits_and_a_round_commits(world: &mut World, actor: String) {
+#[when(expr = "{string} claims and a round commits")]
+async fn claims_and_a_round_commits(world: &mut World, actor: String) {
     let pack = table::pack(world).to_path_buf();
     table::seat_actor(world, &pack, &actor).await;
     a_round_commits(world).await;

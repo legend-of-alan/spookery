@@ -11,7 +11,7 @@ spook new /tmp/mypack
 The pack is a waystation with two places, so travel has somewhere to go.
 
 - `yard` is the start place. `lane` is the other place.
-- `ada` is the player character. The cast file `cast/pc-ada.md` is a `pc_template`, and `state/save.yaml` has a live `ada` actor. A template alone does not sit a player.
+- `ada` is the player character. The cast file `cast/pc-ada.md` is a `pc_template`, and `state/save.yaml` has a live `ada` actor. A template alone does not seat a player.
 - `keeper` is an NPC in the lane. One habit, `tend_the_yard`, runs while the table is empty and sets the flag `tended`.
 
 `rules/meters.yaml` defines the meter the check uses:

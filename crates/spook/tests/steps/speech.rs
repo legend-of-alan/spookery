@@ -228,8 +228,8 @@ async fn the_gm_has_said_lines_then_more(
     world.scratch = lines.join("\n");
 }
 
-#[when(expr = "{string} leaves and sits again")]
-async fn leaves_and_sits_again(world: &mut World, actor: String) {
+#[when(expr = "{string} leaves and claims again")]
+async fn leaves_and_claims_again(world: &mut World, actor: String) {
     table::close_actor(world, &actor).await;
     table::wait_presence(world, &format!("{actor} gone"), |_, actors| {
         !actors.contains(&actor)

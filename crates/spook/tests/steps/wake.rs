@@ -65,8 +65,8 @@ fn write_idle(pack: &Path, value: &str) {
     stamp_pack_rev(pack);
 }
 
-/// With a GM seated, Rowan queues a wait. Wakes come while Rowan drops and sits again.
-#[when(expr = "a queued wait meets wakes while the player drops and sits again")]
+/// With a GM seated, Rowan queues a wait. Wakes come while Rowan drops and claims again.
+#[when(expr = "a queued wait meets wakes while the player drops and claims again")]
 async fn a_queued_wait_meets_wakes(world: &mut World) {
     let pack = serve_docks(world, "held", None).await;
     table::seat_rowan(world, &pack).await;
@@ -128,7 +128,7 @@ async fn a_queued_wait_is_due(world: &mut World) {
 }
 
 /// With idle off no timer is armed, so an empty table writes nothing however
-/// long it sits. The docks save's stamp is already past due.
+/// long it stays idle. The docks save's stamp is already past due.
 #[when(expr = "idle is off and an empty table wakes after {int} seconds")]
 async fn idle_is_off_and_an_empty_table_wakes(world: &mut World, seconds: u64) {
     let pack = serve_docks(world, "idle-off-empty", Some("off")).await;

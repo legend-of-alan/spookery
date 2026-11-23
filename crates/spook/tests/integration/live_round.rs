@@ -8,7 +8,7 @@
 //!   cargo test -p spook --test integration live_round:: --locked -- --ignored --nocapture
 //! ```
 //!
-//! The test hosts a copy of the docks pack with `spook run`, sits `spook ai-gm`,
+//! The test hosts a copy of the docks pack with `spook run`, connects `spook ai-gm`,
 //! and queues one player move. A small pass-through proxy sits between
 //! `ai-gm` and the provider so the test can see each model call and its HTTP
 //! status. The round passes when every model call returned 2xx, `ai-gm`
@@ -54,7 +54,7 @@ fn a_live_model_plays_one_round() {
     let mut host = spawn_ai_gm(&gm_dir, &addr, &key, &format!("http://{proxy}"), &model);
     wait_text(&host, &host.stderr, "listening");
 
-    let sit = world_time(&pack);
+    let start_ticks = world_time(&pack);
     let mut player = crate::support::spawn(&["--addr", &addr, "play"]);
     let stdin = player.stdin.as_mut().expect("player stdin");
     stdin.write_all(b"rowan\n").expect("pick rowan");
@@ -66,7 +66,7 @@ fn a_live_model_plays_one_round() {
         .expect("send travel");
     stdin.flush().expect("flush travel");
 
-    let advanced = wait_advance(&pack, sit, &mut host);
+    let advanced = wait_advance(&pack, start_ticks, &mut host);
     let host_err = text_of(&host.stderr);
     let up = host.child.try_wait().ok().flatten().is_none();
     let recorded: Vec<(u16, String)> = calls
@@ -274,13 +274,13 @@ fn world_time(pack: &Path) -> u64 {
         .world_time
 }
 
-fn wait_advance(pack: &Path, sit: u64, host: &mut Process) -> bool {
+fn wait_advance(pack: &Path, start_ticks: u64, host: &mut Process) -> bool {
     let start = Instant::now();
     while start.elapsed() < ROUND_BOUND {
         if let Ok(report) = spookery_engine::testing::replay_pack(pack) {
             if let Ok(text) = std::str::from_utf8(&report.now_yaml) {
                 if let Ok(now) = spookery_engine::parse_save(text) {
-                    if now.world_time > sit {
+                    if now.world_time > start_ticks {
                         return true;
                     }
                 }

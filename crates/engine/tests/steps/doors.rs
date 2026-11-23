@@ -8,7 +8,7 @@ use spookery_engine::{component, entity, Presence};
 use crate::World;
 
 /// One round in which the GM has `actor` play `verb` at `target`, keeping the keys the GM sees
-/// change. Rowan sits at the table, so the round is a short seated one.
+/// change. Rowan holds a seat, so the round is a short seated one.
 fn plays(world: &mut World, actor: &str, verb: &str, target: Option<&str>) {
     let pack = world.pack().to_path_buf();
     let lock = spookery_engine::lock_pack(&pack).unwrap();

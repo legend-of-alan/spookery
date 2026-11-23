@@ -7,7 +7,7 @@ use spookery_engine::{component, Presence};
 
 use crate::World;
 
-/// Rowan sits at the table so each round is a short seated one.
+/// Rowan holds a seat, so each round is a short seated one.
 fn rowan_seated() -> Presence {
     Presence {
         players: 1,

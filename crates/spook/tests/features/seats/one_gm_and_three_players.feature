@@ -1,8 +1,8 @@
 Feature: One GM seat and up to three player seats
 
-  Scenario: Three players and a GM sit one docks table
+  Scenario: Three players and a GM share one docks table
     Given a docks table
-    When three players and a GM sit
+    When three players claim and a GM connects
     Then players is 3
     And the present actors are the three docks PCs
 
@@ -32,7 +32,7 @@ Feature: One GM seat and up to three player seats
     And save.yaml is unchanged since the table opened
     And players is 0
 
-  Scenario: A one-player pack sits and plays
+  Scenario: A one-player pack plays
     Given a one-player docks table
     When the player waits
     Then world_time is 1085
@@ -49,12 +49,12 @@ Feature: One GM seat and up to three player seats
 
   Scenario: A player perceives only a fact that PC knows
     Given a docks table where one PC knows a hidden fact
-    When three players sit
+    When three players claim
     Then only that PC's perceive shows the hidden fact
 
   Scenario: Saying a hidden fact does not teach it
     Given a docks table where one PC knows a hidden fact
-    When three players sit
+    When three players claim
     And that PC says the hidden fact and another PC waits
     Then only that PC's perceive shows the hidden fact
 

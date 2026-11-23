@@ -300,7 +300,7 @@ async fn twelve_rounds_then_more(world: &mut World) {
     assert_eq!(world_of(&pack).world_time, mid + 12 * 5);
 }
 
-#[given(expr = "rowan visited the shop and mira_rooms in an earlier sitting")]
+#[given(expr = "rowan visited the shop and mira_rooms in an earlier session")]
 fn rowan_visited_both_rooms(world: &mut World) {
     let pack = copy_pack("docks", "map");
     add_trapdoor(&pack);

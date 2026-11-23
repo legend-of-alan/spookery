@@ -2,7 +2,7 @@ Feature: The host's seats say who is present
 
   Scenario: The players condition sees who is seated
     Given a pack with a habit rule that requires players == 0
-    When "rowan" sits and a round commits
+    When "rowan" claims and a round commits
     Then the habit does not fire
     When "rowan" leaves and a round commits
     Then the habit fires
