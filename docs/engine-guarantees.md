@@ -12,7 +12,7 @@ the [seat protocol](seat-protocol.md).
 ## One writer
 
 A round commit and a migrate, which stores a new hash of the world, cast, and
-rules files, each bump `state_rev`. Sitting or leaving writes nothing. A GM `say` is
+rules files, each bump `state_rev`. Claiming or leaving writes nothing. A GM `say` is
 speech. A commit runs the queued moves as one round, in queue order. With no GM,
 each player line commits its own round. A call off the GM menu is refused.
 Speech goes on the tape and leaves the journal and the clock alone. A world,
@@ -350,7 +350,7 @@ Tested in `features/rules/rules_live_with_their_owner.feature`,
 The table binds loopback only. Any other host is refused before the pack opens,
 and the pack is unchanged. A player line with no end, a hello that never
 finishes, and an HTTP body over the size cap are refused. The save stays, and
-another player can still sit. Invalid text from a seated player is refused, and
+another player can still claim a PC. Invalid text from a seated player is refused, and
 that player can still move. A flood from one player does not stop another's
 round. A player who stops reading is dropped, and the other keeps receiving
 frames. The model client does not dial when a setting is missing.

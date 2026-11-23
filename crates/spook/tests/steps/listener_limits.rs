@@ -61,8 +61,8 @@ fn the_socket_was_closed_without_a_reply(world: &mut World) {
     );
 }
 
-#[then(expr = "a second player can sit and wait")]
-async fn a_second_player_can_sit_and_wait(world: &mut World) {
+#[then(expr = "a second player can claim and wait")]
+async fn a_second_player_can_claim_and_wait(world: &mut World) {
     table::release_probe_gm(world).await;
     let pack = table::pack(world).to_path_buf();
     table::seat_actor(world, &pack, "harbormouse").await;
@@ -88,8 +88,8 @@ async fn the_gm_releases_the_seat_and_keeps_the_session(world: &mut World) {
     world.scratch = table::release_gm_keep_session(world).await;
 }
 
-#[when(expr = "another GM sits")]
-async fn another_gm_sits(world: &mut World) {
+#[when(expr = "another GM connects")]
+async fn another_gm_connects(world: &mut World) {
     table::seat_gm(world).await;
 }
 
@@ -140,10 +140,10 @@ async fn an_http_body_over_a_mebibyte(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "a new GM can sit")]
-async fn a_new_gm_can_sit(world: &mut World) {
+#[then(expr = "a new GM can connect")]
+async fn a_new_gm_can_connect(world: &mut World) {
     let port = table::live_mut(world).mcp_port;
-    table::poll_until("a new GM to sit", || try_sit_gm(port)).await;
+    table::poll_until("a new GM to connect", || try_connect_gm(port)).await;
 }
 
 #[when(expr = "the player sends a binary message")]
@@ -408,7 +408,7 @@ fn connect(port: u16) -> TcpStream {
     stream
 }
 
-async fn try_sit_gm(port: u16) -> Result<(), String> {
+async fn try_connect_gm(port: u16) -> Result<(), String> {
     let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     match crate::mcp_client::GmClient::connect(mcp_addr).await {
         Ok(gm) => {

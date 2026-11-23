@@ -35,21 +35,21 @@ Feature: Speech appends to the tape and does not play a round
   Scenario: A rejoining player gets the newest speech
     Given a docks table with "rowan" seated
     And the GM has said 300 numbered lines to "rowan"
-    When "rowan" leaves and sits again
+    When "rowan" leaves and claims again
     Then the replayed lines are "line44" through "line299", in order
     And the replayed lines ride in the claim's reply
 
   Scenario: Speech for someone else doesn't use up the replay window
     Given a docks table with "rowan" and "wren" seated
     And the GM has said 300 lines to "wren" and then 3 lines to "rowan"
-    When "rowan" leaves and sits again
+    When "rowan" leaves and claims again
     Then "rowan" gets exactly those 3 lines, in order
 
   Scenario: A long chatty world still accepts speech
     Given a docks table with "rowan" seated
     And the tape already holds a full 1 MiB of old speech
     When the player says "still here"
-    And "rowan" leaves and sits again
+    And "rowan" leaves and claims again
     Then the newest replayed line is "still here"
 
   Scenario: The GM says a line as Aldric

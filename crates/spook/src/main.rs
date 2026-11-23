@@ -3,6 +3,8 @@
 mod new;
 
 use std::fs;
+#[cfg(feature = "client")]
+use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
@@ -40,21 +42,24 @@ enum Command {
         #[arg(long = "mcp-addr", value_name = "127.0.0.1:<port>")]
         mcp_addr: Option<String>,
     },
-    /// Sit the player seat.
+    /// Play a PC. At a terminal it opens the game window. Piped, it prints lines.
     #[cfg(feature = "client")]
     Play {
-        /// Print each protocol frame as one JSON line.
+        /// Print each protocol frame as one JSON line. Implies `--plain`.
         #[arg(long)]
         raw: bool,
+        /// Print plain lines even at a terminal.
+        #[arg(long)]
+        plain: bool,
     },
-    /// Sit the GM seat.
+    /// Play the GM seat.
     #[cfg(feature = "client")]
     Gm {
         /// Print each protocol frame as one JSON line.
         #[arg(long)]
         raw: bool,
     },
-    /// Sit the GM seat on the game port and call the model.
+    /// Play the GM seat on the game port with the model.
     #[cfg(feature = "client")]
     #[command(name = "ai-gm")]
     AiGm,
@@ -168,11 +173,21 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 .map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
-        Command::Play { raw } => spookery::play::run(addr, raw)
-            .await
-            .map_err(|err| err.to_string()),
+        Command::Play { raw, plain } => {
+            let mut terminal = if is_window_mode(raw, plain) {
+                spookery::terminal::Terminal::window().map_err(|err| err.to_string())?
+            } else {
+                spookery::terminal::Terminal::plain(raw)
+            };
+            let play_result = spookery::player::play(addr, &mut terminal).await;
+            drop(terminal);
+            if let Ok(spookery::player::ExitReason::HostClosed) = play_result {
+                eprintln!("host closed");
+            }
+            play_result.map(drop).map_err(|err| err.to_string())
+        }
         #[cfg(feature = "client")]
-        Command::Gm { raw } => spookery::gm::run(addr, raw)
+        Command::Gm { raw } => spookery::gm::play(addr, raw)
             .await
             .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
@@ -180,7 +195,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             let model = spookery::http_model::Settings::from_env()
                 .and_then(spookery::http_model::HttpModel::new)
                 .map_err(|err| err.to_string())?;
-            spookery::ai_gm::run(addr, model, std::io::stderr())
+            spookery::ai_gm::play(addr, model, std::io::stderr())
                 .await
                 .map_err(|err| err.to_string())
         }
@@ -260,15 +275,17 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
     }
 }
 
-/// Installs the one log subscriber. `spook run` and `spook ai-gm` log to a new file under
-/// `logs/`, whose path this returns. Every other command logs to stderr. A `RUST_LOG` whose
-/// directives are all invalid logs warnings.
+/// Installs the one log subscriber. `spook run`, `spook ai-gm` and `spook play` in its window
+/// log to a new file under `logs/`, whose path this returns. Every other command logs to stderr.
+/// A `RUST_LOG` whose directives are all invalid logs warnings.
 fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
     let (command_id, default_directives) = match command {
         #[cfg(feature = "server")]
         Command::Run { .. } => (Some("run"), "warn,spook=info"),
         #[cfg(feature = "client")]
         Command::AiGm => (Some("ai-gm"), "warn,spook=info"),
+        #[cfg(feature = "client")]
+        Command::Play { raw, plain } if is_window_mode(*raw, *plain) => (Some("play"), "warn"),
         _ => (None, "warn"),
     };
     let directives = std::env::var("RUST_LOG")
@@ -293,6 +310,12 @@ fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
         .map_err(|err| format!("{}: {err}", path.display()))?;
     subscriber.with_writer(file).init();
     Ok(Some(path))
+}
+
+/// Whether `spook play` opens its window: at a terminal, without `--raw` or `--plain`.
+#[cfg(feature = "client")]
+fn is_window_mode(raw: bool, plain: bool) -> bool {
+    !raw && !plain && std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
 }
 
 fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {
@@ -352,9 +375,23 @@ mod tests {
         ));
         assert!(Cli::try_parse_from(["spook", "gm", "--mcp-addr", "127.0.0.1:9801"]).is_err());
         let play = Cli::try_parse_from(["spook", "play"]).unwrap();
-        assert!(matches!(play.command, Command::Play { raw: false }));
+        assert!(matches!(
+            play.command,
+            Command::Play {
+                raw: false,
+                plain: false
+            }
+        ));
         let raw = Cli::try_parse_from(["spook", "play", "--raw"]).unwrap();
-        assert!(matches!(raw.command, Command::Play { raw: true }));
+        assert!(matches!(raw.command, Command::Play { raw: true, .. }));
+        let plain = Cli::try_parse_from(["spook", "play", "--plain"]).unwrap();
+        assert!(matches!(
+            plain.command,
+            Command::Play {
+                raw: false,
+                plain: true
+            }
+        ));
         let host = Cli::try_parse_from(["spook", "ai-gm"]).unwrap();
         assert!(matches!(host.command, Command::AiGm));
         let verify = Cli::try_parse_from(["spook", "verify", "--from", "snap", "pack"]).unwrap();

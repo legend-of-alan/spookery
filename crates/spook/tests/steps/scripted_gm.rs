@@ -150,7 +150,7 @@ pub struct Seen {
     pub closes: usize,
 }
 
-/// `ai_gm::run` on its own thread, on a current-thread runtime whose clock starts paused.
+/// `ai_gm::play` on its own thread, on a current-thread runtime whose clock starts paused.
 /// A blocking task held for the run keeps tokio from auto-advancing, so paused time moves
 /// only on `advance`.
 pub struct AiGm {
@@ -193,12 +193,12 @@ pub(crate) async fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
         let result = runtime.block_on(async {
             let (_hold, held) = std::sync::mpsc::channel::<()>();
             tokio::task::spawn_blocking(move || held.recv());
-            let run = ai_gm::run(addr, model, report);
-            tokio::pin!(run);
+            let play = ai_gm::play(addr, model, report);
+            tokio::pin!(play);
             loop {
                 tokio::select! {
                     biased;
-                    result = &mut run => break result,
+                    result = &mut play => break result,
                     Some((by, ack)) = advances.recv() => {
                         tokio::time::advance(by).await;
                         let _ = ack.send(());

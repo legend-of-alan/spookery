@@ -57,8 +57,8 @@ async fn it_gets(world: &mut World, text: String) {
     assert_eq!(got, want);
 }
 
-#[when(expr = "a GM sits on the game port")]
-async fn a_gm_sits_on_the_game_port(world: &mut World) {
+#[when(expr = "a GM connects on the game port")]
+async fn a_gm_connects_on_the_game_port(world: &mut World) {
     let seat = Seat::open(table::live_mut(world).game_port, "gm").await;
     table::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"").await;
     table::live_mut(world).ws_gm = Some(seat);

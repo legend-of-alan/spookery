@@ -11,13 +11,13 @@ Feature: The listener bounds input
     When a socket sends a 1 MiB message
     Then the socket was closed without a reply
     And save.yaml is unchanged since the table opened
-    And a second player can sit and wait
+    And a second player can claim and wait
 
   Scenario: An HTTP body over 1 MiB is refused and the seat stays free
     Given a docks table
     When an HTTP body over 1 MiB is posted
     Then the response status is 413
-    And a new GM can sit
+    And a new GM can connect
 
   Scenario: A binary message is refused and the seat stays usable
     Given a docks table with a seated player
@@ -47,13 +47,13 @@ Feature: The listener bounds input
     Given a docks table with a seated GM
     When the GM releases the seat
     Then the server confirms the seat is free
-    And a second player can sit and wait
+    And a second player can claim and wait
 
   Scenario: A closed GM session cannot call tools
     Given a docks table with a seated GM
     When the GM releases the seat and keeps the session
     Then the server confirms the seat is free
-    When another GM sits
+    When another GM connects
     And the closed session calls say
     Then that call is refused and nothing was written
 

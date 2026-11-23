@@ -11,7 +11,9 @@ use spookery_engine::{component, entity, load_canon, ActorId, GlobalId, Meter, N
 
 use super::common::{add_verb, replace_in_file};
 use super::table;
-use super::triggers::{edit_table, intent, play_round, seen_of, set_place, sit, PlayedRound};
+use super::triggers::{
+    edit_table, intent, play_round, seen_of, set_place, set_present, PlayedRound,
+};
 use crate::support::{self, copy_pack};
 use crate::World;
 
@@ -191,7 +193,7 @@ fn rowan_and_mira_stand_in_the_shop(world: &mut World) {
     edit_table(world, &pack, |now, seated| {
         set_place(now, "mira", "docks_shop");
         support::edit_meter(now, "mira", "shop_day", |shop_day| shop_day.base = 0);
-        sit(seated, &["rowan"]);
+        set_present(seated, &["rowan"]);
     });
     world.pack = Some(pack);
 }
@@ -232,7 +234,7 @@ fn rowan_stands_in_the_shop(world: &mut World) {
     );
     edit_table(world, &pack, |now, seated| {
         set_place(now, "mira", "docks_shop");
-        sit(seated, &["rowan"]);
+        set_present(seated, &["rowan"]);
     });
     world.pack = Some(pack);
 }
@@ -470,7 +472,7 @@ fn a_rule_darkens_dawn_and_doom(world: &mut World, first: String, second: String
         &pack,
         "\n  - id: darken\n    when:\n      verb: darken\n    do:\n      - meter:\n          of: world\n          key: dawn\n          add: -1\n      - meter:\n          of: world\n          key: doom\n          add: -1\n",
     );
-    edit_table(world, &pack, |_, seated| sit(seated, &["rowan"]));
+    edit_table(world, &pack, |_, seated| set_present(seated, &["rowan"]));
     migrate_and_play(world, vec![intent("darken", "rowan", "darken", None)]);
 }
 
