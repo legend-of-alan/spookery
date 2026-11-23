@@ -630,7 +630,7 @@
         "id": {
           "type": "string"
         },
-        "actor_id": {
+        "actor": {
           "type": "string"
         },
         "move": {
@@ -639,7 +639,7 @@
       },
       "required": [
         "id",
-        "actor_id",
+        "actor",
         "move"
       ]
     },

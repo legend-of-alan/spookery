@@ -119,6 +119,7 @@ pub struct StatusPresence {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct QueuedMove {
     pub id: String,
+    #[serde(rename = "actor")]
     pub actor_id: String,
     #[serde(rename = "move")]
     pub move_id: String,
@@ -201,7 +202,7 @@ mod tests {
             assert_eq!(back, v);
         }
         assert_reencodes::<TableStatus>(
-            r#"{"presence":{"players":1,"actors_present":["rowan"],"x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor_id":"rowan","move":"wait","x":1}],"pack":{"menu":[],"control_types":{},"places":{},"cast":{},"x":1},"x":1}"#,
+            r#"{"presence":{"players":1,"actors_present":["rowan"],"x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor":"rowan","move":"wait","x":1}],"pack":{"menu":[],"control_types":{},"places":{},"cast":{},"x":1},"x":1}"#,
         );
         assert_reencodes::<CommitBody>(
             r#"{"state_rev":3,"changed_keys":["d"],"journal_path":null,"rolls":[{"total":8,"success_at":7,"outcome":"partial","x":1}],"x":1}"#,
