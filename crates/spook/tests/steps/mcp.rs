@@ -120,7 +120,7 @@ async fn spook_run_listens_with_no_mcp_flag(world: &mut World) {
 }
 
 #[then(expr = "the reported MCP address serves \\/mcp")]
-fn the_reported_mcp_addr_serves_mcp(world: &mut World) {
+fn the_reported_mcp_addr_answers(world: &mut World) {
     // repeats module: mirrors its step text
     let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no MCP port"));
     let raw = post_initialize(http, "127.0.0.1", None);
