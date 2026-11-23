@@ -212,8 +212,8 @@ fn place_of<'a>(world: &'a ecs::World, viewer: &'a ActorId) -> Option<&'a str> {
 }
 
 fn same_place(world: &ecs::World, viewer: &ActorId, actor_id: &ActorId) -> bool {
-    let actor_place = world.actors().get::<component::Place>(actor_id).get();
-    match (place_of(world, viewer), actor_place) {
+    let actor_place_id = world.actors().get::<component::Place>(actor_id).get();
+    match (place_of(world, viewer), actor_place_id) {
         (Some(left), Some(right)) => left == right,
         _ => false,
     }

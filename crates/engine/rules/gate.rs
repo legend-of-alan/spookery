@@ -38,23 +38,23 @@ impl Refusal {
     }
 }
 
-/// The rule `actor`'s `verb_id` runs, the queue's and the round's alike. An NPC's habit is
+/// The rule `viewer`'s `verb_id` runs, the queue's and the round's alike. An NPC's habit is
 /// picked by its local id first; any other verb is `verb_for`'s, looking in `hint` first.
 /// A full rule id picks nothing. A player's move never runs a habit, and a missing rule is
 /// `NOT_IN_SPEC` for it and `UNKNOWN_MOVE` for anyone else.
 pub(crate) fn pick<'a>(
     canon: &'a Canon,
     world: &ecs::World,
-    actor: &Viewer,
+    viewer: &Viewer,
     source: Source,
     verb_id: &str,
     hint: Option<&str>,
 ) -> Result<&'a Rule, Reason> {
-    let found = verb_for(canon, world, actor.actor_id(), verb_id, hint);
-    if source == Source::Player && matches!(actor, Viewer::Player(_)) {
+    let found = verb_for(canon, world, viewer.actor_id(), verb_id, hint);
+    if source == Source::Player && matches!(viewer, Viewer::Player(_)) {
         return found.ok_or(Reason::NotInSpec);
     }
-    let habits = canon.rules.habits_of(actor.actor_id());
+    let habits = canon.rules.habits_of(viewer.actor_id());
     let habit = habits.into_iter().find(|rule| rule.local_id == verb_id);
     habit.or(found).ok_or(Reason::UnknownMove)
 }
@@ -113,14 +113,14 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb_id: &str) -> Option<&'a 
 pub(crate) fn rule_of<'c>(context: &Context<'c, '_>) -> Result<&'c Rule, Refusal> {
     let intent = context.intent;
     let (verb_id, hint) = (&intent.move_id, hint_of(&intent.target));
-    let actor = intent
+    let viewer = intent
         .actor
         .as_ref()
         .ok_or_else(|| Refusal::new(intent, Reason::UnknownId))?;
     let picked = pick(
         context.canon,
         context.world,
-        actor,
+        viewer,
         intent.source,
         verb_id,
         hint,
@@ -207,14 +207,14 @@ fn can_name(context: &Context, ids: Option<&[NamedId]>) -> bool {
     let Some(id) = intent.target.token() else {
         return true;
     };
-    let Some(actor) = &intent.actor else {
+    let Some(viewer) = &intent.actor else {
         return false;
     };
     let listed;
     let ids = match ids {
         Some(ids) => ids,
         None => {
-            listed = list_ids(context.canon, context.world, context.presence, actor);
+            listed = list_ids(context.canon, context.world, context.presence, viewer);
             &listed
         }
     };

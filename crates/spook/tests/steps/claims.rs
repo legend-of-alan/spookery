@@ -102,13 +102,13 @@ async fn it_holds_rowan_and_catches_up(world: &mut World) {
 )]
 fn each_claim_said_the_clock(
     world: &mut World,
-    pick_round: u64,
-    pick_tick: u64,
+    pc_picked_round: u64,
+    pc_picked_tick: u64,
     token_round: u64,
     token_tick: u64,
 ) {
     let clocks = [
-        (&world.pc_picked_reply, pick_round, pick_tick),
+        (&world.pc_picked_reply, pc_picked_round, pc_picked_tick),
         (&parse(&world.player_added), token_round, token_tick),
     ];
     for (reply, round_index, world_time) in clocks {

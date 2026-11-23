@@ -91,9 +91,9 @@ fn build_capped_view(
     let mut visible_actors: Vec<ActorId> = world.actors_at(place_id.as_str());
     visible_actors.sort();
 
-    let mut ids = BTreeSet::new();
+    let mut fact_ids = BTreeSet::new();
     for id in canon.facts.keys() {
-        ids.insert(id.clone());
+        fact_ids.insert(id.clone());
     }
     for id in world
         .actors()
@@ -102,11 +102,11 @@ fn build_capped_view(
         .into_iter()
         .flatten()
     {
-        ids.insert(id.clone());
+        fact_ids.insert(id.clone());
     }
     let mut known_facts = Vec::new();
     let mut public_flags = Vec::new();
-    for id in ids {
+    for id in fact_ids {
         if !can_see_fact(canon, world, viewer, &id) {
             continue;
         }
@@ -136,9 +136,9 @@ fn build_capped_view(
 
     let mut notes = Vec::new();
     for (note_id, note) in world.globals().get::<Note>(&GlobalId).iter() {
-        let here = note.place_id.as_ref() == Some(&place_id);
-        let addressed = note.to_ids.contains(viewer_id);
-        if !here && !addressed {
+        let is_here = note.place_id.as_ref() == Some(&place_id);
+        let is_addressed = note.to_ids.contains(viewer_id);
+        if !is_here && !is_addressed {
             continue;
         }
         if note
