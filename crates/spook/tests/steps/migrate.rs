@@ -1,5 +1,5 @@
 use spookery_engine::testing::{place_of, world_of};
-use spookery_engine::{component, ActorId, Meter};
+use spookery_engine::{component, entity, ActorId};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -82,23 +82,26 @@ fn the_save_is_hand_edited(world: &mut World) {
     a_canon_file_gains_a_byte(world);
 }
 
-#[when(expr = "the pack adds meter {string} with start {int}")]
-fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
+#[when(expr = "the pack adds meter {string} with base {int}")]
+fn the_pack_adds_meter(world: &mut World, id: String, base: i64) {
     let path = table::pack(world).join("rules/meters.yaml");
     let mut text = fs::read_to_string(&path).unwrap();
     text.push_str(&format!(
-        "  - id: {id}\n    min: 0\n    base_cap: 10\n    max: 10\n    base: {start}\n"
+        "  - id: {id}\n    min: 0\n    base_cap: 10\n    max: 10\n    base: {base}\n"
     ));
     fs::write(&path, text).unwrap();
 }
 
-#[then(expr = "every actor has {string} at {int}")]
-fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
-    let now = world_of(table::pack(world));
+#[then(expr = "every actor reads {string} at {int} with no row in the save")]
+fn every_actor_reads_meter_at(world: &mut World, id: String, value: i64) {
+    let pack = table::pack(world);
+    let (now, saved) = (world_of(pack), support::save_of(pack));
     for actor in now.actors().query::<ActorId>().iter() {
-        let meter = now.actors().get::<component::Meter>(actor).get(&id);
-        let got = meter.map(|meter| meter.base);
-        assert_eq!(got, Some(base), "{actor} {id}");
+        let carrier = entity::Id::Actor(actor.clone());
+        let meter = now.entities().get::<component::Meter>(&carrier);
+        assert_eq!(meter.value(&id), Ok(value), "{actor} {id}");
+        let row = &saved["actors"]["meters"][actor.as_str()][&id];
+        assert!(row.is_null(), "{actor} {id}: {row}");
     }
 }
 
@@ -126,31 +129,6 @@ fn the_round_writes_nothing(world: &mut World) {
         world.state_files,
         "the round wrote under state/"
     );
-}
-
-#[when(expr = "the save drops meter {string}")]
-fn the_save_drops_meter(world: &mut World, id: String) {
-    let path = table::pack(world).join("state/save.yaml");
-    let text = fs::read_to_string(&path).unwrap();
-    let needle = format!("      {id}:");
-    let mut out = String::new();
-    let mut skip = 0;
-    let mut found = false;
-    for line in text.lines() {
-        if skip > 0 {
-            skip -= 1;
-            continue;
-        }
-        if line == needle {
-            found = true;
-            skip = 2;
-            continue;
-        }
-        out.push_str(line);
-        out.push('\n');
-    }
-    assert!(found, "save has no meter {id}");
-    fs::write(&path, out).unwrap();
 }
 
 #[then(expr = "spook check reports {word}")]
@@ -236,17 +214,18 @@ async fn verify_trusts_the_operator_edit(world: &mut World, rev: u64) {
     assert!(world.stdout.contains(&line), "{}", world.stdout);
 }
 
-#[when(expr = "Rowan's vigor offset is hand edited to {int} and Nell joins without vigor")]
+#[when(
+    expr = "Rowan's vigor offset is hand edited to {int} and Nell joins with no meter or act rows"
+)]
 fn rowan_moves_vigor_and_nell_joins(world: &mut World, offset: i64) {
     let pack = table::pack(world).to_path_buf();
     let nell = "---\nschema: cast\nid: nell\ncontrol_type: pc_template\nname: Nell\n---\nNell.\n";
     fs::write(pack.join("cast/pc-nell.md"), nell).unwrap_or_else(|err| panic!("nell: {err}"));
     spookery_engine::testing::edit_save(&pack, |now| {
         support::edit_meter(now, "rowan", "vigor", |vigor| vigor.offset = offset);
-        let (rowan, nell) = (&"rowan".into(), &"nell".into());
+        let nell = "nell".into();
         let mut actors = now.actors_mut();
-        actors.copy_actor(rowan, nell, "docks_shop").unwrap();
-        actors.get_mut::<Meter>(nell).set("vigor", None).unwrap();
+        actors.add_actor(&nell, component::ControlType::Pc, "docks_shop");
     });
 }
 

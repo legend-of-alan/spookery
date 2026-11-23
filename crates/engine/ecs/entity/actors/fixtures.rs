@@ -3,11 +3,11 @@
 
 use crate::ecs::component::{self, Meter};
 use crate::ecs::id::ActorId;
-use crate::ecs::{entity, nested_map, Act, Writer};
+use crate::ecs::{entity, nested_map, Writer};
 use crate::Reason;
 
 impl Writer<'_, entity::Actors> {
-    /// Add `actor`, controlled as `control_type` says, standing at `place`: the three stores every
+    /// Add `actor`, controlled as `control_type` says, standing at `place`: the two stores every
     /// actor has, together.
     pub fn add_actor(
         &mut self,
@@ -23,9 +23,6 @@ impl Writer<'_, entity::Actors> {
         components
             .place
             .put(transaction, actor, Some(place.to_string()));
-        components
-            .acts
-            .put(transaction, actor, Some(Act::default()));
     }
 
     /// Add `to`, standing at `place`, with everything `from` has.
@@ -44,7 +41,7 @@ impl Writer<'_, entity::Actors> {
         } = (*self.components).clone();
         self.add_actor(to, *control_type.get(from).ok_or(Reason::UnknownId)?, place);
         let act = acts.get(from).cloned();
-        self.components.acts.put(self.transaction, to, act);
+        (self.components.acts).set(self.transaction, to.clone(), act, [])?;
         for (id, count) in nested_map::entries_of(&items, from) {
             (self.get_mut::<component::Item>(to)).shift(id, (*count).into(), None)?;
         }
@@ -56,7 +53,7 @@ impl Writer<'_, entity::Actors> {
             (self.get_mut::<component::Visit>(to)).set(place, exits.clone())?;
         }
         for (key, meter) in nested_map::entries_of(&meters, from) {
-            self.get_mut::<Meter>(to).set(key, Some(meter.clone()))?;
+            self.get_mut::<Meter>(to).set(key, Some(*meter))?;
         }
         for (id, modifier) in nested_map::entries_of(&modifiers, from) {
             (self.get_mut::<component::Modifier>(to)).set(id, Some(modifier.clone()))?;
@@ -102,7 +99,7 @@ impl Writer<'_, entity::Actors> {
             let entry = (actor.clone(), place.to_string());
             components.visited.set(transaction, entry, None, [])?;
         }
-        components.acts.put(transaction, actor, None);
+        components.acts.set(transaction, actor.clone(), None, [])?;
         components.place.put(transaction, actor, None);
         (components.control_type).set(transaction, actor.clone(), None, [])
     }

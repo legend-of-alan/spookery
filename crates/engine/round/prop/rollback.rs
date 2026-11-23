@@ -21,7 +21,7 @@ use crate::ecs::component::meter::{self, Meter};
 use crate::ecs::component::modifier;
 use crate::ecs::component::{self, Component};
 use crate::ecs::id::{ActorId, ExitId};
-use crate::ecs::{self, ActCounter, Presence, Save};
+use crate::ecs::{self, Presence, Save, WindowCount};
 use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::rules::effect::{Effect, EffectKind};
@@ -50,7 +50,7 @@ enum Step {
     Note,
     Reveal(&'static str),
     Act(u32),
-    ResetActs,
+    ResetIdleWindowCount,
     Busy(bool),
     NoteExits,
     SeeExits(bool),
@@ -75,15 +75,10 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     let opened = session::Session::open(&pack.0).expect("docks pack opens");
     let mut canon = opened.canon().clone();
     canon.budget.max_state_keys_mutated = 1000;
-    let street = canon.places.get_mut("docks_street").expect("the street");
-    street.flags.extend(["lit".to_string(), "busy".to_string()]);
-    let mira = canon.cast.get_mut("mira").expect("Mira");
-    mira.flags.push("wary".to_string());
     let key = canon.items.get_mut("brass_key").expect("the brass key");
     key.tags.push("weapon".to_string());
     let tale = StoryDef {
         name: "tale".to_string(),
-        flags: vec!["told".to_string()],
     };
     canon.stories.insert("tale".into(), tale);
     let fatigue = modifier::Descriptor {
@@ -103,7 +98,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
             min: 0,
             base_cap: 10,
             max: 10,
-            start: 5,
+            base: 5,
             hidden: false,
             carrier: Some(carrier.clone()),
         };
@@ -115,11 +110,8 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     let mut world = ecs::World::new(Save::clone(opened.world()), Arc::new(canon));
     for (carrier, key) in &carried {
         let desc = world.canon().meter_desc(carrier.as_ref(), key);
-        let start = Meter {
-            base: desc.expect("the meter's descriptor").start,
-            offset: 0,
-        };
-        let put = (world.entities_mut().get_mut::<Meter>(carrier)).set(key, Some(start));
+        let base = Meter::at_base(desc.expect("the meter's descriptor"));
+        let put = (world.entities_mut().get_mut::<Meter>(carrier)).set(key, Some(base));
         put.expect("the meter goes on");
     }
     world.accept();
@@ -175,8 +167,8 @@ fn play_steps(session: &session::Session<()>, steps: &[Step]) -> Result<(), Test
                     .get_mut::<component::Act>(&mira)
                     .count(1, *players);
             }
-            Step::ResetActs => {
-                let _ = (world.actors_mut()).reset_acts(ActCounter::IdleActsThisWindow);
+            Step::ResetIdleWindowCount => {
+                let _ = (world.actors_mut()).reset_window_count(WindowCount::Idle);
             }
             Step::Busy(true) => {
                 let _ = world
@@ -331,7 +323,7 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
         | Step::Take
         | Step::Expire
         | Step::Act(_)
-        | Step::ResetActs
+        | Step::ResetIdleWindowCount
         | Step::Busy(_)
         | Step::NoteExits
         | Step::SeeExits(_) => {
@@ -393,7 +385,7 @@ fn pick_step() -> impl Strategy<Value = Step> {
         1 => Just(Step::Note),
         1 => select(vec!["fact_oil_on_shelf", "fact_room_lamp"]).prop_map(Step::Reveal),
         1 => (0u32..=1).prop_map(Step::Act),
-        1 => Just(Step::ResetActs),
+        1 => Just(Step::ResetIdleWindowCount),
         1 => any::<bool>().prop_map(Step::Busy),
         1 => Just(Step::NoteExits),
         1 => any::<bool>().prop_map(Step::SeeExits),

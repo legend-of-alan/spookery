@@ -232,7 +232,7 @@ impl Effect {
                 text,
             } => remember(canon, world, intent, &actor_id, fact_ids, tags, text),
             EffectKind::Flag { entity, key, value } => {
-                if !canon.carries_flag(entity.as_ref(), &key) {
+                if key.is_empty() {
                     return Err(Reason::UnknownId);
                 }
                 (world.entities_mut().get_mut::<component::Flag>(&entity)).set(&key, value)

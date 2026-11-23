@@ -51,7 +51,6 @@ pub(super) fn add(
         CastDef {
             control_type,
             name: file.name.unwrap_or(file.id),
-            flags: file.flags,
             body: page.body,
             idle: file.idle,
         },
@@ -108,8 +107,6 @@ struct CastDoc {
     id: String,
     control_type: String,
     name: Option<String>,
-    #[serde(default)]
-    flags: Vec<String>,
     /// The meters only this actor carries.
     #[serde(default)]
     meters: Vec<MeterYaml>,

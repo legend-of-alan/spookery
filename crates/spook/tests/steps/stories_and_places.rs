@@ -128,11 +128,6 @@ fn the_gm_sees_light_and_draft(world: &mut World) {
     }
 }
 
-#[given(expr = "story\\/{word}.yaml declares the flag {string}")]
-fn story_declares_a_flag(world: &mut World, story: String, flag: String) {
-    write_story(world, &story, &format!("flags:\n  - {flag}\n"));
-}
-
 #[given(expr = "a rule in story\\/{word}.yaml adds 1 to meter {word} of {string}")]
 fn a_story_rule_adds(world: &mut World, story: String, key: String, of: String) {
     append_story_rule(pack(world), &story, &meter_effect(&of, &key));
@@ -202,11 +197,6 @@ fn the_gm_sees_the_siege_flag(world: &mut World) {
     assert_gm_saw(world, "story_flag siege walls_breached");
 }
 
-#[given(expr = "world\\/places\\/attic.md declares the flag {string}")]
-fn attic_declares_a_flag(world: &mut World, flag: String) {
-    write_attic(world, &format!("flags:\n  - {flag}\n"));
-}
-
 #[given(
     expr = "world\\/places\\/attic.md declares {string} with hidden false and {string} with no hidden key"
 )]
@@ -266,8 +256,13 @@ fn mira_sees_neither(world: &mut World) {
     );
 }
 
-#[given(expr = "the docks pack gains world\\/places\\/attic.md and is migrated")]
+#[given(expr = "the docks pack gains world\\/places\\/attic.md")]
 fn the_docks_pack_gains_the_attic(world: &mut World) {
+    write_attic(world, "");
+}
+
+#[given(expr = "the docks pack gains world\\/places\\/attic.md and is migrated")]
+fn the_docks_pack_gains_the_attic_and_is_migrated(world: &mut World) {
     write_attic(world, "");
     spookery_engine::migrate_pack(pack(world)).unwrap_or_else(|err| panic!("migrate: {err}"));
 }

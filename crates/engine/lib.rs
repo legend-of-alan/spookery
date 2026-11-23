@@ -1,6 +1,7 @@
 //! The Spookery table engine: load a pack, run its rules, and commit or verify the journal.
 
 pub(crate) mod canon;
+pub(crate) mod check;
 pub(crate) mod diagnostic;
 pub mod ecs;
 pub(crate) mod hash;
@@ -16,6 +17,7 @@ pub mod entity {
 }
 
 pub use canon::{load_canon, pack_rev};
+pub use check::check_pack;
 pub use diagnostic::{first_reason, Code, Diagnostic};
 pub use ecs::component;
 pub use ecs::component::meter::Meter;
@@ -29,7 +31,7 @@ pub use rules::gate::Refusal;
 pub use rules::perceive::View;
 pub use rules::roll::MoveReport;
 pub use rules::visibility::RecipientLine;
-pub use session::{check_pack, Session};
+pub use session::Session;
 pub use spookery_protocol::Reason;
 pub use store::save::{emit as emit_save, parse as parse_save};
 pub use store::{emit_tape_record, lock_pack, PackGuard, TapeRecord};
@@ -61,10 +63,9 @@ pub mod testing {
         place.unwrap_or_else(|| panic!("{actor} stands nowhere"))
     }
 
-    /// What `actor` is doing, read through `Reader::get`. Panics when they have no action state.
+    /// What `actor` is doing, read through `Reader::get`.
     pub fn act_of(world: &crate::ecs::World, actor: &str) -> Act {
-        let act = world.actors().get::<Act>(&actor.into()).get().cloned();
-        act.unwrap_or_else(|| panic!("{actor} has no action state"))
+        world.actors().get::<Act>(&actor.into()).get().clone()
     }
 
     /// Whether `actor` is busy at the save's world time.

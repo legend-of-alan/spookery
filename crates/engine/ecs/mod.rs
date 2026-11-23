@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(any(test, feature = "testing"))]
 pub use component::Act;
-pub(crate) use component::ActCounter;
 pub use component::PendingAction;
+pub(crate) use component::WindowCount;
 use id::ActorId;
 #[cfg(test)]
 pub(crate) use transaction::Savepoint;

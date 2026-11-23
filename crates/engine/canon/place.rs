@@ -1,4 +1,4 @@
-//! `world/places/*.md`: a place, and the meters and flags it carries.
+//! `world/places/*.md`: a place, and the meters it carries.
 
 use std::collections::BTreeMap;
 
@@ -52,7 +52,6 @@ pub(super) fn add(
         PlaceDef {
             name: file.name.unwrap_or_else(|| file.id.clone()),
             body: page.body,
-            flags: file.flags,
         },
     );
     diags.keep(rule_list::compile(
@@ -80,8 +79,6 @@ struct PlaceDoc {
     id: String,
     name: Option<String>,
     facts: Vec<FactYaml>,
-    #[serde(default)]
-    flags: Vec<String>,
     #[serde(default)]
     meters: Vec<MeterYaml>,
     #[serde(default)]

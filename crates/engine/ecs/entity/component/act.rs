@@ -11,7 +11,7 @@ use crate::intent::Target;
 use crate::Reason;
 
 /// How many times an actor has acted, and the action they are still on.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Act {
     pub last_act_round: u64,
@@ -22,6 +22,15 @@ pub struct Act {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending: Option<PendingAction>,
 }
+
+/// What an actor who has not acted holds, and so what one with no save row for it reads.
+static NOT_ACTED: Act = Act {
+    last_act_round: 0,
+    idle_acts_this_window: 0,
+    live_acts_this_window: 0,
+    busy_until: None,
+    pending: None,
+};
 
 /// Its change keys name what moved instead: `busy`, `last_act_round` or an act window's count,
 /// such as `actor_busy rowan`.
@@ -40,23 +49,23 @@ impl Act {
 }
 
 impl<'a> Ref<'a, entity::Actors, Act> {
-    /// The actor's action state.
-    pub fn get(&self) -> Option<&'a Act> {
-        self.store().get(self.id)
+    /// The actor's action state: its save row, or `NOT_ACTED` when it has none.
+    pub fn get(&self) -> &'a Act {
+        self.store().get(self.id).unwrap_or(&NOT_ACTED)
     }
 
     /// Busy means an action under way, or a cooldown whose `busy_until` is still after
     /// `world_time`. An action stays under way until the round that reaches its finish ends.
     pub fn is_busy(&self, world_time: u64) -> bool {
-        self.get().is_some_and(|act| {
-            act.pending.is_some() || act.busy_until.is_some_and(|until| until > world_time)
-        })
+        let act = self.get();
+        act.pending.is_some() || act.busy_until.is_some_and(|until| until > world_time)
     }
 }
 
 impl Mut<'_, entity::Actors, Act> {
     /// The one write to the actor's action state: `edit` made to what they hold, reporting the
-    /// change under `component_id` as `read` reads the action state before and after.
+    /// change under `component_id` as `read` reads the action state before and after. An action
+    /// state back at `NOT_ACTED` leaves the save.
     fn write(
         &mut self,
         component_id: &'static str,
@@ -64,13 +73,14 @@ impl Mut<'_, entity::Actors, Act> {
         edit: impl FnOnce(&mut Act),
     ) -> Result<(), Reason> {
         self.check_exists()?;
-        let held = self.store().get(self.id);
-        let before = held.and_then(&read);
-        let mut next = held.cloned().unwrap_or_default();
+        let held = self.store().get(self.id).unwrap_or(&NOT_ACTED);
+        let before = read(held);
+        let mut next = held.clone();
         edit(&mut next);
         let key = change::Key::new(component_id, self.id.as_id_ref(), None);
         let change = Change::new(key, before, read(&next));
-        let (id, (acts, transaction)) = (self.id, self.store_mut());
+        let next = (next != NOT_ACTED).then_some(next);
+        let (id, (acts, transaction)) = (self.id.clone(), self.store_mut());
         acts.set(transaction, id, next, [change.into()])
     }
 
@@ -101,8 +111,8 @@ impl Mut<'_, entity::Actors, Act> {
             act.last_act_round = round_index
         })?;
         let counter = match players {
-            0 => ActCounter::IdleActsThisWindow,
-            _ => ActCounter::LiveActsThisWindow,
+            0 => WindowCount::Idle,
+            _ => WindowCount::Live,
         };
         let read = |act: &Act| Some(count_value(counter.get(act).into()));
         self.write(counter.id(), read, |act| {
@@ -113,14 +123,14 @@ impl Mut<'_, entity::Actors, Act> {
 }
 
 impl Writer<'_, entity::Actors> {
-    /// Set `counter` back to 0 on every actor.
-    pub(crate) fn reset_acts(&mut self, counter: ActCounter) -> Result<(), Reason> {
+    /// Set the `window` count back to 0 on every actor.
+    pub(crate) fn reset_window_count(&mut self, window: WindowCount) -> Result<(), Reason> {
         let actors = Reader::new(&*self.components, self.canon).query::<ActorId>();
         let actors: Vec<ActorId> = actors.iter().cloned().collect();
         for actor in &actors {
-            let read = |act: &Act| Some(count_value(counter.get(act).into()));
+            let read = |act: &Act| Some(count_value(window.get(act).into()));
             let mut action_state = self.get_mut::<Act>(actor);
-            action_state.write(counter.id(), read, |act| *counter.get_mut(act) = 0)?;
+            action_state.write(window.id(), read, |act| *window.get_mut(act) = 0)?;
         }
         Ok(())
     }
@@ -138,33 +148,33 @@ fn count_value(count: u64) -> ChangeValue {
 
 /// One of the `Act` counts the end of its act window sets back to 0.
 #[derive(Clone, Copy)]
-pub(crate) enum ActCounter {
-    IdleActsThisWindow,
-    LiveActsThisWindow,
+pub(crate) enum WindowCount {
+    Idle,
+    Live,
 }
 
-impl ActCounter {
+impl WindowCount {
     /// The id this count's change keys spell.
     fn id(self) -> &'static str {
         match self {
-            ActCounter::IdleActsThisWindow => Act::IDLE_ACTS_THIS_WINDOW,
-            ActCounter::LiveActsThisWindow => Act::LIVE_ACTS_THIS_WINDOW,
+            WindowCount::Idle => Act::IDLE_ACTS_THIS_WINDOW,
+            WindowCount::Live => Act::LIVE_ACTS_THIS_WINDOW,
         }
     }
 
     /// This count on `act`.
     pub(crate) fn get(self, act: &Act) -> u32 {
         match self {
-            ActCounter::IdleActsThisWindow => act.idle_acts_this_window,
-            ActCounter::LiveActsThisWindow => act.live_acts_this_window,
+            WindowCount::Idle => act.idle_acts_this_window,
+            WindowCount::Live => act.live_acts_this_window,
         }
     }
 
     /// This count on `act`, to write.
     pub(crate) fn get_mut(self, act: &mut Act) -> &mut u32 {
         match self {
-            ActCounter::IdleActsThisWindow => &mut act.idle_acts_this_window,
-            ActCounter::LiveActsThisWindow => &mut act.live_acts_this_window,
+            WindowCount::Idle => &mut act.idle_acts_this_window,
+            WindowCount::Live => &mut act.live_acts_this_window,
         }
     }
 }

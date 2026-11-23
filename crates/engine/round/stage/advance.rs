@@ -1,7 +1,7 @@
 //! Move world time forward.
 
 use crate::canon::{Budget, Canon};
-use crate::ecs::{self, ActCounter, Presence};
+use crate::ecs::{self, Presence, WindowCount};
 use crate::Reason;
 
 /// Where the round stands: its index and the ticks it spans.
@@ -23,16 +23,16 @@ pub(crate) fn run(
     let ticks = round_ticks(presence.players, budget);
     let world_after = world_before.saturating_add(ticks);
     let windows = [
-        (ActCounter::IdleActsThisWindow, budget.idle_act_window_ticks),
-        (ActCounter::LiveActsThisWindow, budget.live_act_window_ticks),
+        (WindowCount::Idle, budget.idle_act_window_ticks),
+        (WindowCount::Live, budget.live_act_window_ticks),
     ];
     world.round_index = round_index;
     world.world_time = world_after;
     world.last_round_at = wall.to_string();
     world.actors_mut().expire_modifiers(world_after)?;
-    for (counter, ticks) in windows {
+    for (window, ticks) in windows {
         if world_before / ticks != world_after / ticks {
-            world.actors_mut().reset_acts(counter)?;
+            world.actors_mut().reset_window_count(window)?;
         }
     }
     Ok(Time {

@@ -4,6 +4,7 @@ use std::path::Path;
 
 use cucumber::{then, when};
 use serde_json::Value;
+use spookery_engine::component::Flag;
 
 use crate::support;
 use crate::World;
@@ -42,6 +43,23 @@ fn travel_in_verbs_yaml_teleports(world: &mut World, walk: String) {
 #[when(expr = "the pack's gm_notes run to {int} characters")]
 fn the_pack_gm_notes_run_to(world: &mut World, chars: usize) {
     table::append_gm_notes(table::pack(world), &"a".repeat(chars));
+}
+
+#[when(expr = "a verb tests rowan's flag {string}, which no rule sets")]
+fn a_verb_tests_an_unset_flag(world: &mut World, flag: String) {
+    let verb_yaml = format!(
+        "\n  - id: test_{flag}\n    when:\n      verb: test_{flag}\n    if:\n      - flag: {{ of: rowan, key: {flag}, is: true }}\n    do: []\n"
+    );
+    super::common::add_verb(table::pack(world), &verb_yaml);
+}
+
+#[when(expr = "the save gives rowan the flag {string}")]
+fn the_save_gives_rowan_the_flag(world: &mut World, flag: String) {
+    support::edit_save(table::pack(world), |now| {
+        let mut actors = now.actors_mut();
+        (actors.get_mut::<Flag>(&"rowan".into()).set(&flag, true))
+            .unwrap_or_else(|err| panic!("set {flag}: {err}"));
+    });
 }
 
 #[when(expr = "the pack_rev is restamped")]

@@ -14,8 +14,9 @@
 //!
 //! The chain lives on rowan. It starts after each of that PC's actions that
 //! leaves its lamp oil count higher than before the action, and runs to the cap
-//! before the next action. Other PCs are not given the flags, so a fire for
-//! them rolls back and the round record has one subject.
+//! before the next action. Its first rule reads `assassination_debt`, a meter
+//! only rowan carries, so a fire for another PC is refused and the round record
+//! has one subject.
 //!
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 
@@ -249,14 +250,6 @@ fn apply_effects(
 }
 
 fn install(pack: &Path, chain: &Chain) -> Result<Vec<RuleSpec>, String> {
-    let mut flags = Vec::new();
-    for index in 0..chain.len {
-        flags.push(format!("c{index}"));
-    }
-    for index in 0..chain.extras.len() {
-        flags.push(format!("s{index}"));
-    }
-    write_flags(pack, &flags)?;
     let mut rules = Vec::new();
     let mut yaml = String::from("schema: story\nid: chain\nrules:\n");
     push_rule(
@@ -313,7 +306,7 @@ fn push_rule(
 fn rule_yaml(id: &str, watch: Option<&str>, effects: &[(String, bool)]) -> String {
     let when = match watch {
         Some(flag) => format!("      change:\n        flag: {flag}\n        becomes: true\n"),
-        None => "      change:\n        item: lamp_oil\n        gained: true\n".to_string(),
+        None => "      change:\n        item: lamp_oil\n        gained: true\n    if:\n      - meter: { of: self, id: assassination_debt, op: \">=\", value: 0 }\n".to_string(),
     };
     let mut body = format!("  - id: {id}\n    when:\n{when}    do:\n");
     for (key, value) in effects {
@@ -323,19 +316,4 @@ fn rule_yaml(id: &str, watch: Option<&str>, effects: &[(String, bool)]) -> Strin
         ));
     }
     body
-}
-
-fn write_flags(pack: &Path, flags: &[String]) -> Result<(), String> {
-    let path = pack.join("cast/pc-rowan.md");
-    let text = fs::read_to_string(&path).map_err(|err| err.to_string())?;
-    let mut listed = String::from("flags:\n");
-    for flag in flags {
-        listed.push_str(&format!("    - {flag}\n"));
-    }
-    let needle = "idle:\n  eligible: false\n";
-    if !text.contains(needle) {
-        return Err("rowan idle block was not where the property expected".to_string());
-    }
-    let replacement = format!("idle:\n  eligible: false\n{listed}");
-    fs::write(&path, text.replacen(needle, &replacement, 1)).map_err(|err| err.to_string())
 }

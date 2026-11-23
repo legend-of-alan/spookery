@@ -22,8 +22,7 @@ fn nell_travels_via_door(world: &mut World) {
         &pack,
         "\n  - id: blink\n    when:\n      verb: blink\n    do:\n      - location:\n          to: docks_shop\n          teleport: true\n",
     );
-    flag_pcs(&pack, "heard_bell");
-    write_nell(&pack, &["heard_bell"]);
+    write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
     });
@@ -110,7 +109,7 @@ rules:
 ",
     )
     .unwrap();
-    write_nell(&pack, &["found_key"]);
+    write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
         let nell = entity::Id::Actor("nell".into());
@@ -146,7 +145,7 @@ fn nell_knows_the_ledger(world: &mut World, tide: i64) {
 #[given(expr = "two rules that set each other's watched flag")]
 fn two_rules_set_each_others_flag(world: &mut World) {
     let pack = copy_pack("docks", "trigger-loop");
-    write_nell(&pack, &["sun", "moon"]);
+    write_nell(&pack);
     add_verb(
         &pack,
         "\n  - id: raise\n    when:\n      verb: raise\n    do:\n      - flag:\n          of: self\n          key: sun\n          value: true\n",
@@ -291,7 +290,7 @@ The ground gives.
 ",
     )
     .unwrap();
-    write_nell(&pack, &[]);
+    write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
     });
@@ -330,8 +329,7 @@ fn nell_travels_and_the_bell_narrates(world: &mut World) {
     let pack = copy_pack("docks", "trigger-narrate");
     add_door(&pack);
     add_bell_narrate(&pack);
-    flag_pcs(&pack, "heard_bell");
-    write_nell(&pack, &["heard_bell"]);
+    write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
     });
@@ -400,7 +398,7 @@ Under the street.
         &pack,
         "\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - reveal:\n          to: self\n          fact: fact_trapdoor\n",
     );
-    write_nell(&pack, &[]);
+    write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
     });
@@ -486,7 +484,7 @@ fn a_rule_counts_tides(world: &mut World, of: String) {
 #[given(expr = "rowan and nell are seated")]
 fn rowan_and_nell_are_seated(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    write_nell(&pack, &[]);
+    write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
         set_present(seated, &["rowan", "nell"]);
@@ -548,7 +546,7 @@ fn the_viewer_summary_omits(world: &mut World, viewer: String, key: String) {
 #[when(expr = "a round runs")]
 fn a_round_runs(world: &mut World) {
     let pack = copy_pack("docks", "trigger-round-counter");
-    write_nell(&pack, &[]);
+    write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
     });
@@ -585,7 +583,7 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
         &pack,
         "\n  - id: learn\n    when:\n      verb: learn\n    do:\n      - reveal:\n          to: self\n          fact: fact_trapdoor\n",
     );
-    write_nell(&pack, &[]);
+    write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
         set_present(seated, &["nell", "wren"]);
@@ -613,7 +611,7 @@ fn an_item_is_taken_from_the_shop(world: &mut World) {
 #[when(expr = "rowan takes an item while nell is in the same room")]
 fn rowan_takes_an_item_beside_nell(world: &mut World) {
     let pack = copy_pack("docks", "trigger-actor-item");
-    write_nell(&pack, &[]);
+    write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_shop");
         set_present(seated, &["rowan", "nell", "wren"]);
@@ -626,15 +624,13 @@ fn rowan_takes_an_item_beside_nell(world: &mut World) {
 }
 
 /// `of: here` is known only at play time, so the pack check lets the habit through.
-#[given(
-    expr = "Mira has a habit that sets the {string} flag on her place, which its file does not list"
-)]
-fn mira_has_an_unlisted_place_flag_habit(world: &mut World, flag: String) {
-    let pack = copy_pack("docks", "habit-flag");
+#[given(expr = "Mira has a habit that adds 1 to {string} of her place, a meter only she carries")]
+fn mira_has_a_place_meter_habit(world: &mut World, meter: String) {
+    let pack = copy_pack("docks", "habit-meter");
     replace_in_file(
         &pack.join("cast/mira.md"),
         "rules:\n  - id: leave_door_note\n",
-        &format!("rules:\n  - id: mark_restock\n    when: habit\n    do:\n      - flag:\n          of: here\n          key: {flag}\n          value: true\n  - id: leave_door_note\n"),
+        &format!("rules:\n  - id: mark_restock\n    when: habit\n    do:\n      - meter:\n          of: here\n          key: {meter}\n          add: 1\n  - id: leave_door_note\n"),
     );
     edit_table(world, &pack, |_, _| {});
     world.pack = Some(pack);
@@ -662,17 +658,17 @@ fn an_empty_round_passes(world: &mut World) {
     play_and_keep_summaries(world, pack, Vec::new());
 }
 
-#[then(expr = "no place has the {string} flag")]
-fn no_place_has_the_flag(world: &mut World, flag: String) {
+#[then(expr = "no place has a {string} meter")]
+fn no_place_has_the_meter(world: &mut World, meter: String) {
     let now = world_of(world.pack.as_ref().unwrap());
-    let places = now.places().query::<&component::Flag>();
-    assert!(!places.iter().any(|held| held.contains(&flag)));
+    let places = now.places().query::<&component::Meter>();
+    assert!(!places.iter().any(|held| held.contains(&meter)));
 }
 
 #[when(expr = "nell travels from docks_street into docks_shop")]
 fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
     let pack = copy_pack("docks", "trigger-both-rooms");
-    write_nell(&pack, &[]);
+    write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
         set_place(now, "harbormouse", "mira_rooms");
@@ -692,7 +688,7 @@ fn a_message_hidden_from_wren_is_written(world: &mut World) {
         &pack,
         "\n  - id: pass_word\n    when:\n      verb: pass_word\n    do:\n      - note:\n          id: note_private\n          to_ids:\n            - nell\n          text: The tide turns at dusk.\n",
     );
-    write_nell(&pack, &[]);
+    write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
         set_present(seated, &["nell", "wren"]);
@@ -800,11 +796,6 @@ fn downed_pack(world: &mut World, hp: i64, crosses: &str) -> std::path::PathBuf 
         &pack,
         "\n  - id: hit\n    when:\n      verb: hit\n      target: actor\n    do:\n      - meter:\n          of: target\n          key: hp\n          add: -4\n  - id: nick\n    when:\n      verb: nick\n      target: actor\n    do:\n      - meter:\n          of: target\n          key: hp\n          add: -1\n",
     );
-    replace_in_file(
-        &pack.join("cast/briar.md"),
-        "idle:\n",
-        "flags:\n  - downed\nidle:\n",
-    );
     fs::write(
         pack.join("story/injury.yaml"),
         format!(
@@ -853,30 +844,10 @@ fn add_bell(pack: &Path) {
     );
 }
 
-fn flag_pcs(pack: &Path, flag: &str) {
-    for file in ["pc-rowan.md", "pc-wren.md", "pc-harbormouse.md"] {
-        replace_in_file(
-            &pack.join("cast").join(file),
-            "  eligible: false\n",
-            &format!("  eligible: false\nflags:\n    - {flag}\n"),
-        );
-    }
-}
-
-fn write_nell(pack: &Path, flags: &[&str]) {
-    let listed = flags
-        .iter()
-        .map(|flag| format!("    - {flag}\n"))
-        .collect::<String>();
-    let flags = if listed.is_empty() {
-        String::new()
-    } else {
-        format!("flags:\n{listed}")
-    };
+fn write_nell(pack: &Path) {
     fs::write(
         pack.join("cast/pc-nell.md"),
-        format!(
-            "\
+        "\
 ---
 schema: cast
 id: nell
@@ -884,10 +855,9 @@ control_type: pc_template
 name: Nell
 idle:
   eligible: false
-{flags}---
+---
 Nell walks the docks.
-"
-        ),
+",
     )
     .unwrap();
 }

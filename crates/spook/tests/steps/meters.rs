@@ -220,14 +220,52 @@ fn rowans_change_line_does_not(world: &mut World) {
     assert!(seen.iter().all(|key| !key.contains("shop_day")), "{seen:?}");
 }
 
+#[given(expr = "rowan has verbs that add 2 to and take 2 from her vigor")]
+fn rowan_has_vigor_verbs(world: &mut World) {
+    let pack = copy_pack("docks", "meter-rows");
+    for (verb, add) in [("lift", 2), ("lower", -2)] {
+        let effect = format!("      - meter: {{ of: self, key: vigor, add: {add} }}\n");
+        add_verb(
+            &pack,
+            &format!("\n  - id: {verb}\n    when:\n      verb: {verb}\n    do:\n{effect}"),
+        );
+    }
+    world.pack = Some(pack);
+}
+
+#[when(expr = "rowan adds 2 to her vigor")]
+fn rowan_adds_to_her_vigor(world: &mut World) {
+    migrate_and_play(world, vec![intent("lift", "rowan", "lift", None)]);
+}
+
+#[when(expr = "rowan takes 2 from her vigor")]
+fn rowan_takes_from_her_vigor(world: &mut World) {
+    migrate_and_play(world, vec![intent("lower", "rowan", "lower", None)]);
+}
+
+#[then(expr = "{word}'s vigor reads {int} and the save lists no vigor for her")]
+fn vigor_reads_with_no_row(world: &mut World, actor: String, value: i64) {
+    let id = entity::Id::Actor(actor.as_str().into());
+    assert_eq!(value_on(pack(world), &id, "vigor"), Some(value), "{actor}");
+    let row = &support::save_of(pack(world))["actors"]["meters"][&actor]["vigor"];
+    assert!(row.is_null(), "{actor}: {row}");
+}
+
+#[then(expr = "the save lists an act row for {word}")]
+fn the_save_lists_an_act_row(world: &mut World, actor: String) {
+    let row = &support::save_of(pack(world))["actors"]["acts"][&actor];
+    assert!(row.is_object(), "{actor}: {row}");
+}
+
+#[then(expr = "the save lists no act row for {word}")]
+fn the_save_lists_no_act_row(world: &mut World, actor: String) {
+    let row = &support::save_of(pack(world))["actors"]["acts"][&actor];
+    assert!(row.is_null(), "{actor}: {row}");
+}
+
 #[given(expr = "rowan stands in the shop")]
 fn rowan_stands_in_the_shop(world: &mut World) {
     let pack = copy_pack("docks", "flag-sight");
-    replace_in_file(
-        &pack.join("cast/mira.md"),
-        "  eligible: true\n",
-        "  eligible: true\nflags:\n  - shop_open\n",
-    );
     add_verb(
         &pack,
         "\n  - id: ring_bells\n    when:\n      verb: ring_bells\n    do:\n      - flag:\n          of: world\n          key: bells_rung\n          value: true\n  - id: open_shop\n    when:\n      verb: open_shop\n    do:\n      - flag:\n          of: mira\n          key: shop_open\n          value: true\n",

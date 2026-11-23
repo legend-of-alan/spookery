@@ -144,9 +144,7 @@ pub(crate) fn admit(
     let (world, intent) = (context.world, context.intent);
     if let Some(id) = intent.actor_id.as_ref() {
         let act = world.actors().get::<component::Act>(id);
-        let acted = act
-            .get()
-            .is_some_and(|act| act.last_act_round == intent.round_index);
+        let acted = act.get().last_act_round == intent.round_index;
         if acted && rule.start.counts_as_act && matches!(rule.when, When::Habit) {
             return Err(Refusal::new(intent, Reason::Ineligible));
         }
@@ -192,7 +190,7 @@ pub(crate) fn admit_cancel(context: &Context) -> Result<(), Refusal> {
     let actors = context.world.actors();
     let actor_id = intent.actor_id.as_ref();
     let pending = actor_id
-        .and_then(|id| actors.get::<component::Act>(id).get())
+        .map(|id| actors.get::<component::Act>(id).get())
         .and_then(|act| act.pending.as_ref());
     let walking = actor_id
         .and_then(|id| actors.get::<component::Place>(id).get())

@@ -158,13 +158,13 @@ pub(crate) fn map(
 /// `recovering until tick 1300` in a cooldown.
 pub(crate) fn busy_line(canon: &Canon, world: &ecs::World, actor_id: &ActorId) -> Option<String> {
     let act = world.actors().get::<component::Act>(actor_id);
-    let busy = act.get()?;
+    let act_state = act.get();
     let place = world.actors().get::<component::Place>(actor_id).get()?;
     if !act.is_busy(world.world_time) {
         return None;
     }
-    let until = busy.busy_until?;
-    let doing = match (&busy.pending, exit_stood_on(canon, place)) {
+    let until = act_state.busy_until?;
+    let doing = match (&act_state.pending, exit_stood_on(canon, place)) {
         (Some(_), Some(exit)) => format!("on the {}", exit.name(canon)),
         (Some(pending), None) => gerund(&pending.verb),
         (None, _) => "recovering".to_string(),

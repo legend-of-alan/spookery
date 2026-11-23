@@ -14,8 +14,8 @@ use crate::ecs::id::ActorId;
 use crate::ecs::{entity, nested_map, undo, Reader};
 
 /// Every actor's components, by actor id. An actor exists when it has a control type;
-/// `control_type`, `place` and `acts` have an entry for every actor, the rest only for actors
-/// holding something.
+/// `control_type` and `place` have an entry for every actor, the rest only for actors holding
+/// something the pack does not already give them.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Actors {
@@ -31,7 +31,8 @@ pub struct Actors {
     /// saw there then.
     #[serde(with = "nested_map", skip_serializing_if = "BTreeMap::is_empty")]
     visited: undo::Store<component::Map<ActorId, component::Visit>>,
-    acts: undo::DenseStore<Act>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    acts: undo::Store<BTreeMap<ActorId, Act>>,
     #[serde(with = "nested_map")]
     items: undo::Store<component::Map<ActorId, component::Item>>,
     #[serde(with = "nested_map")]
@@ -64,7 +65,7 @@ entity::has!(Actors, component::ControlType, control_type: undo::Store<BTreeMap<
 entity::has!(Actors, component::Place, place: undo::DenseStore<String>);
 entity::has!(Actors, component::WieldedItem, wielded: undo::Store<BTreeMap<ActorId, String>>);
 entity::has!(Actors, component::KnownFacts, known_facts: undo::Store<BTreeMap<ActorId, BTreeSet<String>>>);
-entity::has!(Actors, Act, acts: undo::DenseStore<Act>);
+entity::has!(Actors, Act, acts: undo::Store<BTreeMap<ActorId, Act>>);
 
 impl Reader<'_, Actors> {
     /// Each store's key, as the save writes it, with each actor it carries something for. The

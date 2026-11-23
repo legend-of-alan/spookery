@@ -18,7 +18,7 @@ Feature: A hand edit waits for migrate
   Scenario: Migrate keeps a hand edit and rewrites pack_rev
     Given a docks table
     When the save is hand edited and the canon gains a byte
-    And the pack adds meter "stamina" with start 6
+    And the pack adds meter "stamina" with base 6
     And the operator runs migrate
     Then the command exits 0
     And stdout is empty
@@ -27,7 +27,7 @@ Feature: A hand edit waits for migrate
     When the operator runs spook check
     Then the check exits 0
     And spook verify passes
-    And every actor has "stamina" at 6
+    And every actor reads "stamina" at 6 with no row in the save
 
   Scenario: A schema failure writes nothing
     Given a docks table
@@ -57,13 +57,13 @@ Feature: A hand edit waits for migrate
     Given a docks table
     And one round has committed
     When a canon file gains a byte
-    And the pack adds meter "stamina" with start 6
+    And the pack adds meter "stamina" with base 6
     And the operator runs migrate
     Then the command exits 0
     When the operator runs spook check
     Then the check exits 0
     And spook verify passes
-    And every actor has "stamina" at 6
+    And every actor reads "stamina" at 6 with no row in the save
     When the operator tries a round
     Then the command exits 0
     And spook verify passes
@@ -87,24 +87,16 @@ Feature: A hand edit waits for migrate
     And the operator runs migrate
     And the operator tries a round
     And a canon file gains a byte
-    And the pack adds meter "stamina" with start 6
+    And the pack adds meter "stamina" with base 6
     And the operator runs migrate
     Then the command exits 0
     When the operator runs spook check
     Then the check exits 0
     And spook verify passes
-    And every actor has "stamina" at 6
+    And every actor reads "stamina" at 6 with no row in the save
     When the operator tries a round
     Then the command exits 0
     And spook verify passes
-
-  Scenario: A meter missing from the save with no migrate is refused
-    Given a docks table
-    When the save drops meter "rest"
-    And the operator runs spook check
-    Then the check exits 1
-    And stderr names SCHEMA
-    And the host refuses to start with SCHEMA
 
   Scenario: Verify replays a migrate from before a later canon edit
     Given a docks table
@@ -163,11 +155,12 @@ Feature: A hand edit waits for migrate
     Then stderr names HAND_EDIT
     And the host refuses to start with HAND_EDIT
 
-  Scenario: Migrate gives a meter only to the actors that lack it
+  Scenario: An actor with no meter or act rows reads the pack's base
     Given a docks table
-    When Rowan's vigor offset is hand edited to 3 and Nell joins without vigor
+    When Rowan's vigor offset is hand edited to 3 and Nell joins with no meter or act rows
     And the operator runs migrate
     Then the command exits 0
     And rowan's vigor is at base 1 and offset 3
-    And nell's vigor is at base 1 and offset 0
+    And nell's vigor reads 1 and the save lists no vigor for her
+    And the save lists no act row for nell
     And spook verify passes

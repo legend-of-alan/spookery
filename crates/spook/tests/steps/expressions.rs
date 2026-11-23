@@ -352,7 +352,7 @@ fn vigor_of(world: &World, actor: &str) -> i64 {
     let live = now
         .actors()
         .get::<component::Meter>(&id)
-        .get("vigor")
+        .get_or_base("vigor")
         .unwrap_or_else(|| panic!("{actor}'s vigor missing"));
     live.base + live.offset
 }

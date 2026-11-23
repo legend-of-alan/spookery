@@ -85,14 +85,12 @@ pub(crate) fn replace_in_file(path: &Path, from: &str, to: &str) {
 
 /// Adds `actor` to the save as a pc in the shop, whether or not the cast has them.
 fn add_saved_actor(pack: &Path, actor: &str) {
-    let acts = "last_act_round: 0\n      idle_acts_this_window: 0\n      live_acts_this_window: 0";
     for (after, row) in [
         ("    aldric: npc\n", format!("    {actor}: pc\n")),
         (
             "    aldric: docks_shop\n",
             format!("    {actor}: docks_shop\n"),
         ),
-        ("  acts:\n", format!("    {actor}:\n      {acts}\n")),
     ] {
         let path = pack.join("state/save.yaml");
         replace_in_file(&path, after, &format!("{after}{row}"));
@@ -405,14 +403,6 @@ fn break_pack(pack: &Path, fault: &str) {
             "scorch",
             "    do:\n      - modifier: { to: self, id: scorch, add: -1, ticks: 10 }\n",
         ),
-        "an undeclared story flag" => {
-            write_file(pack, "story/siege.yaml", "schema: story\nid: siege\nrules: []\n");
-            add_verb_rule(
-                pack,
-                "set_mark",
-                "    do:\n      - flag: { of: \"story:siege\", key: walls_breached, value: true }\n",
-            );
-        }
         "a story meter the world declares" => {
             write_world_dawn(pack);
             declare_ending_meter(pack, "dawn");

@@ -14,7 +14,7 @@ use crate::store::journal;
 use crate::store::lock::{self, PackGuard, WriteGuard};
 use crate::store::records::{MigrateRecord, Record, RoundRecord};
 use crate::store::recovery::close_finished;
-use crate::store::save::{self, find_missing_meters};
+use crate::store::save;
 use crate::Reason;
 
 pub struct Outcome {
@@ -116,7 +116,6 @@ pub(crate) fn seal_migrate(
         state_rev_before,
         state_rev_after,
         state_hash: String::new(),
-        meters: find_missing_meters(&world),
         dropped_modifiers,
         dropped_meters: save::find_stale_meters(&world),
         edited,

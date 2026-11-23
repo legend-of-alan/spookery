@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-pub(crate) use act::ActCounter;
+pub(crate) use act::WindowCount;
 pub use act::{Act, PendingAction};
 pub use control_type::ControlType;
 pub use exit::OpenExit;

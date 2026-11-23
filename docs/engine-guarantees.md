@@ -140,8 +140,8 @@ refused and the save stays put. A note addressed to someone present runs before
 an unclaimed wait, even if the wait was queued first. So does a move through an
 exit into a seated player's room. An NPC habit stays quiet while a player shares
 the room. The GM can still queue it, and a GM-queued habit is checked the same
-as one the engine runs, so a habit that sets a flag its cast file does not
-list is refused either way and sets nothing. A move the round has no room for is
+as one the engine runs, so a habit that adds to a meter its place does not
+carry is refused either way and sets nothing. A move the round has no room for is
 refused `BUDGET`, never dropped: one past the intent limit, and every one after
 a rule that goes over the state-key limit.
 
@@ -211,6 +211,22 @@ pauses: a rule that should wait for a seated player says so in its `if`.
 
 Tested in `features/meters/meters_belong_to_their_entity.feature` and
 `features/meters/the_debt_waits_while_no_player_is_seated.feature`.
+
+## The save holds what differs from the pack
+
+The save lists a meter, or an actor's action state, only while it differs from
+what the pack already gives. An entity with no row for a meter reads the
+meter's `base` with no offset, and an actor with no action state reads as one
+that has not acted. A write that brings either back takes the row off. So
+adding a meter to the pack writes no rows, and a changed `base` reaches every
+entity still at it. No file lists the flags an entity may carry: any actor,
+place, story or the world may carry any flag, and check warns about a flag a
+rule tests that no rule sets and no save holds.
+
+Tested in `features/meters/meters_belong_to_their_entity.feature`,
+`features/commit/a_hand_edit_waits_for_migrate.feature`,
+`features/meters/stories_and_places_carry_meters_and_flags.feature` and
+`features/check/spook_check_explains_a_broken_pack.feature`.
 
 ## Modifiers
 
