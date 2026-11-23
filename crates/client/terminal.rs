@@ -35,9 +35,9 @@ impl Terminal {
     pub fn plain(raw: bool) -> Self {
         Self {
             surface: Surface::Plain(Plain {
-                text: text::Renderer::new(),
-                raw,
-                typed: crate::stdin_lines(),
+                renderer: text::Renderer::new(),
+                is_raw: raw,
+                stdin_lines: crate::stdin_lines(),
             }),
             last_seq: 0,
         }
@@ -51,12 +51,8 @@ impl Terminal {
     ) -> Result<(), Error> {
         self.last_seq = self.last_seq.max(message.seq.unwrap_or(0));
         match &mut self.surface {
-            Surface::Plain(plain) if plain.raw => {
-                plain.print_raw(message);
-                Ok(())
-            }
             Surface::Plain(plain) => {
-                plain.print(&message.body);
+                plain.print(message);
                 Ok(())
             }
             Surface::Window(window) => window.show(&message.body, view),
@@ -71,14 +67,14 @@ impl Terminal {
         commands: &[String],
     ) -> Result<Option<String>, Error> {
         match &mut self.surface {
-            Surface::Plain(plain) => Ok(plain.typed.recv().await),
+            Surface::Plain(plain) => Ok(plain.stdin_lines.recv().await),
             Surface::Window(window) => window.next_line(view, commands).await,
         }
     }
 
     /// Whether refusals show as their bare code.
     pub(crate) fn is_raw(&self) -> bool {
-        matches!(&self.surface, Surface::Plain(plain) if plain.raw)
+        matches!(&self.surface, Surface::Plain(plain) if plain.is_raw)
     }
 
     pub(crate) fn last_seq(&self) -> u64 {
@@ -86,17 +82,19 @@ impl Terminal {
     }
 }
 
-/// The plain surface. Game text goes to stdout and refusals go to stderr. With `raw`,
+/// The plain surface. Game text goes to stdout and refusals go to stderr. With `is_raw`,
 /// each message other than the picker or a refusal is its protocol frame.
 struct Plain {
-    text: text::Renderer,
-    raw: bool,
-    typed: UnboundedReceiver<String>,
+    renderer: text::Renderer,
+    is_raw: bool,
+    stdin_lines: UnboundedReceiver<String>,
 }
 
 impl Plain {
-    fn print(&mut self, body: &ServerBody) {
-        let shown = match body {
+    /// The picker as text, a refusal on stderr, and any other message as its frame or its text.
+    fn print(&mut self, message: &ServerMessage) {
+        let body = &message.body;
+        let content = match body {
             ServerBody::Hello {
                 open,
                 taken,
@@ -104,21 +102,14 @@ impl Plain {
                 ..
             } => text::render_pc_picker(&text::pc_picker_rows(open, taken, pc_names)),
             ServerBody::Refused(refusal) => {
-                eprintln!("{}", text::render_refusal(refusal, self.raw));
+                eprintln!("{}", text::render_refusal(refusal, self.is_raw));
                 return;
             }
-            _ => self.text.render(body),
+            _ if self.is_raw => message.to_text(),
+            _ => self.renderer.render(body),
         };
-        if !shown.is_empty() {
-            println!("{shown}");
-        }
-    }
-
-    /// The picker as text, a refusal as its code on stderr, and any other message as its frame.
-    fn print_raw(&mut self, message: &ServerMessage) {
-        match &message.body {
-            ServerBody::Hello { .. } | ServerBody::Refused(_) => self.print(&message.body),
-            _ => println!("{}", message.to_text()),
+        if !content.is_empty() {
+            println!("{content}");
         }
     }
 }
