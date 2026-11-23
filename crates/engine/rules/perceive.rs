@@ -22,7 +22,7 @@ pub struct View {
     pub viewer_id: ActorId,
     pub place: String,
     pub place_name: String,
-    pub prose: String,
+    pub place_prose: String,
     pub visible_actors: Vec<ActorId>,
     pub actor_names: Vec<String>,
     pub known_facts: Vec<KnownFact>,
@@ -182,14 +182,14 @@ fn build_capped_view(
         .ok_or(Reason::UnknownId)?;
     let place_name =
         crate::rules::lines::find_place_name(canon, place_id.as_str()).ok_or(Reason::UnknownId)?;
-    let prose = crate::rules::lines::place_prose(canon, world, viewer_id);
+    let place_prose = crate::rules::lines::place_prose(canon, world, viewer_id);
     let busy = crate::rules::lines::busy_line(canon, world, viewer_id).unwrap_or_default();
 
     Ok(View {
         viewer_id: viewer_id.clone(),
         place: place_id.into(),
         place_name,
-        prose,
+        place_prose,
         visible_actors,
         actor_names,
         known_facts,
