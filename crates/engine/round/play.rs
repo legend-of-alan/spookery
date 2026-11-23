@@ -177,7 +177,7 @@ fn run_stages(
     );
     let end = clock.world_time_after;
     finish::run(canon, &mut world, presence, end, &mut dice, &mut ledger)?;
-    travel::unlocked_exits(canon, &mut world, presence, &mut ledger);
+    travel::open_conditional_exits(canon, &mut world, presence, &mut ledger);
     triggers::run(canon, &mut world, presence, &mut dice, &mut ledger);
     travel::note_exits(canon, &mut world)?;
     let delivered = deliver::run(canon, &world, presence, &ledger.changes, &ledger.effects);

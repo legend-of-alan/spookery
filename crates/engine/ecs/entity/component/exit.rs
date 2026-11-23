@@ -3,7 +3,7 @@
 use crate::ecs::component::Component;
 
 /// An open exit, on its place under the exit's id.
-pub struct OpenExit; // repeats module: the component that marks an exit open
+pub struct OpenExit; // repeats module: mirrors the save key places.open_exits
 
 impl Component for OpenExit {
     type Value = ();

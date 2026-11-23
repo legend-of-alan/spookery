@@ -157,13 +157,10 @@ impl Paths {
     pub(crate) fn find_exit(&self, place: &str, id: &str) -> Option<Exit<'_>> {
         self.exits(place).find(|exit| exit.id == id)
     }
-}
 
-impl std::ops::Deref for Paths {
-    type Target = [PathDef];
-
-    fn deref(&self) -> &[PathDef] {
-        &self.paths
+    /// Each path, in file order.
+    pub fn iter(&self) -> impl Iterator<Item = &PathDef> {
+        self.paths.iter()
     }
 }
 

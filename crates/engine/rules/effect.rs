@@ -240,7 +240,7 @@ impl Effect {
             EffectKind::ExitOpen { exit, open } => {
                 canon
                     .find_exit(exit.place.as_str(), &exit.exit)
-                    .is_some_and(|exit| !exit.path.if_.is_empty())
+                    .is_some_and(|exit| exit.path.is_conditional())
                     .then_some(())
                     .ok_or(Reason::UnknownId)?;
                 world.places_mut().set_exit_open(&exit, open)

@@ -141,6 +141,11 @@ impl PathDef {
     pub(crate) fn mentions(&self) -> rule::Mentions<'_> {
         rule::Mentions::of_lines(&self.if_, [&self.cost], self.exprs())
     }
+
+    /// The path has an `if`, so the exit can stay locked until it opens.
+    pub(crate) fn is_conditional(&self) -> bool {
+        !self.if_.is_empty()
+    }
 }
 
 /// A path as seen from a place it leaves, named by the word a player types there.

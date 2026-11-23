@@ -249,7 +249,7 @@ impl EntityScope<'_> {
             } else {
                 let is_conditional = self
                     .find_exit(exit)
-                    .is_some_and(|exit| !exit.path.if_.is_empty());
+                    .is_some_and(|exit| exit.path.is_conditional());
                 (!is_conditional).then(|| format!("{exit} has no if, so it is always open"))
             };
         }
@@ -697,7 +697,7 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
         }
         ChangeWatch::Flag { key, .. } => {
             let declared = |flags: &[String]| flags.contains(key);
-            (key == OPEN && canon.paths.iter().any(|path| !path.if_.is_empty()))
+            (key == OPEN && canon.paths.iter().any(PathDef::is_conditional))
                 || canon.places.values().any(|place| declared(&place.flags))
                 || canon.stories.values().any(|story| declared(&story.flags))
                 || canon.rules.iter().any(|rule| {
