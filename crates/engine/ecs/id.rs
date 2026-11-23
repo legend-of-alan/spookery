@@ -77,7 +77,7 @@ string_id! {
 
 /// The world's id. There is one world, so its id says nothing more.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub struct GlobalId;
+pub struct GlobalId; // repeats module: re-exported at the crate root
 
 /// An id of one collection, in the borrowed form the canon's lookups take.
 pub trait AsIdRef {
@@ -112,6 +112,7 @@ impl AsIdRef for GlobalId {
 /// whether the exit is open.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ExitId {
+    // repeats module: re-exported at the crate root
     pub place: PlaceId,
     pub exit: String,
 }
