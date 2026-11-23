@@ -360,8 +360,9 @@ impl<Lock> Session<Lock> {
             .move_id
             .filter(|m| !m.is_empty())
             .ok_or(Reason::Schema)?;
-        let control = self.world.actors().get::<component::ControlType>(&actor_id);
-        control.get().ok_or(Reason::UnknownId)?;
+        if !self.world.actors().contains(&actor_id) {
+            return Err(Reason::UnknownId);
+        }
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
         let (canon, world) = (self.canon(), &self.world);
         let rule = gate::pick(canon, world, &actor_id, Source::Gm, &move_id, token)?;

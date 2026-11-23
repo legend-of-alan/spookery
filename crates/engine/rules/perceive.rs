@@ -58,11 +58,9 @@ pub(crate) fn build_view_by_id<Lock>(
     }
     let (canon, world) = (session.canon(), session.world());
     let id = ActorId::from(viewer_id);
-    world
-        .actors()
-        .get::<component::ControlType>(&id)
-        .get()
-        .ok_or(Reason::UnknownId)?;
+    if !world.actors().contains(&id) {
+        return Err(Reason::UnknownId);
+    }
     build_capped_view(canon, world, presence, &id, max_body_chars)
 }
 

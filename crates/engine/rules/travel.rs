@@ -193,25 +193,22 @@ pub(crate) fn exit_view(
     actor_id: &ActorId,
     exit: &Exit,
 ) -> ExitView {
-    let ticks = {
-        let probe = Intent::new(
-            String::new(),
-            world.round_index,
-            Some(actor_id.clone()),
-            Source::Player,
-            "travel",
-            Target::Exit(exit.id.clone()),
-        );
-        let presence = Presence::default();
-        let context = Context::new(canon, world, &presence, &probe);
-        cost::read_ticks(&context, &exit.cost).ok()
-    };
+    let probe = Intent::new(
+        String::new(),
+        world.round_index,
+        Some(actor_id.clone()),
+        Source::Player,
+        "travel",
+        Target::Exit(exit.id.clone()),
+    );
+    let presence = Presence::default();
+    let context = Context::new(canon, world, &presence, &probe);
     ExitView {
         exit_id: exit.id.clone(),
         name: exit.name.clone(),
         place_id: exit.to.clone(),
         place_name: find_place_name(canon, &exit.to).unwrap_or_default(),
-        ticks: ticks.unwrap_or(0),
+        ticks: cost::read_ticks(&context, &exit.cost).unwrap_or(0),
         locked: is_locked(world, exit),
     }
 }

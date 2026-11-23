@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::ecs;
 use crate::ecs::id::{ActorId, PlaceId};
-use crate::ecs::{self, component};
 use crate::rules::rule::TargetKind;
 use crate::Reason;
 
@@ -141,8 +141,9 @@ impl Intent {
     ) -> Result<Self, Reason> {
         let (actor_id, id) = match subject {
             Some(actor_id) => {
-                let control = world.actors().get::<component::ControlType>(actor_id);
-                control.get().ok_or(Reason::UnknownId)?;
+                if !world.actors().contains(actor_id) {
+                    return Err(Reason::UnknownId);
+                }
                 (
                     Some(actor_id.clone()),
                     format!("trigger:{rule_id}:{actor_id}"),
@@ -170,8 +171,9 @@ impl Intent {
         verb: &str,
         target: Target,
     ) -> Result<Self, Reason> {
-        let control = world.actors().get::<component::ControlType>(actor_id);
-        control.get().ok_or(Reason::UnknownId)?;
+        if !world.actors().contains(actor_id) {
+            return Err(Reason::UnknownId);
+        }
         let id = format!("finish:{actor_id}");
         Ok(Self::new(
             id,
