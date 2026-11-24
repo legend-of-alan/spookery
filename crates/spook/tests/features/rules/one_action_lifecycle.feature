@@ -21,11 +21,17 @@ Feature: One action lifecycle
     When rounds pass until tick 1090
     Then Rowan is at mira_rooms
 
-  Scenario: A walker on an unnamed exit to the street reads the street's name
-    Given the shop's exit to the street takes 10 ticks
+  Scenario: A walker on an unnamed two-way path reads the name of the end they head for
+    Given the two-way path between the shop and the street takes 10 ticks
     When Rowan plays "travel docks_street"
     Then Rowan is at path:docks_shop.docks_street
     And Rowan's look shows "on the Docks Street until tick 1090"
+    And Rowan's look and Rowan's place change both name "Docks Street"
+    When rounds pass until tick 1090
+    And Rowan plays "travel docks_shop"
+    Then Rowan is at path:docks_shop.docks_street
+    And Rowan's look shows "on the Docks Shop until tick 1100"
+    And Rowan's look and Rowan's place change both name "Docks Shop"
 
   Scenario: A timed teleport lands like travel
     Given the rule "blink" teleports Rowan to mira_rooms and takes 10 ticks

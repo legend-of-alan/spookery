@@ -205,13 +205,6 @@ impl PathDef {
         !self.if_.is_empty()
     }
 
-    /// The name a player reads for the path: its exit's from its first end.
-    pub(crate) fn name<'c>(&'c self, canon: &'c Canon) -> &'c str {
-        let [first, _] = &self.ends;
-        self.exit_from(first.as_str())
-            .map_or(first.as_str(), |exit| exit.name(canon))
-    }
-
     /// Whether the path carries flag `key`: only `open`, and only on a path with an `if`.
     pub(crate) fn carries_flag(&self, key: &str) -> bool {
         key == OPEN && self.is_conditional()

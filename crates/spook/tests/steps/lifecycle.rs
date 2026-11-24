@@ -64,11 +64,14 @@ fn the_stairs_take(world: &mut World, ticks: u64) {
     edit_save(&pack, give_key);
 }
 
-#[given(expr = "the shop's exit to the street takes {int} ticks")]
-fn the_street_exit_takes(world: &mut World, ticks: u64) {
+#[given(expr = "the two-way path between the shop and the street takes {int} ticks")]
+fn the_shop_street_path_takes(world: &mut World, ticks: u64) {
     let pack = world.pack.clone().unwrap();
-    let cost = format!("    cost:\n      ticks: {ticks}\n");
-    crate::support::split_path(&pack, ["docks_shop", "docks_street"], [&cost, ""]);
+    super::common::replace_in_file(
+        &pack.join("world/map.yaml"),
+        "  - path: docks_shop <-> docks_street\n",
+        &format!("  - path: docks_shop <-> docks_street\n    cost:\n      ticks: {ticks}\n"),
+    );
     stamp_pack_rev(&pack);
 }
 
@@ -182,7 +185,9 @@ fn finished(world: &mut World, verb: String) {
 fn rowan_plays(world: &mut World, line: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
     queue(&mut opened, &line);
-    play(&mut opened);
+    let output = play(&mut opened);
+    let rowan_seen = output.seen.into_iter().find(|seen| seen.viewer == *"rowan");
+    world.rowan_last_round_changes = rowan_seen.map(|seen| seen.changes).unwrap_or_default();
 }
 
 #[when(expr = "Rowan plays {string} and {string} in the same round")]
@@ -230,6 +235,21 @@ fn wrens_look_does_not_show_rowan(world: &mut World) {
         !view.visible_actors.iter().any(|id| id == "rowan"),
         "{:?}",
         view.visible_actors
+    );
+}
+
+#[then(expr = "Rowan's look and Rowan's place change both name {string}")]
+fn rowans_look_and_place_change_name(world: &mut World, name: String) {
+    let opened = open(world.pack.as_ref().unwrap());
+    let view = opened.perceive(&seated(), "rowan").unwrap();
+    assert_eq!(view.place_name, name);
+    let changes = world.rowan_last_round_changes.iter();
+    let place_change = changes
+        .into_iter()
+        .find(|change| change.component_id == "place");
+    assert_eq!(
+        place_change.map(|change| change.entry_name.as_str()),
+        Some(name.as_str())
     );
 }
 

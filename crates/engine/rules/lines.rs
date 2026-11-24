@@ -3,12 +3,12 @@
 use spookery_protocol::{CommandView, PlaceView, Seat, COMMANDS};
 
 use crate::canon::Canon;
+use crate::ecs::component::Location;
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, Presence};
 use crate::intent::Target;
 use crate::rules::cond;
 use crate::rules::gate::{list_ids, verb_for, NamedId};
-use crate::rules::grammar;
 use crate::rules::rule::{Owner, TargetKind, When};
 use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
 use crate::Reason;
@@ -39,7 +39,7 @@ pub(crate) fn help(
     let ids = list_ids(canon, world, presence, actor_id);
     let name_of = |id: &String| match ids.iter().find(|named_id| named_id.id == *id) {
         Some(named_id) => Ok(named_id.name.clone()),
-        None => find_location_name(canon, id).ok_or(Reason::UnknownId),
+        None => find_place_name(canon, id).ok_or(Reason::UnknownId),
     };
     let hints: Vec<Option<&str>> = std::iter::once(None)
         .chain(ids.iter().map(|named_id| Some(named_id.id.as_str())))
@@ -144,7 +144,7 @@ pub(crate) fn map(
     let places = (world.actors().get::<component::Visit>(actor_id).iter()).map(|(id, seen)| {
         Ok(PlaceView {
             place_id: id.to_string(),
-            name: find_location_name(canon, id).ok_or(Reason::UnknownId)?,
+            name: find_place_name(canon, id).ok_or(Reason::UnknownId)?,
             exits: (canon.exits(id))
                 .filter(|exit| seen.iter().any(|seen| seen == exit.id))
                 .map(|exit| exit_view(canon, world, actor_id, exit))
@@ -199,14 +199,31 @@ pub(crate) fn place_prose(canon: &Canon, world: &ecs::World, actor_id: &ActorId)
         .join("\n")
 }
 
-/// The name a player reads for where someone stands: the place's name for a place id, or the
-/// path's for `path:<id>`. `None` when the pack has no such place or path.
-pub(crate) fn find_location_name(canon: &Canon, location_text: &str) -> Option<String> {
-    if let Some(place) = canon.places.get(location_text) {
-        return Some(place.name.clone());
+/// The name a player reads for the place `id`, or `None` when the pack has no such place.
+pub(crate) fn find_place_name(canon: &Canon, id: &str) -> Option<String> {
+    canon.places.get(id).map(|place| place.name.clone())
+}
+
+/// The name a player reads for where someone stands: their place's, or for a walker the name of
+/// the exit they walk, which follows the way they head. `None` when the pack has neither.
+pub(crate) fn find_location_name(canon: &Canon, location: &Location) -> Option<String> {
+    match location {
+        Location::Place(id) => find_place_name(canon, id.as_str()),
+        walk => exit_stood_on(canon, walk).map(|exit| exit.name(canon).to_string()),
     }
-    match grammar::Object::parse(location_text) {
-        Ok(grammar::Object::Path(id)) => canon.paths.get(&id).map(|path| path.name(canon).into()),
-        _ => None,
+}
+
+/// The name of a `place` change's new location: the exit `actor_id` walks while they still walk
+/// it, or else the place's.
+pub(crate) fn find_location_text_name(
+    canon: &Canon,
+    world: &ecs::World,
+    actor_id: &ActorId,
+    location_text: &str,
+) -> Option<String> {
+    let current_location = world.actors().get::<component::Place>(actor_id).get();
+    match current_location.filter(|location| location.to_string() == location_text) {
+        Some(location) => find_location_name(canon, location),
+        None => find_place_name(canon, location_text),
     }
 }

@@ -64,7 +64,7 @@ pub(crate) fn show_to(
     for change in &visible {
         keys.insert(change.key.to_string());
         if actor_id.is_some() {
-            views.extend(to_change_view(canon, change));
+            views.extend(to_change_view(canon, world, change));
         }
     }
     Delivery {
@@ -76,23 +76,26 @@ pub(crate) fn show_to(
 
 /// The entry a player is sent for a change they may know, or none while its value has no wire
 /// meaning: a modifier's and busy's values are the journal's.
-fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
+fn to_change_view(canon: &Canon, world: &ecs::World, change: &Change) -> Option<ChangeView> {
     let key = &change.key;
     if [Modifier::ID, Act::BUSY].contains(&key.component_id) {
         return None;
     }
     let entity_name = match &key.entity_id {
         entity::Id::Actor(id) => canon.name(id.as_str()).map(str::to_string),
-        entity::Id::Place(id) => crate::rules::lines::find_location_name(canon, id.as_str()),
-        entity::Id::Path(id) => canon.paths.get(id).map(|path| path.name(canon).to_string()),
+        entity::Id::Place(id) => crate::rules::lines::find_place_name(canon, id.as_str()),
+        entity::Id::Path(_) => None,
         entity::Id::Story(id) => canon.name(id.as_str()).map(str::to_string),
         entity::Id::Global => None,
     };
     let entry_id = key.entry_id.clone().unwrap_or_default();
     let entry_name = match (key.component_id, &change.after) {
-        (Place::ID, Some(ChangeValue::Text(place))) => {
-            crate::rules::lines::find_location_name(canon, place)
-        }
+        (Place::ID, Some(ChangeValue::Text(location_text))) => match &key.entity_id {
+            entity::Id::Actor(actor_id) => {
+                crate::rules::lines::find_location_text_name(canon, world, actor_id, location_text)
+            }
+            _ => None,
+        },
         (Item::ID, _) => canon.name(&entry_id).map(str::to_string),
         (Meter::ID, _) => {
             (canon.meter_desc(key.entity_id.as_ref(), &entry_id)).map(|desc| desc.name.clone())

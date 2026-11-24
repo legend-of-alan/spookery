@@ -256,7 +256,9 @@ sees the `path_flag` change, and the path stays open for every actor at either
 end until a rule sets `open` to false. A hidden exit the traveller does not know stays off the view and `help`.
 A walk that takes ticks puts the traveller on the path at once, in neither
 room, and keeps them busy until they arrive at the end they head for. A move
-before then is refused. The
+before then is refused. Walkers on one path are in the same place whichever way
+each heads, and a walker reads the name of the exit toward the end they head
+for. The
 round does not shrink: a seated round still advances five ticks, a two-tick
 exit lands the traveller inside that round, and the next move is the
 following round. With every seat empty, a round advances sixty ticks. An earlier
@@ -266,8 +268,9 @@ the rest waits for the next action. With a GM seated, nothing advances until the
 GM commits.
 
 Tested in `features/travel/travel_follows_the_map.feature`,
-`features/travel/travel_follows_an_exit.feature` and
-`features/travel/exit_locks_open_once_and_stay_open.feature`.
+`features/travel/travel_follows_an_exit.feature`,
+`features/travel/exit_locks_open_once_and_stay_open.feature` and
+`features/rules/one_action_lifecycle.feature`.
 
 ## Actions
 

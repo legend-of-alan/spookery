@@ -11,7 +11,7 @@ use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::gate;
-use crate::rules::lines::find_location_name;
+use crate::rules::lines::find_place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
 use crate::Reason;
 use spookery_protocol::ExitView;
@@ -210,7 +210,7 @@ pub(crate) fn exit_view(
         path_id: exit.path.id.to_string(),
         name: exit.name(canon).to_string(),
         place_id: exit.to.to_string(),
-        place_name: find_location_name(canon, exit.to.as_str()).unwrap_or_default(),
+        place_name: find_place_name(canon, exit.to.as_str()).unwrap_or_default(),
         ticks: cost::read_ticks(&context, &exit.path.cost).unwrap_or(0),
         locked: is_locked(world, exit.path),
     }
