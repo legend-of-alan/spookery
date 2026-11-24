@@ -340,7 +340,7 @@ mod tests {
         assert!(read("{}").is_err());
     }
 
-    /// Writes this build's schema to the temp dir when the published one differs.
+    /// Writes this build's schema to a temp dir when the published one differs.
     #[cfg(feature = "schema")]
     #[test]
     fn the_published_schema_matches_this_build() {
@@ -354,12 +354,15 @@ mod tests {
             if published.as_ref() == Some(schema.as_value()) {
                 continue;
             }
-            let fresh = std::env::temp_dir().join(file);
+            let schema_dir =
+                std::env::temp_dir().join(format!("spookery-schema-{}", std::process::id()));
+            std::fs::create_dir_all(&schema_dir).unwrap();
+            let schema_path = schema_dir.join(file);
             let text = serde_json::to_string_pretty(&schema).unwrap() + "\n";
-            std::fs::write(&fresh, text).unwrap();
+            std::fs::write(&schema_path, text).unwrap();
             panic!(
                 "schema/{file} is not this build's; copy {} over it",
-                fresh.display()
+                schema_path.display()
             );
         }
     }

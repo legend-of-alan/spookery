@@ -24,7 +24,7 @@ fn a_recorded_session(world: &mut World) {
     world.recorded = parse_lines(&text);
 }
 
-/// Replays the sends and writes this build's own recording of the session to the temp dir.
+/// Replays the sends and writes this build's own recording of the session to a fresh dir.
 #[when(expr = "CI replays it against this build")]
 async fn ci_replays_it(world: &mut World) {
     let pack = copy_pack("docks", "recorded-session");
@@ -64,7 +64,9 @@ async fn ci_replays_it(world: &mut World) {
             *mark = text.len();
         }
     }
-    std::fs::write(recorded_here(), recording).unwrap_or_else(|err| panic!("{err}"));
+    world.replay_recording_path =
+        support::fresh_dir("recorded-session").join("spook-recorded-session.jsonl");
+    std::fs::write(&world.replay_recording_path, recording).unwrap_or_else(|err| panic!("{err}"));
     world.replayed = seats;
 }
 
@@ -87,7 +89,7 @@ async fn every_known_message_is_unchanged(world: &mut World) {
                 None => Ok(()),
                 Some(lost) => Err(format!(
                     "{seat_id} no longer gets {lost}\nthis build's session: {}",
-                    recorded_here().display()
+                    world.replay_recording_path.display()
                 )),
             }
         })
@@ -125,10 +127,6 @@ fn scrub_tokens(mut message: Value) -> Value {
         message["body"]["token"] = json!("<token>");
     }
     message
-}
-
-fn recorded_here() -> PathBuf {
-    std::env::temp_dir().join("spook-recorded-session.jsonl")
 }
 
 fn parse_lines(text: &str) -> Vec<Value> {
