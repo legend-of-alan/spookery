@@ -129,9 +129,10 @@ fn env_var(var: &str) -> String {
 }
 
 fn spawn_ai_gm(dir: &Path, addr: &str, key: &str, url: &str, model: &str) -> Process {
+    let args = ["--addr", addr, "ai-gm"];
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_spook"));
     command
-        .args(["--addr", addr, "ai-gm"])
+        .args(args)
         .current_dir(dir)
         .env("SPOOK_GM_KEY", key)
         .env("SPOOK_GM_URL", url)
@@ -149,7 +150,7 @@ fn spawn_ai_gm(dir: &Path, addr: &str, key: &str, url: &str, model: &str) -> Pro
         drain(child.stderr.take().unwrap(), Arc::clone(&stderr)),
     ];
     Process {
-        command_line: format!("spook --addr {addr} ai-gm"),
+        command_line: format!("spook {}", args.join(" ")),
         child,
         stdin: None,
         stdout,

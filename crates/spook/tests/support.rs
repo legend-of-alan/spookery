@@ -74,7 +74,7 @@ pub(crate) async fn expect_within_limit<T>(
 ) -> T {
     tokio::time::timeout(WAIT_LIMIT, work)
         .await
-        .unwrap_or_else(|_| panic!("{what} timed out"))
+        .unwrap_or_else(|_| panic!("timed out: {what}"))
 }
 
 /// Runs blocking `work` on tokio's blocking pool, so other scenarios run meanwhile. A panic in
@@ -87,14 +87,10 @@ pub(crate) async fn run_blocking<T: Send + 'static>(
         .unwrap_or_else(|err| std::panic::resume_unwind(err.into_panic()))
 }
 
-/// Runs spook with `args` to exit. Its stdin is empty, so it never waits on the test runner's.
-pub(crate) async fn run_spook(args: &[&str]) -> std::process::Output {
-    let (status, stdout, stderr) = spawn(args).wait_with_output().await;
-    std::process::Output {
-        status,
-        stdout: stdout.into_bytes(),
-        stderr: stderr.into_bytes(),
-    }
+/// Runs spook with `args` until it exits. Its stdin is empty, so it never waits on the test
+/// runner's.
+pub(crate) async fn run_spook(args: &[&str]) -> (ExitStatus, String, String) {
+    spawn(args).wait_with_output().await
 }
 
 #[derive(Debug)]
@@ -114,14 +110,14 @@ impl Process {
     pub(crate) async fn wait_with_output(&mut self) -> (ExitStatus, String, String) {
         self.stdin = None;
         let drains = std::mem::take(&mut self.drains);
-        let drains_done = run_blocking(move || {
+        let join_drains = run_blocking(move || {
             for drain in drains {
                 drain
                     .join()
                     .unwrap_or_else(|_| panic!("a drain thread panicked"));
             }
         });
-        expect_within_limit(&*self, drains_done).await;
+        expect_within_limit(&*self, join_drains).await;
         let status = self
             .child
             .wait()

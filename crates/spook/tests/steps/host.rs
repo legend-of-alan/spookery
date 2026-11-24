@@ -453,8 +453,13 @@ pub(crate) fn parse_addrs(stdout: &str) -> (SocketAddr, SocketAddr) {
 
 /// Starts `spook run` on `pack` in `dir`, where it writes its `logs/`.
 pub(crate) fn spawn(dir: &Path, pack: &Path, flags: &[&str]) -> Pending {
+    let pack_arg = support::pack_arg(pack);
+    let args: Vec<&str> = ["run", pack_arg.as_str()]
+        .into_iter()
+        .chain(flags.iter().copied())
+        .collect();
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
-    command.arg("run").arg(support::pack_arg(pack)).args(flags);
+    command.args(&args);
     command
         .current_dir(dir)
         .stdin(Stdio::piped())
@@ -481,7 +486,7 @@ pub(crate) fn spawn(dir: &Path, pack: &Path, flags: &[&str]) -> Pending {
     let stderr = Arc::new(Mutex::new(String::new()));
     let stderr_drain = support::drain(stderr_pipe, Arc::clone(&stderr));
     Pending {
-        command_line: format!("spook run {} {}", support::pack_arg(pack), flags.join(" ")),
+        command_line: format!("spook {}", args.join(" ")),
         child,
         stdin,
         stdout,
@@ -1086,8 +1091,8 @@ pub(crate) async fn wait_suffix(slot: &Arc<Mutex<String>>, mark: usize, needle: 
 }
 
 pub(crate) async fn run(world: &mut World, args: &[&str]) {
-    let output = support::run_spook(args).await;
-    world.code = output.status.code();
-    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let (status, stdout, stderr) = support::run_spook(args).await;
+    world.code = status.code();
+    world.stdout = stdout;
+    world.stderr = stderr;
 }

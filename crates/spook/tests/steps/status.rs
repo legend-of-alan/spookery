@@ -1,19 +1,13 @@
 use cucumber::{then, when};
 
-use crate::support::run_spook;
+use super::host;
 use crate::World;
 
 #[when(expr = "the operator runs status")]
 async fn the_operator_runs_status(world: &mut World) {
     // repeats module: mirrors its step text
-    let pack = world
-        .pack
-        .as_ref()
-        .unwrap_or_else(|| panic!("no docks table"));
-    let output = run_spook(&["status", pack.to_str().unwrap()]).await;
-    world.code = output.status.code();
-    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let pack = crate::support::pack_arg(host::pack(world));
+    host::run(world, &["status", &pack]).await;
     world.scratch = format!("stdout:\n{}\nstderr:\n{}", world.stdout, world.stderr);
 }
 
