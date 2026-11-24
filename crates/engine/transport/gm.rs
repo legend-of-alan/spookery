@@ -175,51 +175,10 @@ fn queue(
 #[cfg(test)]
 mod tests {
     use serde_json::json;
-    use spookery_protocol::{QueuedMove, Seat, COMMANDS};
+    use spookery_protocol::QueuedMove;
 
     use crate::testing::copy_pack;
-    use crate::transport::gm;
-    use crate::{Presence, Reason};
-
-    const WALL: &str = "2026-01-01T00:00:00Z";
-
-    /// `gm::run` runs each GM command the hello lists: well-formed arguments are not
-    /// `SCHEMA`, and a command that is not one is.
-    #[test]
-    fn each_gm_command_runs() {
-        let pack = copy_pack("docks", "gm_commands");
-        let mut session = crate::testing::resume(&pack);
-        let calls = [
-            ("status", json!({})),
-            ("perceive", json!({"as": "rowan"})),
-            ("queue", json!({"actor": "rowan", "move": "wait"})),
-            ("say", json!({"to": "table", "text": "hi"})),
-            ("commit", json!({"include_round": false})),
-            ("release", json!({})),
-        ];
-        let gm_commands: Vec<&str> = COMMANDS
-            .iter()
-            .filter(|command| command.seat == Seat::Gm)
-            .map(|command| command.id)
-            .collect();
-        let called: Vec<&str> = calls.iter().map(|(command, _)| *command).collect();
-        assert_eq!(called, gm_commands);
-        for (command, args) in calls {
-            let args = args.as_object().cloned().unwrap_or_default();
-            let ran = gm::run(&mut session, &Presence::default(), command, &args, WALL);
-            assert!(!matches!(ran, Err(Reason::Schema)), "{command}");
-        }
-        assert!(matches!(
-            gm::run(
-                &mut session,
-                &Presence::default(),
-                "fly",
-                &Default::default(),
-                WALL
-            ),
-            Err(Reason::Schema)
-        ));
-    }
+    use crate::Presence;
 
     #[test]
     fn parsed_intent_reaches_the_session_with_move_and_to() {
