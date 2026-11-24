@@ -21,25 +21,33 @@ Feature: One action lifecycle
     When rounds pass until tick 1090
     Then Rowan is at mira_rooms
 
-  Scenario: A walker on an unnamed two-way path reads the name of the end they head for
-    Given the two-way path between the shop and the street takes 10 ticks
+  Scenario Outline: A walker on an unnamed two-way path reads the name of the end they head for, whether the walk ends in the round it starts or later
+    Given the two-way path between the shop and the street takes <ticks> ticks
     When Rowan plays "travel docks_street"
-    Then Rowan is at path:docks_shop.docks_street
-    And Rowan's look shows "on the Docks Street until tick 1090"
-    And Rowan's look and Rowan's place change both name "Docks Street"
-    When rounds pass until tick 1090
+    Then Rowan is at <where out>
+    And Rowan's look shows "<busy line out>"
+    And Rowan's look and every place change Rowan saw last round name "Docks Street"
+    When rounds pass until tick <turn back tick>
     And Rowan plays "travel docks_shop"
-    Then Rowan is at path:docks_shop.docks_street
-    And Rowan's look shows "on the Docks Shop until tick 1100"
-    And Rowan's look and Rowan's place change both name "Docks Shop"
+    Then Rowan is at <where back>
+    And Rowan's look shows "<busy line back>"
+    And Rowan's look and every place change Rowan saw last round name "Docks Shop"
 
-  Scenario: A timed teleport lands like travel
+    Examples:
+      | ticks | where out                    | busy line out                       | turn back tick | where back                   | busy line back                    |
+      | 10    | path:docks_shop.docks_street | on the Docks Street until tick 1090 | 1090           | path:docks_shop.docks_street | on the Docks Shop until tick 1100 |
+      | 2     | docks_street                 |                                     | 1085           | docks_shop                   |                                   |
+
+  Scenario: A timed teleport lands like travel, and the brass key taken in Mira's rooms opens the stair door from that end
     Given the rule "blink" teleports Rowan to mira_rooms and takes 10 ticks
+    And the brass key lies in Mira's rooms
     When Rowan plays "blink"
     Then Rowan is at docks_shop
     And Rowan's look shows "blinking until tick 1090"
     When rounds pass until tick 1090
     Then Rowan is at mira_rooms
+    When Rowan plays "take brass_key"
+    Then the stair door is open
 
   Scenario: A cooldown keeps the actor busy after the finish
     Given the rule "chant" takes 5 ticks and has a cooldown of 3 ticks

@@ -212,18 +212,3 @@ pub(crate) fn find_location_name(canon: &Canon, location: &Location) -> Option<S
         walk => exit_stood_on(canon, walk).map(|exit| exit.name(canon).to_string()),
     }
 }
-
-/// The name of a `place` change's new location: the exit `actor_id` walks while they still walk
-/// it, or else the place's.
-pub(crate) fn find_location_text_name(
-    canon: &Canon,
-    world: &ecs::World,
-    actor_id: &ActorId,
-    location_text: &str,
-) -> Option<String> {
-    let current_location = world.actors().get::<component::Place>(actor_id).get();
-    match current_location.filter(|location| location.to_string() == location_text) {
-        Some(location) => find_location_name(canon, location),
-        None => find_place_name(canon, location_text),
-    }
-}

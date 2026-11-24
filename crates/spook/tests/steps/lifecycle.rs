@@ -238,19 +238,39 @@ fn wrens_look_does_not_show_rowan(world: &mut World) {
     );
 }
 
-#[then(expr = "Rowan's look and Rowan's place change both name {string}")]
-fn rowans_look_and_place_change_name(world: &mut World, name: String) {
+#[then(expr = "Rowan's look and every place change Rowan saw last round name {string}")]
+fn rowans_look_and_last_round_place_changes_name(world: &mut World, name: String) {
     let opened = open(world.pack.as_ref().unwrap());
     let view = opened.perceive(&seated(), "rowan").unwrap();
     assert_eq!(view.place_name, name);
     let changes = world.rowan_last_round_changes.iter();
-    let place_change = changes
-        .into_iter()
-        .find(|change| change.component_id == "place");
-    assert_eq!(
-        place_change.map(|change| change.entry_name.as_str()),
-        Some(name.as_str())
-    );
+    let place_changes: Vec<_> = (changes.into_iter())
+        .filter(|change| change.component_id == "place")
+        .collect();
+    assert!(!place_changes.is_empty(), "Rowan saw no place change");
+    for place_change in place_changes {
+        assert_eq!(place_change.entry_name, name, "{place_change:?}");
+    }
+}
+
+#[given(expr = "the brass key lies in Mira's rooms")]
+fn the_brass_key_lies_in_miras_rooms(world: &mut World) {
+    edit_save(world.pack.as_ref().unwrap(), |now| {
+        (now.places_mut()
+            .get_mut::<component::Item>(&"mira_rooms".into()))
+        .shift("brass_key", 1, None)
+        .unwrap();
+    });
+}
+
+#[then(expr = "the stair door is open")]
+fn the_stair_door_is_open(world: &mut World) {
+    let now = world_of(world.pack.as_ref().unwrap());
+    let stairs_id = "docks_shop.stairs".into();
+    assert!(now
+        .paths()
+        .get::<component::Flag>(&stairs_id)
+        .contains("open"));
 }
 
 #[then(expr = "Rowan's look shows {string}")]

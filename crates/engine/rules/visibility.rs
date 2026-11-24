@@ -11,6 +11,7 @@ use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component};
 use crate::entity;
 use crate::rules::effect::{Effect, EffectKind};
+use crate::rules::grammar;
 
 /// Who is asking.
 pub(crate) enum Recipient {
@@ -64,7 +65,7 @@ pub(crate) fn show_to(
     for change in &visible {
         keys.insert(change.key.to_string());
         if actor_id.is_some() {
-            views.extend(to_change_view(canon, world, change));
+            views.extend(to_change_view(canon, change));
         }
     }
     Delivery {
@@ -76,7 +77,7 @@ pub(crate) fn show_to(
 
 /// The entry a player is sent for a change they may know, or none while its value has no wire
 /// meaning: a modifier's and busy's values are the journal's.
-fn to_change_view(canon: &Canon, world: &ecs::World, change: &Change) -> Option<ChangeView> {
+fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
     let key = &change.key;
     if [Modifier::ID, Act::BUSY].contains(&key.component_id) {
         return None;
@@ -90,12 +91,10 @@ fn to_change_view(canon: &Canon, world: &ecs::World, change: &Change) -> Option<
     };
     let entry_id = key.entry_id.clone().unwrap_or_default();
     let entry_name = match (key.component_id, &change.after) {
-        (Place::ID, Some(ChangeValue::Text(location_text))) => match &key.entity_id {
-            entity::Id::Actor(actor_id) => {
-                crate::rules::lines::find_location_text_name(canon, world, actor_id, location_text)
-            }
-            _ => None,
-        },
+        (Place::ID, Some(ChangeValue::Text(after_id))) => {
+            let before_id = change.before.as_ref().and_then(ChangeValue::as_text);
+            find_place_change_name(canon, before_id, after_id)
+        }
         (Item::ID, _) => canon.name(&entry_id).map(str::to_string),
         (Meter::ID, _) => {
             (canon.meter_desc(key.entity_id.as_ref(), &entry_id)).map(|desc| desc.name.clone())
@@ -111,6 +110,23 @@ fn to_change_view(canon: &Canon, world: &ecs::World, change: &Change) -> Option<
         before: change.before.clone(),
         after: change.after.clone(),
     })
+}
+
+/// The name a player reads for a `place` change's `after_id`: the place's name, or for
+/// `path:<id>` the name of the exit that path leaves `before_id` by.
+fn find_place_change_name(
+    canon: &Canon,
+    before_id: Option<&str>,
+    after_id: &str,
+) -> Option<String> {
+    if let Some(name) = crate::rules::lines::find_place_name(canon, after_id) {
+        return Some(name);
+    }
+    let Ok(grammar::Object::Path(path_id)) = grammar::Object::parse(after_id) else {
+        return None;
+    };
+    let exit = canon.paths.get(&path_id)?.exit_from(before_id?)?;
+    Some(exit.name(canon).to_string())
 }
 
 fn narrations(effects: &[Effect], viewer: Option<&ActorId>) -> Vec<String> {
