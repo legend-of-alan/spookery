@@ -53,6 +53,23 @@ fn a_verb_names_an_unset_flag(world: &mut World, flag: String) {
     super::common::add_verb(table::pack(world), &verb_yaml);
 }
 
+#[when(expr = "a change rule's when names flag {string}, which no rule sets")]
+fn a_change_rule_names_an_unset_flag(world: &mut World, flag: String) {
+    let story_yaml = format!(
+        "schema: story
+id: watch
+rules:
+  - id: on_{flag}
+    when:
+      change:
+        flag: {flag}
+        becomes: true
+    do: []
+"
+    );
+    super::common::write_file(table::pack(world), "story/watch.yaml", &story_yaml);
+}
+
 #[when(expr = "an exit's revealed_by names flag {string}, which no rule sets")]
 fn an_exit_names_an_unset_flag(world: &mut World, flag: String) {
     let path_line = format!("  - path: loft -> mill_lane\n    revealed_by: {flag}\n");

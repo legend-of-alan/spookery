@@ -6,13 +6,13 @@ mod trigger;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::canon::map::MAP_FILE;
-use crate::canon::{Canon, ItemDef, PathDef, PlaceDef};
+use crate::canon::{Canon, ItemDef, PathDef, PlaceDef, OPEN};
 use crate::diagnostic::{schema_error, warning, Diagnostic};
 use crate::ecs::component::modifier;
 use crate::ecs::id::PlaceId;
 use crate::rules::cond;
 use crate::rules::grammar;
-use crate::rules::rule::{self, Cond, EffectTemplate, Owner};
+use crate::rules::rule::{self, ChangeWatch, Cond, EffectTemplate, Owner, When};
 
 pub(super) use entity_scope::{check_carriers, check_meter_reads, EntityScope};
 
@@ -128,13 +128,16 @@ fn conditions(canon: &Canon) -> impl Iterator<Item = (&str, String, &[Cond])> {
     rules.chain(paths)
 }
 
-/// Flag conditions, on a rule or a path, and a path's `revealed_by`, that name a key no rule
-/// sets and `held` does not list, so its value never moves: most likely a misspelt key. An
-/// exit's `open` is left to `check_carriers`.
+/// Flag conditions, on a rule or a path, a change rule's flag watch and a path's `revealed_by`,
+/// that name a key no rule sets and `held` does not list, so its value never moves: most likely
+/// a misspelt key. An exit's `open` gets no warning here: `check_carriers` checks it in a
+/// condition, and the round sets it on exits, not through rules.
 fn check_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let is_ever_set = |key| held.contains(key) || find_flag_holders(canon, key).next().is_some();
     let hint = "set the flag in a rule or the save, or name a flag that is set";
+    let unset_problem =
+        |key: &str| format!("names flag '{key}', which no rule sets and no save holds");
     for (file, at, conds) in conditions(canon) {
         for cond in conds {
             cond.visit(|cond| {
@@ -144,18 +147,25 @@ fn check_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
                 if matches!(of, grammar::Object::Exit(_)) || is_ever_set(key.as_str()) {
                     return;
                 }
-                let problem = format!("names flag '{key}', which no rule sets and no save holds");
-                diags.push(warning(file, &problem, hint).at_path(at.clone()));
+                diags.push(warning(file, &unset_problem(key), hint).at_path(at.clone()));
             });
+        }
+    }
+    for rule in canon.rules.iter() {
+        let When::Change(ChangeWatch::Flag { key, .. }) = &rule.when else {
+            continue;
+        };
+        if key != OPEN && !is_ever_set(key) {
+            let at = format!("rules[{}].when", rule.index);
+            diags.push(warning(&rule.file, &unset_problem(key), hint).at_path(at));
         }
     }
     for (row, path) in canon.paths.iter().enumerate() {
         let Some(key) = path.revealed_by.as_deref().filter(|key| !is_ever_set(key)) else {
             continue;
         };
-        let problem = format!("names flag '{key}', which no rule sets and no save holds");
         let at = format!("paths[{row}].revealed_by");
-        diags.push(warning(MAP_FILE, &problem, hint).at_path(at));
+        diags.push(warning(MAP_FILE, &unset_problem(key), hint).at_path(at));
     }
     diags
 }
