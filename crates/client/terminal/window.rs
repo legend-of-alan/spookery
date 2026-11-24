@@ -286,14 +286,14 @@ impl Screen {
             return;
         }
         let first_new_line = self.transcript.line_count();
-        self.push_body(body);
+        self.push_body(body, message.reply_to.is_some());
         let has_text = self.transcript.line_count() > first_new_line;
         if self.renderer.take_scrollback_separator(body, has_text) {
             self.transcript.insert_blank_line(first_new_line);
         }
     }
 
-    fn push_body(&mut self, body: &ServerBody) {
+    fn push_body(&mut self, body: &ServerBody, answers_own_command: bool) {
         let palette = self.palette;
         match body {
             ServerBody::Hello {
@@ -318,10 +318,13 @@ impl Screen {
                 self.transcript.push_round_divider(divider);
             }
             ServerBody::View(view) => {
-                if view.place != self.last_place_id {
+                let is_new_place = view.place != self.last_place_id;
+                if is_new_place {
                     self.last_place_id = view.place.clone();
                     self.place_panel.mark_map_due();
-                    self.push_place_arrival(view);
+                }
+                if is_new_place || answers_own_command {
+                    self.push_place(view);
                 }
             }
             ServerBody::Say(speech) => {
@@ -358,8 +361,8 @@ impl Screen {
         }
     }
 
-    /// The place's name and prose, shown once when the PC arrives.
-    fn push_place_arrival(&mut self, view: &protocol::View) {
+    /// The place's name and prose, shown on reaching a new place and in reply to this seat's `look`.
+    fn push_place(&mut self, view: &protocol::View) {
         let palette = self.palette;
         if !view.place_name.is_empty() {
             let name = palette.span(view.place_name.clone(), GOLD);

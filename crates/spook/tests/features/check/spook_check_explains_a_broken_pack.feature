@@ -190,6 +190,15 @@ Feature: spook check explains a broken pack
       | reader                | file             | path                 |
       | a verb's if           | rules/verbs.yaml | rules[8].if          |
       | an exit's revealed_by | world/map.yaml   | paths[7].revealed_by |
+      | a change rule's when  | story/watch.yaml | rules[0].when        |
+
+  Scenario: A change rule that watches an exit's open passes check
+    Given a docks table
+    When a change rule's when names flag "open", which no rule sets
+    And the pack_rev is restamped
+    And the operator runs spook check --json
+    Then the check exits 0
+    And stdout says "[]"
 
   Scenario: Long gm_notes are a warning and the check still exits 0
     Given a docks table

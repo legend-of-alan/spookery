@@ -91,7 +91,7 @@ fn add_saved_actor(pack: &Path, actor: &str) {
 }
 
 /// Writes `text` to the pack file at `file`, making its folder when the pack has none.
-fn write_file(pack: &Path, file: &str, text: &str) {
+pub(crate) fn write_file(pack: &Path, file: &str, text: &str) {
     let path = pack.join(file);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, text).unwrap();
