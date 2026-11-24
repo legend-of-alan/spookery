@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use tokio::time::Instant;
 
-/// The longest client message the table reads. A longer one is `LINE_TOO_LONG`.
+/// The longest client message the host reads. A longer one is `LINE_TOO_LONG`.
 pub(super) const CLIENT_MESSAGE_CAP: usize = 8 * 1024;
 
 /// The longest WebSocket message the game port takes in at all. A longer one drops the

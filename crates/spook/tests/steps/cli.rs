@@ -12,7 +12,7 @@ use super::common::{
     a_docks_table, add_verb, capture_play_stdout, edit_save, play_as_pc, replace_in_file,
     spawn_play, wait_play, wait_play_until,
 };
-use super::table;
+use super::host;
 
 /// The blank-line separated blocks of a step's docstring.
 pub(crate) fn split_blocks(step: &Step) -> Vec<&str> {
@@ -22,17 +22,17 @@ pub(crate) fn split_blocks(step: &Step) -> Vec<&str> {
 
 #[when(expr = "the operator asks spook for help")]
 async fn the_operator_asks_spook_for_help(world: &mut World) {
-    table::run(world, &["--help"]).await;
+    host::run(world, &["--help"]).await;
 }
 
 #[when(expr = "the operator asks the {string} command for help")]
 async fn the_operator_asks_a_command_for_help(world: &mut World, command: String) {
-    table::run(world, &[&command, "--help"]).await;
+    host::run(world, &[&command, "--help"]).await;
 }
 
 #[when(expr = "the operator runs the arguments {string} and {string}")]
 async fn the_operator_runs_two_arguments(world: &mut World, first: String, second: String) {
-    table::run(world, &[&first, &second]).await;
+    host::run(world, &[&first, &second]).await;
 }
 
 #[then(expr = "stdout shows usage")]
@@ -74,7 +74,7 @@ fn play_says(world: &mut World, text: String) {
 
 #[when(expr = "another play picks {word} on that table")]
 async fn another_play_picks_on_that_table(world: &mut World, pc: String) {
-    let port = table::live_mut(world).game_port;
+    let port = host::live_mut(world).game_port;
     let addr = format!("127.0.0.1:{port}");
     let mut play = spawn_play(&addr, &pc, &[]);
     let (status, stdout, stderr) = play.wait_with_output().await;
@@ -105,7 +105,7 @@ fn play_does_not_show_the_line(world: &mut World, text: String) {
 #[then(expr = "play's error shows {string}")]
 async fn play_error_shows(world: &mut World, text: String) {
     let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
-    world.stderr = table::poll_until(&text, async || {
+    world.stderr = host::poll_until(&text, async || {
         let stderr = support::text_of(&play.stderr);
         if stderr.contains(&text) {
             Ok(stderr)
@@ -239,7 +239,7 @@ fn stderr_has_no_protocol_json(world: &mut World) {
 #[given(expr = "a docks table where harbormouse's might is 40")]
 fn harbormouses_might_is_40(world: &mut World) {
     a_docks_table(world);
-    edit_save(table::pack(world), |now| {
+    edit_save(host::pack(world), |now| {
         let might = Meter {
             base: 40,
             offset: 0,
@@ -254,15 +254,15 @@ fn harbormouses_might_is_40(world: &mut World) {
 #[given(expr = "a docks table where hp has no name")]
 fn hp_has_no_name(world: &mut World) {
     a_docks_table(world);
-    let meters = table::pack(world).join("rules/meters.yaml");
+    let meters = host::pack(world).join("rules/meters.yaml");
     replace_in_file(&meters, "    name: Health\n", "");
-    spookery_engine::migrate_pack(table::pack(world)).unwrap_or_else(|err| panic!("{err}"));
+    spookery_engine::migrate_pack(host::pack(world)).unwrap_or_else(|err| panic!("{err}"));
 }
 
 #[given(expr = "a docks table where a spill leaves Briar a note and costs Briar 1 hp")]
 fn a_spill_leaves_briar_a_note(world: &mut World) {
     a_docks_table(world);
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     add_verb(
         &pack,
         "  - id: spill\n    when:\n      verb: spill\n    do:\n      - note:\n          id: note_sealed_name\n          to_ids:\n            - briar\n          text: the sealed name\n      - flag:\n          of: world\n          key: sealed_name_spilled\n          value: true\n      - meter:\n          of: briar\n          key: hp\n          add: -1\n",
@@ -273,7 +273,7 @@ fn a_spill_leaves_briar_a_note(world: &mut World) {
 #[given(expr = "a docks table where a sip costs harbormouse a tonic and gives Bram one")]
 fn a_sip_gives_bram_a_tonic(world: &mut World) {
     a_docks_table(world);
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     add_verb(
         &pack,
         "  - id: sip\n    when:\n      verb: sip\n    cost:\n      items:\n        tonic: 1\n    do:\n      - item:\n          of: bram\n          id: tonic\n          add: 1\n",
@@ -284,7 +284,7 @@ fn a_sip_gives_bram_a_tonic(world: &mut World) {
 #[given(expr = "a docks table where a juggle gains harbormouse a tonic and gives it back")]
 fn a_juggle_gives_the_tonic_back(world: &mut World) {
     a_docks_table(world);
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     add_verb(
         &pack,
         "  - id: juggle\n    when:\n      verb: juggle\n    do:\n      - item:\n          of: harbormouse\n          id: tonic\n          add: 1\n      - item:\n          of: harbormouse\n          id: tonic\n          add: -1\n",

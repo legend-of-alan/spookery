@@ -17,12 +17,12 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use spookery_engine::Reason;
 
+use super::host::{report_close, Rejection, Request};
 use super::limits::{
     wait_for_token, TokenBucket, BURST, CLIENT_MESSAGE_CAP, KEEPALIVE, MESSAGE_CAP, RATE_PER_SEC,
     REQUESTED_SEND_BUFFER,
 };
 use super::seat::{frame_queue, write_frames, ConnId};
-use super::table::{report_close, Rejection, Request};
 use crate::protocol::{ClientMessage, Seat};
 
 #[derive(Clone)]
@@ -91,7 +91,7 @@ async fn upgrade(
 }
 
 /// The `Host` is `127.0.0.1`, and a browser's `Origin`, when it sends one, is too, so a page
-/// on another site cannot reach the table through a renamed host.
+/// on another site cannot reach the game port through a name that resolves to loopback.
 fn is_loopback(headers: &HeaderMap) -> bool {
     let named = |value: Option<&str>, prefix: &str| {
         value

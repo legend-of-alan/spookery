@@ -132,7 +132,7 @@ async fn reconnect(
 }
 
 /// Sends `claim` with `args` and shows its reply, what it missed, and the first view.
-/// Returns that view and the token. If the table refuses, play ends.
+/// Returns that view and the token. If the host refuses, play ends.
 async fn claim_pc(
     connection: &mut websocket::Connection,
     args: Value,
@@ -176,8 +176,8 @@ async fn claim_pc(
 
 /// The command a typed line names, and its arguments. `tell` is the word `say`.
 /// `say place <text>` speaks to the place `view` shows. Any other say of two or more words
-/// goes to the table as typed, the first word as the actor in `to` and the rest in `text`, and the
-/// table finds who it names. Any other first word is a move with the rest of the line as
+/// goes to the host as typed, the first word as the actor in `to` and the rest in `text`, and the
+/// host finds who it names. Any other first word is a move with the rest of the line as
 /// its target. An empty line names none.
 fn parse_command<'l>(line: &'l str, view: &protocol::View) -> Option<(&'l str, Value)> {
     let (command, rest) = line.trim().split_once(' ').unwrap_or((line.trim(), ""));

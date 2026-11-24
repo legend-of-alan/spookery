@@ -9,14 +9,14 @@ use cucumber::{then, when};
 use crate::support::{self, copy_pack};
 use crate::World;
 
-use super::table;
+use super::host;
 
-/// The table starts in a directory of its own, where it writes its log file.
+/// The host starts in a directory of its own, where it writes its log file.
 #[when(expr = "the table listens on port 0")]
 async fn the_table_listens_on_port_0(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let dir = support::fresh_dir("host-start");
-    table::run_with_flags(world, &dir, &pack, &["--addr", "127.0.0.1:0"]).await;
+    host::run_with_flags(world, &dir, &pack, &["--addr", "127.0.0.1:0"]).await;
     world.scratch = dir.to_string_lossy().into_owned();
 }
 
@@ -24,7 +24,7 @@ async fn the_table_listens_on_port_0(world: &mut World) {
     expr = "the host names its log file in the directory it started in, and the file says the pack opened"
 )]
 async fn the_host_names_its_log_file(world: &mut World) {
-    let host = table::live(world).host.as_ref();
+    let host = host::live(world).process.as_ref();
     let host = host.unwrap_or_else(|| panic!("no host"));
     let file = wait_for_log_file(&host.stderr).await;
     let logs = fs::canonicalize(Path::new(&world.scratch).join("logs"))
@@ -41,7 +41,7 @@ async fn the_host_names_its_log_file(world: &mut World) {
 
 /// Waits for the host's `logging to <path>` line on stderr and returns that file.
 async fn wait_for_log_file(stderr: &Arc<Mutex<String>>) -> PathBuf {
-    let stderr = table::poll_until("the log file's path", async || {
+    let stderr = host::poll_until("the log file's path", async || {
         let stderr = support::text_of(stderr);
         if stderr.ends_with('\n') {
             Ok(stderr)
@@ -59,7 +59,7 @@ async fn wait_for_log_file(stderr: &Arc<Mutex<String>>) -> PathBuf {
 
 #[then(expr = "the pack holds no log file")]
 fn the_pack_holds_no_log_file(world: &mut World) {
-    for (path, _) in table::read_files(table::pack(world)) {
+    for (path, _) in host::read_files(host::pack(world)) {
         let is_log = path.extension().is_some_and(|extension| extension == "log");
         assert!(!is_log, "{}", path.display());
     }
@@ -67,15 +67,15 @@ fn the_pack_holds_no_log_file(world: &mut World) {
 
 #[then(expr = "the host reports the game port and the MCP address")]
 fn the_host_reports_the_game_port_and_the_mcp_addr(world: &mut World) {
-    let live = table::live_mut(world);
+    let live = host::live_mut(world);
     let stdout = live
-        .host
+        .process
         .as_ref()
         .map(|server| support::text_of(&server.stdout))
         .unwrap_or_default();
     let game = live.game_port;
     let mcp_port = live.mcp_port;
-    let (reported_game, reported_mcp_addr) = table::parse_addrs(&stdout);
+    let (reported_game, reported_mcp_addr) = host::parse_addrs(&stdout);
     assert_eq!(reported_game.port(), game, "{stdout}");
     assert_eq!(reported_mcp_addr.port(), mcp_port, "{stdout}");
     assert_ne!(game, mcp_port, "{stdout}");
@@ -95,21 +95,21 @@ fn the_host_reports_the_game_port_and_the_mcp_addr(world: &mut World) {
 
 #[when(expr = "two tables listen on port 0 at the same time")]
 async fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
-    let first = table::pack(world).to_path_buf();
+    let first = host::pack(world).to_path_buf();
     let second = copy_pack("docks", "ports-other");
     world.scratch = second.to_string_lossy().into_owned();
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR"));
     let flags = ["--addr", "127.0.0.1:0"];
-    let started_first = table::spawn(dir, &first, &flags);
-    let started_second = table::spawn(dir, &second, &flags);
-    let first = table::wait_addrs(started_first).await;
-    let second = table::wait_addrs(started_second).await;
+    let started_first = host::spawn(dir, &first, &flags);
+    let started_second = host::spawn(dir, &second, &flags);
+    let first = host::wait_addrs(started_first).await;
+    let second = host::wait_addrs(started_second).await;
     world.stdout = format!(
         "{} {} {} {}",
         first.game, first.mcp_addr, second.game, second.mcp_addr
     );
-    world.plays.push(first.host);
-    world.plays.push(second.host);
+    world.plays.push(first.process);
+    world.plays.push(second.process);
 }
 
 #[then(expr = "the tables report distinct ports")]

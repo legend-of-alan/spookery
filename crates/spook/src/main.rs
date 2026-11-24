@@ -1,4 +1,4 @@
-//! The `spook` command for one loopback table.
+//! The `spook` command for one loopback host.
 
 mod new;
 
@@ -17,7 +17,7 @@ const VERSION: &str = match option_env!("SPOOK_RELEASE") {
     None => env!("CARGO_PKG_VERSION"),
 };
 
-/// One loopback table.
+/// Hosts one pack on loopback.
 #[derive(Parser)]
 #[command(name = "spook", version = VERSION)]
 struct Cli {

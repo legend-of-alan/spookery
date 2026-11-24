@@ -6,15 +6,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::{
-    Audience, ChangeView, CommandView, CommitBody, NoteView, Outcome, PlaceView, Refusal, Speaker,
-    TableStatus, View,
+    Audience, ChangeView, CommandView, CommitBody, HostStatus, NoteView, Outcome, PlaceView,
+    Refusal, Speaker, View,
 };
 
 /// The wire version the hello announces.
 pub const VERSION: u32 = 3;
 
 /// One message on a seat's stream. `id` is chosen by the client and comes back as
-/// `reply_to` on the reply. `seq` is set by the server, from one counter per table, on
+/// `reply_to` on the reply. `seq` is set by the server, from one counter per host, on
 /// everything it sends but the hello. The body is nested, so its fields never clash with
 /// these.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,10 +29,10 @@ pub struct Message<Body> {
     pub body: Body,
 }
 
-/// Sent from a client to the table.
+/// Sent from a client to the host.
 pub type ClientMessage = Message<ClientBody>; // repeats module: re-exported at the crate root
 
-/// Sent from the table to a client.
+/// Sent from the host to a client.
 pub type ServerMessage = Message<ServerBody>; // repeats module: re-exported at the crate root
 
 /// One command, named by `kind`, and its arguments. Each command reads `args` as its own
@@ -64,7 +64,7 @@ impl ClientMessage {
     }
 }
 
-/// What the table sends. A client ignores a kind or a field it does not know.
+/// What the host sends. A client ignores a kind or a field it does not know.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -83,7 +83,7 @@ pub enum ServerBody {
         pc_names: BTreeMap<String, String>,
     },
     /// The reply to `claim`. `token` takes this PC back after a dropped connection.
-    /// `round_index` and `world_time` are the table's round and tick. A new claim carries
+    /// `round_index` and `world_time` are the world's round and tick. A new claim carries
     /// `scrollback`, the speech this PC heard before, oldest first. A claim by token carries
     /// `missed_messages`, the messages sent to this PC after the `last_seq` it named, and
     /// `is_missed_truncated` when more than `MISSED_MESSAGE_CAP` messages were missed.
@@ -130,7 +130,7 @@ pub enum ServerBody {
     /// The GM's reply to `commit`, after its rounds.
     Committed(CommitBody),
     /// The GM's reply to `status`.
-    Status(Box<TableStatus>),
+    Status(Box<HostStatus>),
     View(Box<View>),
     Resume {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]

@@ -57,7 +57,7 @@ impl Connection {
             .map_err(|err| Error::Io(std::io::Error::other(err)))
     }
 
-    /// Send `release` and wait for its reply, so the seat is free once this returns. A table
+    /// Send `release` and wait for its reply, so the seat is free once this returns. A host
     /// that is already gone holds nothing to give back.
     pub async fn release(&mut self) -> Result<(), Error> {
         let Ok(id) = self.send("release", serde_json::json!({})).await else {

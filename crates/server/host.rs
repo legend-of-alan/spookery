@@ -1,4 +1,4 @@
-//! The table, the one owner of the session and its seats: connections, commands, say and rounds.
+//! The host, the one owner of the session and its seats: connections, commands, say and rounds.
 //! Every message it sends but a hello takes the next `seq` from its one counter.
 
 use std::collections::BTreeMap;
@@ -32,7 +32,7 @@ pub(crate) fn commit_then_fast_forward(
     session.commit_then_fast_forward(presence, &wall)
 }
 
-/// Sent from the game port, the MCP endpoint and the idle timer to the table thread.
+/// Sent from the game port, the MCP endpoint and the idle timer to the host thread.
 pub(super) enum Request {
     /// A new connection on `seat`. A GM connection takes the one GM seat.
     Open {
@@ -47,12 +47,12 @@ pub(super) enum Request {
         message: Result<ClientMessage, Rejection>,
         reply: oneshot::Sender<()>,
     },
-    /// A connection closed. The table lets go of it, then acks.
+    /// A connection closed. The host lets go of it, then acks.
     Close {
         conn: ConnId,
         ack: oneshot::Sender<()>,
     },
-    /// One MCP tool call, as a client message. The reply is every message the table sent
+    /// One MCP tool call, as a client message. The reply is every message the host sent
     /// this connection while it ran the command, the command's own reply last.
     ToolCall {
         conn: ConnId,
@@ -63,14 +63,14 @@ pub(super) enum Request {
     Stop,
 }
 
-/// A client message the game port could not read, sent from the game port to the table:
+/// A client message the game port could not read, sent from the game port to the host:
 /// the `id` it named, if any, and why.
 pub(super) struct Rejection {
     pub(super) id: Option<String>,
     pub(super) code: Reason,
 }
 
-/// Tells the table a connection closed, and waits until the table has let go of it.
+/// Tells the host a connection closed, and waits until the host has let go of it.
 pub(super) async fn report_close(tx: &Sender<Request>, conn: ConnId) {
     let (ack_tx, ack_rx) = oneshot::channel();
     if tx.send(Request::Close { conn, ack: ack_tx }).is_err() {
@@ -79,7 +79,7 @@ pub(super) async fn report_close(tx: &Sender<Request>, conn: ConnId) {
     let _ = ack_rx.await;
 }
 
-pub(crate) struct Table {
+pub(crate) struct Host {
     session: spookery_engine::Session,
     seats: Seats,
     /// The `seq` of the last message sent.
@@ -93,7 +93,7 @@ pub(crate) struct Table {
     out: Box<dyn Write>,
 }
 
-impl Table {
+impl Host {
     pub(crate) fn new(
         session: spookery_engine::Session,
         idle: watch::Sender<u64>,
@@ -111,7 +111,7 @@ impl Table {
         }
     }
 
-    /// Answer requests until `Stop`. A store fault ends the table.
+    /// Answer requests until `Stop`. A store fault ends the host.
     pub(crate) fn run(mut self, rx: Receiver<Request>) -> Result<(), Error> {
         loop {
             let request = rx.recv().map_err(|_| Error::Reason(Reason::NotInSpec))?;
@@ -478,7 +478,7 @@ impl Table {
         let _ = self.out.flush();
     }
 
-    /// Plays the idle rounds due at an empty table. A claim whose connection dropped still
+    /// Plays the idle rounds due while every seat is empty. A claim whose connection dropped still
     /// seats its player.
     fn wake(&mut self) -> Result<(), Reason> {
         if !self.seats.claims.is_empty() || self.seats.gm.is_some() {
@@ -648,7 +648,7 @@ impl Table {
     }
 
     /// A message to an MCP tool call's connection goes in that call's result. A full or
-    /// closed queue drops that connection. The table does not wait.
+    /// closed queue drops that connection. The host does not wait.
     fn send(&mut self, conn: ConnId, message: ServerMessage) {
         if let Some((_, messages)) = self.tool_call.as_mut().filter(|(call, _)| *call == conn) {
             return messages.push(message);

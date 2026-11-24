@@ -1,4 +1,4 @@
-//! The idle timer, when an idle table plays a round, and the wall time stamp.
+//! The idle timer, when an idle host plays a round, and the wall time stamp.
 
 use std::sync::mpsc::Sender;
 use std::time::Duration;
@@ -8,12 +8,12 @@ use tokio::sync::watch;
 
 use spookery_engine::Reason;
 
-use super::table::Request;
+use super::host::Request;
 
 const STAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%SZ";
 
-/// Wakes the table every `round_every_real_seconds`. Each restart from the
-/// table starts the wait again.
+/// Wakes the host every `round_every_real_seconds`. Each restart from the
+/// host starts the wait again.
 pub(super) async fn run(
     tx: Sender<Request>,
     mut restart: watch::Receiver<u64>,

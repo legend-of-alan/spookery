@@ -10,7 +10,7 @@ use spookery_engine::MoveReport;
 use spookery_engine::{component, entity, ActorId, GlobalId, Meter, Note, Presence, Reason};
 
 use super::common::flags_of;
-use super::table;
+use super::host;
 use crate::support::{append, copy_pack, edit_save, place_of, run_spook, stamp_pack_rev, world_of};
 use crate::World;
 /// The first word of `line`, and the rest of it when there is any.
@@ -38,7 +38,7 @@ fn a_save_from_older_rules(world: &mut World) {
 
 #[when(expr = "spook run or spook verify opens it")]
 async fn spook_run_or_spook_verify_opens_it(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
     let run = crate::support::run_spook(&["run", arg, "--addr", "127.0.0.1:0"]).await;
     let verify = crate::support::run_spook(&["verify", arg]).await;
@@ -83,7 +83,7 @@ fn it_refuses_with_rules_rev_and_says_to_start_a_fresh_save(world: &mut World) {
 async fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "rules-diverge");
     world.pack = Some(pack.clone());
-    table::run(world, &["round", pack.to_str().unwrap()]).await;
+    host::run(world, &["round", pack.to_str().unwrap()]).await;
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let path = spookery_engine::testing::journal::locate(&pack, "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
@@ -110,8 +110,8 @@ async fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
 
 #[then(expr = "spook verify names the round and the first differing effect")]
 async fn spook_verify_names_the_round_and_the_first_differing_effect(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["verify", pack.to_str().unwrap()]).await;
+    let pack = host::pack(world).to_path_buf();
+    host::run(world, &["verify", pack.to_str().unwrap()]).await;
     assert_eq!(world.code, Some(1), "{}", world.stderr);
     assert!(
         world.stderr.contains(world.scratch.trim()),
@@ -286,7 +286,7 @@ fn budget_sets_cycle(world: &mut World, cycle_id: String, length: u64) {
 
 #[given(expr = "briar restocks on cycle {word} from {int} to {int}")]
 fn briar_restocks_on_cycle(world: &mut World, cycle_id: String, from: u64, to: u64) {
-    write_briar(table::pack(world), &cycle_id, from, to);
+    write_briar(host::pack(world), &cycle_id, from, to);
 }
 
 fn write_briar(pack: &Path, cycle: &str, from: u64, to: u64) {
@@ -902,7 +902,7 @@ fn ask_is_refused_before_the_round(world: &mut World) {
     assert_eq!(world.scratch, Reason::NotInSpec.as_str());
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(
-        table::read_files(pack),
+        host::read_files(pack),
         world.before,
         "the ask wrote the pack"
     );
@@ -912,7 +912,7 @@ fn ask_is_refused_before_the_round(world: &mut World) {
 /// round and keeps the lines it told, else the scratch holds the refusal code.
 fn play_harbormouse_line(world: &mut World, line: &str) {
     let pack = world.pack.clone().unwrap();
-    world.before = table::read_files(&pack);
+    world.before = host::read_files(&pack);
     let (verb, target) = split_line(line);
     let (seated, mut opened) = (seated_harbormouse(), open(&pack));
     if let Err(refusal) = opened.queue_player_move(&seated, &"harbormouse".into(), verb, target) {

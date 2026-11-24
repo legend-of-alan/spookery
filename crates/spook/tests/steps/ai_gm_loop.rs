@@ -1,4 +1,4 @@
-//! The AI GM's turn loop against a real table: perceive first, carry the pack's gm_notes,
+//! The AI GM's turn loop against a real host: perceive first, carry the pack's gm_notes,
 //! recover from a refusal, queue several NPCs, stop at the model call limit, and outwait
 //! the graph's task timeout.
 
@@ -13,8 +13,8 @@ use spookery_engine::testing::{act_of, world_of};
 use crate::support::copy_pack;
 use crate::World;
 
+use super::host;
 use super::scripted_gm::{read_tool_results, start_ai_gm};
-use super::table;
 
 /// graph-flow's default task timeout, which the turn graph keeps.
 const GRAPH_TASK_TIMEOUT: Duration = Duration::from_secs(300);
@@ -37,11 +37,11 @@ async fn a_docks_table_with_mira_and_gm_notes(world: &mut World, notes: String) 
 }
 
 /// Copies the docks pack, writes `notes` into `pack.yaml` when some are given, moves Mira
-/// to the shop, and seats a player. The notes have to be on disk before the table starts.
+/// to the shop, and seats a player. The notes have to be on disk before the host starts.
 async fn start_docks_table_with_mira(world: &mut World, notes: Option<&str>) {
     let pack = copy_pack("docks", "ai-gm-loop");
     if let Some(notes) = notes {
-        table::append_gm_notes(&pack, notes);
+        host::append_gm_notes(&pack, notes);
     }
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
@@ -55,8 +55,8 @@ async fn start_docks_table_with_mira(world: &mut World, notes: Option<&str>) {
         let place = ecs_world.actors().get::<component::Place>(&npc).get();
         assert_eq!(place, Some("docks_shop"), "{npc}");
     }
-    table::listen(world, &pack).await;
-    table::seat_rowan(world, &pack).await;
+    host::listen(world, &pack).await;
+    host::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 
@@ -69,8 +69,8 @@ async fn a_docks_table_with_a_queued_move(world: &mut World) {
 #[given(expr = "a docks table with a seated player and the AI GM connected")]
 async fn a_docks_table_with_the_ai_gm_sitting(world: &mut World) {
     let pack = copy_pack("docks", "ai-gm-quiet");
-    table::listen(world, &pack).await;
-    table::seat_rowan(world, &pack).await;
+    host::listen(world, &pack).await;
+    host::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
     start_ai_gm_once(world).await;
 }
@@ -135,7 +135,7 @@ async fn the_player_says(world: &mut World, text: String) {
     player_says(world, &text).await;
 }
 
-/// The player's "say" starts the turn whose queue the table refuses.
+/// The player's "say" starts the turn whose queue the host refuses.
 #[when(expr = "the table refuses the queue")]
 async fn the_table_refuses_the_queue(world: &mut World) {
     player_says(world, "evening").await;
@@ -144,24 +144,24 @@ async fn the_table_refuses_the_queue(world: &mut World) {
 /// Starts the AI GM, has the player say `text`, and waits until the turn it started is done.
 async fn player_says(world: &mut World, text: &str) {
     start_ai_gm_once(world).await;
-    world.mark = table::player_mark(world);
-    table::player_send(world, &format!("say {text}"), "\"kind\":\"say\"").await;
+    world.mark = host::player_mark(world);
+    host::player_send(world, &format!("say {text}"), "\"kind\":\"say\"").await;
     world.model.wait_past_script().await;
 }
 
 #[when(expr = "the player queues travel")]
 async fn the_player_queues_travel(world: &mut World) {
     start_ai_gm_once(world).await;
-    world.mark = table::player_mark(world);
-    table::player_send(world, "travel docks_street", "\"kind\":\"queued\"").await;
+    world.mark = host::player_mark(world);
+    host::player_send(world, "travel docks_street", "\"kind\":\"queued\"").await;
     world.model.wait_past_script().await;
 }
 
 #[when(expr = "the GM's turn runs")]
 async fn the_gms_turn_runs(world: &mut World) {
-    world.mark = table::player_mark(world);
+    world.mark = host::player_mark(world);
     start_ai_gm_once(world).await;
-    table::wait_rounds_to_view(world, world.mark).await;
+    host::wait_rounds_to_view(world, world.mark).await;
 }
 
 #[when(expr = "the table stays quiet for longer than the graph's task timeout")]
@@ -251,7 +251,7 @@ async fn the_player_saw_mira_say_hello(world: &mut World) {
 
 #[then(expr = "the model's next call shows Mira's \"hello\" from npc:mira")]
 async fn the_next_call_shows_miras_hello(world: &mut World) {
-    table::poll_until(
+    host::poll_until(
         "Mira's hello from npc:mira on the model's next call",
         async || {
             let calls = world.model.calls();
@@ -296,13 +296,13 @@ fn the_model_queues_wait_and_ends_the_turn(world: &mut World) {
 #[then(expr = "one round is committed")]
 #[then(expr = "the client commits the round itself")]
 async fn one_round_is_committed(world: &mut World) {
-    assert_eq!(table::wait_rounds_to_view(world, world.mark).await.len(), 1);
+    assert_eq!(host::wait_rounds_to_view(world, world.mark).await.len(), 1);
 }
 
 #[then(expr = "the round resolves the player's, Mira's and Aldric's moves together")]
 async fn the_round_resolves_three_moves(world: &mut World) {
-    assert_eq!(table::wait_rounds_to_view(world, world.mark).await.len(), 1);
-    let now = world_of(table::pack(world));
+    assert_eq!(host::wait_rounds_to_view(world, world.mark).await.len(), 1);
+    let now = world_of(host::pack(world));
     for actor in ["rowan", "mira", "aldric"] {
         assert_eq!(
             act_of(&now, actor).last_act_round,
@@ -314,7 +314,7 @@ async fn the_round_resolves_three_moves(world: &mut World) {
 
 #[then(expr = "the player sees the GM narrate the result, not the dice")]
 async fn the_player_sees_the_narration(world: &mut World) {
-    let seen = table::wait_player_from(world, world.mark, NARRATION).await;
+    let seen = host::wait_player_from(world, world.mark, NARRATION).await;
     assert!(!seen.contains("\"dice\""), "{seen}");
 }
 
@@ -329,7 +329,7 @@ fn the_client_stops_after(world: &mut World, count: usize) {
 #[then(expr = "the GM reports a model call limit warning")]
 async fn the_gm_reports_a_model_call_limit_warning(world: &mut World) {
     let gm = world.ai_gm.as_ref().expect("the AI GM runs");
-    table::wait_suffix(&gm.err, 0, "model call limit").await;
+    host::wait_suffix(&gm.err, 0, "model call limit").await;
 }
 
 #[then(expr = "the scripted model is called for that say")]

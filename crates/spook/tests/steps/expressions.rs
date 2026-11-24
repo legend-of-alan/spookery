@@ -6,7 +6,7 @@ use std::fs;
 
 use cucumber::{given, then, when};
 
-use super::table;
+use super::host;
 use crate::World;
 
 #[when(expr = "the pack's hit adds {string} to vigor")]
@@ -31,7 +31,7 @@ fn miras_habit_stores_and_adds(world: &mut World, lets: String, add: String) {
 
 /// Insert Mira's habit `toss`, with its `lets` line, adding `add` to her vigor.
 fn insert_miras_habit(world: &World, lets: &str, add: &str) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let path = pack.join("cast/mira.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
     let next = text.replacen(
@@ -48,11 +48,11 @@ fn insert_miras_habit(world: &World, lets: &str, add: &str) {
 
 #[when(expr = "the GM queues Aldric's wait and commits")]
 async fn the_gm_queues_aldrics_wait_and_commits(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    table::seat_gm(world).await;
-    table::gm_tool_call(world, 6, "queue", r#"{"actor":"aldric","move":"wait"}"#).await;
-    world.stdout = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#).await;
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    host::seat_gm(world).await;
+    host::gm_tool_call(world, 6, "queue", r#"{"actor":"aldric","move":"wait"}"#).await;
+    world.stdout = host::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#).await;
 }
 
 #[when(
@@ -167,23 +167,23 @@ fn the_pack_has(world: &mut World, number: String, field: String) {
     regex = r"^the player (hits|hits Aldric|hits while the GM queues Mira's rouse) and the GM commits$"
 )]
 async fn the_player_hits_and_the_gm_commits(world: &mut World, hits: String) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    table::seat_rowan(world, &pack).await;
-    table::seat_gm(world).await;
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    host::seat_rowan(world, &pack).await;
+    host::seat_gm(world).await;
     let line = if hits == "hits Aldric" {
         "hit aldric"
     } else {
         "hit"
     };
-    let _ = table::player_send(world, line, "\"kind\":\"queued\"").await;
+    let _ = host::player_send(world, line, "\"kind\":\"queued\"").await;
     if hits.ends_with("rouse") {
         let queued =
-            table::gm_tool_call(world, 6, "queue", r#"{"actor":"mira","move":"rouse"}"#).await;
+            host::gm_tool_call(world, 6, "queue", r#"{"actor":"mira","move":"rouse"}"#).await;
         assert!(!queued.contains("\"refused\""), "{queued}");
     }
-    world.mark = table::player_mark(world);
-    world.stdout = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#).await;
+    world.mark = host::player_mark(world);
+    world.stdout = host::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#).await;
 }
 
 #[then(expr = "Rowan's vigor is {int}")]
@@ -206,7 +206,7 @@ fn the_report_names_the_line_holding(world: &mut World, needle: String) {
 /// The report locates the last line of the pack's `file` that holds `needle`.
 #[then(expr = "the report names the line in {word} holding {string}")]
 fn the_report_names_the_line_in_file_holding(world: &mut World, file: String, needle: String) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let text =
         fs::read_to_string(pack.join(&file)).unwrap_or_else(|err| panic!("read {file}: {err}"));
     let mut line = None;
@@ -265,7 +265,7 @@ fn rowans_and_miras_vigor_rose_by_the_boost_total(world: &mut World) {
 
 #[then(expr = "the GM commit reply holds dice lines for {string}")]
 fn the_gm_commit_reply_holds_dice_lines(world: &mut World, expected: String) {
-    let reply = table::read_reply(&world.stdout);
+    let reply = host::read_reply(&world.stdout);
     let dice = &reply["dice"];
     let lines = dice.as_array().unwrap_or_else(|| panic!("no dice\n{dice}"));
     let prefixes: Vec<&str> = expected.split(", ").collect();
@@ -278,14 +278,14 @@ fn the_gm_commit_reply_holds_dice_lines(world: &mut World, expected: String) {
 
 #[then(expr = "the player text has no dice faces")]
 async fn the_player_text_has_no_dice_faces(world: &mut World) {
-    let added = table::wait_player_from(world, world.mark, "\"kind\":").await;
+    let added = host::wait_player_from(world, world.mark, "\"kind\":").await;
     assert!(!added.contains('→'), "{added}");
     assert!(!added.contains("2d6"), "{added}");
 }
 
 #[then(expr = "the report names the expression line")]
 fn the_report_names_the_expression_line(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let text = fs::read_to_string(pack.join("rules/verbs.yaml"))
         .unwrap_or_else(|err| panic!("read verbs: {err}"));
     let mut line = None;
@@ -328,7 +328,7 @@ fn append_hit_line(world: &World, lets: &str, number: &str, field: &str) {
 
 /// Append `rule` to the pack's verbs and restamp its save.
 fn append_rule(world: &World, rule: &str) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     crate::support::append(&pack.join("rules/verbs.yaml"), rule);
     crate::support::stamp_pack_rev(&pack);
 }
@@ -347,7 +347,7 @@ fn rowans_vigor(world: &World) -> i64 {
 }
 
 fn vigor_of(world: &World, actor: &str) -> i64 {
-    let now = world_of(table::pack(world));
+    let now = world_of(host::pack(world));
     let id = actor.into();
     let live = now
         .actors()
@@ -359,7 +359,7 @@ fn vigor_of(world: &World, actor: &str) -> i64 {
 
 /// The first dice line in the GM's commit reply.
 fn dice_line(world: &World) -> String {
-    let reply = table::read_reply(&world.stdout);
+    let reply = host::read_reply(&world.stdout);
     let line = reply["dice"][0].as_str();
     line.unwrap_or_else(|| panic!("no dice line\n{}", world.stdout))
         .to_string()

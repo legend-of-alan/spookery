@@ -20,18 +20,18 @@ use crate::support;
 use crate::World;
 
 /// One WebSocket connection to the game port's `/player` or `/gm`. A reader thread
-/// appends each message the table sends to `text`, one line each.
+/// appends each message the host sends to `text`, one line each.
 pub struct Seat {
     write: Mutex<WebSocket<TcpStream>>,
     /// A seat that stops reading keeps its reading socket here, unread.
     quiet: Option<WebSocket<TcpStream>>,
     pub text: Arc<Mutex<String>>,
-    /// Set once the table closed the connection.
+    /// Set once the host closed the connection.
     pub closed: Arc<AtomicBool>,
     next_id: AtomicU64,
 }
 
-/// Hangs up, so the reader ends and the table sees the connection close.
+/// Hangs up, so the reader ends and the host sees the connection close.
 impl Drop for Seat {
     fn drop(&mut self) {
         let write = self.write.lock().unwrap_or_else(|err| err.into_inner());
@@ -52,7 +52,7 @@ impl Seat {
     }
 
     /// Opens `/seat` over a connected `stream`. Without `reading`, nothing reads what the
-    /// table sends.
+    /// host sends.
     pub fn from_stream(stream: TcpStream, port: u16, seat: &str, reading: bool) -> Self {
         stream
             .set_nodelay(true)
@@ -116,9 +116,9 @@ impl Seat {
         write.send(message)
     }
 
-    /// Waits until the table has closed this connection.
+    /// Waits until the host has closed this connection.
     pub async fn wait_closed(&self) {
-        poll_until("the table to close the connection", async || {
+        poll_until("the host to close the connection", async || {
             self.closed
                 .load(Ordering::SeqCst)
                 .then_some(())
@@ -146,7 +146,8 @@ impl Seat {
 }
 
 /// The command a typed line names and its arguments, as `spook play` sends it: `say <text>`
-/// speaks to the table, and any other first word is a move with the rest as its target.
+/// speaks to everyone present (`"to": "table"`), and any other first word is a move with the
+/// rest as its target.
 pub(crate) fn parse_command(line: &str) -> (&str, Value) {
     match line.split_once(' ') {
         Some(("say", text)) => ("say", json!({ "to": "table", "text": text })),
@@ -183,7 +184,7 @@ pub struct Host {
     pub opened_save: Vec<u8>,
     pub seated_save: Vec<u8>,
     pub seated_rev: u64,
-    pub(crate) host: Option<support::Process>,
+    pub(crate) process: Option<support::Process>,
     /// A host `serve` runs in this process. Dropped last, so seats close first.
     pub in_process: Option<InProcess>,
 }
@@ -193,7 +194,7 @@ pub struct Host {
 pub(crate) type Advance = (Duration, tokio::sync::oneshot::Sender<()>);
 
 /// `serve` on its own thread, on a current-thread runtime whose clock starts
-/// paused. The table's blocking task keeps tokio from auto-advancing, so
+/// paused. The host's blocking task keeps tokio from auto-advancing, so
 /// paused time moves only on `advance`.
 pub struct InProcess {
     pub stdout: Arc<Mutex<String>>,
@@ -260,7 +261,7 @@ pub(crate) async fn serve_in_process(world: &mut World, pack: &Path) {
     };
     let stdout = Arc::new(Mutex::new(seen));
     drop(support::drain(out, Arc::clone(&stdout)));
-    attach_host(world, pack, game, mcp_addr).in_process = Some(InProcess {
+    attach(world, pack, game, mcp_addr).in_process = Some(InProcess {
         stdout,
         stderr,
         advance,
@@ -270,13 +271,13 @@ pub(crate) async fn serve_in_process(world: &mut World, pack: &Path) {
 }
 
 /// Moves the in-process host's paused clock forward. Timers due by then have
-/// fired when this returns; what they sent the table is queued, so the next
+/// fired when this returns; what they sent the host is queued, so the next
 /// `read_presence` is the barrier before reading the save or journal.
 pub(crate) async fn advance(world: &World, by: Duration) {
     let host = live(world)
         .in_process
         .as_ref()
-        .unwrap_or_else(|| panic!("the table is not in this process"));
+        .unwrap_or_else(|| panic!("the host is not in this process"));
     let ended = || panic!("the host ended\n{}", support::text_of(&host.stderr));
     let (ack, acked) = tokio::sync::oneshot::channel();
     host.advance.send((by, ack)).unwrap_or_else(|_| ended());
@@ -289,14 +290,14 @@ pub(crate) fn live_mut(world: &mut World) -> &mut Host {
     world
         .live
         .as_mut()
-        .unwrap_or_else(|| panic!("no table is listening"))
+        .unwrap_or_else(|| panic!("no host is listening"))
 }
 
 pub(crate) fn live(world: &World) -> &Host {
     world
         .live
         .as_ref()
-        .unwrap_or_else(|| panic!("no table is listening"))
+        .unwrap_or_else(|| panic!("no host is listening"))
 }
 
 pub(crate) fn read_files(root: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
@@ -411,7 +412,7 @@ pub(crate) struct Pending {
 pub struct Process {
     pub game: SocketAddr,
     pub mcp_addr: SocketAddr,
-    pub(crate) host: support::Process,
+    pub(crate) process: support::Process,
 }
 
 pub(crate) async fn listen(world: &mut World, pack: &Path) {
@@ -429,7 +430,7 @@ pub(crate) async fn run_with_flags(
     drop(world.live.take());
     let addrs = wait_addrs(spawn(dir, pack, flags)).await;
     let ports = (addrs.game.port(), addrs.mcp_addr.port());
-    attach_host(world, pack, addrs.game, addrs.mcp_addr).host = Some(addrs.host);
+    attach(world, pack, addrs.game, addrs.mcp_addr).process = Some(addrs.process);
     ports
 }
 
@@ -494,7 +495,7 @@ pub(crate) async fn wait_addrs(pending: Pending) -> Process {
     Process {
         game,
         mcp_addr,
-        host: support::Process {
+        process: support::Process {
             child: pending.child,
             stdin: pending.stdin,
             stdout,
@@ -508,7 +509,7 @@ pub(crate) async fn wait_addrs(pending: Pending) -> Process {
     }
 }
 
-fn attach_host<'a>(
+fn attach<'a>(
     world: &'a mut World,
     pack: &Path,
     game: SocketAddr,
@@ -530,7 +531,7 @@ fn attach_host<'a>(
         opened_save: opened_now.clone(),
         seated_save: opened_now,
         seated_rev: 0,
-        host: None,
+        process: None,
         in_process: None,
     })
 }
@@ -821,9 +822,9 @@ pub(crate) async fn poll_until<T, Seen: std::fmt::Display>(
     }
 }
 
-pub(crate) fn host_stdout(world: &World) -> String {
+pub(crate) fn stdout(world: &World) -> String {
     let live = live(world);
-    let process = live.host.as_ref().map(|server| &server.stdout);
+    let process = live.process.as_ref().map(|server| &server.stdout);
     let in_process = live.in_process.as_ref().map(|server| &server.stdout);
     process
         .or(in_process)
@@ -831,13 +832,9 @@ pub(crate) fn host_stdout(world: &World) -> String {
         .unwrap_or_default()
 }
 
-pub(crate) async fn wait_host_until(
-    world: &World,
-    want: &str,
-    done: impl Fn(&str) -> bool,
-) -> String {
+pub(crate) async fn wait_until(world: &World, want: &str, done: impl Fn(&str) -> bool) -> String {
     poll_until(want, async || {
-        let text = host_stdout(world);
+        let text = stdout(world);
         if done(&text) {
             Ok(text)
         } else {
@@ -898,14 +895,14 @@ pub(crate) fn actor_write(world: &mut World, actor_id: &str, line: &str) -> usiz
     mark
 }
 
-pub(crate) fn stop_host(world: &mut World) {
+pub(crate) fn stop(world: &mut World) {
     let live = live_mut(world);
     live.players.clear();
     live.ws_gm.take();
     live.gm.take();
     live.closed_gm.take();
     live.in_process.take();
-    if let Some((status, stderr)) = interrupt_host(world) {
+    if let Some((status, stderr)) = interrupt(world) {
         assert!(status.success(), "host exited {status:?}\n{stderr}");
     }
 }
@@ -913,14 +910,14 @@ pub(crate) fn stop_host(world: &mut World) {
 /// Stops the `spook run` child the way a person does, with Ctrl+C (Ctrl+Break on
 /// Windows), and returns its exit status and stderr. Seats stay open. `None` when no
 /// child host is running.
-pub(crate) fn interrupt_host(world: &mut World) -> Option<(ExitStatus, String)> {
-    let mut server = live_mut(world).host.take()?;
-    send_interrupt(&server.child);
-    let status = server
+pub(crate) fn interrupt(world: &mut World) -> Option<(ExitStatus, String)> {
+    let mut process = live_mut(world).process.take()?;
+    send_interrupt(&process.child);
+    let status = process
         .child
         .wait()
         .unwrap_or_else(|err| panic!("wait: {err}"));
-    Some((status, support::text_of(&server.stderr)))
+    Some((status, support::text_of(&process.stderr)))
 }
 
 /// Sends SIGINT, which is what Ctrl+C sends.
@@ -943,7 +940,7 @@ fn send_interrupt(child: &Child) {
     assert_ne!(sent, 0, "Ctrl+Break: {}", std::io::Error::last_os_error());
 }
 
-/// Releases the claim and waits until the table has let go of it.
+/// Releases the claim and waits until the host has let go of it.
 pub(crate) async fn close_actor(world: &mut World, actor_id: &str) {
     let player = player_client(world, actor_id);
     let id = player.seat.send("release", json!({}));

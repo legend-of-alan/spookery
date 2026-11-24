@@ -259,7 +259,7 @@ room, and keeps them busy until the arrival tick. A move before then is
 refused. The
 round does not shrink: a seated round still advances five ticks, a two-tick
 exit lands the traveller inside that round, and the next move is the
-following round. An empty table advances sixty ticks a round. An earlier
+following round. With every seat empty, a round advances sixty ticks. An earlier
 arrival is applied first. When every seated player is busy and no GM is seated,
 rounds run ahead without waiting on the wall clock, up to the pack's cap, and
 the rest waits for the next action. With a GM seated, nothing advances until the
@@ -361,7 +361,7 @@ Tested in `features/rules/rules_live_with_their_owner.feature`,
 
 ## Bounds
 
-The table binds loopback only. Any other host is refused before the pack opens,
+The host binds loopback only. Any other address is refused before the pack opens,
 and the pack is unchanged. A player line with no end, a hello that never
 finishes, and an HTTP body over the size cap are refused. The save stays, and
 another player can still claim a PC. Invalid text from a seated player is refused, and
@@ -382,7 +382,7 @@ off it, and so does anyone else's. After a round, the player sees one line of
 what changed, built from the change records they are allowed to know. That line
 names a meter change and an item gained or lost. An exit not yet revealed to
 them stays off the exit list. `look` answers with a fresh view and
-does not take a round, and nor do `help` and `map`. The table sends both as
+does not take a round, and nor do `help` and `map`. The host sends both as
 data and the client prints them: `help` lists the commands this player can use
 here and now, each with what it takes and what they can name for it, and `map`
 lists each place their save says they visited, with the exits they saw there
@@ -408,7 +408,7 @@ Tested in `features/seats/a_player_knows_the_place.feature`,
 ## What the engine does not do
 
 Speech does not leave a note. A second GM is refused, and so is a fourth player.
-The table does not open on a public address. A call that is not on the GM menu
+The host does not open on a public address. A call that is not on the GM menu
 is refused, so a seat cannot patch the save by naming a tool. A player who stops
 reading is dropped, and the other seats keep going.
 

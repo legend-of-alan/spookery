@@ -9,7 +9,7 @@ use crate::support;
 use crate::World;
 
 use super::common::{flags_of, spawn_play, wait_play};
-use super::table;
+use super::host;
 
 #[when(expr = "the operator runs spook new in a fresh directory")]
 async fn the_operator_runs_spook_new_in_a_fresh_directory(world: &mut World) {
@@ -21,7 +21,7 @@ async fn the_operator_runs_spook_new_in_a_fresh_directory(world: &mut World) {
 
 #[then(expr = "stdout names the next commands")]
 fn stdout_names_the_next_commands(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let text = pack.to_str().unwrap();
     for line in [
         format!("Wrote {text}"),
@@ -39,7 +39,7 @@ fn stdout_names_the_next_commands(world: &mut World) {
 
 #[then(expr = "the written files match the starter template")]
 fn the_written_files_match_the_starter_template(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     assert_eq!(
         read_relative_files(pack),
         read_relative_files(&template_dir())
@@ -52,12 +52,12 @@ fn a_non_empty_directory(world: &mut World) {
     fs::create_dir(&dir).unwrap_or_else(|err| panic!("mkdir: {err}"));
     fs::write(dir.join("keep.txt"), b"keep\n").unwrap();
     world.pack = Some(dir);
-    world.before = table::read_files(table::pack(world));
+    world.before = host::read_files(host::pack(world));
 }
 
 #[when(expr = "the operator runs spook new on that directory")]
 async fn the_operator_runs_spook_new_on_that_directory(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     run_new(world, &pack).await;
 }
 
@@ -71,14 +71,14 @@ async fn the_operator_runs_spook_new_under_a_missing_parent(world: &mut World) {
 
 #[then(expr = "stderr names the missing parent")]
 fn stderr_names_the_missing_parent(world: &mut World) {
-    let parent = table::pack(world);
+    let parent = host::pack(world);
     let expected = format!("{} does not exist", parent.display());
     assert_eq!(world.stderr.trim(), expected, "{}", world.stderr);
 }
 
 #[then(expr = "the missing parent was not created")]
 fn the_missing_parent_was_not_created(world: &mut World) {
-    let parent = table::pack(world);
+    let parent = host::pack(world);
     assert!(!parent.exists(), "{}", parent.display());
 }
 
@@ -87,7 +87,7 @@ async fn the_operator_runs_spook_new_beside_a_marker_file(world: &mut World) {
     let parent = fresh_path("sandbox");
     fs::create_dir(&parent).unwrap_or_else(|err| panic!("mkdir: {err}"));
     fs::write(parent.join("keep.txt"), b"keep\n").unwrap();
-    world.before = table::read_files(&template_dir());
+    world.before = host::read_files(&template_dir());
     world.now_bytes = fs::read(parent.join("keep.txt")).unwrap();
     let pack = parent.join("pack");
     run_new(world, &pack).await;
@@ -97,14 +97,14 @@ async fn the_operator_runs_spook_new_beside_a_marker_file(world: &mut World) {
 
 #[then(expr = "the marker file is unchanged")]
 fn the_marker_file_is_unchanged(world: &mut World) {
-    let parent = table::pack(world);
+    let parent = host::pack(world);
     let bytes = fs::read(parent.join("keep.txt")).unwrap();
     assert_eq!(bytes, world.now_bytes);
 }
 
 #[then(expr = "the parent gained only the new pack")]
 fn the_parent_gained_only_the_new_pack(world: &mut World) {
-    let parent = table::pack(world);
+    let parent = host::pack(world);
     let mut files = fs::read_dir(parent)
         .unwrap()
         .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
@@ -120,20 +120,20 @@ fn the_parent_gained_only_the_new_pack(world: &mut World) {
 
 #[then(expr = "the starter template is unchanged")]
 fn the_starter_template_is_unchanged(world: &mut World) {
-    assert_eq!(table::read_files(&template_dir()), world.before);
+    assert_eq!(host::read_files(&template_dir()), world.before);
 }
 
 #[when(expr = "the operator runs spook check --json on the starter template")]
 async fn the_operator_runs_spook_check_json_on_the_starter_template(world: &mut World) {
     let pack = template_dir();
-    table::run(world, &["check", "--json", pack.to_str().unwrap()]).await;
+    host::run(world, &["check", "--json", pack.to_str().unwrap()]).await;
 }
 
 #[when(expr = "play joins that pack on a free loopback address")]
 async fn play_joins_that_pack_on_a_free_loopback_address(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    let addr = table::game_addr(world);
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    let addr = host::game_addr(world);
     world.play = Some(spawn_play(&addr, "ada", &[]));
     wait_play(world, "You are in Yard.").await;
 }
@@ -141,7 +141,7 @@ async fn play_joins_that_pack_on_a_free_loopback_address(world: &mut World) {
 #[then(expr = "the travel committed a round")]
 async fn the_travel_committed_a_round(world: &mut World) {
     wait_play(world, "You are in Lane.").await;
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let now = world_of(pack);
     assert_eq!(place_of(&now, "ada"), "lane");
     assert!(now.round_index >= 1, "no round");
@@ -149,7 +149,7 @@ async fn the_travel_committed_a_round(world: &mut World) {
 
 #[when(expr = "the operator runs spook new beside that pack")]
 async fn the_operator_runs_spook_new_beside_that_pack(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let dir = pack.file_name().unwrap().to_string_lossy();
     let idle = pack.parent().unwrap().join(format!("{dir}-idle"));
     let _ = fs::remove_dir_all(&idle);
@@ -161,7 +161,7 @@ async fn the_operator_runs_spook_new_beside_that_pack(world: &mut World) {
 #[when(expr = "the operator plays a round on that untouched pack")]
 async fn the_operator_plays_a_round_on_that_untouched_pack(world: &mut World) {
     let idle = PathBuf::from(&world.scratch);
-    table::run(world, &["round", idle.to_str().unwrap()]).await;
+    host::run(world, &["round", idle.to_str().unwrap()]).await;
 }
 
 #[then(expr = "the keeper habit has set tended")]
@@ -181,7 +181,7 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
 
 #[when(expr = "the first-pack guide steps are applied in order")]
 async fn the_first_pack_guide_steps_are_applied_in_order(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let edits = read_guide_edits();
     assert!(edits.len() >= 4, "the guide has {} steps", edits.len());
     assert!(edits.iter().any(|edit| edit.mode == "create"));
@@ -191,16 +191,16 @@ async fn the_first_pack_guide_steps_are_applied_in_order(world: &mut World) {
         apply_edit(&pack, edit);
     }
     let arg = support::pack_arg(&pack);
-    table::run(world, &["check", "--json", &arg]).await;
+    host::run(world, &["check", "--json", &arg]).await;
     assert_eq!(world.code, Some(1), "{}", world.stdout);
     assert!(
         world.stdout.contains("PACK_REV_MISMATCH"),
         "{}",
         world.stdout
     );
-    table::run(world, &["migrate", &arg]).await;
+    host::run(world, &["migrate", &arg]).await;
     assert_eq!(world.code, Some(0), "{}", world.stderr);
-    table::run(world, &["check", "--json", &arg]).await;
+    host::run(world, &["check", "--json", &arg]).await;
 }
 
 struct Edit {
@@ -316,7 +316,7 @@ fn insert_before(text: &str, anchor: &str, body: &str) -> String {
 
 async fn run_new(world: &mut World, pack: &Path) {
     // repeats module: mirrors the `spook new` command
-    table::run(world, &["new", pack.to_str().unwrap()]).await;
+    host::run(world, &["new", pack.to_str().unwrap()]).await;
 }
 
 fn fresh_path(label: &str) -> PathBuf {
@@ -330,7 +330,7 @@ fn template_dir() -> PathBuf {
 }
 
 fn read_relative_files(root: &Path) -> Vec<(String, Vec<u8>)> {
-    table::read_files(root)
+    host::read_files(root)
         .into_iter()
         .map(|(path, bytes)| {
             let rel = path

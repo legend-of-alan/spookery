@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 
 use crate::protocol::{
-    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, ItemStack, MeterView,
-    NoteView, Outcome, PlaceView, Roll, ServerBody, Speaker, Speech, TableStatus,
+    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, HostStatus, ItemStack,
+    MeterView, NoteView, Outcome, PlaceView, Roll, ServerBody, Speaker, Speech,
 };
 
 /// The PC picker's heading.
@@ -438,7 +438,7 @@ pub(crate) fn humanize(id: &str) -> String {
     titled
 }
 
-pub fn render_status(status: &TableStatus) -> String {
+pub fn render_status(status: &HostStatus) -> String {
     let present = &status.presence.actors_present;
     let seated = if present.is_empty() {
         "Seated: nobody".to_string()

@@ -7,7 +7,7 @@ use spookery_engine::Reason;
 use crate::support::{copy_pack, insert_nell, stamp_pack_rev};
 use crate::World;
 
-use super::table;
+use super::host;
 
 #[given(expr = "a docks table where mark needs a knife")]
 async fn mark_needs_a_knife(world: &mut World) {
@@ -15,8 +15,8 @@ async fn mark_needs_a_knife(world: &mut World) {
     add_knife_and_mark_rule(&pack);
     insert_nell(&pack);
     stamp_pack_rev(&pack);
-    table::listen(world, &pack).await;
-    table::seat_rowan(world, &pack).await;
+    host::listen(world, &pack).await;
+    host::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 
@@ -29,7 +29,7 @@ fn gains_a_shout_row(world: &mut World) {
 }
 
 fn append_verbs(world: &mut World, extra: &str) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push_str(extra);
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
@@ -38,9 +38,7 @@ fn append_verbs(world: &mut World, extra: &str) {
 #[then(expr = "the load refusal is SCHEMA")]
 fn the_load_refusal_is_schema(world: &mut World) {
     assert_eq!(
-        spookery_engine::first_reason(
-            &spookery_engine::load_canon(table::pack(world)).unwrap_err()
-        ),
+        spookery_engine::first_reason(&spookery_engine::load_canon(host::pack(world)).unwrap_err()),
         Reason::Schema
     );
 }

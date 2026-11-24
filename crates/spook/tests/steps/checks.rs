@@ -9,7 +9,7 @@ use serde_json::Value;
 use crate::support::{self, copy_pack};
 use crate::World;
 
-use super::{common, table};
+use super::{common, host};
 
 /// Docks exert is 2d6 plus a vigor of 1, so the total is 3..=13.
 const NOTICE_ROWS: &str = "
@@ -80,14 +80,14 @@ const MIRA_VIGOR: i64 = 100;
 
 #[when(expr = "the player rolls exert")]
 async fn the_player_rolls_exert(world: &mut World) {
-    let (mark, added) = table::player_send(world, "exert", "\"kind\":").await;
+    let (mark, added) = host::player_send(world, "exert", "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
 }
 
 #[then(expr = "the player sees a check success")]
 async fn the_player_sees_a_check_success(world: &mut World) {
-    world.player_added = table::wait_player_from(
+    world.player_added = host::wait_player_from(
         world,
         world.mark,
         "{\"kind\":\"check\",\"outcome\":\"success\"}",
@@ -107,14 +107,13 @@ async fn the_player_sees_a_check_success(world: &mut World) {
 
 #[then(expr = "the GM sees the exert faces")]
 async fn the_gm_sees_the_exert_faces(world: &mut World) {
-    let text = table::wait_gm(world, "\"rolls\"").await;
+    let text = host::wait_gm(world, "\"rolls\"").await;
     assert_roll(&read_committed(&text), "", 1, 0, "success");
 }
 
 #[then(expr = "the player sees a check result without faces")]
 async fn the_player_sees_a_check_result_without_faces(world: &mut World) {
-    let added =
-        table::wait_player_from(world, world.mark, "{\"kind\":\"check\",\"outcome\":").await;
+    let added = host::wait_player_from(world, world.mark, "{\"kind\":\"check\",\"outcome\":").await;
     assert!(
         added.contains("{\"kind\":\"check\",\"outcome\":\"success\"}")
             || added.contains("{\"kind\":\"check\",\"outcome\":\"partial\"}")
@@ -132,7 +131,7 @@ async fn a_docks_table_where_mira_can_notice(world: &mut World) {
     common::add_verb(&pack, NOTICE_ROWS);
     support::stamp_pack_rev(&pack);
     listen_and_seat_both(world, &pack).await;
-    world.mark = table::player_mark(world);
+    world.mark = host::player_mark(world);
 }
 
 #[given(expr = "a docks table where Mira's vigor contests a mark")]
@@ -171,8 +170,7 @@ fn an_engine_habit_rolls_a_check_for_mira(world: &mut World) {
 
 #[when(expr = "the player sends a line with a player prefix")]
 async fn the_player_sends_a_line_with_a_player_prefix(world: &mut World) {
-    let (mark, added) =
-        table::player_send(world, "player:nell exert", "\"kind\":\"refused\"").await;
+    let (mark, added) = host::player_send(world, "player:nell exert", "\"kind\":\"refused\"").await;
     world.mark = mark;
     world.player_added = added;
 }
@@ -204,13 +202,13 @@ async fn the_gm_sees_miras_failed_notice(world: &mut World) {
 
 #[then(expr = "the player sees no check frame")]
 async fn the_player_sees_no_check_frame(world: &mut World) {
-    let added = table::wait_player_from(world, world.mark, "\"kind\":\"view\"").await;
+    let added = host::wait_player_from(world, world.mark, "\"kind\":\"view\"").await;
     assert!(!added.contains("\"kind\":\"check\""), "{added}");
 }
 
 #[then(expr = "the player sees only their own check")]
 async fn the_player_sees_only_their_own_check(world: &mut World) {
-    let added = table::wait_player_from(
+    let added = host::wait_player_from(
         world,
         world.mark,
         "{\"kind\":\"check\",\"outcome\":\"miss\"}",
@@ -223,7 +221,7 @@ async fn the_player_sees_only_their_own_check(world: &mut World) {
 
 #[then(expr = "the GM sees one roll read from the attack and dodge dice lines")]
 fn the_gm_sees_one_roll_from_attack_and_dodge(world: &mut World) {
-    let body = table::read_reply(&world.stdout);
+    let body = host::read_reply(&world.stdout);
     let dice = body["dice"].as_array().unwrap_or_else(|| panic!("{body}"));
     assert_eq!(dice.len(), 2, "{body}");
     let (faces, _) = dice[1]
@@ -247,9 +245,9 @@ async fn play_shows_successful_rolls(world: &mut World, rolls: usize) {
 
 #[then(expr = "{word}'s hp is {int}")]
 async fn hp_is(world: &mut World, actor: String, expected: i64) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let id = spookery_engine::entity::Id::Actor(actor.as_str().into());
-    table::poll_until(&format!("{actor} hp {expected}"), async || {
+    host::poll_until(&format!("{actor} hp {expected}"), async || {
         let now = world_of(&pack);
         match now.entities().get::<component::Meter>(&id).value("hp") {
             Ok(hp) if hp == expected => Ok(()),
@@ -260,14 +258,14 @@ async fn hp_is(world: &mut World, actor: String, expected: i64) {
 }
 
 async fn listen_and_seat_both(world: &mut World, pack: &Path) {
-    table::listen(world, pack).await;
-    table::seat_gm(world).await;
-    table::seat_rowan(world, pack).await;
+    host::listen(world, pack).await;
+    host::seat_gm(world).await;
+    host::seat_rowan(world, pack).await;
 }
 
 async fn queue_mira(world: &mut World, move_id: &str) {
     let args = format!(r#"{{"actor":"mira","move":"{move_id}"}}"#);
-    let text = table::gm_tool_call(world, 4, "queue", &args).await;
+    let text = host::gm_tool_call(world, 4, "queue", &args).await;
     assert!(text.contains("\"id\""), "{text}");
     assert!(!text.contains("UNKNOWN_ID"), "{text}");
 }
@@ -292,7 +290,7 @@ fn set_vigor(pack: &Path, actor: &str, base: i64) {
 }
 
 fn flags_of(world: &World, id: &str) -> Vec<String> {
-    let now = world_of(table::pack(world));
+    let now = world_of(host::pack(world));
     assert!(now.actors().contains(&id.into()), "{id} missing");
     let id = id.into();
     let flags = now.actors().get::<component::Flag>(&id);
@@ -300,7 +298,7 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
 }
 
 async fn assert_one_roll(world: &mut World, vigor: i64, success_at: i64, outcome: &str) {
-    let text = table::wait_gm(world, "\"rolls\"").await;
+    let text = host::wait_gm(world, "\"rolls\"").await;
     assert_roll(&read_committed(&text), "", vigor, success_at, outcome);
 }
 
@@ -436,12 +434,12 @@ async fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
     set_vigor(&pack, "mira", 6);
     support::stamp_pack_rev(&pack);
     listen_and_seat_both(world, &pack).await;
-    world.mark = table::player_mark(world);
+    world.mark = host::player_mark(world);
 }
 
 #[when(expr = "the player presses Mira")]
 async fn the_player_presses_mira(world: &mut World) {
-    let (mark, added) = table::player_send(world, "press mira", "\"kind\":").await;
+    let (mark, added) = host::player_send(world, "press mira", "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
 }
@@ -478,7 +476,7 @@ fn mira_is_touched_and_missed(world: &mut World) {
 #[then(expr = "the player sees outcome {string} and no faces")]
 async fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String) {
     let needle = format!("{{\"kind\":\"check\",\"outcome\":\"{outcome}\"}}");
-    let added = table::wait_player_from(world, world.mark, &needle).await;
+    let added = host::wait_player_from(world, world.mark, &needle).await;
     world.player_added = added;
     assert!(
         !world.player_added.contains("\"dice\""),
@@ -500,7 +498,7 @@ async fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String
 
 #[then(expr = "the GM sees outcome {string} and the faces")]
 async fn the_gm_sees_outcome_and_the_faces(world: &mut World, outcome: String) {
-    let text = table::wait_gm(world, "\"rolls\"").await;
+    let text = host::wait_gm(world, "\"rolls\"").await;
     assert_outcome_dice(&read_committed(&text), &outcome);
 }
 
@@ -512,7 +510,7 @@ async fn the_check_outcome_is_not(world: &mut World, outcome: String) {
         "{}",
         world.player_added
     );
-    let text = table::wait_gm(world, "\"rolls\"").await;
+    let text = host::wait_gm(world, "\"rolls\"").await;
     assert!(!text.contains(&word), "{text}");
 }
 

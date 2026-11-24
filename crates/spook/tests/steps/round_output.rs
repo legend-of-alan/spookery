@@ -5,7 +5,7 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 
 use super::common::{edit_save, set_busy};
-use super::table;
+use super::host;
 use crate::support::{self, copy_pack};
 use crate::World;
 
@@ -39,9 +39,9 @@ async fn listen_with_wren(world: &mut World, travelling: bool) {
             set_busy(now, "wren", until, "docks_shop.stairs");
         });
     }
-    table::listen(world, &pack).await;
-    table::seat_gm(world).await;
-    table::seat_actor(world, &pack, "wren").await;
+    host::listen(world, &pack).await;
+    host::seat_gm(world).await;
+    host::seat_actor(world, &pack, "wren").await;
     world.pack = Some(pack);
 }
 
@@ -53,15 +53,15 @@ async fn a_docks_table_with_two_players_and_no_gm(world: &mut World) {
         set_busy(now, "rowan", until, "docks_shop.docks_street");
         set_busy(now, "wren", until, "docks_street.docks_shop");
     });
-    table::listen(world, &pack).await;
-    table::seat_actor(world, &pack, "rowan").await;
-    table::seat_actor(world, &pack, "wren").await;
+    host::listen(world, &pack).await;
+    host::seat_actor(world, &pack, "rowan").await;
+    host::seat_actor(world, &pack, "wren").await;
     world.pack = Some(pack);
 }
 
 #[given(expr = "both players are travelling")]
 fn both_players_are_travelling(world: &mut World) {
-    let now = world_of(table::pack(world));
+    let now = world_of(host::pack(world));
     for actor in ["rowan", "wren"] {
         assert!(is_busy(&now, actor), "{actor} is not travelling");
     }
@@ -79,17 +79,17 @@ async fn the_gm_queues_a_ten_tick_travel(world: &mut World, actor: String) {
 
 #[when(expr = "{string} sends a move")]
 async fn the_player_sends_a_move(world: &mut World, actor: String) {
-    table::wait_host_until(world, "both seats printed", |text| {
+    host::wait_until(world, "both seats printed", |text| {
         text.matches(STATUS_LINE).count() >= 2
     })
     .await;
-    let host = table::host_stdout(world).len();
-    let rowan = table::actor_text(world, &actor).len();
-    let wren = table::actor_text(world, "wren").len();
+    let host = host::stdout(world).len();
+    let rowan = host::actor_text(world, &actor).len();
+    let wren = host::actor_text(world, "wren").len();
     world.mark = rowan;
     world.host_mark = host;
     world.wren_mark = wren;
-    table::actor_write(world, &actor, "wait");
+    host::actor_write(world, &actor, "wait");
 }
 
 #[then(expr = "the commit reply lists one check")]
@@ -117,13 +117,13 @@ fn the_commit_reply_lists_the_dice(world: &mut World) {
 
 #[then(expr = "{string} gets a refused line with code {word}")]
 async fn the_player_is_refused(world: &mut World, actor: String, code: String) {
-    let added = table::wait_actor_from(world, &actor, world.mark, &code).await;
+    let added = host::wait_actor_from(world, &actor, world.mark, &code).await;
     assert!(added.contains(&format!("\"code\":\"{code}\"")), "{added}");
 }
 
 #[then(expr = "each seated player then gets a resume line and a perceive line")]
 async fn each_player_gets_one_refresh(world: &mut World) {
-    let rowan = table::wait_actor_from(world, "rowan", world.mark, "\"kind\":\"view\"").await;
+    let rowan = host::wait_actor_from(world, "rowan", world.mark, "\"kind\":\"view\"").await;
     let busy = rowan
         .find("\"code\":\"BUSY\"")
         .unwrap_or_else(|| panic!("no refusal\n{rowan}"));
@@ -137,7 +137,7 @@ async fn each_player_gets_one_refresh(world: &mut World) {
     assert_eq!(rowan.matches("\"kind\":\"resume\"").count(), 1, "{rowan}");
     assert_eq!(rowan.matches("\"kind\":\"view\"").count(), 1, "{rowan}");
     let wren_mark = world.wren_mark;
-    let wren = table::wait_actor_from(world, "wren", wren_mark, "\"kind\":\"view\"").await;
+    let wren = host::wait_actor_from(world, "wren", wren_mark, "\"kind\":\"view\"").await;
     assert_eq!(wren.matches("\"kind\":\"resume\"").count(), 1, "{wren}");
     assert_eq!(wren.matches("\"kind\":\"view\"").count(), 1, "{wren}");
 }
@@ -145,7 +145,7 @@ async fn each_player_gets_one_refresh(world: &mut World) {
 #[then(expr = "the host prints its status once")]
 async fn the_host_prints_its_status_once(world: &mut World) {
     let host_mark = world.host_mark;
-    let text = table::wait_host_until(world, "one status", |text| {
+    let text = host::wait_until(world, "one status", |text| {
         text.len() > host_mark && text[host_mark..].contains(STATUS_LINE)
     })
     .await;
@@ -165,14 +165,14 @@ async fn queue_move(world: &mut World, actor: &str, move_id: &str, place: Option
         None => String::new(),
     };
     let args = format!(r#"{{"actor":"{actor}","move":"{move_id}"{target}}}"#);
-    let text = table::gm_tool_call(world, 4, "queue", &args).await;
+    let text = host::gm_tool_call(world, 4, "queue", &args).await;
     assert_eq!(
-        table::read_reply(&text)["kind"],
+        host::read_reply(&text)["kind"],
         "queued",
         "queue {move_id} for {actor}\n{text}"
     );
 }
 
 fn commit_body(world: &World) -> Value {
-    table::read_reply(&world.stdout)
+    host::read_reply(&world.stdout)
 }

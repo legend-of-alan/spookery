@@ -3,24 +3,24 @@ use cucumber::{given, then, when};
 use crate::support::{self, copy_pack};
 use crate::World;
 
-use super::table;
+use super::host;
 
 fn read_state_files(world: &World) -> Vec<(std::path::PathBuf, Vec<u8>)> {
-    table::read_files(&table::pack(world).join("state"))
+    host::read_files(&host::pack(world).join("state"))
 }
 
 #[given(expr = "spook run is serving a docks table")]
 async fn spook_run_is_serving_a_docks_table(world: &mut World) {
     let pack = copy_pack("docks", "one-writer");
-    table::listen(world, &pack).await;
+    host::listen(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "the host runs spook {word} on that pack")]
 async fn the_host_runs_spook_on_that_pack(world: &mut World, command: String) {
     world.state_files = read_state_files(world);
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &[&command, pack.to_str().unwrap()]).await;
+    let pack = host::pack(world).to_path_buf();
+    host::run(world, &[&command, pack.to_str().unwrap()]).await;
 }
 
 #[given(expr = "spook round was refused")]
@@ -42,16 +42,16 @@ fn the_state_is_unchanged(world: &mut World) {
 
 #[when(expr = "a seated player commits a move")]
 async fn a_seated_player_commits_a_move(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::seat_rowan(world, &pack).await;
-    table::actor_send(world, "rowan", "wait", "\"kind\":").await;
-    table::wait_committed_wait(&pack, "rowan", 0).await;
+    let pack = host::pack(world).to_path_buf();
+    host::seat_rowan(world, &pack).await;
+    host::actor_send(world, "rowan", "wait", "\"kind\":").await;
+    host::wait_committed_wait(&pack, "rowan", 0).await;
 }
 
 #[when(expr = "spook run is stopped while the GM is seated")]
 fn spook_run_is_stopped_while_the_gm_is_seated(world: &mut World) {
-    assert!(table::live_mut(world).gm.is_some(), "no seated GM");
-    let (status, stderr) = table::interrupt_host(world).expect("no spook run child");
+    assert!(host::live_mut(world).gm.is_some(), "no seated GM");
+    let (status, stderr) = host::interrupt(world).expect("no spook run child");
     world.code = status.code();
     world.stderr = stderr;
 }
@@ -63,7 +63,7 @@ fn spook_run_exits_0(world: &mut World) {
 
 #[then(expr = "the pack can be opened again")]
 fn the_pack_can_be_opened_again(world: &mut World) {
-    drop(support::resume(table::pack(world)));
+    drop(support::resume(host::pack(world)));
 }
 
 #[when(expr = "the host runs spook {word} on a missing pack")]
@@ -71,5 +71,5 @@ async fn the_host_runs_spook_on_a_missing_pack(world: &mut World, command: Strin
     let pack = copy_pack("docks", "missing-pack");
     let missing = pack.join("no-such-pack");
     world.pack = Some(pack);
-    table::run(world, &[&command, missing.to_str().unwrap()]).await;
+    host::run(world, &[&command, missing.to_str().unwrap()]).await;
 }

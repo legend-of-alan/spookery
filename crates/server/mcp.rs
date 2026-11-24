@@ -26,9 +26,9 @@ use rmcp::{ErrorData as McpError, ServerHandler};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 use super::gm;
+use super::host::{report_close, Request};
 use super::limits::GM_BODY_CAP;
 use super::seat::{frame_queue, ConnId, FrameReceiver};
-use super::table::{report_close, Request};
 use crate::protocol::{ClientBody, ClientMessage, Seat, ToolResult, COMMANDS};
 
 pub(super) async fn serve(
@@ -65,7 +65,7 @@ fn http_config() -> StreamableHttpServerConfig {
 }
 
 /// rmcp's local sessions. A session's `GET /mcp` event stream takes the GM seat, and
-/// closing the session answers only after the table has freed it. A session ends on
+/// closing the session answers only after the host has freed it. A session ends on
 /// DELETE or when the GM's event stream hangs up, never on an idle timer.
 struct SeatSessions {
     inner: LocalSessionManager,
@@ -93,7 +93,7 @@ impl SeatSessions {
     }
 }
 
-/// The GM's event stream: each frame the table queues for the seat, as one `spook/event`
+/// The GM's event stream: each frame the host queues for the seat, as one `spook/event`
 /// notification over SSE. It owns the seat, so when it is dropped the session is closed.
 /// A refused stream carries only its refusal and owns nothing.
 struct EventStream {
@@ -109,7 +109,7 @@ impl Stream for EventStream {
         let Some(frame) = ready!(self.frames_rx.poll_frame(cx)) else {
             return Poll::Ready(None);
         };
-        let body = serde_json::from_slice(&frame).expect("the table queues JSON");
+        let body = serde_json::from_slice(&frame).expect("the host queues JSON");
         let note = CustomNotification::new("spook/event", Some(body));
         let message =
             ServerJsonRpcMessage::notification(ServerNotification::CustomNotification(note));
@@ -234,10 +234,8 @@ impl SessionManager for SeatSessions {
     }
 }
 
-/// The error a tool call gets once the table has stopped.
-fn table_closed() -> McpError {
-    McpError::internal_error("table closed", None)
-}
+/// The error message a tool call gets once the host has closed.
+const HOST_CLOSED: &str = "host closed";
 
 struct Handler {
     tx: Sender<Request>,
@@ -309,8 +307,10 @@ impl ServerHandler for Handler {
                 message,
                 reply: reply_tx,
             })
-            .map_err(|_| table_closed())?;
-        let messages = reply_rx.await.map_err(|_| table_closed())?;
+            .map_err(|_| McpError::internal_error(HOST_CLOSED, None))?;
+        let messages = reply_rx
+            .await
+            .map_err(|_| McpError::internal_error(HOST_CLOSED, None))?;
         let result = serde_json::to_value(ToolResult { messages }).expect("tool result");
         Ok(CallToolResult::structured(result).into())
     }
@@ -344,15 +344,15 @@ mod tests {
     use serde_json::Value;
 
     use super::serve;
+    use crate::host::Request;
     use crate::seat::ConnId;
-    use crate::table::Request;
 
-    /// A stand-in for the table thread with one GM seat. It refuses a second
-    /// claim while the seat is held, like the real table, and sends a seated
+    /// A stand-in for the host thread with one GM seat. It refuses a second
+    /// claim while the seat is held, like the real host, and sends a seated
     /// GM a hello. On a fault it tells the test, then holds the seat until the
     /// test lets the release through. The thread ends when every sender to it
     /// is gone.
-    fn spawn_fake_table(
+    fn spawn_fake_host(
         rx: mpsc::Receiver<Request>,
         fault_seen: tokio::sync::mpsc::UnboundedSender<()>,
         let_go: mpsc::Receiver<()>,
@@ -540,7 +540,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let (fault_tx, fault_seen) = tokio::sync::mpsc::unbounded_channel();
         let (let_go, held) = mpsc::channel();
-        spawn_fake_table(rx, fault_tx, held);
+        spawn_fake_host(rx, fault_tx, held);
         tokio::spawn(serve(listener, tx, Arc::new(AtomicU64::new(1))));
         (port, fault_seen, let_go)
     }
@@ -630,7 +630,7 @@ mod tests {
         }
         assert!(
             !delete.is_finished(),
-            "DELETE answered while the table thread still held the seat"
+            "DELETE answered while the host thread still held the seat"
         );
 
         let_go

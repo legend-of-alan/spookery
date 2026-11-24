@@ -1,6 +1,6 @@
 //! `docs/seat-protocol.md` is a capture of one live docks table.
 //! Each fenced example has an id. This test fails when an id is missing,
-//! extra, or different from the table.
+//! extra, or different from the host.
 
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -32,7 +32,7 @@ struct SeatClient {
     next_id: u64,
 }
 
-struct Table {
+struct Host {
     child: Child,
     _stdin: ChildStdin,
     pack: PathBuf,
@@ -42,7 +42,7 @@ struct Table {
     addrs_line: String,
 }
 
-impl Drop for Table {
+impl Drop for Host {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
@@ -90,14 +90,14 @@ async fn the_seat_page_matches_a_live_table() {
 
 async fn capture() -> BTreeMap<String, Example> {
     let mut out = BTreeMap::new();
-    let table = listen();
-    let addrs = serde_json::from_str(&table.addrs_line)
-        .unwrap_or_else(|err| panic!("addrs: {err}\n{}", table.addrs_line));
+    let host = listen();
+    let addrs = serde_json::from_str(&host.addrs_line)
+        .unwrap_or_else(|err| panic!("addrs: {err}\n{}", host.addrs_line));
     insert_json(&mut out, "listening", addrs);
 
-    let mut gm = open_seat(table.game, "gm");
+    let mut gm = open_seat(host.game, "gm");
     insert_json(&mut out, "gm-hello", next_kind(&gm, "hello"));
-    let mut player = open_seat(table.game, "player");
+    let mut player = open_seat(host.game, "player");
     insert_json(&mut out, "player-hello", next_kind(&player, "hello"));
     let claim = send(&mut player, "claim", json!({"actor": "rowan"}));
     insert_json(&mut out, "player-claim", claim);
@@ -110,7 +110,7 @@ async fn capture() -> BTreeMap<String, Example> {
     insert_json(
         &mut out,
         "player-choose-pc",
-        refused_reply(table.game, "wait", json!({})),
+        refused_reply(host.game, "wait", json!({})),
     );
 
     let say = send(
@@ -176,7 +176,7 @@ async fn capture() -> BTreeMap<String, Example> {
         json!({"to": "table", "text": "still there?"}),
     );
     next_kind(&gm, "say");
-    let mut back = open_unclaimed(table.game);
+    let mut back = open_unclaimed(host.game);
     let mut reclaim = send(
         &mut back,
         "claim",
@@ -192,7 +192,7 @@ async fn capture() -> BTreeMap<String, Example> {
     send(&mut gm, "release", json!({}));
     next_kind(&gm, "released");
 
-    let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], table.mcp_port));
+    let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], host.mcp_port));
     let mut mcp = GmClient::connect(mcp_addr)
         .await
         .unwrap_or_else(|err| panic!("MCP GM: {err}"));
@@ -206,7 +206,7 @@ async fn capture() -> BTreeMap<String, Example> {
     send(&mut back, "exert", json!({}));
     next_kind(&back, "queued");
     insert_json(&mut out, "mcp-event", one_event(&mut mcp).await);
-    let mut newcomer = RawSession::open(table.mcp_port);
+    let mut newcomer = RawSession::open(host.mcp_port);
     let refused = newcomer.open_event_stream();
     insert_json(&mut out, "mcp-table-full", read_event(&refused));
 
@@ -217,7 +217,7 @@ async fn capture() -> BTreeMap<String, Example> {
     out
 }
 
-fn listen() -> Table {
+fn listen() -> Host {
     let pack = crate::support::copy_pack("docks", "seat-protocol");
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command
@@ -244,7 +244,7 @@ fn listen() -> Table {
         let mut buf = [0u8; 256];
         while stdout.read(&mut buf).unwrap_or(0) > 0 {}
     });
-    Table {
+    Host {
         child,
         _stdin: stdin,
         pack,
@@ -445,7 +445,7 @@ fn scrub(value: &mut Value) {
     );
 }
 
-/// Swaps a claim's token for `<token>`, since each table mints its own, and returns it.
+/// Swaps a claim's token for `<token>`, since each host mints its own, and returns it.
 fn scrub_token(body: &mut Value) -> String {
     let token = body["token"]
         .as_str()

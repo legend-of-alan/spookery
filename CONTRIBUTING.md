@@ -52,7 +52,7 @@ A test earns its place by failing when something a player, GM or pack author wou
 
 ## Logs and output
 
-**Output** is what a command or seat is for: what `spook` shows a player, a GM, a pack author or the operator of `spook run` so they can play, run the table or fix a pack. Game text, refusals, the error a command exits with, the `spook check`, `status` and `verify` reports, the AI GM's `listening` and warning lines, and the host console are output. Output has fixed wording that tests check, and no log setting changes it.
+**Output** is what a command or seat is for: what `spook` shows a player, a GM, a pack author or the operator of `spook run` so they can play, run the game or fix a pack. Game text, refusals, the error a command exits with, the `spook check`, `status` and `verify` reports, the AI GM's `listening` and warning lines, and the host console are output. Output has fixed wording that tests check, and no log setting changes it.
 
 A **log** is everything else: a `tracing` event that records what the program did, read only to find out why it behaved as it did. Turning logs off never costs a user information.
 

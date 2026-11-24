@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Sent from the table to a player client as the `view` body and to a GM client as the
+/// Sent from the host to a player client as the `view` body and to a GM client as the
 /// `perceive` reply. Always written `protocol::View`: the engine's `View` is what the
 /// server renders this from.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,7 +50,7 @@ impl View {
     }
 }
 
-/// Part of a `View`, sent from the table to a player client. `name` is what a player reads for
+/// Part of a `View`, sent from the host to a player client. `name` is what a player reads for
 /// the exit, such as `stairs` or `Docks Street`. `place_id` and `place_name` are where it goes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -63,7 +63,7 @@ pub struct ExitView {
     pub locked: bool,
 }
 
-/// Part of a `View`, sent from the table to a player client.
+/// Part of a `View`, sent from the host to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct NoteView {
@@ -74,7 +74,7 @@ pub struct NoteView {
     pub text: String,
 }
 
-/// Part of a `View`, sent from the table to a player client.
+/// Part of a `View`, sent from the host to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ItemStack {
@@ -85,7 +85,7 @@ pub struct ItemStack {
     pub name: String,
 }
 
-/// Part of a `View`, sent from the table to a player client. `name` is the pack's name for the
+/// Part of a `View`, sent from the host to a player client. `name` is the pack's name for the
 /// meter, left out when it gives none.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -97,7 +97,7 @@ pub struct MeterView {
     pub max: i64,
 }
 
-/// One change of a `changes` body, sent from the table to a player client. `component_id`
+/// One change of a `changes` body, sent from the host to a player client. `component_id`
 /// names what changed, such as `meter`, `item` or `place`. `entity_id` is whose it is as a
 /// rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`.
 /// `entity_name` is that actor's, place's or story's name. `entry_id` is which one of the

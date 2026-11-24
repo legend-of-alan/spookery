@@ -1,4 +1,4 @@
-//! A player and a GM at one table, asserted as facts: who, where, which outcome.
+//! A player and a GM at one host, asserted as facts: who, where, which outcome.
 
 use cucumber::{given, then, when};
 use serde_json::Value;
@@ -6,41 +6,41 @@ use serde_json::Value;
 use crate::support::copy_pack;
 use crate::World;
 
-use super::table;
+use super::host;
 
 #[given(expr = "rowan is in the shop and a GM is seated")]
 async fn rowan_with_a_gm(world: &mut World) {
     let pack = copy_pack("docks", "session");
-    table::listen(world, &pack).await;
-    table::seat_gm(world).await;
-    table::seat_rowan(world, &pack).await;
+    host::listen(world, &pack).await;
+    host::seat_gm(world).await;
+    host::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "the player sends {string}")]
 fn the_player_sends(world: &mut World, line: String) {
-    world.mark = table::player_write(world, &line);
+    world.mark = host::player_write(world, &line);
 }
 
 #[when(expr = "the player looks")]
 fn the_player_looks(world: &mut World) {
-    world.mark = table::player_write(world, "look");
+    world.mark = host::player_write(world, "look");
 }
 
 #[when(expr = "the player closes the seat")]
 async fn the_player_closes_the_seat(world: &mut World) {
-    table::close_actor(world, "rowan").await;
+    host::close_actor(world, "rowan").await;
 }
 
 #[when(expr = "the GM says {string} to the table")]
 async fn the_gm_says(world: &mut World, text: String) {
     let args = serde_json::json!({ "to": "table", "text": text }).to_string();
-    table::call_gm_tool(world, "say", &args).await;
+    host::call_gm_tool(world, "say", &args).await;
 }
 
 #[when(expr = "the GM closes the seat")]
 async fn the_gm_closes_the_seat(world: &mut World) {
-    table::release_gm(world).await;
+    host::release_gm(world).await;
 }
 
 #[then(expr = "the player sees rowan arrive at {word}")]
@@ -97,25 +97,25 @@ async fn the_gm_hears(world: &mut World, actor_id: String, text: String) {
 
 #[then(expr = "the GM sees rowan in {word}")]
 async fn the_gm_sees_rowan_in(world: &mut World, place: String) {
-    let view = table::call_gm_tool(world, "perceive", r#"{"as":"rowan"}"#).await;
+    let view = host::call_gm_tool(world, "perceive", r#"{"as":"rowan"}"#).await;
     assert_eq!(view["place"], place, "{view}");
 }
 
 #[then(expr = "the GM sees nothing queued")]
 async fn the_gm_sees_nothing_queued(world: &mut World) {
-    let status = table::call_gm_tool(world, "status", "{}").await;
+    let status = host::call_gm_tool(world, "status", "{}").await;
     assert_eq!(status["queued"], serde_json::json!([]), "{status}");
 }
 
 #[then(expr = "the GM sees no player seated")]
 async fn the_gm_sees_no_player_seated(world: &mut World) {
-    table::wait_players(world, 0).await;
+    host::wait_players(world, 0).await;
 }
 
 /// Waits for a message body after `world.mark` that passes `done`.
 async fn wait_player_frame(world: &World, want: &str, done: impl Fn(&Value) -> bool) {
-    table::poll_until(want, async || {
-        let text = table::player_text(world);
+    host::poll_until(want, async || {
+        let text = host::player_text(world);
         let after = text.get(world.mark..).unwrap_or_default();
         if parse_lines(after)
             .iter()
@@ -131,7 +131,7 @@ async fn wait_player_frame(world: &World, want: &str, done: impl Fn(&Value) -> b
 
 /// Waits for a GM event whose body passes `done`.
 async fn wait_gm_event(world: &mut World, want: &str, done: impl Fn(&Value) -> bool) {
-    table::wait_gm_until(world, want, |text| {
+    host::wait_gm_until(world, want, |text| {
         parse_lines(text)
             .iter()
             .any(|line| done(&line["params"]["body"]))

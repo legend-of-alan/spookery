@@ -1,4 +1,4 @@
-//! The client side of a table: the seat connection, messages as text, the `spook play` and
+//! The client end of a seat: the seat connection, messages as text, the `spook play` and
 //! `spook gm` terminals, the `spook play` game window, and the AI GM runner.
 
 use std::fmt;
@@ -20,9 +20,9 @@ pub mod websocket;
 pub enum Error {
     /// A socket could not be dialed, read or written.
     Io(io::Error),
-    /// The table refused the seat. Display is the refusal's sentence.
+    /// The host refused the seat. Display is the refusal's sentence.
     Refused(protocol::Refusal),
-    /// A message that is no `ServerMessage`, with the JSON the table sent.
+    /// A message that is no `ServerMessage`, with the JSON the host sent.
     Unreadable(serde_json::Value),
     /// Any other failure, as the line to print.
     Message(String),

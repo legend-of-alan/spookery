@@ -8,12 +8,12 @@ use cucumber::{given, then, when};
 use crate::support;
 use crate::World;
 
-use super::table;
+use super::host;
 
 fn read_state_files(pack: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     let state = pack.join("state");
     if state.is_dir() {
-        table::read_files(&state)
+        host::read_files(&state)
     } else {
         Vec::new()
     }
@@ -26,7 +26,7 @@ fn docks_pack_rev() -> String {
 
 #[when(expr = "a canon file gains a byte")]
 fn a_canon_file_gains_a_byte(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let mira = pack.join("cast/mira.md");
     let mut body = fs::read_to_string(&mira).unwrap();
     body.push('\n');
@@ -36,8 +36,8 @@ fn a_canon_file_gains_a_byte(world: &mut World) {
 
 #[given(expr = "one round has committed")]
 async fn one_round_has_committed(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["round", pack.to_str().unwrap()]).await;
+    let pack = host::pack(world).to_path_buf();
+    host::run(world, &["round", pack.to_str().unwrap()]).await;
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     assert!(
         !spookery_engine::testing::journal::list_round_keys(&pack).is_empty(),
@@ -47,24 +47,24 @@ async fn one_round_has_committed(world: &mut World) {
 
 #[when(expr = "the operator tries a round")]
 async fn the_operator_tries_a_round(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     world.state_files = read_state_files(&pack);
-    table::run(world, &["round", pack.to_str().unwrap()]).await;
+    host::run(world, &["round", pack.to_str().unwrap()]).await;
 }
 
 #[when(expr = "the operator runs migrate")]
 async fn the_operator_runs_migrate(world: &mut World) {
     // repeats module: mirrors its step text
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["migrate", pack.to_str().unwrap()]).await;
+    let pack = host::pack(world).to_path_buf();
+    host::run(world, &["migrate", pack.to_str().unwrap()]).await;
 }
 
 #[when(expr = "the operator migrates twice")]
 async fn the_operator_migrates_twice(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
     for _ in 0..2 {
-        table::run(world, &["migrate", arg]).await;
+        host::run(world, &["migrate", arg]).await;
         assert_eq!(world.code, Some(0), "{}", world.stderr);
         assert!(world.stdout.is_empty(), "{}", world.stdout);
         assert!(world.stderr.is_empty(), "{}", world.stderr);
@@ -73,7 +73,7 @@ async fn the_operator_migrates_twice(world: &mut World) {
 
 #[when(expr = "the save is hand edited and the canon gains a byte")]
 fn the_save_is_hand_edited(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let now_path = pack.join("state/save.yaml");
     let mut text = fs::read_to_string(&now_path).unwrap();
     text = text.replace("world_time: 1080", "world_time: 7");
@@ -84,7 +84,7 @@ fn the_save_is_hand_edited(world: &mut World) {
 
 #[when(expr = "the pack adds meter {string} with base {int}")]
 fn the_pack_adds_meter(world: &mut World, id: String, base: i64) {
-    let path = table::pack(world).join("rules/meters.yaml");
+    let path = host::pack(world).join("rules/meters.yaml");
     let mut text = fs::read_to_string(&path).unwrap();
     text.push_str(&format!(
         "  - id: {id}\n    min: 0\n    base_cap: 10\n    max: 10\n    base: {base}\n"
@@ -94,7 +94,7 @@ fn the_pack_adds_meter(world: &mut World, id: String, base: i64) {
 
 #[then(expr = "every actor reads {string} at {int} with no row in the save")]
 fn every_actor_reads_meter_at(world: &mut World, id: String, value: i64) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let (now, saved) = (world_of(pack), support::save_of(pack));
     for actor in now.actors().query::<ActorId>().iter() {
         let carrier = entity::Id::Actor(actor.clone());
@@ -107,9 +107,9 @@ fn every_actor_reads_meter_at(world: &mut World, id: String, value: i64) {
 
 #[when(expr = "the save is replaced with a broken document")]
 fn the_save_is_replaced(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     fs::write(pack.join("state/save.yaml"), "schema: no\n").unwrap();
-    world.before = table::read_files(pack);
+    world.before = host::read_files(pack);
 }
 
 #[then(expr = "stderr names {word}")]
@@ -119,7 +119,7 @@ fn stderr_names(world: &mut World, code: String) {
 
 #[then(expr = "the round writes nothing")]
 fn the_round_writes_nothing(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     assert_eq!(
         fs::read(pack.join("state/save.yaml")).unwrap(),
         world.now_bytes
@@ -133,15 +133,15 @@ fn the_round_writes_nothing(world: &mut World) {
 
 #[then(expr = "spook check reports {word}")]
 async fn spook_check_reports(world: &mut World, code: String) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["check", pack.to_str().unwrap()]).await;
+    let pack = host::pack(world).to_path_buf();
+    host::run(world, &["check", pack.to_str().unwrap()]).await;
     assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
     assert!(world.stderr.contains(&code), "{}", world.stderr);
 }
 
 #[then(expr = "the host refuses to start with {word}")]
 async fn the_host_refuses_to_start(world: &mut World, code: String) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let arg = support::pack_arg(&pack);
     let mut proc = support::spawn(&["run", &arg, "--addr", "127.0.0.1:0"]);
     let (status, _, stderr) = proc.wait_with_output().await;
@@ -153,7 +153,7 @@ async fn the_host_refuses_to_start(world: &mut World, code: String) {
 
 #[then(expr = "state_rev is 2")]
 fn state_rev_is_2(world: &mut World) {
-    let now = world_of(table::pack(world));
+    let now = world_of(host::pack(world));
     assert_eq!(now.state_rev, 2);
     assert_eq!(now.pack_rev, docks_pack_rev());
     assert_eq!(place_of(&now, "rowan"), "docks_shop");
@@ -170,7 +170,7 @@ fn state_rev_is_2(world: &mut World) {
 #[then(expr = "migrate keeps the hand edit")]
 fn migrate_keeps_the_hand_edit(world: &mut World) {
     // repeats module: mirrors its step text
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let rev = spookery_engine::pack_rev(pack).unwrap();
     assert_ne!(rev, docks_pack_rev());
     let now = world_of(pack);
@@ -184,7 +184,7 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
 
 #[when(expr = "the shop's lamp oil is hand edited to {int}")]
 fn the_shops_lamp_oil_is_hand_edited(world: &mut World, count: u32) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap();
     let edited = text.replacen(
@@ -194,12 +194,12 @@ fn the_shops_lamp_oil_is_hand_edited(world: &mut World, count: u32) {
     );
     assert_ne!(edited, text, "the shop did not hold 4 lamp oil\n{text}");
     fs::write(&path, edited).unwrap();
-    world.before = table::read_files(pack);
+    world.before = host::read_files(pack);
 }
 
 #[then(expr = "the shop has {int} lamp oil")]
 fn the_shop_has_lamp_oil(world: &mut World, count: u32) {
-    let now = world_of(table::pack(world));
+    let now = world_of(host::pack(world));
     let shop = "docks_shop".into();
     let stock = now.places().get::<component::Item>(&shop);
     assert_eq!(stock.get("lamp_oil").copied(), Some(count));
@@ -207,8 +207,8 @@ fn the_shop_has_lamp_oil(world: &mut World, count: u32) {
 
 #[then(expr = "verify trusts the operator edit at state_rev {int}")]
 async fn verify_trusts_the_operator_edit(world: &mut World, rev: u64) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["verify", pack.to_str().unwrap()]).await;
+    let pack = host::pack(world).to_path_buf();
+    host::run(world, &["verify", pack.to_str().unwrap()]).await;
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let line = format!("operator edit trusted at state_rev {rev}");
     assert!(world.stdout.contains(&line), "{}", world.stdout);
@@ -218,7 +218,7 @@ async fn verify_trusts_the_operator_edit(world: &mut World, rev: u64) {
     expr = "Rowan's vigor offset is hand edited to {int} and Nell joins with no meter or act rows"
 )]
 fn rowan_moves_vigor_and_nell_joins(world: &mut World, offset: i64) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let nell = "---\nschema: cast\nid: nell\ncontrol_type: pc_template\nname: Nell\n---\nNell.\n";
     fs::write(pack.join("cast/pc-nell.md"), nell).unwrap_or_else(|err| panic!("nell: {err}"));
     spookery_engine::testing::edit_save(&pack, |now| {
@@ -231,7 +231,7 @@ fn rowan_moves_vigor_and_nell_joins(world: &mut World, offset: i64) {
 
 #[then(expr = "{word}'s vigor is at base {int} and offset {int}")]
 fn vigor_is_at(world: &mut World, actor: String, base: i64, offset: i64) {
-    let now = world_of(table::pack(world));
+    let now = world_of(host::pack(world));
     let id = actor.as_str().into();
     let vigor = now.actors().get::<component::Meter>(&id).get("vigor");
     let got = vigor.map(|vigor| (vigor.base, vigor.offset));

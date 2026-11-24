@@ -12,7 +12,7 @@ The pack is a waystation with two places, so travel has somewhere to go.
 
 - `yard` is the start place. `lane` is the other place. `world/map.yaml` joins them with one path, `yard <-> lane`, which gives each its exit to the other.
 - `ada` is the player character. The cast file `cast/pc-ada.md` is a `pc_template`, and `state/save.yaml` has a live `ada` actor. A template alone does not seat a player.
-- `keeper` is an NPC in the lane. One habit, `tend_the_yard`, runs while the table is empty and sets the flag `tended`.
+- `keeper` is an NPC in the lane. One habit, `tend_the_yard`, runs while every seat is empty and sets the flag `tended`.
 
 `rules/meters.yaml` defines the meter the check uses:
 
@@ -30,7 +30,7 @@ meters:
 
 `rules/verbs.yaml` has `wait`, `travel`, and `steady`. `wait` is a yield: `do: []` and no success, partial, or miss list. `travel` follows an exit of the current place: `travel lane` uses the exit `lane`. `steady` checks `2d6 + self.nerve`: two six-sided dice plus the nerve meter of the actor who steadies. `tend_the_yard` is a habit rule on `cast/keeper.md`, with `when: habit`.
 
-`rules/budget.yaml` uses the same counters as the docks pack and sets `idle: on`, so an empty table still wakes.
+`rules/budget.yaml` uses the same counters as the docks pack and sets `idle: on`, so the host still wakes with every seat empty.
 
 `state/save.yaml` is the save. `state_rev` starts at 0. `pack_rev` is the hash of `world/`, `cast/`, and `rules/` only. `spook new` computes it. Leave that line for `spook migrate` when the canon changes.
 

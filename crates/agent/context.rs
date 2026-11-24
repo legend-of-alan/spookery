@@ -7,8 +7,8 @@ use serde::Serialize;
 
 use crate::model;
 use crate::protocol::{
-    Audience, MenuRow, PackSummary, QueuedMove, ServerBody, ServerMessage, Speaker, Speech,
-    TableStatus,
+    Audience, HostStatus, MenuRow, PackSummary, QueuedMove, ServerBody, ServerMessage, Speaker,
+    Speech,
 };
 use crate::turn::Turn;
 
@@ -53,7 +53,7 @@ pub(crate) struct ClientState {
 impl ClientState {
     /// Fills the state from the first `status`: the pack, the actors present and the queue,
     /// which starts a turn when a move already waits.
-    pub(crate) fn initialize(&mut self, status: TableStatus) {
+    pub(crate) fn initialize(&mut self, status: HostStatus) {
         self.pack = status.pack;
         self.actors_present = status.presence.actors_present;
         self.queued_moves = status.queued;

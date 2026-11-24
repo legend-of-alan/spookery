@@ -12,9 +12,9 @@ mod mcp_client;
 #[allow(dead_code)]
 mod scripted_gm;
 
-#[path = "steps/table.rs"]
+#[path = "steps/host.rs"]
 #[allow(dead_code)]
-mod table;
+mod host;
 
 #[path = "steps/common.rs"]
 mod common;

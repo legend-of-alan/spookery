@@ -31,7 +31,7 @@ Commands:
       Leave the seat.
   help
       Show these commands.
-A command the table does not list, or arguments it cannot read, is not sent.";
+A command the host does not list, or arguments it cannot read, is not sent.";
 
 /// Plays the GM seat on `/gm` at `addr` until the seat is released or the host closes it.
 pub async fn play(addr: SocketAddr, raw: bool) -> Result<(), Error> {

@@ -2,8 +2,7 @@
 
 use super::seat::Claim;
 use crate::protocol::{
-    self, CommitBody, PackSummary, QueuedMove, Roll, ServerBody, Speech, StatusPresence,
-    TableStatus,
+    self, CommitBody, HostStatus, PackSummary, QueuedMove, Roll, ServerBody, Speech, StatusPresence,
 };
 use spookery_engine::{self as engine, ActorId, Intent, MoveReport, Presence, TapeRecord};
 
@@ -140,7 +139,7 @@ pub(super) fn build_status(
     queued: &[Intent],
     pack: PackSummary,
 ) -> ServerBody {
-    ServerBody::Status(Box::new(TableStatus {
+    ServerBody::Status(Box::new(HostStatus {
         presence: StatusPresence {
             players: presence.players,
             actors_present: presence

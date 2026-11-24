@@ -8,7 +8,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use spookery_engine::{component, ecs};
 
-use super::table;
+use super::host;
 use crate::support::{self, copy_pack};
 use crate::World;
 
@@ -51,8 +51,8 @@ pub(crate) fn add_trapdoor(pack: &Path) {
 }
 
 pub(crate) async fn run_check_json(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(
+    let pack = host::pack(world).to_path_buf();
+    host::run(
         world,
         &["check", "--json", &crate::support::pack_arg(&pack)],
     )
@@ -462,9 +462,9 @@ fn break_pack(pack: &Path, fault: &str) {
 
 /// Hosts the pack and plays as `pc` with `flags`.
 pub(crate) async fn play_as_pc(world: &mut World, pc: &str, flags: &[&str]) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    let addr = table::game_addr(world);
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    let addr = host::game_addr(world);
     world.play = Some(spawn_play(&addr, pc, flags));
     let first_view = if flags.contains(&"--raw") {
         "\"kind\":\"view\""
@@ -506,7 +506,7 @@ pub(crate) async fn wait_proc_until(
     ready: impl Fn(&str) -> bool,
     label: &str,
 ) -> String {
-    table::poll_until(label, async || {
+    host::poll_until(label, async || {
         let stdout = support::text_of(&proc.stdout);
         if ready(&stdout) {
             return Ok(stdout);
@@ -560,7 +560,7 @@ pub(crate) fn walk(exit: &str) -> spookery_engine::testing::PendingAction {
 #[given(expr = "a docks table")]
 pub(crate) fn a_docks_table(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "status");
-    world.before = table::read_files(&pack);
+    world.before = host::read_files(&pack);
     world.pack = Some(pack);
 }
 
@@ -571,7 +571,7 @@ fn the_pack_bytes_are_unchanged(world: &mut World) {
         .as_ref()
         .unwrap_or_else(|| panic!("no docks table"));
     assert_eq!(
-        table::read_files(pack),
+        host::read_files(pack),
         world.before,
         "the command wrote the pack"
     );
@@ -582,23 +582,23 @@ async fn a_docks_table_with_a_seated_gm(world: &mut World) {
     let pack = copy_pack("docks", "gm-seat");
     let opened = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    table::listen(world, &pack).await;
-    table::seat_gm(world).await;
-    table::live_mut(world).opened_save = opened;
+    host::listen(world, &pack).await;
+    host::seat_gm(world).await;
+    host::live_mut(world).opened_save = opened;
     world.pack = Some(pack);
 }
 
 #[given(expr = "a docks table with a seated player")]
 async fn a_docks_table_with_a_seated_player(world: &mut World) {
     let pack = copy_pack("docks", "speech");
-    table::listen(world, &pack).await;
-    table::seat_rowan(world, &pack).await;
+    host::listen(world, &pack).await;
+    host::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "the operator runs spook check")]
 async fn the_operator_runs_spook_check(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let output = support::run_spook(&["check", &crate::support::pack_arg(pack)]).await;
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -612,9 +612,9 @@ async fn the_operator_runs_spook_check_json(world: &mut World) {
 
 #[when(expr = "the copy is broken by {string}")]
 fn the_copy_is_broken_by(world: &mut World, fault: String) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     break_pack(&pack, &fault);
-    world.before = table::read_files(&pack);
+    world.before = host::read_files(&pack);
 }
 
 #[then(expr = "the check exits {int}")]
@@ -701,12 +701,12 @@ fn stdout_is_empty(world: &mut World) {
 
 #[then(expr = "world_time is 1080")]
 fn world_time_is_1080(world: &mut World) {
-    assert_eq!(world_of(table::pack(world)).world_time, 1080);
+    assert_eq!(world_of(host::pack(world)).world_time, 1080);
 }
 
 #[then(expr = "world_time is 1085")]
 async fn world_time_is_1085(world: &mut World) {
-    table::wait_round(world, 1085).await;
+    host::wait_round(world, 1085).await;
 }
 
 /// The id of the cast member or place in `canon` whose name is `text`; any other text, such as
@@ -721,7 +721,7 @@ pub(crate) fn resolve_id(canon: &spookery_engine::testing::Canon, text: &str) ->
 #[given(regex = r#"^(?P<actor>\S+) is (?:in|at) (?P<place>\S+|"[^"]+")$"#)]
 #[then(regex = r#"^(?P<actor>\S+) is (?:in|at) (?P<place>\S+|"[^"]+")$"#)]
 fn is_in(world: &mut World, actor: String, place: String) {
-    let now = world_of(table::pack(world));
+    let now = world_of(host::pack(world));
     let [actor, place] =
         [&actor, &place].map(|text| resolve_id(now.canon(), text.trim_matches('"')));
     assert_eq!(place_of(&now, &actor), place);
@@ -729,7 +729,7 @@ fn is_in(world: &mut World, actor: String, place: String) {
 
 #[then(regex = r"^(?P<actor>\S+) (?P<has>has|does not have) flag (?P<flag>\S+)$")]
 fn has_flag(world: &mut World, actor: String, has: String, flag: String) {
-    let now = world_of(table::pack(world));
+    let now = world_of(host::pack(world));
     let actor = resolve_id(now.canon(), &actor);
     let flags = flags_of(&now, &actor);
     assert_eq!(flags.contains(&flag), has == "has", "{actor}: {flags:?}");
@@ -737,55 +737,55 @@ fn has_flag(world: &mut World, actor: String, has: String, flag: String) {
 
 #[when(regex = r"^the player marks (?P<actor>\S+)$")]
 async fn the_player_marks(world: &mut World, actor: String) {
-    let canon = spookery_engine::load_canon(table::pack(world))
+    let canon = spookery_engine::load_canon(host::pack(world))
         .unwrap_or_else(|err| panic!("load: {err:?}"));
     let line = format!("mark {}", resolve_id(&canon, &actor));
-    let (mark, added) = table::player_send(world, &line, "\"kind\":").await;
+    let (mark, added) = host::player_send(world, &line, "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
 }
 
 #[when(expr = "the player waits")]
 async fn the_player_waits(world: &mut World) {
-    let (mark, added) = table::player_send(world, "wait", "\"kind\":").await;
+    let (mark, added) = host::player_send(world, "wait", "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
 }
 
 #[when(expr = "the player travels to {string}")]
 async fn the_player_travels_to(world: &mut World, place: String) {
-    let (mark, added) = table::player_send(world, &format!("travel {place}"), "\"kind\":").await;
+    let (mark, added) = host::player_send(world, &format!("travel {place}"), "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
 }
 
 #[when(expr = "the GM commits the round")]
 async fn the_gm_commits_the_round(world: &mut World) {
-    world.stdout = table::gm_tool_call(world, 2, "commit", r#"{"include_round":true}"#).await;
+    world.stdout = host::gm_tool_call(world, 2, "commit", r#"{"include_round":true}"#).await;
 }
 
 #[then(expr = "one round was played")]
 fn one_round_was_played(world: &mut World) {
-    assert_eq!(world_of(table::pack(world)).round_index, 1);
+    assert_eq!(world_of(host::pack(world)).round_index, 1);
 }
 
 #[then(expr = "no round was played")]
 fn no_round_was_played(world: &mut World) {
-    assert_eq!(world_of(table::pack(world)).round_index, 0);
+    assert_eq!(world_of(host::pack(world)).round_index, 0);
 }
 
 #[then(expr = "save.yaml is unchanged since the seat")]
 fn save_is_unchanged_since_the_seat(world: &mut World) {
-    let seated = table::live_mut(world).seated_save.clone();
-    let now = fs::read(table::pack(world).join("state/save.yaml"))
+    let seated = host::live_mut(world).seated_save.clone();
+    let now = fs::read(host::pack(world).join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     assert_eq!(now, seated);
 }
 
 #[then(expr = "spook verify passes")]
 async fn spook_verify_passes(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["verify", pack.to_str().unwrap()]).await;
+    let pack = host::pack(world).to_path_buf();
+    host::run(world, &["verify", pack.to_str().unwrap()]).await;
     assert_eq!(
         world.code,
         Some(0),
@@ -797,8 +797,8 @@ async fn spook_verify_passes(world: &mut World) {
 
 #[when(expr = "the operator runs verify")]
 async fn the_operator_runs_verify(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["verify", pack.to_str().unwrap()]).await;
+    let pack = host::pack(world).to_path_buf();
+    host::run(world, &["verify", pack.to_str().unwrap()]).await;
 }
 
 #[given(expr = "the trapdoor is hidden and rowan does not carry found_trapdoor")]
@@ -806,16 +806,16 @@ async fn the_trapdoor_is_hidden(world: &mut World) {
     let pack = copy_pack("docks", "trapdoor");
     add_trapdoor(&pack);
     edit_save(&pack, |_| {});
-    table::listen(world, &pack).await;
-    table::seat_rowan(world, &pack).await;
+    host::listen(world, &pack).await;
+    host::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
-    world.player_added = table::player_text(world);
+    world.player_added = host::player_text(world);
 }
 
 /// `help` lists the exits of this same view, so it hides what the view hides.
 #[then(expr = "rowan's view does not list the trapdoor")]
 fn the_view_hides_the_trapdoor(world: &mut World) {
-    let view = table::player_text(world);
+    let view = host::player_text(world);
     assert!(!view.contains("trapdoor"), "the view listed it\n{view}");
     assert!(view.contains("stairs"), "the view hid the stairs\n{view}");
 }
@@ -832,15 +832,15 @@ async fn the_stairs_cost_ten_ticks(world: &mut World) {
         give_key(now);
         now.world_time = EVENING;
     });
-    table::listen(world, &pack).await;
-    table::seat_rowan(world, &pack).await;
+    host::listen(world, &pack).await;
+    host::seat_rowan(world, &pack).await;
     world.pack = Some(pack);
 }
 
 #[when(expr = "rowan travels via stairs at tick {int}")]
 async fn rowan_travels_via_stairs(world: &mut World, tick: u64) {
-    assert_eq!(world_of(table::pack(world)).world_time, tick);
-    let (mark, added) = table::player_send(world, "travel stairs", "\"kind\":").await;
+    assert_eq!(world_of(host::pack(world)).world_time, tick);
+    let (mark, added) = host::player_send(world, "travel stairs", "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
 }

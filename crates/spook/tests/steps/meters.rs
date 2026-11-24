@@ -10,7 +10,7 @@ use spookery_engine::testing::world_of;
 use spookery_engine::{component, entity, load_canon, ActorId, GlobalId, Meter, Note, Presence};
 
 use super::common::{add_verb, replace_in_file};
-use super::table;
+use super::host;
 use super::triggers::{
     edit_table, intent, play_round, seen_of, set_place, set_present, PlayedRound,
 };
@@ -553,13 +553,13 @@ fn dawn_has_fallen(world: &mut World, value: i64) {
 #[when(expr = "the player reconnects and claims rowan")]
 async fn the_player_reconnects(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    table::listen(world, &pack).await;
-    table::seat_actor(world, &pack, "rowan").await;
+    host::listen(world, &pack).await;
+    host::seat_actor(world, &pack, "rowan").await;
 }
 
 /// The `world_meters` of the view rowan's seat got after its claim.
 fn world_meters_after_claim(world: &World) -> Vec<(String, i64)> {
-    let text = table::actor_text(world, "rowan");
+    let text = host::actor_text(world, "rowan");
     let view = text
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())

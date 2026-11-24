@@ -34,19 +34,19 @@ pub struct World {
     pub summary: Vec<String>,
     pub seen: Vec<(String, Vec<String>)>,
     pub told: Vec<(String, String)>,
-    pub live: Option<table::Host>,
+    pub live: Option<host::Host>,
     pub children: Vec<Child>,
     pub listeners: Vec<TcpListener>,
     pub seated: Vec<(PathBuf, spookery_engine::Presence)>,
     pub(crate) http_gm: Option<mcp_client::GmClient>,
     /// An MCP session opened over plain HTTP, and its event streams.
     pub(crate) mcp_session: Option<mcp_client::RawSession>,
-    /// The table the WebSocket GM connects to, beside `live`, and the pack copy it runs.
-    pub ws_table: Option<(table::Process, PathBuf)>,
+    /// The host the WebSocket GM connects to, beside `live`, and the pack copy it runs.
+    pub ws_host: Option<(host::Process, PathBuf)>,
     /// A recorded session's lines, each one message a seat sent or got.
     pub recorded: Vec<serde_json::Value>,
     /// The seats a recorded session was replayed on, by the name the recording gives each.
-    pub replayed: Vec<(String, table::Seat)>,
+    pub replayed: Vec<(String, host::Seat)>,
     /// The scripted model a scenario's AI GM plays with.
     pub model: scripted_gm::ScriptedModel,
     /// The AI GM once it connects, run in this process.
@@ -125,8 +125,8 @@ fn tear_down(world: &mut World) {
     world.mcp_session.take();
     drop(world.live.take());
     world.ai_gm.take();
-    if let Some((table, pack)) = world.ws_table.take() {
-        drop(table);
+    if let Some((host, pack)) = world.ws_host.take() {
+        drop(host);
         let _ = std::fs::remove_dir_all(pack);
     }
     world.listeners.clear();

@@ -92,7 +92,7 @@ impl Seats {
     }
 }
 
-/// The table's entry for one open `ConnId`: which seat it opened and its outbound queue.
+/// The host's entry for one open `ConnId`: which seat it opened and its outbound queue.
 pub(super) struct Connection {
     pub(super) id: ConnId,
     pub(super) seat: Seat,
@@ -145,7 +145,7 @@ impl Claim {
     }
 }
 
-/// The table's end of one seat's frame queue. The table sends that seat frames with it.
+/// The host's end of one seat's frame queue. The host sends that seat frames with it.
 /// Also holds the seat's cancel: dropping it cancels the seat.
 pub(super) struct FrameSender {
     tx: mpsc::Sender<Vec<u8>>,

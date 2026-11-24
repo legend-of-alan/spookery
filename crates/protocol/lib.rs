@@ -31,8 +31,8 @@ impl Outcome {
 }
 
 pub use gm::{
-    parse_args, Audience, CommitArgs, CommitBody, ControlType, MenuRow, PackSummary, PerceiveArgs,
-    QueueArgs, QueuedMove, Roll, SayArgs, StatusPresence, TableStatus, ToolResult,
+    parse_args, Audience, CommitArgs, CommitBody, ControlType, HostStatus, MenuRow, PackSummary,
+    PerceiveArgs, QueueArgs, QueuedMove, Roll, SayArgs, StatusPresence, ToolResult,
 };
 #[cfg(feature = "schema")]
 pub use message::{generate_client_schema, generate_server_schema};
@@ -180,7 +180,7 @@ impl From<String> for Code {
     }
 }
 
-/// Sent from the table to a client as a `refused` body.
+/// Sent from the host to a client as a `refused` body.
 /// Display is the sentence with the code in brackets,
 /// `The table is full. [TABLE_FULL]`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

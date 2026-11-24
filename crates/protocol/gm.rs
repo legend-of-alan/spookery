@@ -14,19 +14,19 @@ pub fn parse_args<T: DeserializeOwned>(
     serde_json::from_value(Value::Object(arguments.cloned().unwrap_or_default()))
 }
 
-/// The GM's `perceive` command arguments, sent from a GM client to the table.
+/// The GM's `perceive` command arguments, sent from a GM client to the host.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct PerceiveArgs {
-    /// The actor whose view the GM reads. The schema requires it, and the table refuses a call
+    /// The actor whose view the GM reads. The schema requires it, and the host refuses a call
     /// without it as `UNSCOPED_PERCEIVE`.
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(rename = "as", skip_serializing_if = "Option::is_none")]
     pub viewer_id: Option<String>,
 }
 
-/// The GM's `commit` command arguments, sent from a GM client to the table.
+/// The GM's `commit` command arguments, sent from a GM client to the host.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -48,7 +48,7 @@ pub enum Audience {
     Actor(String),
 }
 
-/// The `say` command arguments of either seat, sent from a client to the table. Only the GM
+/// The `say` command arguments of either seat, sent from a client to the host. Only the GM
 /// may set `as`, the bare id of an NPC to speak as, and may then leave out `to`: the NPC's
 /// place hears it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,7 +62,7 @@ pub struct SayArgs {
     pub npc_id: Option<String>,
 }
 
-/// The GM's `queue` command arguments, sent from a GM client to the table.
+/// The GM's `queue` command arguments, sent from a GM client to the host.
 /// Serialized, a call names only the fields that are set.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -72,12 +72,12 @@ pub struct QueueArgs {
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub round_index: Option<u64>,
-    /// The actor the move is for. The schema requires it, and the table refuses a call without
+    /// The actor the move is for. The schema requires it, and the host refuses a call without
     /// it as `SCHEMA`.
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(rename = "actor", skip_serializing_if = "Option::is_none")]
     pub actor_id: Option<String>,
-    /// The move to queue. The schema requires it, and the table refuses a call without it as
+    /// The move to queue. The schema requires it, and the host refuses a call without it as
     /// `SCHEMA`.
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(rename = "move", skip_serializing_if = "Option::is_none")]
@@ -90,10 +90,10 @@ pub struct QueueArgs {
     pub rationale_code: String,
 }
 
-/// The body of the GM's `status` reply, sent from the table to a GM client.
+/// The body of the GM's `status` reply, sent from the host to a GM client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct TableStatus {
+pub struct HostStatus {
     pub presence: StatusPresence,
     pub world_time: u64,
     pub round_index: u64,
@@ -104,7 +104,7 @@ pub struct TableStatus {
     pub pack: PackSummary,
 }
 
-/// Part of `TableStatus`, sent from the table to a GM client.
+/// Part of `HostStatus`, sent from the host to a GM client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct StatusPresence {
@@ -112,7 +112,7 @@ pub struct StatusPresence {
     pub actors_present: Vec<String>,
 }
 
-/// A queued move in `TableStatus`, sent from the table to a GM client.
+/// A queued move in `HostStatus`, sent from the host to a GM client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct QueuedMove {
@@ -123,7 +123,7 @@ pub struct QueuedMove {
     pub move_id: String,
 }
 
-/// The body of the GM's `committed` reply, sent from the table to a GM client.
+/// The body of the GM's `committed` reply, sent from the host to a GM client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CommitBody {
@@ -135,7 +135,7 @@ pub struct CommitBody {
     pub dice: Vec<String>,
 }
 
-/// One check roll in `CommitBody`, sent from the table to a GM client. Its dice are in the
+/// One check roll in `CommitBody`, sent from the host to a GM client. Its dice are in the
 /// body's `dice` lines.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -145,7 +145,7 @@ pub struct Roll {
     pub outcome: Outcome,
 }
 
-/// Whether a cast entry is an NPC or a PC template, sent from the table to a GM client.
+/// Whether a cast entry is an NPC or a PC template, sent from the host to a GM client.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
@@ -154,7 +154,7 @@ pub enum ControlType {
     PcTemplate,
 }
 
-/// One cast row in a `PackSummary`, sent from the table to a GM client.
+/// One cast row in a `PackSummary`, sent from the host to a GM client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct MenuRow {
@@ -163,7 +163,7 @@ pub struct MenuRow {
     pub target: String,
 }
 
-/// Part of `TableStatus`, sent from the table to a GM client.
+/// Part of `HostStatus`, sent from the host to a GM client.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PackSummary {
@@ -177,7 +177,7 @@ pub struct PackSummary {
     pub gm_notes: String,
 }
 
-/// The structured content of an `/mcp` tool result, sent from the table to an MCP GM client:
+/// The structured content of an `/mcp` tool result, sent from the host to an MCP GM client:
 /// every message the call's command sent this seat, in order, its reply last.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolResult {
@@ -199,7 +199,7 @@ mod tests {
             let back: T = serde_json::from_value(serde_json::to_value(&v).unwrap()).unwrap();
             assert_eq!(back, v);
         }
-        assert_reencodes::<TableStatus>(
+        assert_reencodes::<HostStatus>(
             r#"{"presence":{"players":1,"actors_present":["rowan"],"x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor":"rowan","move":"wait","x":1}],"pack":{"menu":[],"control_types":{},"places":{},"cast":{},"x":1},"x":1}"#,
         );
         assert_reencodes::<CommitBody>(

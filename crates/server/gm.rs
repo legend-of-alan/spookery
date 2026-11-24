@@ -6,16 +6,16 @@ use rmcp::handler::server::tool::schema_for_type;
 use serde_json::{Map, Value};
 use spookery_engine::{ActorId, Presence, Reason, TapeRecord};
 
+use super::host::commit_then_fast_forward;
 use super::message_body;
-use super::table::commit_then_fast_forward;
 use crate::protocol::{
     parse_args, CommitArgs, NoArgs, PerceiveArgs, QueueArgs, SayArgs, ServerBody,
 };
 
-/// Sent from a GM command's run back to the table, which answers the GM and updates seats.
+/// Sent from a GM command's run back to the host, which answers the GM and updates seats.
 pub(super) struct Reply {
     pub(super) body: ServerBody,
-    /// The speech this command put on the tape. The table delivers it, and the GM's copy is
+    /// The speech this command put on the tape. The host delivers it, and the GM's copy is
     /// the reply.
     pub(super) speech: Option<TapeRecord>,
     /// The GM seat is cleared once this reply is sent.

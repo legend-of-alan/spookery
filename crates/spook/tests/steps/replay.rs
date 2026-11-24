@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::World;
 
-use super::table;
+use super::host;
 
 #[given(expr = "an empty directory")]
 fn an_empty_directory(world: &mut World) {
@@ -15,13 +15,13 @@ fn an_empty_directory(world: &mut World) {
 
 #[when(expr = "the operator runs quick verify")]
 async fn the_operator_runs_quick_verify(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["verify", "--quick", pack.to_str().unwrap()]).await;
+    let pack = host::pack(world).to_path_buf();
+    host::run(world, &["verify", "--quick", pack.to_str().unwrap()]).await;
 }
 
 #[when(expr = "the pack is copied before the round")]
 fn the_pack_is_copied_before_the_round(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let dest = crate::support::fresh_dir("from");
     crate::support::copy_dir(pack, &dest);
     world.scratch = dest.display().to_string();
@@ -29,7 +29,7 @@ fn the_pack_is_copied_before_the_round(world: &mut World) {
 
 #[when(expr = "the replay base is removed")]
 fn the_replay_base_is_removed(world: &mut World) {
-    let path = table::pack(world).join("state/journal/base.yaml");
+    let path = host::pack(world).join("state/journal/base.yaml");
     if path.is_file() {
         fs::remove_file(&path).unwrap_or_else(|err| panic!("remove base: {err}"));
     }
@@ -37,9 +37,9 @@ fn the_replay_base_is_removed(world: &mut World) {
 
 #[when(expr = "the operator runs verify from that copy")]
 async fn the_operator_runs_verify_from_that_copy(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let from = world.scratch.clone();
-    table::run(world, &["verify", pack.to_str().unwrap(), "--from", &from]).await;
+    host::run(world, &["verify", pack.to_str().unwrap(), "--from", &from]).await;
     let _ = fs::remove_dir_all(&from);
 }
 
@@ -58,43 +58,43 @@ fn a_docks_table_that_has_played_n_rounds(world: &mut World, count: usize) {
 
 #[when(expr = "the operator plays {int} rounds")]
 async fn the_operator_plays_n_rounds(world: &mut World, count: usize) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap().to_string();
     for _ in 0..count {
-        table::run(world, &["round", &arg]).await;
+        host::run(world, &["round", &arg]).await;
         assert_eq!(world.code, Some(0), "{}", world.stderr);
     }
 }
 
 #[when(expr = "two players play, a GM commits one round, and the players leave")]
 async fn two_players_play_a_round(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    table::seat_actor(world, &pack, "rowan").await;
-    table::seat_actor(world, &pack, "harbormouse").await;
-    let _ = table::actor_send(world, "rowan", "wait", "\"kind\":").await;
-    let _ = table::actor_send(world, "harbormouse", "wait", "\"kind\":").await;
-    table::seat_gm(world).await;
-    let _ = table::actor_send(world, "rowan", "wait", "\"kind\":").await;
-    let _ = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#).await;
-    table::close_actor(world, "harbormouse").await;
-    table::wait_players(world, 1).await;
-    table::close_actor(world, "rowan").await;
-    table::wait_players(world, 0).await;
-    table::stop_host(world);
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    host::seat_actor(world, &pack, "rowan").await;
+    host::seat_actor(world, &pack, "harbormouse").await;
+    let _ = host::actor_send(world, "rowan", "wait", "\"kind\":").await;
+    let _ = host::actor_send(world, "harbormouse", "wait", "\"kind\":").await;
+    host::seat_gm(world).await;
+    let _ = host::actor_send(world, "rowan", "wait", "\"kind\":").await;
+    let _ = host::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#).await;
+    host::close_actor(world, "harbormouse").await;
+    host::wait_players(world, 1).await;
+    host::close_actor(world, "rowan").await;
+    host::wait_players(world, 0).await;
+    host::stop(world);
 }
 
 #[when(expr = "a seated player's host is killed and restarted")]
 async fn a_seated_players_host_is_killed_and_restarted(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    table::seat_actor(world, &pack, "rowan").await;
-    table::wait_players(world, 1).await;
-    table::live_mut(world).host.take();
-    table::stop_host(world);
-    table::listen(world, &pack).await;
-    table::wait_players(world, 0).await;
-    table::stop_host(world);
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    host::seat_actor(world, &pack, "rowan").await;
+    host::wait_players(world, 1).await;
+    host::live_mut(world).process.take();
+    host::stop(world);
+    host::listen(world, &pack).await;
+    host::wait_players(world, 0).await;
+    host::stop(world);
 }
 
 #[when(expr = "a queued intent the round never had is written into its record")]
@@ -124,12 +124,12 @@ fn a_queued_intent_is_written_into_a_round_record(world: &mut World) {
 
 #[when(expr = "the pack bytes are remembered")]
 fn the_pack_bytes_are_remembered(world: &mut World) {
-    world.before = table::read_files(table::pack(world));
+    world.before = host::read_files(host::pack(world));
 }
 
 #[then(expr = "stdout says the save was verified")]
 fn stdout_says_the_save_was_verified(world: &mut World) {
-    let rev = world_of(table::pack(world)).state_rev;
+    let rev = world_of(host::pack(world)).state_rev;
     assert!(
         world.stdout.contains("verified ") && world.stdout.contains("records, state_rev "),
         "{}",
@@ -231,7 +231,7 @@ fn stderr_names_the_record_and_unknown_effect(world: &mut World) {
 
 #[then(expr = "each journal record parses back to the bytes that were written")]
 fn each_journal_record_parses_back(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let entries = spookery_engine::testing::journal::read_verified(pack).unwrap_or_else(|fault| {
         panic!("{}: {}", fault.file, fault.detail);
     });
@@ -254,7 +254,7 @@ fn each_journal_record_parses_back(world: &mut World) {
 }
 
 pub(super) fn edit_round(world: &mut World, edit: impl FnOnce(&mut Value)) {
-    let path = spookery_engine::testing::journal::locate(table::pack(world), "round-0001")
+    let path = spookery_engine::testing::journal::locate(host::pack(world), "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&path).unwrap();
     let line = text
@@ -271,7 +271,7 @@ pub(super) fn edit_round(world: &mut World, edit: impl FnOnce(&mut Value)) {
 
 #[given(expr = "checkpoints are taken every {int} rounds")]
 fn checkpoints_are_taken_every_n_rounds(world: &mut World, every: u64) {
-    let path = table::pack(world).join("pack.yaml");
+    let path = host::pack(world).join("pack.yaml");
     let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read pack.yaml: {err}"));
     if !text.ends_with('\n') {
         text.push('\n');
@@ -282,7 +282,7 @@ fn checkpoints_are_taken_every_n_rounds(world: &mut World, every: u64) {
 
 #[when(expr = "the live bundle gains a torn tail")]
 fn the_live_bundle_gains_a_torn_tail(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let path = spookery_engine::testing::journal::find_live_bundle(pack)
         .unwrap_or_else(|| panic!("no live bundle"));
     let entries = spookery_engine::testing::journal::read_records(pack)
@@ -301,7 +301,7 @@ fn the_live_bundle_gains_a_torn_tail(world: &mut World) {
 
 #[when(expr = "the table is opened again")]
 fn the_table_is_opened_again(world: &mut World) {
-    resume_as_writer(table::pack(world));
+    resume_as_writer(host::pack(world));
 }
 
 /// Take the lock the way a host does, which recovers a crashed pack, then resume it.
@@ -312,7 +312,7 @@ fn resume_as_writer(pack: &std::path::Path) {
 
 #[then(expr = "the torn tail is gone")]
 fn the_torn_tail_is_gone(world: &mut World) {
-    let path = spookery_engine::testing::journal::find_live_bundle(table::pack(world))
+    let path = spookery_engine::testing::journal::find_live_bundle(host::pack(world))
         .unwrap_or_else(|| panic!("no live bundle"));
     let text = fs::read_to_string(&path).unwrap();
     assert!(text.ends_with('\n'), "{text}");
@@ -321,7 +321,7 @@ fn the_torn_tail_is_gone(world: &mut World) {
 
 #[then(expr = "the opened state matches the last complete record")]
 fn the_opened_state_matches_the_last_complete_record(world: &mut World) {
-    let report = spookery_engine::testing::replay_pack(table::pack(world))
+    let report = spookery_engine::testing::replay_pack(host::pack(world))
         .unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(report.state_rev, world.mark as u64);
     assert_eq!(
@@ -332,7 +332,7 @@ fn the_opened_state_matches_the_last_complete_record(world: &mut World) {
 
 #[when(expr = "one record in a closed bundle is changed")]
 fn one_record_in_a_closed_bundle_is_changed(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let bundles = spookery_engine::testing::journal::list_bundles(pack)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let (bundle, path) = bundles
@@ -351,7 +351,7 @@ fn one_record_in_a_closed_bundle_is_changed(world: &mut World) {
 
 #[when(expr = "one record in the live bundle is changed")]
 fn one_record_in_the_live_bundle_is_changed(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let path = spookery_engine::testing::journal::find_live_bundle(pack)
         .unwrap_or_else(|| panic!("no live bundle"));
     let bundle = path
@@ -378,7 +378,7 @@ fn change_payload(text: &str) -> Vec<u8> {
 
 #[when(expr = "every closed bundle is made unreadable")]
 fn every_closed_bundle_is_made_unreadable(world: &mut World) {
-    let bundles = spookery_engine::testing::journal::list_bundles(table::pack(world))
+    let bundles = spookery_engine::testing::journal::list_bundles(host::pack(world))
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let closed: Vec<_> = bundles
         .into_iter()
@@ -392,7 +392,7 @@ fn every_closed_bundle_is_made_unreadable(world: &mut World) {
 
 #[then(expr = "the table still opens")]
 fn the_table_still_opens(world: &mut World) {
-    resume_as_writer(table::pack(world));
+    resume_as_writer(host::pack(world));
 }
 
 #[then(expr = "stderr names that bundle")]
@@ -407,7 +407,7 @@ fn stderr_names_that_bundle(world: &mut World) {
 
 #[when(expr = "the save snapshot is removed")]
 fn the_save_snapshot_is_removed(world: &mut World) {
-    let path = table::pack(world).join("state/save.yaml");
+    let path = host::pack(world).join("state/save.yaml");
     assert!(path.is_file(), "no save");
     fs::remove_file(&path).unwrap();
 }
@@ -420,12 +420,12 @@ fn make_unreadable(save: &std::path::Path) {
 
 #[when(expr = "the save cannot be read")]
 fn the_save_cannot_be_read(world: &mut World) {
-    make_unreadable(&table::pack(world).join("state/save.yaml"));
+    make_unreadable(&host::pack(world).join("state/save.yaml"));
 }
 
 #[when(expr = "the replay base cannot be read")]
 fn the_replay_base_cannot_be_read(world: &mut World) {
-    make_unreadable(&table::pack(world).join("state/journal/base.yaml"));
+    make_unreadable(&host::pack(world).join("state/journal/base.yaml"));
 }
 
 #[when(expr = "the copied save cannot be read")]
@@ -435,12 +435,12 @@ fn the_copied_save_cannot_be_read(world: &mut World) {
 
 #[when(expr = "the operator rebuilds the save")]
 fn the_operator_rebuilds_the_save(world: &mut World) {
-    resume_as_writer(table::pack(world));
+    resume_as_writer(host::pack(world));
 }
 
 #[then(expr = "the save hash matches the latest checkpoint")]
 fn the_save_hash_matches_the_latest_checkpoint(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let entries = spookery_engine::testing::journal::read_records(pack)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let mark = spookery_engine::testing::journal::latest_checkpoint(&entries)
@@ -475,14 +475,14 @@ fn the_closed_bundle_is_copied_back_beside_its_gzip(world: &mut World) {
 
 #[when(expr = "the save is kept")]
 fn the_save_is_kept(world: &mut World) {
-    let save = table::pack(world).join("state/save.yaml");
+    let save = host::pack(world).join("state/save.yaml");
     world.scratch = fs::read_to_string(save).unwrap_or_else(|err| panic!("read save: {err}"));
 }
 
 /// Leave the journal as a commit whose `save.yaml` and snapshot did not land.
 #[when(expr = "the checkpoint's save and snapshot are rolled back")]
 fn the_checkpoints_save_and_snapshot_are_rolled_back(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let entries = spookery_engine::testing::journal::read_records(&pack)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let mark = spookery_engine::testing::journal::latest_checkpoint(&entries)
@@ -497,7 +497,7 @@ fn the_checkpoints_save_and_snapshot_are_rolled_back(world: &mut World) {
 
 #[then(expr = "the live bundle is {word}")]
 fn the_live_bundle_is(world: &mut World, expected: String) {
-    let path = spookery_engine::testing::journal::find_live_bundle(table::pack(world))
+    let path = spookery_engine::testing::journal::find_live_bundle(host::pack(world))
         .unwrap_or_else(|| panic!("no live bundle"));
     let bundle = path
         .file_name()
@@ -508,14 +508,14 @@ fn the_live_bundle_is(world: &mut World, expected: String) {
 
 #[then(expr = "{word} is closed")]
 fn the_bundle_is_closed(world: &mut World, bundle: String) {
-    let journal = table::pack(world).join("state/journal");
+    let journal = host::pack(world).join("state/journal");
     assert!(journal.join(format!("{bundle}.gz")).is_file(), "no gzip");
     assert!(!journal.join(&bundle).exists(), "plain bundle still open");
 }
 
 #[then(expr = "the plain bundle file is gone")]
 fn the_plain_bundle_file_is_gone(world: &mut World) {
-    let journal = table::pack(world).join("state/journal");
+    let journal = host::pack(world).join("state/journal");
     let mut plain = Vec::new();
     for entry in fs::read_dir(&journal).unwrap_or_else(|err| panic!("read journal: {err}")) {
         let entry = entry.unwrap();
@@ -529,7 +529,7 @@ fn the_plain_bundle_file_is_gone(world: &mut World) {
 }
 
 fn only_closed_bundle(world: &World) -> (String, std::path::PathBuf) {
-    let bundles = spookery_engine::testing::journal::list_bundles(table::pack(world))
+    let bundles = spookery_engine::testing::journal::list_bundles(host::pack(world))
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let mut closed: Vec<_> = bundles
         .into_iter()
@@ -547,7 +547,7 @@ fn gunzip_closed(path: &std::path::Path) -> Vec<u8> {
 
 #[when(expr = "the first closed checkpoint snapshot is changed")]
 fn the_first_closed_checkpoint_snapshot_is_changed(world: &mut World) {
-    let dir = table::pack(world).join("state/checkpoints");
+    let dir = host::pack(world).join("state/checkpoints");
     let first = fs::read_dir(&dir)
         .unwrap_or_else(|err| panic!("read checkpoints: {err}"))
         .filter_map(|entry| {

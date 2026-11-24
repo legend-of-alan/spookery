@@ -9,7 +9,7 @@ use spookery_engine::component::Flag;
 use crate::support;
 use crate::World;
 
-use super::table;
+use super::host;
 
 const DIAGNOSTIC_KEYS: [&str; 7] = ["file", "line", "column", "path", "code", "message", "hint"];
 
@@ -21,7 +21,7 @@ async fn the_operator_runs_spook_check_json_again(world: &mut World) {
 
 #[when(expr = "the street exit is removed")]
 fn the_street_exit_is_removed(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     super::common::replace_in_file(
         &pack.join("world/map.yaml"),
         "  - path: docks_shop <-> docks_street\n",
@@ -31,7 +31,7 @@ fn the_street_exit_is_removed(world: &mut World) {
 
 #[when(regex = r"^travel in verbs.yaml teleports (at once|inside a nested check)$")]
 fn travel_in_verbs_yaml_teleports(world: &mut World, walk: String) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let teleport = match walk.as_str() {
         "at once" => "      - location:\n          via: target\n          teleport: true\n",
         _ => "      - check: { total: 1, success_at: 1, success: [{ location: { via: target, teleport: true } }] }\n",
@@ -42,7 +42,7 @@ fn travel_in_verbs_yaml_teleports(world: &mut World, walk: String) {
 
 #[when(expr = "the pack's gm_notes run to {int} characters")]
 fn the_pack_gm_notes_run_to(world: &mut World, chars: usize) {
-    table::append_gm_notes(table::pack(world), &"a".repeat(chars));
+    host::append_gm_notes(host::pack(world), &"a".repeat(chars));
 }
 
 #[when(expr = "a verb's if names flag {string}, which no rule sets")]
@@ -50,7 +50,7 @@ fn a_verb_names_an_unset_flag(world: &mut World, flag: String) {
     let verb_yaml = format!(
         "\n  - id: test_{flag}\n    when:\n      verb: test_{flag}\n    if:\n      - flag: {{ of: rowan, key: {flag}, is: true }}\n    do: []\n"
     );
-    super::common::add_verb(table::pack(world), &verb_yaml);
+    super::common::add_verb(host::pack(world), &verb_yaml);
 }
 
 #[when(expr = "a change rule's when names flag {string}, which no rule sets")]
@@ -67,18 +67,18 @@ rules:
     do: []
 "
     );
-    super::common::write_file(table::pack(world), "story/watch.yaml", &story_yaml);
+    super::common::write_file(host::pack(world), "story/watch.yaml", &story_yaml);
 }
 
 #[when(expr = "an exit's revealed_by names flag {string}, which no rule sets")]
 fn an_exit_names_an_unset_flag(world: &mut World, flag: String) {
     let path_line = format!("  - path: loft -> mill_lane\n    revealed_by: {flag}\n");
-    crate::support::append(&table::pack(world).join("world/map.yaml"), &path_line);
+    crate::support::append(&host::pack(world).join("world/map.yaml"), &path_line);
 }
 
 #[when(expr = "the save gives rowan the flag {string}")]
 fn the_save_gives_rowan_the_flag(world: &mut World, flag: String) {
-    support::edit_save(table::pack(world), |now| {
+    support::edit_save(host::pack(world), |now| {
         let mut actors = now.actors_mut();
         (actors.get_mut::<Flag>(&"rowan".into()).set(&flag, true))
             .unwrap_or_else(|err| panic!("set {flag}: {err}"));
@@ -87,7 +87,7 @@ fn the_save_gives_rowan_the_flag(world: &mut World, flag: String) {
 
 #[when(expr = "the pack_rev is restamped")]
 fn the_pack_rev_is_restamped(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let path = pack.join("state/save.yaml");
     let mut now = spookery_engine::parse_save(&fs::read_to_string(&path).unwrap())
         .unwrap_or_else(|err| panic!("load save: {err:?}"));
@@ -230,7 +230,7 @@ fn the_json_array_is_one_diagnostic(world: &mut World, code: String, file: Strin
 
 #[when(expr = "the worked example row is appended to the verbs file")]
 fn the_worked_example_row_is_appended(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let path = pack.join("rules/verbs.yaml");
     let mut text = fs::read_to_string(&path).unwrap();
     if !text.ends_with('\n') {
@@ -293,7 +293,7 @@ fn worked_example_row() -> String {
 /// as its file holds it.
 #[when(expr = "the save gives meters to an actor with no control type")]
 fn the_save_gives_meters_to_an_actor_with_no_control_type(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     support::edit_save(&pack, |now| {
         support::edit_as_saved(now, |save| {
             let vigor = serde_json::json!({ "vigor": { "base": 1, "offset": 0 } });
