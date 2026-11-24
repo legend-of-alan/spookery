@@ -3,9 +3,7 @@
 use serde_saphyr::Spanned;
 use spookery_protocol::{is_built_in, Seat};
 
-use crate::canon::source::{
-    load_tagged, spot_of, Diags, Fault, FileText, Locator, Problem, VERBS_SCHEMA,
-};
+use crate::canon::source::{load_tagged, spot_of, Diags, Fault, FileText, Locator, VERBS_SCHEMA};
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::rules::expr::{self, stamp_spots, Expr};
 use crate::rules::grammar;
@@ -59,32 +57,21 @@ fn rule_of(
 ) -> Result<Rule, Vec<Diagnostic>> {
     let source = FileText::named(file);
     let mut diags = Vec::new();
+    let refuse_at_id = |message: String, hint: &str| {
+        let at = Locator::Spot(spot_of(&entry.id));
+        source.refuse_at(&format!("rules[{index}].id"), at, message, hint)
+    };
     let local_id = entry.id.value.clone();
     if local_id.is_empty() || local_id == "say" {
-        diags.push(
-            Problem {
-                source: &source,
-                path: &format!("rules[{index}].id"),
-                at: Locator::Spot(spot_of(&entry.id)),
-                message: "a rule id is empty or is say".into(),
-                hint: "set id to a short rule id; say is speech",
-            }
-            .into_diagnostic(),
-        );
+        let hint = "set id to a short rule id; say is speech";
+        diags.push(refuse_at_id("a rule id is empty or is say".into(), hint));
     }
     let when = match when_of(&entry.when.value) {
         Ok(when) => Some(when),
         Err(problem) => {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("rules[{index}].when"),
-                    at: Locator::Spot(spot_of(&entry.when)),
-                    message: problem,
-                    hint: "set when to habit, a verb, or a change",
-                }
-                .into_diagnostic(),
-            );
+            let at = Locator::Spot(spot_of(&entry.when));
+            let hint = "set when to habit, a verb, or a change";
+            diags.push(source.refuse_at(&format!("rules[{index}].when"), at, problem, hint));
             None
         }
     };
@@ -174,27 +161,10 @@ fn rule_of(
                 "add success",
             ));
         }
-        let mut checks: Vec<_> = check.iter().map(|check| (check, &partial[..])).collect();
-        for effect in [&do_, &success, &partial, &miss].into_iter().flatten() {
-            effect.visit(|effect| {
-                if let EffectTemplate::Check { check, partial, .. } = effect {
-                    checks.push((check, &partial[..]));
-                }
-            });
-        }
-        let band_problem = (checks.into_iter())
-            .find_map(|(check, partial)| find_partial_band_problem(check, partial));
-        if let Some((problem, hint)) = band_problem {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("rules[{index}].id"),
-                    at: Locator::Spot(spot_of(&entry.id)),
-                    message: format!("rule '{local_id}' {problem}"),
-                    hint,
-                }
-                .into_diagnostic(),
-            );
+        let effect_lists = [&do_[..], &success, &partial, &miss];
+        if let Some((problem, hint)) = find_rule_band_problem(check.as_ref(), effect_lists) {
+            let message = format!("rule '{local_id}' {problem}");
+            diags.push(refuse_at_id(message, hint));
         }
     }
     if !diags.is_empty() {
@@ -233,29 +203,28 @@ fn rule_of(
         file: file.to_string(),
         index,
     };
+    let rule_problem =
+        find_misplaced_target_problem(&rule).or_else(|| find_let_read_problem(&rule));
+    if let Some((problem, hint)) = rule_problem {
+        let message = format!("rule '{}' {problem}", rule.local_id);
+        return Err(vec![refuse_at_id(message, &hint)]);
+    }
+    Ok(rule)
+}
+
+/// The problem and the hint for the first place `rule` says `target` where its verb's target
+/// cannot stand.
+fn find_misplaced_target_problem(rule: &Rule) -> Option<(String, String)> {
     let target_kind = match &rule.when {
         When::Verb { target, .. } => *target,
         When::Habit | When::Change(_) => TargetKind::None,
     };
-    let misplaced_target = rule.mentions().find_misplaced_target(target_kind);
-    let misplaced_problem = misplaced_target.map(|(key, needs)| {
-        let (needs, target) = (needs.as_str(), target_kind.as_str());
-        (
-            format!("says target in {key}, but its target is {target}"),
-            format!("give the verb target: {needs}, or name the {needs} by its id"),
-        )
-    });
-    if let Some((problem, hint)) = misplaced_problem.or_else(|| find_let_read_problem(&rule)) {
-        return Err(vec![Problem {
-            source: &source,
-            path: &format!("rules[{index}].id"),
-            at: Locator::Spot(spot_of(&entry.id)),
-            message: format!("rule '{}' {problem}", rule.local_id),
-            hint: &hint,
-        }
-        .into_diagnostic()]);
-    }
-    Ok(rule)
+    let (key, needs) = rule.mentions().find_misplaced_target(target_kind)?;
+    let (needs, target) = (needs.as_str(), target_kind.as_str());
+    Some((
+        format!("says target in {key}, but its target is {target}"),
+        format!("give the verb target: {needs}, or name the {needs} by its id"),
+    ))
 }
 
 /// The first `let:` read in `rule` that fails, as the problem and the hint: an id its `let:`
@@ -611,6 +580,24 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             }
         }
     })
+}
+
+/// The first partial band problem of the rule's own `check`, then of each check nested in its
+/// `do`, `success`, `partial` and `miss` lists, as the words after the rule's id and the hint.
+fn find_rule_band_problem(
+    own_check: Option<&rule::Check>,
+    [do_list, success_list, partial_list, miss_list]: [&[EffectTemplate]; 4],
+) -> Option<(&'static str, &'static str)> {
+    let mut checks = Vec::from_iter(own_check.map(|check| (check, partial_list)));
+    let effect_lists = [do_list, success_list, partial_list, miss_list];
+    for effect in effect_lists.into_iter().flatten() {
+        effect.visit(|nested| {
+            if let EffectTemplate::Check { check, partial, .. } = nested {
+                checks.push((check, &partial[..]));
+            }
+        });
+    }
+    (checks.into_iter()).find_map(|(check, partial)| find_partial_band_problem(check, partial))
 }
 
 /// What is wrong with `check`'s partial band, given `partial`, the list its partial outcome

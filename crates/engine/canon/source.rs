@@ -43,7 +43,7 @@ impl<'a> FileText<'a> {
     ) -> Option<Diagnostic> {
         let (problem, hint) = words;
         id.is_empty()
-            .then(|| self.refusal(path, at, problem.into(), hint))
+            .then(|| self.refuse_at(path, at, problem.into(), hint))
     }
 
     /// The refusal at `path` for an `id` the caller found a second time.
@@ -55,7 +55,7 @@ impl<'a> FileText<'a> {
         words: DuplicateWords,
     ) -> Diagnostic {
         let (before, after, hint) = words;
-        self.refusal(path, at, format!("{before} '{id}' {after}"), hint)
+        self.refuse_at(path, at, format!("{before} '{id}' {after}"), hint)
     }
 
     /// The refusals for the `row`th item of the top-level `{noun}s:` list, whose id is
@@ -80,7 +80,7 @@ impl<'a> FileText<'a> {
                 row,
                 key: &key,
             };
-            self.refusal(&format!("{noun}s[{row}].{field}"), at, message, hint)
+            self.refuse_at(&format!("{noun}s[{row}].{field}"), at, message, hint)
         };
         let empty = format!("a {noun} id is empty");
         let broken = rules.into_iter().filter(|(broken, ..)| *broken);
@@ -99,15 +99,22 @@ impl<'a> FileText<'a> {
 
     /// A converter's `fault` at the spot it recorded, refused as a schema error.
     pub(super) fn fault(&self, path: &str, fault: Fault) -> Diagnostic {
-        self.refusal(path, Locator::Spot(fault.spot), fault.message, "")
+        self.refuse_at(path, Locator::Spot(fault.spot), fault.message, "")
     }
 
-    fn refusal(&self, path: &str, at: Locator, problem: String, hint: &str) -> Diagnostic {
+    /// The schema error at `path` with `hint`, placed where `at` points.
+    pub(super) fn refuse_at(
+        &self,
+        path: &str,
+        at: Locator,
+        message: String,
+        hint: &str,
+    ) -> Diagnostic {
         Problem {
             source: self,
             path,
             at,
-            message: problem,
+            message,
             hint,
         }
         .into_diagnostic()
