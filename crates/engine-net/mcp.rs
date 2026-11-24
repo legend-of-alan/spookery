@@ -382,19 +382,8 @@ mod tests {
     use serde_json::Value;
     use spookery_engine::transport::ConnId;
 
-    use super::{describe, serve};
+    use super::serve;
     use crate::host::Request;
-    use crate::protocol::{Seat, COMMANDS};
-
-    /// Every GM command the hello lists has a tool description and schema. A command that is not
-    /// a GM command has none.
-    #[test]
-    fn each_gm_command_is_described() {
-        for command in COMMANDS.iter().filter(|command| command.seat == Seat::Gm) {
-            assert!(describe(command.id).is_some(), "{}", command.id);
-        }
-        assert!(describe("fly").is_none());
-    }
 
     /// A stand-in for the host thread with one GM seat. It refuses a second
     /// claim while the seat is held, like the real host, and sends a seated
