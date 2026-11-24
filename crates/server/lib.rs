@@ -87,13 +87,13 @@ pub async fn serve(
             session.budget().round_every_real_seconds,
         ));
     }
-    let mut host =
+    let mut host_task =
         tokio::task::spawn_blocking(move || Host::new(session, restart_tx, config.out).run(rx));
     let done = tokio::select! {
-        done = &mut host => done,
+        done = &mut host_task => done,
         () = shutdown => {
             let _ = tx.send(Request::Stop);
-            host.await
+            host_task.await
         }
     };
     done.unwrap_or(Err(Error::Reason(Reason::NotInSpec)))

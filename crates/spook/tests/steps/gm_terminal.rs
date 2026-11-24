@@ -128,9 +128,9 @@ async fn another_gm_joins(world: &mut World) {
 
 #[when(expr = "the GM is killed")]
 async fn the_gm_is_killed(world: &mut World) {
-    let mark = host::host_stdout(world).len();
+    let mark = host::stdout(world).len();
     world.gm.take();
-    host::wait_host_until(world, "the GM seat freed", |text| {
+    host::wait_until(world, "the GM seat freed", |text| {
         text.get(mark..)
             .is_some_and(|added| added.contains("gm seat free"))
     })
@@ -155,7 +155,7 @@ fn the_gm_queues_an_unknown_move(world: &mut World) {
 
 #[when(expr = "spook run stops")]
 fn spook_run_stops(world: &mut World) {
-    host::live_mut(world).host.take();
+    host::live_mut(world).process.take();
 }
 
 #[then(expr = "the GM exits")]

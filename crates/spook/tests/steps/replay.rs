@@ -90,7 +90,7 @@ async fn a_seated_players_host_is_killed_and_restarted(world: &mut World) {
     host::listen(world, &pack).await;
     host::seat_actor(world, &pack, "rowan").await;
     host::wait_players(world, 1).await;
-    host::live_mut(world).host.take();
+    host::live_mut(world).process.take();
     host::stop(world);
     host::listen(world, &pack).await;
     host::wait_players(world, 0).await;

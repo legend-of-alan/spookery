@@ -74,9 +74,9 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
 async fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
     let pack = crate::support::copy_pack("docks", "host-round");
     host::listen(world, &pack).await;
-    let printed = host::host_stdout(world).matches(PRINTOUT_END).count();
+    let printed = host::stdout(world).matches(PRINTOUT_END).count();
     host::seat_actor(world, &pack, &actor).await;
-    host::wait_host_until(world, "the seat's printout", |text| {
+    host::wait_until(world, "the seat's printout", |text| {
         text.matches(PRINTOUT_END).count() > printed
     })
     .await;
@@ -85,9 +85,9 @@ async fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
 
 #[given(expr = "{string} has waited once")]
 async fn has_waited_once(world: &mut World, actor: String) {
-    let printed = host::host_stdout(world).matches(PRINTOUT_END).count();
+    let printed = host::stdout(world).matches(PRINTOUT_END).count();
     host::actor_send(world, &actor, "wait", "\"kind\":").await;
-    host::wait_host_until(world, "the wait's printout", |text| {
+    host::wait_until(world, "the wait's printout", |text| {
         text.matches(PRINTOUT_END).count() > printed
     })
     .await;
@@ -102,10 +102,10 @@ async fn waits_three_times(world: &mut World, actor: String) {
 
 #[when(expr = "{string} closes the seat")]
 async fn closes_the_seat(world: &mut World, actor: String) {
-    let mark = host::host_stdout(world).len();
+    let mark = host::stdout(world).len();
     world.host_mark = mark;
     host::close_actor(world, &actor).await;
-    host::wait_host_until(world, "seat close", |text| {
+    host::wait_until(world, "seat close", |text| {
         text.get(mark..)
             .is_some_and(|added| added.contains("meter "))
     })
@@ -119,13 +119,13 @@ fn the_status_lists_the_door_note(world: &mut World) {
 
 #[then(expr = "the host printed the door note exactly once")]
 fn the_host_printed_the_door_note_exactly_once(world: &mut World) {
-    let text = host::host_stdout(world);
+    let text = host::stdout(world);
     assert_eq!(text.matches(DOOR_NOTE).count(), 1, "{text}");
 }
 
 #[then(expr = "every host printout ends with the meters")]
 fn every_host_printout_ends_with_the_meters(world: &mut World) {
-    let text = host::host_stdout(world);
+    let text = host::stdout(world);
     let body = text.split_once('\n').map(|(_, rest)| rest).unwrap_or("");
     let mut in_meters = false;
     let mut open = false;
@@ -157,7 +157,7 @@ fn every_host_printout_ends_with_the_meters(world: &mut World) {
 
 #[then(expr = "the host's last printout lists the meters and no effect rows")]
 fn the_hosts_last_printout_lists_the_meters(world: &mut World) {
-    let text = host::host_stdout(world);
+    let text = host::stdout(world);
     let added = text.get(world.host_mark..).unwrap_or("");
     let lines: Vec<&str> = added.lines().filter(|line| !line.is_empty()).collect();
     assert!(

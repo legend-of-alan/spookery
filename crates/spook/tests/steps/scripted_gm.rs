@@ -222,6 +222,6 @@ pub(crate) async fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
 
 /// Stops the host, which closes the AI GM's connection, and waits for the AI GM to end.
 pub(crate) fn stop_ai_gm(world: &mut World, gm: AiGm) {
-    host::live_mut(world).host.take();
+    host::live_mut(world).process.take();
     let _ = gm.thread.join();
 }

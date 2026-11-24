@@ -234,10 +234,8 @@ impl SessionManager for SeatSessions {
     }
 }
 
-/// The error a tool call gets once the host has stopped.
-fn host_stopped_error() -> McpError {
-    McpError::internal_error("host closed", None)
-}
+/// The error message a tool call gets once the host has closed.
+const HOST_CLOSED: &str = "host closed";
 
 struct Handler {
     tx: Sender<Request>,
@@ -309,8 +307,10 @@ impl ServerHandler for Handler {
                 message,
                 reply: reply_tx,
             })
-            .map_err(|_| host_stopped_error())?;
-        let messages = reply_rx.await.map_err(|_| host_stopped_error())?;
+            .map_err(|_| McpError::internal_error(HOST_CLOSED, None))?;
+        let messages = reply_rx
+            .await
+            .map_err(|_| McpError::internal_error(HOST_CLOSED, None))?;
         let result = serde_json::to_value(ToolResult { messages }).expect("tool result");
         Ok(CallToolResult::structured(result).into())
     }

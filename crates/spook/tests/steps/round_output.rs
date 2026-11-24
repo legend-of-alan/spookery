@@ -79,11 +79,11 @@ async fn the_gm_queues_a_ten_tick_travel(world: &mut World, actor: String) {
 
 #[when(expr = "{string} sends a move")]
 async fn the_player_sends_a_move(world: &mut World, actor: String) {
-    host::wait_host_until(world, "both seats printed", |text| {
+    host::wait_until(world, "both seats printed", |text| {
         text.matches(STATUS_LINE).count() >= 2
     })
     .await;
-    let host = host::host_stdout(world).len();
+    let host = host::stdout(world).len();
     let rowan = host::actor_text(world, &actor).len();
     let wren = host::actor_text(world, "wren").len();
     world.mark = rowan;
@@ -145,7 +145,7 @@ async fn each_player_gets_one_refresh(world: &mut World) {
 #[then(expr = "the host prints its status once")]
 async fn the_host_prints_its_status_once(world: &mut World) {
     let host_mark = world.host_mark;
-    let text = host::wait_host_until(world, "one status", |text| {
+    let text = host::wait_until(world, "one status", |text| {
         text.len() > host_mark && text[host_mark..].contains(STATUS_LINE)
     })
     .await;

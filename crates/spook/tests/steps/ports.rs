@@ -24,7 +24,7 @@ async fn the_table_listens_on_port_0(world: &mut World) {
     expr = "the host names its log file in the directory it started in, and the file says the pack opened"
 )]
 async fn the_host_names_its_log_file(world: &mut World) {
-    let host = host::live(world).host.as_ref();
+    let host = host::live(world).process.as_ref();
     let host = host.unwrap_or_else(|| panic!("no host"));
     let file = wait_for_log_file(&host.stderr).await;
     let logs = fs::canonicalize(Path::new(&world.scratch).join("logs"))
@@ -69,7 +69,7 @@ fn the_pack_holds_no_log_file(world: &mut World) {
 fn the_host_reports_the_game_port_and_the_mcp_addr(world: &mut World) {
     let live = host::live_mut(world);
     let stdout = live
-        .host
+        .process
         .as_ref()
         .map(|server| support::text_of(&server.stdout))
         .unwrap_or_default();

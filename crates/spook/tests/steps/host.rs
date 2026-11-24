@@ -146,7 +146,8 @@ impl Seat {
 }
 
 /// The command a typed line names and its arguments, as `spook play` sends it: `say <text>`
-/// speaks to everyone present (`to: table`), and any other first word is a move with the rest as its target.
+/// speaks to everyone present (`"to": "table"`), and any other first word is a move with the
+/// rest as its target.
 pub(crate) fn parse_command(line: &str) -> (&str, Value) {
     match line.split_once(' ') {
         Some(("say", text)) => ("say", json!({ "to": "table", "text": text })),
@@ -183,7 +184,7 @@ pub struct Host {
     pub opened_save: Vec<u8>,
     pub seated_save: Vec<u8>,
     pub seated_rev: u64,
-    pub(crate) host: Option<support::Process>,
+    pub(crate) process: Option<support::Process>,
     /// A host `serve` runs in this process. Dropped last, so seats close first.
     pub in_process: Option<InProcess>,
 }
@@ -260,7 +261,7 @@ pub(crate) async fn serve_in_process(world: &mut World, pack: &Path) {
     };
     let stdout = Arc::new(Mutex::new(seen));
     drop(support::drain(out, Arc::clone(&stdout)));
-    attach_host(world, pack, game, mcp_addr).in_process = Some(InProcess {
+    attach(world, pack, game, mcp_addr).in_process = Some(InProcess {
         stdout,
         stderr,
         advance,
@@ -429,7 +430,7 @@ pub(crate) async fn run_with_flags(
     drop(world.live.take());
     let addrs = wait_addrs(spawn(dir, pack, flags)).await;
     let ports = (addrs.game.port(), addrs.mcp_addr.port());
-    attach_host(world, pack, addrs.game, addrs.mcp_addr).host = Some(addrs.host);
+    attach(world, pack, addrs.game, addrs.mcp_addr).process = Some(addrs.host);
     ports
 }
 
@@ -508,7 +509,7 @@ pub(crate) async fn wait_addrs(pending: Pending) -> Process {
     }
 }
 
-fn attach_host<'a>(
+fn attach<'a>(
     world: &'a mut World,
     pack: &Path,
     game: SocketAddr,
@@ -530,7 +531,7 @@ fn attach_host<'a>(
         opened_save: opened_now.clone(),
         seated_save: opened_now,
         seated_rev: 0,
-        host: None,
+        process: None,
         in_process: None,
     })
 }
@@ -821,9 +822,9 @@ pub(crate) async fn poll_until<T, Seen: std::fmt::Display>(
     }
 }
 
-pub(crate) fn host_stdout(world: &World) -> String {
+pub(crate) fn stdout(world: &World) -> String {
     let live = live(world);
-    let process = live.host.as_ref().map(|server| &server.stdout);
+    let process = live.process.as_ref().map(|server| &server.stdout);
     let in_process = live.in_process.as_ref().map(|server| &server.stdout);
     process
         .or(in_process)
@@ -831,13 +832,9 @@ pub(crate) fn host_stdout(world: &World) -> String {
         .unwrap_or_default()
 }
 
-pub(crate) async fn wait_host_until(
-    world: &World,
-    want: &str,
-    done: impl Fn(&str) -> bool,
-) -> String {
+pub(crate) async fn wait_until(world: &World, want: &str, done: impl Fn(&str) -> bool) -> String {
     poll_until(want, async || {
-        let text = host_stdout(world);
+        let text = stdout(world);
         if done(&text) {
             Ok(text)
         } else {
@@ -905,7 +902,7 @@ pub(crate) fn stop(world: &mut World) {
     live.gm.take();
     live.closed_gm.take();
     live.in_process.take();
-    if let Some((status, stderr)) = interrupt_host(world) {
+    if let Some((status, stderr)) = interrupt(world) {
         assert!(status.success(), "host exited {status:?}\n{stderr}");
     }
 }
@@ -913,14 +910,14 @@ pub(crate) fn stop(world: &mut World) {
 /// Stops the `spook run` child the way a person does, with Ctrl+C (Ctrl+Break on
 /// Windows), and returns its exit status and stderr. Seats stay open. `None` when no
 /// child host is running.
-pub(crate) fn interrupt_host(world: &mut World) -> Option<(ExitStatus, String)> {
-    let mut server = live_mut(world).host.take()?;
-    send_interrupt(&server.child);
-    let status = server
+pub(crate) fn interrupt(world: &mut World) -> Option<(ExitStatus, String)> {
+    let mut process = live_mut(world).process.take()?;
+    send_interrupt(&process.child);
+    let status = process
         .child
         .wait()
         .unwrap_or_else(|err| panic!("wait: {err}"));
-    Some((status, support::text_of(&server.stderr)))
+    Some((status, support::text_of(&process.stderr)))
 }
 
 /// Sends SIGINT, which is what Ctrl+C sends.

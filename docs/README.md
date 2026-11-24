@@ -164,7 +164,7 @@ Type `help` to see the GM commands. A line is a command the hello listed, then i
 
 ## Privacy
 
-`spook ai-gm` sends game text to whatever host `SPOOK_GM_URL` names. There's no default host. The key comes from `SPOOK_GM_KEY` in your environment and never lives in the pack.
+`spook ai-gm` sends game text to whatever server `SPOOK_GM_URL` names. There's no default. The key comes from `SPOOK_GM_KEY` in your environment and never lives in the pack.
 
 Each call is one chat-completions POST. The body has the model name, `"stream": false`, the four tools and the turn's conversation so far.
 

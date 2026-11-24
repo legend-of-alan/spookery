@@ -311,7 +311,7 @@ async fn one_player_stops_reading(world: &mut World) {
     while is_open(host::player_client(world, "rowan")) {
         if start.elapsed() > support::WAIT_LIMIT || sent > budget {
             let stderr = host::live_mut(world)
-                .host
+                .process
                 .as_ref()
                 .map(|server| support::text_of(&server.stderr))
                 .unwrap_or_default();
