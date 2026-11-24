@@ -502,7 +502,7 @@ rules:
     let _ = fs::remove_dir_all(&pack);
 }
 
-/// A viewer that is no actor, such as `gm`, is refused.
+/// A viewer that is no actor, such as `gm`, is refused, and the pack is not written.
 fn a_gm_perceive_is_refused_and_writes_nothing() {
     let pack = support::copy_pack("docks", "scope");
     let before = snapshot(&pack);

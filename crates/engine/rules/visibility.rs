@@ -164,21 +164,21 @@ fn is_shown(canon: &Canon, id: &entity::Id, key: &str) -> bool {
         .is_some_and(|desc| !desc.hidden)
 }
 
-/// Where `viewer` stands. The place is borrowed for as long as both the save and the id are.
-fn place_of<'a>(world: &'a ecs::World, viewer: &'a ActorId) -> Option<&'a str> {
-    world.actors().get::<component::Place>(viewer).get()
+/// Where `viewer_id` stands. The place is borrowed for as long as both the save and the id are.
+fn place_of<'a>(world: &'a ecs::World, viewer_id: &'a ActorId) -> Option<&'a str> {
+    world.actors().get::<component::Place>(viewer_id).get()
 }
 
-fn same_place(world: &ecs::World, viewer: &ActorId, actor_id: &ActorId) -> bool {
+fn same_place(world: &ecs::World, viewer_id: &ActorId, actor_id: &ActorId) -> bool {
     let actor_place_id = world.actors().get::<component::Place>(actor_id).get();
-    match (place_of(world, viewer), actor_place_id) {
+    match (place_of(world, viewer_id), actor_place_id) {
         (Some(left), Some(right)) => left == right,
         _ => false,
     }
 }
 
-fn is_at(world: &ecs::World, viewer: &ActorId, value: Option<&ChangeValue>) -> bool {
-    match (place_of(world, viewer), value) {
+fn is_at(world: &ecs::World, viewer_id: &ActorId, change_side: Option<&ChangeValue>) -> bool {
+    match (place_of(world, viewer_id), change_side) {
         (Some(place), Some(ChangeValue::Text(text))) => place == text,
         _ => false,
     }
