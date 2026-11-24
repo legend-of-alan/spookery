@@ -412,7 +412,7 @@ pub(crate) struct Pending {
 pub struct Process {
     pub game: SocketAddr,
     pub mcp_addr: SocketAddr,
-    pub(crate) host: support::Process,
+    pub(crate) process: support::Process,
 }
 
 pub(crate) async fn listen(world: &mut World, pack: &Path) {
@@ -430,7 +430,7 @@ pub(crate) async fn run_with_flags(
     drop(world.live.take());
     let addrs = wait_addrs(spawn(dir, pack, flags)).await;
     let ports = (addrs.game.port(), addrs.mcp_addr.port());
-    attach(world, pack, addrs.game, addrs.mcp_addr).process = Some(addrs.host);
+    attach(world, pack, addrs.game, addrs.mcp_addr).process = Some(addrs.process);
     ports
 }
 
@@ -495,7 +495,7 @@ pub(crate) async fn wait_addrs(pending: Pending) -> Process {
     Process {
         game,
         mcp_addr,
-        host: support::Process {
+        process: support::Process {
             child: pending.child,
             stdin: pending.stdin,
             stdout,

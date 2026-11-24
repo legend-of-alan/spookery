@@ -108,8 +108,8 @@ async fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
         "{} {} {} {}",
         first.game, first.mcp_addr, second.game, second.mcp_addr
     );
-    world.plays.push(first.host);
-    world.plays.push(second.host);
+    world.plays.push(first.process);
+    world.plays.push(second.process);
 }
 
 #[then(expr = "the tables report distinct ports")]
