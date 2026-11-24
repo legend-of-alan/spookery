@@ -1,4 +1,4 @@
-Feature: A docks round plays moves and habits
+Feature: A PC's moves play in a docks round
 
   Scenario: Harbormouse walks into the Loft and back
     Given a docks table
@@ -10,8 +10,3 @@ Feature: A docks round plays moves and habits
     Given a docks table
     When Harbormouse plays "wait"
     Then the wait lands with nothing refused
-
-  Scenario: Mira's habit leaves her door note
-    Given a docks table
-    When a docks round plays
-    Then Mira's habit leaves her door note

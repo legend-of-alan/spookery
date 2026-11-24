@@ -169,9 +169,10 @@ fn sets_watch(watch: &ChangeWatch, rule: &Rule, write: &EffectWrite) -> bool {
 
 fn sight_of(canon: &Canon, watch: &ChangeWatch) -> Sight {
     if watches_world(canon, watch) && !watches_actor_key(canon, watch) {
-        return Sight::World;
+        Sight::World
+    } else {
+        Sight::Room
     }
-    Sight::Room
 }
 
 fn reach_of(effect: &EffectTemplate) -> Option<Reach> {

@@ -171,9 +171,9 @@ Feature: spook check explains a broken pack
       | at once               |
       | inside a nested check |
 
-  Scenario Outline: A flag <reader> reads that no rule sets and no save holds is a warning
+  Scenario Outline: A flag <reader> names that no rule sets and no save holds is a warning
     Given a docks table
-    When <reader> reads flag "sealed", which no rule sets
+    When <reader> names flag "sealed", which no rule sets
     And the pack_rev is restamped
     And the operator runs spook check
     Then the check exits 0

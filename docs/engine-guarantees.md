@@ -218,7 +218,7 @@ that has not acted. A write that brings either back takes the row off. So
 adding a meter to the pack writes no rows, and a changed `base` reaches every
 entity still at it. No file lists the flags an entity may carry: any actor,
 place, story or the world may carry any flag, and check warns about a flag a
-rule tests that no rule sets and no save holds.
+condition or a path's `revealed_by` names that no rule sets and no save holds.
 
 Tested in `features/meters/meters_belong_to_their_entity.feature`,
 `features/commit/a_hand_edit_waits_for_migrate.feature`,

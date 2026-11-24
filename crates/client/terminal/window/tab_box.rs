@@ -14,7 +14,7 @@ use crate::text;
 /// The meter whose gauge fills in scarlet. Every other meter's fills in gold.
 const HP_METER_ID: &str = "hp";
 
-/// What the tab box shows: the PC's meters, what it carries, or what it knows.
+/// What the tab box shows: the PC's meters, what it carries, or the notes it reads.
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Tab {
     Stats,
@@ -176,9 +176,9 @@ fn draw_carried_items(frame: &mut Frame, area: Rect, view: &protocol::View, pale
 
 /// The PC's notes, worded as the line client words them.
 fn draw_notes(frame: &mut Frame, area: Rect, view: &protocol::View, palette: Palette) {
-    let notes = match text::render_notes(&view.notes) {
+    let paragraph = match text::render_notes(&view.notes) {
         Some(section) => Paragraph::new(section).style(palette.style(PARCHMENT)),
         None => Paragraph::new(palette.span("Nothing yet", ASH)),
     };
-    frame.render_widget(notes.wrap(Wrap { trim: true }), area);
+    frame.render_widget(paragraph.wrap(Wrap { trim: true }), area);
 }

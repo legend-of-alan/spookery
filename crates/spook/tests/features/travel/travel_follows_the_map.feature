@@ -3,7 +3,7 @@ Feature: Travel follows the map
   Scenario: No exit, no travel
     Given docks_street has no exit to mira_rooms
     When rowan travels to mira_rooms from docks_street
-    Then the intent is refused with NO_EXIT and rowan stays put
+    Then the intent is refused with NO_EXIT and rowan stays in docks_street
 
   Scenario Outline: A locked exit shows its text from either end and changes nothing
     Given rowan stands in <place>, the stairs exit needs brass_key, rowan has none, and travel walks <walk>
@@ -19,6 +19,8 @@ Feature: Travel follows the map
   Scenario: Hidden exit
     Given the trapdoor is hidden and rowan does not carry found_trapdoor
     Then rowan's view does not list the trapdoor
+    When rowan travels via the trapdoor
+    Then the intent is refused with NO_EXIT and rowan stays in docks_shop
 
   Scenario: Explicit teleport
     Given a place rule with location to cellar, teleport true

@@ -7,7 +7,7 @@ use spookery_protocol::ChangeView;
 use crate::canon::Canon;
 use crate::ecs::change::{Change, ChangeValue};
 use crate::ecs::component::{Act, Component, Item, Meter, Modifier, Note, Place, WieldedItem};
-use crate::ecs::id::{ActorId, GlobalId, PlaceId};
+use crate::ecs::id::{ActorId, GlobalId};
 use crate::ecs::{self, component};
 use crate::entity;
 use crate::rules::effect::{Effect, EffectKind};
@@ -185,9 +185,6 @@ fn is_at(world: &ecs::World, viewer: &ActorId, value: Option<&ChangeValue>) -> b
 }
 
 fn can_see_note(world: &ecs::World, viewer_id: &ActorId, id: &str) -> bool {
-    let Some(note) = world.globals().get::<Note>(&GlobalId).get(id) else {
-        return false;
-    };
-    let in_room = note.place_id.as_ref().map(PlaceId::as_str) == place_of(world, viewer_id);
-    in_room || note.to_ids.contains(viewer_id)
+    let note = world.globals().get::<Note>(&GlobalId).get(id);
+    note.is_some_and(|note| note.is_read_by(viewer_id, place_of(world, viewer_id)))
 }

@@ -228,10 +228,9 @@ fn a_docks_table_where_one_pc_has_a_private_note(world: &mut World) {
             text: PRIVATE_NOTE_TEXT.to_string(),
         };
         let mut globals = now.globals_mut();
-        let left = globals
-            .get_mut::<Note>(&GlobalId)
-            .leave(PRIVATE_NOTE_ID, note);
-        left.unwrap();
+        (globals.get_mut::<Note>(&GlobalId))
+            .leave(PRIVATE_NOTE_ID, note)
+            .unwrap();
     });
     world.pack = Some(pack);
 }

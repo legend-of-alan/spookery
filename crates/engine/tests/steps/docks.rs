@@ -502,9 +502,8 @@ rules:
     let _ = fs::remove_dir_all(&pack);
 }
 
-/// Perceive reads the pack and never writes it, and a viewer that is no actor, such as `gm`, is
-/// refused.
-fn a_perceive_as_the_gm_is_refused() {
+/// A viewer that is no actor, such as `gm`, is refused.
+fn a_gm_perceive_is_refused_and_writes_nothing() {
     let pack = support::copy_pack("docks", "scope");
     let before = snapshot(&pack);
     let opened = spookery_engine::Session::open(&pack).unwrap();
@@ -752,7 +751,7 @@ fn fifty_npcs_share_one_round(_world: &mut World) {
 
 #[when(expr = "the GM's own seat is perceived")]
 fn the_gms_own_seat_is_perceived(_world: &mut World) {
-    a_perceive_as_the_gm_is_refused();
+    a_gm_perceive_is_refused_and_writes_nothing();
 }
 
 #[when(expr = "effect rows and outcome lists are played")]

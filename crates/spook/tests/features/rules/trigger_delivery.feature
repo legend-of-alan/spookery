@@ -10,13 +10,13 @@ Feature: Trigger delivery
     Given the street has an exit revealed by the found_trapdoor flag, which uncover sets on <carrier>
     When nell uncovers the trapdoor
     Then nell can see the trapdoor
-    And wren <wren> see the trapdoor
+    And wren <wren_can> see the trapdoor
     And spook verify passes on this pack
 
     Examples:
-      | carrier | wren   |
-      | self    | cannot |
-      | world   | can    |
+      | carrier | wren_can |
+      | self    | cannot   |
+      | world   | can      |
 
   Scenario: A rule watching a world flag runs when it turns
     Given a verb sets world flag tide_turned

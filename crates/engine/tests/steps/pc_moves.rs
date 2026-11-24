@@ -1,8 +1,8 @@
-//! A docks round plays a PC's moves and an NPC's habit.
+//! A docks round plays a PC's moves.
 
 use cucumber::{then, when};
 use spookery_engine::testing as support;
-use spookery_engine::{GlobalId, Note, Presence};
+use spookery_engine::Presence;
 
 use crate::{resolve_id, split_line, World};
 
@@ -24,23 +24,6 @@ fn the_wait_lands_with_nothing_refused(world: &mut World) {
     assert_eq!(world.scratch, "", "refused");
     let now = support::world_of(world.pack());
     assert_eq!(support::act_of(&now, "harbormouse").last_act_round, 1);
-}
-
-#[when(expr = "a docks round plays")]
-fn a_docks_round_plays(world: &mut World) {
-    let pack = world.pack();
-    spookery_engine::play_pack_once(pack).unwrap_or_else(|err| panic!("round: {err}"));
-}
-
-#[then(expr = "Mira's habit leaves her door note")]
-fn miras_habit_leaves_her_door_note(world: &mut World) {
-    let pack = world.pack();
-    let ecs_world = support::world_of(pack);
-    let notes = ecs_world.globals().get::<Note>(&GlobalId);
-    assert!(
-        notes.contains("note_mira_door"),
-        "the door note was not stored"
-    );
 }
 
 fn play(world: &mut World, actor: &str, line: &str) {

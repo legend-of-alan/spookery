@@ -76,9 +76,7 @@ pub(crate) fn build_view(
 
     let mut notes = Vec::new();
     for (note_id, note) in world.globals().get::<Note>(&GlobalId).iter() {
-        let is_here = note.place_id.as_ref() == Some(&place_id);
-        let is_addressed = note.to_ids.contains(viewer_id);
-        if !is_here && !is_addressed {
+        if !note.is_read_by(viewer_id, Some(place_id.as_str())) {
             continue;
         }
         notes.push(NoteView {

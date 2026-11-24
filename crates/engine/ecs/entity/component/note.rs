@@ -20,6 +20,15 @@ pub struct Note {
     pub text: String,
 }
 
+impl Note {
+    /// Whether `reader`, standing at `place_id`, reads this note: it is left to them, or it lies
+    /// where they stand.
+    pub(crate) fn is_read_by(&self, reader: &ActorId, place_id: Option<&str>) -> bool {
+        let note_place_id = self.place_id.as_ref().map(PlaceId::as_str);
+        self.to_ids.contains(reader) || (note_place_id.is_some() && note_place_id == place_id)
+    }
+}
+
 impl Component for Note {
     type Value = Note;
     const ID: &'static str = "note";

@@ -379,17 +379,6 @@ fn render_exit_section(exits: &[ExitView]) -> String {
     format!("Exits:\n{}", lines.join("\n"))
 }
 
-fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<Item = &'a str>) {
-    let lines = lines
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>();
-    if lines.is_empty() {
-        return;
-    }
-    sections.push(format!("{title}\n{}", lines.join("\n")));
-}
-
 /// Each actor `view` shows, as its id and its name.
 pub(crate) fn actor_ids_and_names(
     view: &protocol::View,
@@ -399,13 +388,11 @@ pub(crate) fn actor_ids_and_names(
 
 /// The `Notes:` section, or `None` when it has no lines.
 pub(crate) fn render_notes(notes: &[NoteView]) -> Option<String> {
-    let mut sections = Vec::new();
-    push_lines(
-        &mut sections,
-        "Notes:",
-        notes.iter().map(|note| note.text.as_str()),
-    );
-    sections.pop()
+    let lines: Vec<&str> = (notes.iter())
+        .map(|note| note.text.trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+    (!lines.is_empty()).then(|| format!("Notes:\n{}", lines.join("\n")))
 }
 
 /// `Lamp oil: 4`: the item's name and count.
