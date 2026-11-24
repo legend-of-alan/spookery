@@ -102,12 +102,12 @@ fn rule_of(
             None
         }
     };
-    let finish_yaml = entry
+    let finish_cost_yaml = entry
         .finish
         .as_ref()
         .and_then(|finish| finish.cost.as_ref());
-    let finish_cost = match finish_yaml.map(cost_of).transpose() {
-        Ok(Some(_)) if finish_yaml.is_some_and(|cost| cost.ticks.is_some()) => {
+    let finish_cost = match finish_cost_yaml.map(cost_of).transpose() {
+        Ok(Some(_)) if finish_cost_yaml.is_some_and(|cost| cost.ticks.is_some()) => {
             diags.push(schema_error(
                 file,
                 &format!("rule '{local_id}' has ticks in its finish cost"),
@@ -233,19 +233,19 @@ fn rule_of(
         file: file.to_string(),
         index,
     };
-    let targets = match &rule.when {
+    let target_kind = match &rule.when {
         When::Verb { target, .. } => *target,
         When::Habit | When::Change(_) => TargetKind::None,
     };
-    let misplaced_target = rule.mentions().find_misplaced_target(targets);
-    let misplaced = misplaced_target.map(|(key, needs)| {
-        let (needs, targets) = (needs.as_str(), targets.as_str());
+    let misplaced_target = rule.mentions().find_misplaced_target(target_kind);
+    let misplaced_problem = misplaced_target.map(|(key, needs)| {
+        let (needs, target) = (needs.as_str(), target_kind.as_str());
         (
-            format!("says target in {key}, but its target is {targets}"),
+            format!("says target in {key}, but its target is {target}"),
             format!("give the verb target: {needs}, or name the {needs} by its id"),
         )
     });
-    if let Some((problem, hint)) = misplaced.or_else(|| find_let_read_problem(&rule)) {
+    if let Some((problem, hint)) = misplaced_problem.or_else(|| find_let_read_problem(&rule)) {
         return Err(vec![Problem {
             source: &source,
             path: &format!("rules[{index}].id"),
