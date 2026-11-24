@@ -69,7 +69,7 @@ pub(crate) const WAIT_LIMIT: std::time::Duration = std::time::Duration::from_sec
 
 /// Awaits `work`, and panics naming `what` if it takes longer than `WAIT_LIMIT`.
 pub(crate) async fn expect_within_limit<T>(
-    what: &str,
+    what: impl std::fmt::Display,
     work: impl std::future::Future<Output = T>,
 ) -> T {
     tokio::time::timeout(WAIT_LIMIT, work)
@@ -87,17 +87,19 @@ pub(crate) async fn run_blocking<T: Send + 'static>(
         .unwrap_or_else(|err| std::panic::resume_unwind(err.into_panic()))
 }
 
+/// Runs spook with `args` to exit. Its stdin is empty, so it never waits on the test runner's.
 pub(crate) async fn run_spook(args: &[&str]) -> std::process::Output {
-    tokio::process::Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(args)
-        .current_dir(env!("CARGO_TARGET_TMPDIR"))
-        .output()
-        .await
-        .unwrap_or_else(|err| panic!("spawn spook: {err}"))
+    let (status, stdout, stderr) = spawn(args).wait_with_output().await;
+    std::process::Output {
+        status,
+        stdout: stdout.into_bytes(),
+        stderr: stderr.into_bytes(),
+    }
 }
 
 #[derive(Debug)]
 pub(crate) struct Process {
+    pub command_line: String,
     pub child: Child,
     pub stdin: Option<ChildStdin>,
     pub stdout: Arc<Mutex<String>>,
@@ -107,23 +109,32 @@ pub(crate) struct Process {
 }
 
 impl Process {
-    /// Waits for both pipes to reach EOF and the child to exit, then returns its status,
-    /// stdout and stderr. Stdin stays open, so the child decides when it is done.
+    /// Closes stdin, waits for both pipes to reach EOF and the child to exit, then returns its
+    /// status, stdout and stderr. Panics with the output so far after `WAIT_LIMIT`.
     pub(crate) async fn wait_with_output(&mut self) -> (ExitStatus, String, String) {
+        self.stdin = None;
         let drains = std::mem::take(&mut self.drains);
-        run_blocking(move || {
+        let drains_done = run_blocking(move || {
             for drain in drains {
                 drain
                     .join()
                     .unwrap_or_else(|_| panic!("a drain thread panicked"));
             }
-        })
-        .await;
+        });
+        expect_within_limit(&*self, drains_done).await;
         let status = self
             .child
             .wait()
             .unwrap_or_else(|err| panic!("wait: {err}"));
         (status, text_of(&self.stdout), text_of(&self.stderr))
+    }
+}
+
+impl std::fmt::Display for Process {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (stdout, stderr) = (text_of(&self.stdout), text_of(&self.stderr));
+        let command_line = &self.command_line;
+        write!(f, "{command_line}\nstdout:\n{stdout}\nstderr:\n{stderr}")
     }
 }
 
@@ -155,6 +166,7 @@ pub(crate) fn spawn(args: &[&str]) -> Process {
         drain(stderr, Arc::clone(&stderr_buf)),
     ];
     Process {
+        command_line: format!("spook {}", args.join(" ")),
         child,
         stdin,
         stdout: stdout_buf,

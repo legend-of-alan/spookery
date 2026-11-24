@@ -149,6 +149,7 @@ fn spawn_ai_gm(dir: &Path, addr: &str, key: &str, url: &str, model: &str) -> Pro
         drain(child.stderr.take().unwrap(), Arc::clone(&stderr)),
     ];
     Process {
+        command_line: format!("spook --addr {addr} ai-gm"),
         child,
         stdin: None,
         stdout,

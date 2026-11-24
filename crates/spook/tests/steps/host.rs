@@ -402,6 +402,7 @@ pub(crate) async fn wait_committed_wait(pack: &Path, actor_id: &str, before: usi
 }
 
 pub(crate) struct Pending {
+    command_line: String,
     child: Child,
     stdin: Option<ChildStdin>,
     stdout: ChildStdout,
@@ -480,6 +481,7 @@ pub(crate) fn spawn(dir: &Path, pack: &Path, flags: &[&str]) -> Pending {
     let stderr = Arc::new(Mutex::new(String::new()));
     let stderr_drain = support::drain(stderr_pipe, Arc::clone(&stderr));
     Pending {
+        command_line: format!("spook run {} {}", support::pack_arg(pack), flags.join(" ")),
         child,
         stdin,
         stdout,
@@ -496,6 +498,7 @@ pub(crate) async fn wait_addrs(pending: Pending) -> Process {
         game,
         mcp_addr,
         process: support::Process {
+            command_line: pending.command_line,
             child: pending.child,
             stdin: pending.stdin,
             stdout,
