@@ -13,7 +13,7 @@ use tungstenite::Message;
 use crate::support::{self, copy_pack};
 use crate::World;
 
-use super::table::{self, Seat};
+use super::host::{self, Seat};
 
 #[given(expr = "a session recorded against this wire version")]
 fn a_recorded_session(world: &mut World) {
@@ -28,9 +28,9 @@ fn a_recorded_session(world: &mut World) {
 #[when(expr = "CI replays it against this build")]
 async fn ci_replays_it(world: &mut World) {
     let pack = copy_pack("docks", "recorded-session");
-    table::listen(world, &pack).await;
+    host::listen(world, &pack).await;
     world.pack = Some(pack);
-    let port = table::live_mut(world).game_port;
+    let port = host::live_mut(world).game_port;
     let mut seats: Vec<(String, Seat)> = Vec::new();
     let mut read = Vec::new();
     let mut recording = String::new();
@@ -41,7 +41,7 @@ async fn ci_replays_it(world: &mut World) {
         if !seats.iter().any(|(seat, _)| seat == seat_id) {
             let endpoint = seat_id.split(':').next().unwrap_or(seat_id);
             let seat = Seat::open(port, endpoint).await;
-            table::wait_suffix(&seat.text, 0, "\n").await;
+            host::wait_suffix(&seat.text, 0, "\n").await;
             seats.push((seat_id.to_string(), seat));
             read.push(0);
         }
@@ -81,7 +81,7 @@ async fn every_known_message_is_unchanged(world: &mut World) {
             !want.is_empty(),
             "the recording has no message {seat_id} got"
         );
-        table::poll_until(&format!("every message {seat_id} got"), async || {
+        host::poll_until(&format!("every message {seat_id} got"), async || {
             let got = parse_lines(&support::text_of(&seat.text));
             match first_lost(&want, &got) {
                 None => Ok(()),
@@ -104,7 +104,7 @@ fn first_lost<'a>(old: &'a [Value], live: &[Value]) -> Option<&'a Value> {
 
 /// Whether `live` still says all `old` said: every field with the same value, and every
 /// item of a list in order among its own. `seq` and `token` need only be there, since a new
-/// kind moves every later `seq` and each table mints its own tokens.
+/// kind moves every later `seq` and each host mints its own tokens.
 fn still_says(old: &Value, live: &Value) -> bool {
     match (old, live) {
         (Value::Object(old), Value::Object(live)) => {
@@ -119,7 +119,7 @@ fn still_says(old: &Value, live: &Value) -> bool {
     }
 }
 
-/// `body.token` as `<token>`, so a recording does not change with each table's tokens.
+/// `body.token` as `<token>`, so a recording does not change with each host's tokens.
 fn scrub_tokens(mut message: Value) -> Value {
     if message["body"].get("token").is_some() {
         message["body"]["token"] = json!("<token>");

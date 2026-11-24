@@ -14,7 +14,7 @@ use spookery::ai_gm;
 use crate::support;
 use crate::World;
 
-use super::table;
+use super::host;
 
 /// How long a held model call waits on the AI GM's paused clock.
 pub(crate) const HOLD: Duration = Duration::from_secs(1);
@@ -72,7 +72,7 @@ impl ScriptedModel {
     /// Waits until the model was called once past its script: the turn that read the last
     /// scripted reply has asked again, and was told it is done.
     pub async fn wait_past_script(&self) -> Vec<Vec<model::Message>> {
-        table::poll_until("a model call past the script", async || {
+        host::poll_until("a model call past the script", async || {
             let script = self.script.lock().unwrap();
             if script.calls.len() > script.scripted {
                 Ok(script.calls.clone())
@@ -157,7 +157,7 @@ pub struct AiGm {
     /// What the run wrote to `err`, and then its error if it returned one, as `spook ai-gm`
     /// prints it.
     pub err: Arc<Mutex<String>>,
-    advance: tokio::sync::mpsc::UnboundedSender<table::Advance>,
+    advance: tokio::sync::mpsc::UnboundedSender<host::Advance>,
     pub thread: thread::JoinHandle<Result<(), spookery_client::Error>>,
 }
 
@@ -176,11 +176,11 @@ impl AiGm {
 
 /// Starts the AI GM with `model` and returns once it has written `listening`.
 pub(crate) async fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
-    let addr: SocketAddr = table::game_addr(world).parse().unwrap();
+    let addr: SocketAddr = host::game_addr(world).parse().unwrap();
     let (read, mut write) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let err = Arc::new(Mutex::new(String::new()));
     support::drain(read, Arc::clone(&err));
-    let (advance, mut advances) = tokio::sync::mpsc::unbounded_channel::<table::Advance>();
+    let (advance, mut advances) = tokio::sync::mpsc::unbounded_channel::<host::Advance>();
     let thread = thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -216,12 +216,12 @@ pub(crate) async fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
         advance,
         thread,
     };
-    table::wait_suffix(&gm.err, 0, "listening").await;
+    host::wait_suffix(&gm.err, 0, "listening").await;
     gm
 }
 
 /// Stops the host, which closes the AI GM's connection, and waits for the AI GM to end.
 pub(crate) fn stop_ai_gm(world: &mut World, gm: AiGm) {
-    table::live_mut(world).host.take();
+    host::live_mut(world).host.take();
     let _ = gm.thread.join();
 }

@@ -8,21 +8,21 @@ use serde_json::{json, Value};
 use crate::World;
 
 use super::common;
-use super::table::{self, PlayerClient, Seat};
+use super::host::{self, PlayerClient, Seat};
 
 /// Opens a player connection and claims Rowan. `scratch` keeps the token and `mark` the
 /// `seq` of the view that ends the welcome.
 #[given(expr = "a player claimed rowan and got token t1")]
 async fn a_player_claimed_rowan(world: &mut World) {
     if world.live.is_none() {
-        let pack = table::pack(world).to_path_buf();
-        table::listen(world, &pack).await;
+        let pack = host::pack(world).to_path_buf();
+        host::listen(world, &pack).await;
     }
-    let seat = Seat::open(table::live_mut(world).game_port, "player").await;
+    let seat = Seat::open(host::live_mut(world).game_port, "player").await;
     let id = seat.send("claim", json!({ "actor": "rowan" }));
     let reply = parse(&seat.wait_reply(&id).await);
     assert_eq!(reply["body"]["kind"], "claimed", "{reply}");
-    let view = table::wait_suffix(&seat.text, 0, "\"kind\":\"view\"").await;
+    let view = host::wait_suffix(&seat.text, 0, "\"kind\":\"view\"").await;
     let view = parse(view.lines().last().unwrap_or_default());
     world.scratch = reply["body"]["token"]
         .as_str()
@@ -30,7 +30,7 @@ async fn a_player_claimed_rowan(world: &mut World) {
         .to_string();
     world.mark = seq_of(&view) as usize;
     world.pc_picked_reply = reply;
-    table::live_mut(world).players.push(PlayerClient {
+    host::live_mut(world).players.push(PlayerClient {
         actor_id: "rowan".to_string(),
         seat,
     });
@@ -38,7 +38,7 @@ async fn a_player_claimed_rowan(world: &mut World) {
 
 #[when(expr = "the connection drops without release")]
 fn the_connection_drops(world: &mut World) {
-    table::live_mut(world)
+    host::live_mut(world)
         .players
         .retain(|player| player.actor_id != "rowan");
 }
@@ -46,12 +46,12 @@ fn the_connection_drops(world: &mut World) {
 #[when(expr = "the connection drops without release and {int} server messages pass")]
 async fn the_connection_drops_and_messages_pass(world: &mut World, count: usize) {
     the_connection_drops(world);
-    if table::live_mut(world).gm.is_none() {
-        table::seat_gm(world).await;
+    if host::live_mut(world).gm.is_none() {
+        host::seat_gm(world).await;
     }
     for index in 1..=count {
         let args = json!({ "to": "table", "text": format!("line {index}") });
-        let speech = table::call_gm_tool(world, "say", &args.to_string()).await;
+        let speech = host::call_gm_tool(world, "say", &args.to_string()).await;
         assert!(speech.get("code").is_none(), "{speech}");
     }
 }
@@ -59,15 +59,15 @@ async fn the_connection_drops_and_messages_pass(world: &mut World, count: usize)
 #[when(expr = "the GM commits a round of Aldric's wait")]
 async fn the_gm_commits_aldrics_wait(world: &mut World) {
     let wait = r#"{"actor":"aldric","move":"wait"}"#;
-    let queued = table::call_gm_tool(world, "queue", wait).await;
+    let queued = host::call_gm_tool(world, "queue", wait).await;
     assert_eq!(queued["kind"], "queued", "{queued}");
-    let committed = table::call_gm_tool(world, "commit", r#"{"include_round":true}"#).await;
+    let committed = host::call_gm_tool(world, "commit", r#"{"include_round":true}"#).await;
     assert_eq!(committed["kind"], "committed", "{committed}");
 }
 
 #[when(expr = "the player releases rowan")]
 async fn the_player_releases_rowan(world: &mut World) {
-    table::close_actor(world, "rowan").await;
+    host::close_actor(world, "rowan").await;
     the_connection_drops(world);
 }
 
@@ -75,11 +75,11 @@ async fn the_player_releases_rowan(world: &mut World) {
 /// goes to `player_added`.
 #[when(expr = "the player reconnects with token t1")]
 async fn the_player_reconnects(world: &mut World) {
-    let seat = Seat::open(table::live_mut(world).game_port, "player").await;
+    let seat = Seat::open(host::live_mut(world).game_port, "player").await;
     let args = json!({ "token": world.scratch, "last_seq": world.mark });
     let id = seat.send("claim", args);
     world.player_added = seat.wait_reply(&id).await;
-    table::live_mut(world).players.push(PlayerClient {
+    host::live_mut(world).players.push(PlayerClient {
         actor_id: "rowan".to_string(),
         seat,
     });
@@ -90,13 +90,13 @@ async fn it_holds_rowan_and_catches_up(world: &mut World) {
     let missed = held_again(world, false);
     let texts: Vec<String> = (1..=100).map(|index| format!("line {index}")).collect();
     assert_eq!(texts_in(&missed), texts);
-    let player = table::player_client(world, "rowan");
+    let player = host::player_client(world, "rowan");
     let id = player.seat.send("look", json!({}));
     let looked = parse(&player.seat.wait_reply(&id).await);
     assert_eq!(looked["body"]["kind"], "view", "{looked}");
 }
 
-/// The pick and the claim by token each name the round and tick the table was at then.
+/// The pick and the claim by token each name the round and tick the host was at then.
 #[then(
     expr = "the pick said round {int} at tick {int} and the token claim round {int} at tick {int}"
 )]
@@ -137,7 +137,7 @@ async fn a_gm_intent_for_rowan_is_accepted(world: &mut World) {
 
 #[then(expr = "another player's claim on rowan is refused with {string}")]
 async fn another_claim_is_refused(world: &mut World, code: String) {
-    let reply = parse(&table::claim(world, "rowan").await);
+    let reply = parse(&host::claim(world, "rowan").await);
     assert_eq!(reply["body"]["code"], code.as_str(), "{reply}");
 }
 
@@ -178,10 +178,10 @@ fn texts_in(missed: &[Value]) -> Vec<String> {
 }
 
 async fn queue_rowan_wait(world: &mut World) -> Value {
-    if table::live_mut(world).gm.is_none() {
-        table::seat_gm(world).await;
+    if host::live_mut(world).gm.is_none() {
+        host::seat_gm(world).await;
     }
-    table::call_gm_tool(world, "queue", r#"{"actor":"rowan","move":"wait"}"#).await
+    host::call_gm_tool(world, "queue", r#"{"actor":"rowan","move":"wait"}"#).await
 }
 
 fn parse(line: &str) -> Value {
@@ -212,11 +212,11 @@ fn play_exits_0(world: &mut World) {
 
 #[then(expr = "a new player can claim rowan")]
 async fn a_new_player_can_claim_rowan(world: &mut World) {
-    let reply = parse(&table::claim(world, "rowan").await);
+    let reply = parse(&host::claim(world, "rowan").await);
     assert_eq!(reply["body"]["kind"], "claimed", "{reply}");
 }
 
-/// A say past the 64 KiB message cap, so the table drops play's connection.
+/// A say past the 64 KiB message cap, so the host drops play's connection.
 #[when(expr = "play says a line over the message cap")]
 fn play_says_a_line_over_the_cap(world: &mut World) {
     let line = format!("say {}", "n".repeat(70 * 1024));

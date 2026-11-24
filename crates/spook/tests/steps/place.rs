@@ -3,7 +3,7 @@ use std::fs;
 
 use cucumber::{given, then, when};
 
-use super::{common, table};
+use super::{common, host};
 use crate::World;
 
 #[given(expr = "rowan starts in docks_street")]
@@ -69,7 +69,7 @@ async fn the_docks_street_view_shows_no_exits(world: &mut World) {
 #[given(expr = "wren is seated and not travelling")]
 async fn wren_is_seated(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    table::seat_actor(world, &pack, "wren").await;
+    host::seat_actor(world, &pack, "wren").await;
 }
 
 #[then(expr = "the seated player sees {string}")]
@@ -77,7 +77,7 @@ async fn the_seated_player_sees(world: &mut World, text: String) {
     let added = if world.player_added.contains(&text) {
         world.player_added.clone()
     } else {
-        table::wait_player_from(world, world.mark, &text).await
+        host::wait_player_from(world, world.mark, &text).await
     };
     assert!(added.contains(&text), "{added}");
 }

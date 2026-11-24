@@ -1,13 +1,13 @@
-//! The Spookery table server: bind the game port's WebSocket endpoint and the MCP endpoint,
-//! then run the table.
+//! The Spookery server: bind the game port's WebSocket endpoint and the MCP endpoint,
+//! then run the host.
 
 mod gm;
+mod host;
 mod idle;
 mod limits;
 mod mcp;
 mod message_body;
 mod seat;
-mod table;
 mod ws;
 
 use std::future::Future;
@@ -20,7 +20,7 @@ use std::time::Duration;
 use spookery_engine::Reason;
 use spookery_protocol as protocol;
 
-use table::{Request, Table};
+use host::{Host, Request};
 
 #[derive(Debug)]
 pub enum Error {
@@ -56,8 +56,8 @@ impl Config {
 }
 
 /// Bind both ports, report them and serve on the caller's runtime until
-/// `shutdown` resolves. `session` owns the pack lock until the table ends.
-/// Returns the table's result. A table that ends on its own, on a store fault, ends `serve` too.
+/// `shutdown` resolves. `session` owns the pack lock until the host ends.
+/// Returns the host's result. A host that ends on its own, on a store fault, ends `serve` too.
 pub async fn serve(
     session: spookery_engine::Session,
     mut config: Config,
@@ -87,13 +87,13 @@ pub async fn serve(
             session.budget().round_every_real_seconds,
         ));
     }
-    let mut table =
-        tokio::task::spawn_blocking(move || Table::new(session, restart_tx, config.out).run(rx));
+    let mut host =
+        tokio::task::spawn_blocking(move || Host::new(session, restart_tx, config.out).run(rx));
     let done = tokio::select! {
-        done = &mut table => done,
+        done = &mut host => done,
         () = shutdown => {
             let _ = tx.send(Request::Stop);
-            table.await
+            host.await
         }
     };
     done.unwrap_or(Err(Error::Reason(Reason::NotInSpec)))

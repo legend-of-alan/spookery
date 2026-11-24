@@ -12,7 +12,7 @@ use spookery::protocol::{Audience, ServerBody, ServerMessage, Speaker, Speech};
 use crate::support;
 use crate::World;
 
-use super::table;
+use super::host;
 
 const MIB: usize = 1024 * 1024;
 const SAY_TEXT_BYTES: usize = 4 * 1024;
@@ -35,18 +35,18 @@ const WINDOW: usize = 8 * 1024;
 
 #[when(expr = "the player sends a message over the cap")]
 async fn the_player_sends_a_message_over_the_cap(world: &mut World) {
-    let player = table::player_client(world, "rowan");
+    let player = host::player_client(world, "rowan");
     let mark = player.seat.mark();
     let long = json!({ "id": "long", "body": { "kind": "wait" }, "pad": "a".repeat(MESSAGE_CAP) });
     player.seat.send_raw(Message::text(long.to_string()));
-    world.player_added = table::wait_player_from(world, mark, "\"code\":\"LINE_TOO_LONG\"").await;
+    world.player_added = host::wait_player_from(world, mark, "\"code\":\"LINE_TOO_LONG\"").await;
 }
 
 #[when(expr = "a socket sends a 1 MiB message")]
 async fn a_socket_sends_a_mebibyte_message(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    let seat = table::Seat::open(table::live_mut(world).game_port, "player").await;
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    let seat = host::Seat::open(host::live_mut(world).game_port, "player").await;
     let _ = seat.try_send_raw(Message::text("a".repeat(MIB)));
     seat.wait_closed().await;
     world.player_added = support::text_of(&seat.text);
@@ -63,15 +63,15 @@ fn the_socket_was_closed_without_a_reply(world: &mut World) {
 
 #[then(expr = "a second player can claim and wait")]
 async fn a_second_player_can_claim_and_wait(world: &mut World) {
-    table::release_probe_gm(world).await;
-    let pack = table::pack(world).to_path_buf();
-    table::seat_actor(world, &pack, "harbormouse").await;
-    table::actor_send(world, "harbormouse", "wait", r#""kind":"round""#).await;
+    host::release_probe_gm(world).await;
+    let pack = host::pack(world).to_path_buf();
+    host::seat_actor(world, &pack, "harbormouse").await;
+    host::actor_send(world, "harbormouse", "wait", r#""kind":"round""#).await;
 }
 
 #[when(expr = "the GM releases the seat")]
 async fn the_gm_releases_the_seat(world: &mut World) {
-    world.scratch = table::release_gm(world).await;
+    world.scratch = host::release_gm(world).await;
 }
 
 #[then(expr = "the server confirms the seat is free")]
@@ -85,19 +85,19 @@ fn the_server_confirms_the_seat_is_free(world: &mut World) {
 
 #[when(expr = "the GM releases the seat and keeps the session")]
 async fn the_gm_releases_the_seat_and_keeps_the_session(world: &mut World) {
-    world.scratch = table::release_gm_keep_session(world).await;
+    world.scratch = host::release_gm_keep_session(world).await;
 }
 
 #[when(expr = "another GM connects")]
 async fn another_gm_connects(world: &mut World) {
-    table::seat_gm(world).await;
+    host::seat_gm(world).await;
 }
 
 #[when(expr = "the closed session calls say")]
 async fn the_closed_session_calls_say(world: &mut World) {
-    world.before = table::read_files(table::pack(world));
+    world.before = host::read_files(host::pack(world));
     world.scratch =
-        table::closed_gm_tool_call(world, "say", r#"{"to":"table","text":"good evening"}"#).await;
+        host::closed_gm_tool_call(world, "say", r#"{"to":"table","text":"good evening"}"#).await;
 }
 
 #[then(expr = "that call is refused and nothing was written")]
@@ -108,7 +108,7 @@ fn that_call_is_refused_and_nothing_was_written(world: &mut World) {
         world.scratch
     );
     assert_eq!(
-        table::read_files(table::pack(world)),
+        host::read_files(host::pack(world)),
         world.before,
         "the closed session wrote the pack"
     );
@@ -116,9 +116,9 @@ fn that_call_is_refused_and_nothing_was_written(world: &mut World) {
 
 #[when(expr = "an HTTP body over 1 MiB is posted")]
 async fn an_http_body_over_a_mebibyte(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    let http = table::live_mut(world).mcp_port;
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    let http = host::live_mut(world).mcp_port;
     let body = vec![b'x'; MIB + 1];
     let request = format!(
         "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{http}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -142,21 +142,21 @@ async fn an_http_body_over_a_mebibyte(world: &mut World) {
 
 #[then(expr = "a new GM can connect")]
 async fn a_new_gm_can_connect(world: &mut World) {
-    let port = table::live_mut(world).mcp_port;
-    table::poll_until("a new GM to connect", || try_connect_gm(port)).await;
+    let port = host::live_mut(world).mcp_port;
+    host::poll_until("a new GM to connect", || try_connect_gm(port)).await;
 }
 
 #[when(expr = "the player sends a binary message")]
 async fn the_player_sends_a_binary_message(world: &mut World) {
-    let player = table::player_client(world, "rowan");
+    let player = host::player_client(world, "rowan");
     let mark = player.seat.mark();
     player.seat.send_raw(Message::binary(vec![0xff]));
-    world.player_added = table::wait_player_from(world, mark, "\"code\":\"SCHEMA\"").await;
+    world.player_added = host::wait_player_from(world, mark, "\"code\":\"SCHEMA\"").await;
 }
 
 #[when(expr = "the GM calls release with a key")]
 async fn the_gm_calls_release_with_a_key(world: &mut World) {
-    world.scratch = table::gm_tool_call(world, 91, "release", r#"{"now":true}"#).await;
+    world.scratch = host::gm_tool_call(world, 91, "release", r#"{"now":true}"#).await;
 }
 
 #[then(expr = "that call is refused with {string}")]
@@ -175,7 +175,7 @@ fn that_call_is_refused_with(world: &mut World, code: String) {
 
 #[then(expr = "the GM can still say")]
 async fn the_gm_can_still_say(world: &mut World) {
-    let text = table::gm_tool_call(world, 93, "say", r#"{"to":"table","text":"still here"}"#).await;
+    let text = host::gm_tool_call(world, 93, "say", r#"{"to":"table","text":"still here"}"#).await;
     assert!(text.contains("\"seq\":"), "the GM lost the seat\n{text}");
 }
 
@@ -191,16 +191,16 @@ fn the_player_is_refused_with(world: &mut World, code: String) {
 
 #[then(expr = "the player can wait")]
 async fn the_player_can_wait(world: &mut World) {
-    table::player_send(world, "wait", r#""kind":"round""#).await;
+    host::player_send(world, "wait", r#""kind":"round""#).await;
 }
 
 #[when(expr = "a socket connects and sends nothing")]
 async fn a_socket_connects_and_sends_nothing(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::serve_in_process(world, &pack).await;
-    let seat = table::Seat::open(table::live_mut(world).game_port, "player").await;
-    table::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"").await;
-    table::advance(world, FIRST_MESSAGE_TIMEOUT).await;
+    let pack = host::pack(world).to_path_buf();
+    host::serve_in_process(world, &pack).await;
+    let seat = host::Seat::open(host::live_mut(world).game_port, "player").await;
+    host::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"").await;
+    host::advance(world, FIRST_MESSAGE_TIMEOUT).await;
     seat.wait_closed().await;
     world.silent_closed = true;
 }
@@ -212,23 +212,23 @@ fn the_socket_is_closed_before_the_hello(world: &mut World) {
 
 #[when(expr = "one player sends 200 lines as fast as it can")]
 async fn one_player_sends_200_lines(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::serve_in_process(world, &pack).await;
-    table::seat_actor(world, &pack, "rowan").await;
-    table::seat_actor(world, &pack, "harbormouse").await;
+    let pack = host::pack(world).to_path_buf();
+    host::serve_in_process(world, &pack).await;
+    host::seat_actor(world, &pack, "rowan").await;
+    host::seat_actor(world, &pack, "harbormouse").await;
     let before = list_round_keys(&pack).len();
     for (actor_id, count) in [("rowan", 200), ("harbormouse", 1)] {
-        let player = table::player_client(world, actor_id);
+        let player = host::player_client(world, actor_id);
         for _ in 0..count {
             player.seat.send("wait", json!({}));
         }
     }
     let other_waits = |key: &String| {
-        table::list_player_waits(&pack, key)
+        host::list_player_waits(&pack, key)
             .iter()
             .any(|id| id == "harbormouse")
     };
-    let keys = table::wait_rounds_until(&pack, "the burst and the other player's wait", |keys| {
+    let keys = host::wait_rounds_until(&pack, "the burst and the other player's wait", |keys| {
         let added = keys.get(before..).unwrap_or_default();
         added.len() >= BURST && added.iter().any(other_waits)
     })
@@ -240,13 +240,13 @@ async fn one_player_sends_200_lines(world: &mut World) {
         .position(other_waits)
         .unwrap_or_else(|| panic!("no other player round"))
         + 1;
-    let _ = table::read_presence(world).await;
-    table::release_probe_gm(world).await;
+    let _ = host::read_presence(world).await;
+    host::release_probe_gm(world).await;
     let paced = list_round_keys(&pack).len() - before;
-    table::advance(world, REFILL).await;
-    let _ = table::wait_round_count(&pack, before + paced + 1).await;
-    let _ = table::read_presence(world).await;
-    table::release_probe_gm(world).await;
+    host::advance(world, REFILL).await;
+    let _ = host::wait_round_count(&pack, before + paced + 1).await;
+    let _ = host::read_presence(world).await;
+    host::release_probe_gm(world).await;
     world.flood_paced = paced;
     world.flood_refilled = list_round_keys(&pack).len() - before;
     world.flood_other_at = other_at;
@@ -267,20 +267,20 @@ fn the_other_player_commits_inside_the_burst(world: &mut World) {
 
 #[when(expr = "one player stops reading and the GM says many lines")]
 async fn one_player_stops_reading(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    table::seat_gm(world).await;
-    table::seat_actor(world, &pack, "harbormouse").await;
-    let port = table::live_mut(world).game_port;
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    host::seat_gm(world).await;
+    host::seat_actor(world, &pack, "harbormouse").await;
+    let port = host::live_mut(world).game_port;
     let (stream, recv) = connect_small_window(port);
     let send = granted_send_buffer(WINDOW);
-    let quiet = table::Seat::from_stream(stream, port, "player", false);
+    let quiet = host::Seat::from_stream(stream, port, "player", false);
     quiet.send("claim", json!({ "actor": "rowan" }));
-    table::wait_presence(world, "rowan seated", |_, present| {
+    host::wait_presence(world, "rowan seated", |_, present| {
         present.iter().any(|actor| actor == "rowan")
     })
     .await;
-    table::live_mut(world).players.push(table::PlayerClient {
+    host::live_mut(world).players.push(host::PlayerClient {
         actor_id: "rowan".to_string(),
         seat: quiet,
     });
@@ -308,9 +308,9 @@ async fn one_player_stops_reading(world: &mut World) {
     let start = Instant::now();
     let mut sent = 0usize;
     let args = format!(r#"{{"to":"table","text":"{say}"}}"#);
-    while is_open(table::player_client(world, "rowan")) {
+    while is_open(host::player_client(world, "rowan")) {
         if start.elapsed() > support::WAIT_LIMIT || sent > budget {
-            let stderr = table::live_mut(world)
+            let stderr = host::live_mut(world)
                 .host
                 .as_ref()
                 .map(|server| support::text_of(&server.stderr))
@@ -319,14 +319,14 @@ async fn one_player_stops_reading(world: &mut World) {
                 "rowan still connected after {sent} bytes (recv {recv}, send {send}, frame {frame}, queue {queue}, budget {budget})\n{stderr}"
             );
         }
-        let _ = table::gm_tool_call(world, 2, "say", &args).await;
+        let _ = host::gm_tool_call(world, 2, "say", &args).await;
         sent = sent.saturating_add(frame);
     }
-    world.player_added = table::wait_actor_from(world, "harbormouse", 0, "\"kind\":\"say\"").await;
+    world.player_added = host::wait_actor_from(world, "harbormouse", 0, "\"kind\":\"say\"").await;
 }
 
-/// A pong the table ignores, so writing it only tests the connection.
-fn is_open(player: &table::PlayerClient) -> bool {
+/// A pong the host ignores, so writing it only tests the connection.
+fn is_open(player: &host::PlayerClient) -> bool {
     player
         .seat
         .try_send_raw(Message::Pong(Default::default()))
@@ -335,14 +335,14 @@ fn is_open(player: &table::PlayerClient) -> bool {
 
 #[then(expr = "that player is disconnected and still holds its PC")]
 async fn that_player_is_disconnected(world: &mut World) {
-    assert!(!is_open(table::player_client(world, "rowan")));
-    let (_, present) = table::read_presence(world).await;
+    assert!(!is_open(host::player_client(world, "rowan")));
+    let (_, present) = host::read_presence(world).await;
     assert!(present.iter().any(|actor| actor == "rowan"), "{present:?}");
     assert!(
         present.iter().any(|actor| actor == "harbormouse"),
         "{present:?}"
     );
-    table::release_probe_gm(world).await;
+    host::release_probe_gm(world).await;
 }
 
 #[then(expr = "the other player keeps receiving frames")]

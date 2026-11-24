@@ -7,16 +7,16 @@ use tungstenite::Message;
 use crate::support;
 use crate::World;
 
-use super::table::{self, Seat};
+use super::host::{self, Seat};
 
 #[when(expr = "a player connects to the game port")]
 async fn a_player_connects_to_the_game_port(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    let seat = Seat::open(table::live_mut(world).game_port, "player").await;
-    table::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"").await;
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    let seat = Seat::open(host::live_mut(world).game_port, "player").await;
+    host::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"").await;
     world.scratch = support::text_of(&seat.text);
-    table::live_mut(world).unclaimed = Some(seat);
+    host::live_mut(world).unclaimed = Some(seat);
 }
 
 #[then(regex = r"^the hello lists the version and the commands (.+)$")]
@@ -51,7 +51,7 @@ fn it_sends(world: &mut World, text: String) {
 async fn it_gets(world: &mut World, text: String) {
     let want: Value = serde_json::from_str(&text).unwrap_or_else(|err| panic!("{err}: {text}"));
     let seat = unclaimed(world);
-    let got = table::wait_suffix(&seat.text, world.mark, "\n").await;
+    let got = host::wait_suffix(&seat.text, world.mark, "\n").await;
     let got: Value = serde_json::from_str(got.lines().next().unwrap_or_default())
         .unwrap_or_else(|err| panic!("{err}: {got}"));
     assert_eq!(got, want);
@@ -59,9 +59,9 @@ async fn it_gets(world: &mut World, text: String) {
 
 #[when(expr = "a GM connects on the game port")]
 async fn a_gm_connects_on_the_game_port(world: &mut World) {
-    let seat = Seat::open(table::live_mut(world).game_port, "gm").await;
-    table::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"").await;
-    table::live_mut(world).ws_gm = Some(seat);
+    let seat = Seat::open(host::live_mut(world).game_port, "gm").await;
+    host::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"").await;
+    host::live_mut(world).ws_gm = Some(seat);
 }
 
 #[then(expr = "the WebSocket GM hears the wait queued under the player's reply seq")]
@@ -71,11 +71,11 @@ async fn the_gm_hears_the_wait_queued(world: &mut World) {
             .into_iter()
             .find(|message| message["body"]["kind"] == "queued")
     };
-    let player = queued(&table::player_text(world))
-        .unwrap_or_else(|| panic!("no queued reply\n{}", table::player_text(world)));
+    let player = queued(&host::player_text(world))
+        .unwrap_or_else(|| panic!("no queued reply\n{}", host::player_text(world)));
     assert!(player.get("reply_to").is_some(), "{player}");
     let gm = ws_gm(world);
-    let heard = table::wait_suffix(&gm.text, 0, "\"kind\":\"queued\"").await;
+    let heard = host::wait_suffix(&gm.text, 0, "\"kind\":\"queued\"").await;
     let heard = queued(&heard).unwrap_or_else(|| panic!("{heard}"));
     assert_eq!(heard["body"]["actor"], "rowan", "{heard}");
     assert_eq!(heard["seq"], player["seq"], "{heard}\n{player}");
@@ -105,7 +105,7 @@ fn the_gm_gets_the_round_then_the_reply(world: &mut World) {
 #[then(expr = "the player hears that round under the same seq")]
 async fn the_player_hears_that_round(world: &mut World) {
     let round: Value = serde_json::from_str(&world.player_added).unwrap();
-    let heard = table::wait_player_from(world, world.mark, "\"kind\":\"round\"").await;
+    let heard = host::wait_player_from(world, world.mark, "\"kind\":\"round\"").await;
     let heard = parse_messages(&heard)
         .into_iter()
         .find(|message| message["body"]["kind"] == "round")

@@ -2,8 +2,8 @@
 
 This page is the wire a player client or a GM speaks to `spook run`. [Engine guarantees](engine-guarantees.md) says what the engine promises. Three things make up the wire, and CI checks each one against the build:
 
-- this page, whose examples are one live session of `tests/packs/docks`. A test plays that session and fails when an example and the table disagree.
-- the JSON Schema, [`client.json`](../crates/protocol/schema/client.json) for what a client sends and [`server.json`](../crates/protocol/schema/server.json) for what the table sends. A test fails when the schema `spookery-protocol` derives with its `schema` feature is not the published one.
+- this page, whose examples are one live session of `tests/packs/docks`. A test plays that session and fails when an example and the host disagree.
+- the JSON Schema, [`client.json`](../crates/protocol/schema/client.json) for what a client sends and [`server.json`](../crates/protocol/schema/server.json) for what the host sends. A test fails when the schema `spookery-protocol` derives with its `schema` feature is not the published one.
 - the recorded session, [`v3.jsonl`](../crates/protocol/sessions/v3.jsonl), a player and a GM recorded against version 3. The `compatibility-replay` CI job replays it against each build.
 
 In the examples, Rowan is the player, in the shop, at game time 1080. A tick is game time. A round is one batch of queued moves.
@@ -12,7 +12,7 @@ In the examples, Rowan is the player, in the shop, at game time 1080. A tick is 
 
 The game port is a WebSocket endpoint. A player opens `ws://127.0.0.1:<game>/player` and a GM opens `ws://127.0.0.1:<game>/gm`. The default game port is `127.0.0.1:9737`. The MCP endpoint, for a GM that speaks MCP, is streamable HTTP at `http://127.0.0.1:<mcp>/mcp`, on the game port plus one, so `9738` by default.
 
-`--addr 127.0.0.1:0` asks the operating system for the game port, and then the MCP endpoint is a bind of its own. `--mcp-addr` sets the MCP address, port 0 included. Both binds are loopback. Any other host is refused before the pack opens. Once both are bound, and before the table serves, `spook run` prints one line on stdout with the two addresses:
+`--addr 127.0.0.1:0` asks the operating system for the game port, and then the MCP endpoint is a bind of its own. `--mcp-addr` sets the MCP address, port 0 included. Both binds are loopback. Any other address is refused before the pack opens. Once both are bound, and before the host serves, `spook run` prints one line on stdout with the two addresses:
 
 <!-- example: listening -->
 ```json
@@ -23,12 +23,12 @@ Both endpoints take `Host: 127.0.0.1` only, so `localhost` is 403. An `Origin`, 
 
 ## The envelope
 
-Every message, the client's and the table's alike, is one JSON object in one WebSocket text message: `id`, `seq`, `reply_to` and a nested `body`. A binary message is `SCHEMA`.
+Every message, the client's and the host's alike, is one JSON object in one WebSocket text message: `id`, `seq`, `reply_to` and a nested `body`. A binary message is `SCHEMA`.
 
-- `id` is the client's choice. The table copies it into `reply_to` on the one reply to that message.
-- `seq` is set by the table on everything it sends but the hello, from one counter for the whole table. A message several seats get has the same `seq` on each. A seat's `seq`s only grow, but they skip the messages other seats got.
+- `id` is the client's choice. The host copies it into `reply_to` on the one reply to that message.
+- `seq` is set by the host on everything it sends but the hello, from one counter for the host. A message several seats get has the same `seq` on each. A seat's `seq`s only grow, but they skip the messages other seats got.
 - A client's `body` is a command `kind` and its `args`, an object that may be left out when the command takes none.
-- A table's `body` is tagged by `kind`.
+- The host's `body` is tagged by `kind`.
 
 <!-- example: player-claim -->
 ```json
@@ -42,7 +42,7 @@ Every message, the client's and the table's alike, is one JSON object in one Web
 
 ## Hello
 
-The table speaks first, with `version`, the `commands` this seat may send, and, on `/player`, `open`, the PCs nobody holds now, `taken`, the PCs held now, and `pc_names`, each of those PCs' name by id. A claim on an open PC is still refused with `TABLE_FULL` while every player seat is held. Each is left out when empty. A player's commands are the table's own and then every verb the pack's rules name.
+The host speaks first, with `version`, the `commands` this seat may send, and, on `/player`, `open`, the PCs nobody holds now, `taken`, the PCs held now, and `pc_names`, each of those PCs' name by id. A claim on an open PC is still refused with `TABLE_FULL` while every player seat is held. Each is left out when empty. A player's commands are the host's own and then every verb the pack's rules name.
 
 <!-- example: player-hello -->
 ```json
@@ -77,7 +77,7 @@ Each command reads `args` as one type, and the schema's `$defs` in `client.json`
 
 ### claim and release
 
-A player claims one PC, and the table holds three claims at most. A command other than `claim` before a claim is `CHOOSE_PC`. The hello already listed the open PCs:
+A player claims one PC, and the host holds three claims at most. A command other than `claim` before a claim is `CHOOSE_PC`. The hello already listed the open PCs:
 
 <!-- example: player-choose-pc -->
 ```json
@@ -93,7 +93,7 @@ Only `release` ends a claim. A connection that closes or is dropped leaves its P
 {"seq":4,"body":{"kind":"presence","actors_present":["rowan"]}}
 ```
 
-`round_index` and `world_time` in `claimed` are the table's round and tick when it answers, so a client can show them before the next `round`. `token` in `claimed` takes the PC back from a new connection, so treat it as a secret. A held claim keeps the newest 256 messages sent to it. `claim` with `token` and `last_seq`, the last `seq` the old connection read, answers with `missed_messages`, the kept messages after `last_seq`, oldest first. A missing `last_seq` means 0. `is_missed_truncated` is `true` when a message after `last_seq` was dropped. The `resume` and `view` after it are current either way. A connection that held the claim before lets go of it and stays up. A released claim's token is `UNKNOWN_ID`.
+`round_index` and `world_time` in `claimed` are the world's round and tick when it answers, so a client can show them before the next `round`. `token` in `claimed` takes the PC back from a new connection, so treat it as a secret. A held claim keeps the newest 256 messages sent to it. `claim` with `token` and `last_seq`, the last `seq` the old connection read, answers with `missed_messages`, the kept messages after `last_seq`, oldest first. A missing `last_seq` means 0. `is_missed_truncated` is `true` when a message after `last_seq` was dropped. The `resume` and `view` after it are current either way. A connection that held the claim before lets go of it and stays up. A released claim's token is `UNKNOWN_ID`.
 
 <!-- example: player-claim-token -->
 ```json
@@ -111,7 +111,7 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 ### say
 
-`to` names who hears it: `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`. A player's say to an actor is read as one line, the actor then `text`, so `spook play` sends `say Mira Vell hi` (or `tell Mira Vell hi`, the same line) as `to` `{"actor": "Mira"}` and `text` `Vell hi`. The longest run of leading words that names an actor in sight, by id or name and ignoring case and outer spaces as a move's target does, is who it is said to, and the rest is the text. A name two in sight share is `AMBIGUOUS_NAME`, with the move's `detail`. A line that names nobody in sight is said at the table, its text the whole line. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. The GM may add `as`, the bare id of an NPC, to speak as that NPC, and `from` is then `npc:<id>`. A `say` message carries `from_name`, the speaking PC's or NPC's name, and leaves it out when the GM speaks as itself. An `as` that names a PC, no actor or anything but a bare id is `SCHEMA`, and so is a player's `as`. A GM say with `as` and no `to` is heard where that NPC stands. Any other say without `to` is `SCHEMA`. A `place` say from a player or from the NPC in `as` must name where that speaker stands, or it is `SCHEMA`. A say puts one line of speech on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipient_ids`, the seated players who heard it, so an NPC is never in it.
+`to` names who hears it: `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`. A player's say to an actor is read as one line, the actor then `text`, so `spook play` sends `say Mira Vell hi` (or `tell Mira Vell hi`, the same line) as `to` `{"actor": "Mira"}` and `text` `Vell hi`. The longest run of leading words that names an actor in sight, by id or name and ignoring case and outer spaces as a move's target does, is who it is said to, and the rest is the text. A name two in sight share is `AMBIGUOUS_NAME`, with the move's `detail`. A line that names nobody in sight is said at the host, its text the whole line. `text` is at most 4096 characters. The host sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. The GM may add `as`, the bare id of an NPC, to speak as that NPC, and `from` is then `npc:<id>`. A `say` message carries `from_name`, the speaking PC's or NPC's name, and leaves it out when the GM speaks as itself. An `as` that names a PC, no actor or anything but a bare id is `SCHEMA`, and so is a player's `as`. A GM say with `as` and no `to` is heard where that NPC stands. Any other say without `to` is `SCHEMA`. A `place` say from a player or from the NPC in `as` must name where that speaker stands, or it is `SCHEMA`. A say puts one line of speech on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipient_ids`, the seated players who heard it, so an NPC is never in it.
 
 <!-- example: player-say -->
 ```json
@@ -144,7 +144,7 @@ A move is a pack verb, its target in `target`. The target is an id or a name the
 
 `cancel` is a move too, and a busy player may send it. It drops the PC's own action under way when its rule says `cancellable`, with no refund, and the action never finishes. A walk is never cancelled. With nothing to cancel, or an action whose rule does not allow it, `cancel` is refused `INELIGIBLE` and the action still lands.
 
-A move the table can judge at once is refused before it is queued. Here Rowan sent `travel` with `target` `stairs`, and `detail` is the pack's locked text:
+A move the host can judge at once is refused before it is queued. Here Rowan sent `travel` with `target` `stairs`, and `detail` is the pack's locked text:
 
 <!-- example: player-no-exit -->
 ```json
@@ -182,7 +182,7 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 
 ### status
 
-The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` lists the waiting moves. `pack` is the move menu, each cast entry's `control_type` (`npc` or `pc_template`), the place and cast prose, and `gm_notes`, the pack's tone and flavor text for the GM from `pack.yaml`, as written. `gm_notes` is left out when the pack has none, as the docks pack below does.
+The host's state for a GM. `world_time` is the game clock in ticks. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` lists the waiting moves. `pack` is the move menu, each cast entry's `control_type` (`npc` or `pc_template`), the place and cast prose, and `gm_notes`, the pack's tone and flavor text for the GM from `pack.yaml`, as written. `gm_notes` is left out when the pack has none, as the docks pack below does.
 
 <!-- example: gm-status -->
 ```json
@@ -294,7 +294,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 
 ### queue
 
-`actor` and `move` are required. `id` becomes the queue id, and the table mints one when it is left out. A PC a player holds takes only that player's moves, so the GM's move for it is `ACTOR_MISMATCH`.
+`actor` and `move` are required. `id` becomes the queue id, and the host mints one when it is left out. A PC a player holds takes only that player's moves, so the GM's move for it is `ACTOR_MISMATCH`.
 
 <!-- example: gm-queue -->
 ```json
@@ -308,7 +308,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 
 ### commit
 
-`include_round: true` plays the queue in queue order as one round. `include_round: false` while a move is queued is `NOT_IN_SPEC`, and the queue stays. An empty queue writes no round, unless every seated PC is busy, and then the table fast-forwards. Every seat gets one `round` for each round played, and the GM's reply comes after them.
+`include_round: true` plays the queue in queue order as one round. `include_round: false` while a move is queued is `NOT_IN_SPEC`, and the queue stays. An empty queue writes no round, unless every seated PC is busy, and then the host fast-forwards. Every seat gets one `round` for each round played, and the GM's reply comes after them.
 
 <!-- example: gm-commit -->
 ```json
@@ -478,7 +478,7 @@ Each seated player gets, in order: the `round`, a `check` for each of their own 
 
 ## MCP
 
-`/mcp` is a translator onto the GM commands. `tools/list` has one tool per GM command, named after it, in hello order, and each tool's input schema is its command's arguments. A `tools/call` is sent to the table as that command, the arguments as its `args` and the JSON-RPC id as its `id`. A tool that is not a GM command is `SCHEMA`.
+`/mcp` is a translator onto the GM commands. `tools/list` has one tool per GM command, named after it, in hello order, and each tool's input schema is its command's arguments. A `tools/call` is sent to the host as that command, the arguments as its `args` and the JSON-RPC id as its `id`. A tool that is not a GM command is `SCHEMA`.
 
 <!-- example: mcp-call -->
 ```json
@@ -492,14 +492,14 @@ The result's `structuredContent` is `messages`: every message the command sent t
 {"messages":[{"seq":28,"reply_to":"1","body":{"kind":"queued","intent":"mcp-wait","actor":"aldric","move":"wait"}}]}
 ```
 
-Every other message the table sends this seat, the hello first, comes as a `spook/event` notification whose params are the message:
+Every other message the host sends this seat, the hello first, comes as a `spook/event` notification whose params are the message:
 
 <!-- example: mcp-event -->
 ```json
 {"jsonrpc":"2.0","method":"spook/event","params":{"seq":29,"body":{"kind":"queued","intent":"d32e26ecab93720f81c493ca1330c145246d058f0b2d692bfe8500621c8ce1de","actor":"rowan","move":"exert"}}}
 ```
 
-An `initialize` opens a session and is never refused for a full table. POST it with `Accept` listing both `application/json` and `text/event-stream` and with `Content-Type: application/json`. Keep the `mcp-session-id` response header, and send the negotiated `protocolVersion` as `MCP-Protocol-Version` on every later request.
+An `initialize` opens a session and is never refused, even when every seat is taken. POST it with `Accept` listing both `application/json` and `text/event-stream` and with `Content-Type: application/json`. Keep the `mcp-session-id` response header, and send the negotiated `protocolVersion` as `MCP-Protocol-Version` on every later request.
 
 The session's `GET /mcp` event stream takes the GM seat, and its first event is the hello. Call a command only after the hello: a session with no event stream holds no seat, so its tool calls are `NOT_IN_SPEC`. Hold that one stream open: the seat is freed when it closes, when a DELETE names the session, or on `release`. A GET while the seat is held, or a second GET for a session that already has its stream, is refused on that stream as its only event, and nothing else closes:
 
@@ -648,8 +648,8 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 renamed a note's readers and place before any release, on purpose, so every identifier is `id` or ends in `_id`: a note's `to` and `place` became `to_ids` and `place_id` on `NoteView`, and the same names in pack note effects and journal note effects. The recording took the new names and the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
 - Version 2 narrowed a roll before any release, on purpose, when a rule's `check:` replaced `roll:`: a `committed` roll dropped `faces` and `stat`, and `target` became `success_at`. The check's dice are a line in `dice`, like any other number's. The recording took the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
 - Version 2 added fields a player window needs, and the version stayed 2 because each only adds: `view.items_carried` and `view.wielded_item_id`, a meter's `name` in `view` and its `entry_name` in `changes`, a `map` place's `place_id`, and `round_index` and `world_time` in `claimed`. The recording took the docks pack's new `pack_rev` with it.
-- Version 2 renamed two `claimed` fields on purpose, so each says what it holds: `missed` became `missed_messages` and `gap` became `is_missed_truncated`. The alpha pre-releases send and read the old names. A client and a table from either side of the rename still play, but a reconnect shows no missed messages, since each side ignores a field it does not know. The recording has neither field.
+- Version 2 renamed two `claimed` fields on purpose, so each says what it holds: `missed` became `missed_messages` and `gap` became `is_missed_truncated`. The alpha pre-releases send and read the old names. A client and a host from either side of the rename still play, but a reconnect shows no missed messages, since each side ignores a field it does not know. The recording has neither field.
 - Version 2 renamed the GM `queue` field and the actor id on `status.queued[]` before any release, on purpose, so they match the other actor ids: `actor_id` became `actor`. There is no alias for the old key. The recording took the new name with it. The version stayed 2 because no build had shipped.
 - Version 3 broke version 2 once, on purpose, when known facts left the engine: a place's public facts moved into its prose, and what someone has found out became a flag, which never reaches a player. `known_facts` and `unknown_mentions` left `view`, `fact_ids` left a note, `max_body_chars` left the GM's `perceive`, the changed key `actor_known_facts` went, and `ILLEGAL_KNOWLEDGE` left the refusal codes. The session recorded against version 2 was replaced by one recorded against version 3.
-- The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
+- The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each host mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

@@ -1,4 +1,4 @@
-//! The table: seats, wires, and the two terminals.
+//! The `spook` library: the host, the seat wires and the two terminals.
 
 #[cfg(feature = "client")]
 pub use spookery_agent as agent;

@@ -8,10 +8,10 @@ Start with the [README](../README.md) to build and play. This page points at eve
 | [Write your first pack](first-pack.md) | A walkthrough that starts from `spook new` and makes your first edits. |
 | [Pack reference](pack-reference.md) | Every pack field, for people and agents writing packs. |
 | [Expressions](spec.md) | The small number language pack fields use, like `2d6` or `self.might`. |
-| [Seat protocol](seat-protocol.md) | The seat protocol for player clients and GMs, including how to point a coding agent at the table. |
+| [Seat protocol](seat-protocol.md) | The seat protocol for player clients and GMs, including how to point a coding agent at the host. |
 | [CONTRIBUTING](../CONTRIBUTING.md) | Issue rules and running the tests. |
 
-Further down this page you'll find the [glossary](#glossary), [host options](#at-the-table), [GM setup](#game-master), [what the model sees](#privacy) and the [license](#license).
+Further down this page you'll find the [glossary](#glossary), [host options](#host-options), [GM setup](#game-master), [what the model sees](#privacy) and the [license](#license).
 
 Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 
@@ -61,14 +61,14 @@ crates/
   engine/              spookery-engine: world model, rules, rounds, and journal
   agent/               spookery-agent: the reusable GM brain: connection, model, chat_completions, context (the observation), tool, turn and task (the turn graph)
   client/              spookery-client: player, gm, ai_gm (the three clients), terminal (plain lines or the play window), websocket, http_model, text
-  server/              spookery-server: the table, the game port's WebSocket endpoint, MCP endpoint, GM commands, seats, idle timer
+  server/              spookery-server: the host, the game port's WebSocket endpoint, MCP endpoint, GM commands, seats, idle timer
   spook/               package and binary spook, library spookery
     tests/features/    BDD scenarios
 ```
 
-`spook run`, `spook play`, `spook gm` and `spook ai-gm` are one bundled implementation of the seat protocol. `protocol` and `agent` are built so others can write their own clients and GMs against the same table.
+`spook run`, `spook play`, `spook gm` and `spook ai-gm` are one bundled implementation of the seat protocol. `protocol` and `agent` are built so others can write their own clients and GMs against the same host.
 
-## At the table
+## Host options
 
 These are the host options and the commands that touch a save.
 
@@ -111,9 +111,9 @@ If a move leaves every seated player busy, the clock runs on until they arrive.
 
 It posts to `{SPOOK_GM_URL}/chat/completions` with four tools. Three are the GM seat's commands: `perceive`, `say` and `queue`, with the parameters `crates/protocol/schema/client.json` gives them. The fourth, `end_turn`, plays the round: the AI GM sends `commit` for it.
 
-Each turn is a loop. A player's speech or a queued move starts it. The model calls tools, and each call goes to the table as it is. The table's reply comes back as that call's result, refusals included, so the model can look around first, try again after a refusal, and queue moves for several NPCs before it ends the turn. After `end_turn` it gets the rolls and can say what happened. The turn ends when the model answers with no tool calls.
+Each turn is a loop. A player's speech or a queued move starts it. The model calls tools, and each call goes to the host as it is. The host's reply comes back as that call's result, refusals included, so the model can look around first, try again after a refusal, and queue moves for several NPCs before it ends the turn. After `end_turn` it gets the rolls and can say what happened. The turn ends when the model answers with no tool calls.
 
-The engine still decides every effect. A turn commits when a move is queued, and it commits that move itself when the model stops without `end_turn`. A turn stops after 20 model calls and prints a `model call limit` warning. If a command goes out and its reply can't be read, `spook ai-gm` stops and names the command, because the table may have applied it. Start it again and it reads the table afresh.
+The engine still decides every effect. A turn commits when a move is queued, and it commits that move itself when the model stops without `end_turn`. A turn stops after 20 model calls and prints a `model call limit` warning. If a command goes out and its reply can't be read, `spook ai-gm` stops and names the command, because the host may have applied it. Start it again and it reads the host afresh.
 
 You need all three of these. There's no default URL.
 
@@ -164,11 +164,11 @@ Type `help` to see the GM commands. A line is a command the hello listed, then i
 
 ## Privacy
 
-`spook ai-gm` sends table text to whatever host `SPOOK_GM_URL` names. There's no default host. The key comes from `SPOOK_GM_KEY` in your environment and never lives in the pack.
+`spook ai-gm` sends game text to whatever host `SPOOK_GM_URL` names. There's no default host. The key comes from `SPOOK_GM_KEY` in your environment and never lives in the pack.
 
 Each call is one chat-completions POST. The body has the model name, `"stream": false`, the four tools and the turn's conversation so far.
 
-The conversation starts with one user message, a bounded JSON prompt. It holds the last 16 lines of speech this process has handled, the new player lines, the move menu, the queued intents, what started the turn (`cause`) and who is seated. Then come the model's tool calls and the table's reply to each: the views it perceived, the speech, the queue replies and refusals, and after `end_turn` the rolls and their dice lines. The conversation lasts one turn. The next turn starts again from a new prompt.
+The conversation starts with one user message, a bounded JSON prompt. It holds the last 16 lines of speech this process has handled, the new player lines, the move menu, the queued intents, what started the turn (`cause`) and who is seated. Then come the model's tool calls and the host's reply to each: the views it perceived, the speech, the queue replies and refusals, and after `end_turn` the rolls and their dice lines. The conversation lasts one turn. The next turn starts again from a new prompt.
 
 The views are trimmed on purpose. A player's view is only a room census: it drops notes. An NPC's view keeps its notes.
 
@@ -176,7 +176,7 @@ A view does include the Markdown body of its place and of the viewer and each ca
 
 It never sends `save.yaml` or the tape file. Those stay on disk in the pack. A new `spook ai-gm` process starts fresh and remembers nothing from the last one.
 
-Logs carry no table text. `spook run`, `spook ai-gm` and the `spook play` window write them to `logs/<command>-<time>-<pid>.log` in the directory they start in, never inside `state/`, and other commands write them to stderr. By default those files hold seat and round events and each model call's model id, attempts, time and token counts, never the prompt or the reply. The exception is `rmcp` at `debug` or `trace`, which logs whole MCP messages.
+Logs carry no game text. `spook run`, `spook ai-gm` and the `spook play` window write them to `logs/<command>-<time>-<pid>.log` in the directory they start in, never inside `state/`, and other commands write them to stderr. By default those files hold seat and round events and each model call's model id, attempts, time and token counts, never the prompt or the reply. The exception is `rmcp` at `debug` or `trace`, which logs whole MCP messages.
 
 ## License
 

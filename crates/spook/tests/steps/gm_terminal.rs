@@ -7,7 +7,7 @@ use cucumber::{given, then, when};
 use crate::support::{self, Process};
 use crate::World;
 
-use super::{common, table};
+use super::{common, host};
 
 /// The start of the hello as raw mode prints it.
 const HELLO_JSON: &str = r#"{"body":{"kind":"hello""#;
@@ -58,9 +58,9 @@ fn the_gm_queues_the_door_note_and_commits(world: &mut World) {
 async fn a_docks_table_with_a_gm_and_a_seat(world: &mut World, actor: String) {
     let pack = support::copy_pack("docks", "typed-gm");
     world.pack = Some(pack.clone());
-    table::listen(world, &pack).await;
-    table::seat_actor(world, &pack, &actor).await;
-    let addr = table::game_addr(world);
+    host::listen(world, &pack).await;
+    host::seat_actor(world, &pack, &actor).await;
+    let addr = host::game_addr(world);
     world.gm = Some(support::spawn(&["gm", "--addr", &addr]));
     wait_gm(world, "Commands:").await;
 }
@@ -119,7 +119,7 @@ fn the_gm_commits(world: &mut World) {
 
 #[when(expr = "another GM joins that seat")]
 async fn another_gm_joins(world: &mut World) {
-    let addr = table::game_addr(world);
+    let addr = host::game_addr(world);
     let output = support::run_spook(&["gm", "--addr", &addr]).await;
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -128,9 +128,9 @@ async fn another_gm_joins(world: &mut World) {
 
 #[when(expr = "the GM is killed")]
 async fn the_gm_is_killed(world: &mut World) {
-    let mark = table::host_stdout(world).len();
+    let mark = host::host_stdout(world).len();
     world.gm.take();
-    table::wait_host_until(world, "the GM seat freed", |text| {
+    host::wait_host_until(world, "the GM seat freed", |text| {
         text.get(mark..)
             .is_some_and(|added| added.contains("gm seat free"))
     })
@@ -139,7 +139,7 @@ async fn the_gm_is_killed(world: &mut World) {
 
 #[when(expr = "another GM connects to that seat")]
 fn another_gm_connects_to_that_seat(world: &mut World) {
-    let addr = table::game_addr(world);
+    let addr = host::game_addr(world);
     world.gm = Some(support::spawn(&["gm", "--addr", &addr]));
 }
 
@@ -155,13 +155,13 @@ fn the_gm_queues_an_unknown_move(world: &mut World) {
 
 #[when(expr = "spook run stops")]
 fn spook_run_stops(world: &mut World) {
-    table::live_mut(world).host.take();
+    host::live_mut(world).host.take();
 }
 
 #[then(expr = "the GM exits")]
 async fn the_gm_exits(world: &mut World) {
     let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
-    let status = table::poll_until("the gm to exit", async || {
+    let status = host::poll_until("the gm to exit", async || {
         let status = gm.child.try_wait().unwrap_or_else(|err| panic!("{err}"));
         status.ok_or("still running")
     })
@@ -217,8 +217,8 @@ fn the_gm_shows_no_protocol_json(world: &mut World) {
 
 #[then(expr = "world time advanced one live tick")]
 async fn world_time_advanced(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::poll_until("world_time 1085", async || {
+    let pack = host::pack(world).to_path_buf();
+    host::poll_until("world_time 1085", async || {
         match world_of(&pack).world_time {
             1085 => Ok(()),
             now => Err(now),
@@ -230,7 +230,7 @@ async fn world_time_advanced(world: &mut World) {
 #[then(expr = "the GM's stderr shows {string}")]
 async fn the_gm_stderr_shows(world: &mut World, text: String) {
     let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
-    table::poll_until(&text, async || {
+    host::poll_until(&text, async || {
         let stderr = support::text_of(&gm.stderr);
         if stderr.contains(&text) {
             return Ok(());
@@ -244,9 +244,9 @@ async fn the_gm_stderr_shows(world: &mut World, text: String) {
 }
 
 async fn connect_gm(world: &mut World, raw: bool) -> String {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    let addr = table::game_addr(world);
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    let addr = host::game_addr(world);
     let mut args = vec!["gm".to_string(), "--addr".to_string(), addr.clone()];
     if raw {
         args.push("--raw".to_string());

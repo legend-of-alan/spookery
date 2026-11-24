@@ -8,9 +8,9 @@ mod support;
 #[allow(dead_code)]
 mod mcp_client;
 
-#[path = "steps/table.rs"]
+#[path = "steps/host.rs"]
 #[allow(dead_code)]
-mod table;
+mod host;
 
 #[path = "steps/common.rs"]
 mod common;

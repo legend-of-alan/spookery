@@ -20,18 +20,18 @@ use crate::support;
 use crate::World;
 
 /// One WebSocket connection to the game port's `/player` or `/gm`. A reader thread
-/// appends each message the table sends to `text`, one line each.
+/// appends each message the host sends to `text`, one line each.
 pub struct Seat {
     write: Mutex<WebSocket<TcpStream>>,
     /// A seat that stops reading keeps its reading socket here, unread.
     quiet: Option<WebSocket<TcpStream>>,
     pub text: Arc<Mutex<String>>,
-    /// Set once the table closed the connection.
+    /// Set once the host closed the connection.
     pub closed: Arc<AtomicBool>,
     next_id: AtomicU64,
 }
 
-/// Hangs up, so the reader ends and the table sees the connection close.
+/// Hangs up, so the reader ends and the host sees the connection close.
 impl Drop for Seat {
     fn drop(&mut self) {
         let write = self.write.lock().unwrap_or_else(|err| err.into_inner());
@@ -52,7 +52,7 @@ impl Seat {
     }
 
     /// Opens `/seat` over a connected `stream`. Without `reading`, nothing reads what the
-    /// table sends.
+    /// host sends.
     pub fn from_stream(stream: TcpStream, port: u16, seat: &str, reading: bool) -> Self {
         stream
             .set_nodelay(true)
@@ -116,9 +116,9 @@ impl Seat {
         write.send(message)
     }
 
-    /// Waits until the table has closed this connection.
+    /// Waits until the host has closed this connection.
     pub async fn wait_closed(&self) {
-        poll_until("the table to close the connection", async || {
+        poll_until("the host to close the connection", async || {
             self.closed
                 .load(Ordering::SeqCst)
                 .then_some(())
@@ -146,7 +146,7 @@ impl Seat {
 }
 
 /// The command a typed line names and its arguments, as `spook play` sends it: `say <text>`
-/// speaks to the table, and any other first word is a move with the rest as its target.
+/// speaks to everyone present (`to: table`), and any other first word is a move with the rest as its target.
 pub(crate) fn parse_command(line: &str) -> (&str, Value) {
     match line.split_once(' ') {
         Some(("say", text)) => ("say", json!({ "to": "table", "text": text })),
@@ -193,7 +193,7 @@ pub struct Host {
 pub(crate) type Advance = (Duration, tokio::sync::oneshot::Sender<()>);
 
 /// `serve` on its own thread, on a current-thread runtime whose clock starts
-/// paused. The table's blocking task keeps tokio from auto-advancing, so
+/// paused. The host's blocking task keeps tokio from auto-advancing, so
 /// paused time moves only on `advance`.
 pub struct InProcess {
     pub stdout: Arc<Mutex<String>>,
@@ -270,13 +270,13 @@ pub(crate) async fn serve_in_process(world: &mut World, pack: &Path) {
 }
 
 /// Moves the in-process host's paused clock forward. Timers due by then have
-/// fired when this returns; what they sent the table is queued, so the next
+/// fired when this returns; what they sent the host is queued, so the next
 /// `read_presence` is the barrier before reading the save or journal.
 pub(crate) async fn advance(world: &World, by: Duration) {
     let host = live(world)
         .in_process
         .as_ref()
-        .unwrap_or_else(|| panic!("the table is not in this process"));
+        .unwrap_or_else(|| panic!("the host is not in this process"));
     let ended = || panic!("the host ended\n{}", support::text_of(&host.stderr));
     let (ack, acked) = tokio::sync::oneshot::channel();
     host.advance.send((by, ack)).unwrap_or_else(|_| ended());
@@ -289,14 +289,14 @@ pub(crate) fn live_mut(world: &mut World) -> &mut Host {
     world
         .live
         .as_mut()
-        .unwrap_or_else(|| panic!("no table is listening"))
+        .unwrap_or_else(|| panic!("no host is listening"))
 }
 
 pub(crate) fn live(world: &World) -> &Host {
     world
         .live
         .as_ref()
-        .unwrap_or_else(|| panic!("no table is listening"))
+        .unwrap_or_else(|| panic!("no host is listening"))
 }
 
 pub(crate) fn read_files(root: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
@@ -898,7 +898,7 @@ pub(crate) fn actor_write(world: &mut World, actor_id: &str, line: &str) -> usiz
     mark
 }
 
-pub(crate) fn stop_host(world: &mut World) {
+pub(crate) fn stop(world: &mut World) {
     let live = live_mut(world);
     live.players.clear();
     live.ws_gm.take();
@@ -943,7 +943,7 @@ fn send_interrupt(child: &Child) {
     assert_ne!(sent, 0, "Ctrl+Break: {}", std::io::Error::last_os_error());
 }
 
-/// Releases the claim and waits until the table has let go of it.
+/// Releases the claim and waits until the host has let go of it.
 pub(crate) async fn close_actor(world: &mut World, actor_id: &str) {
     let player = player_client(world, actor_id);
     let id = player.seat.send("release", json!({}));

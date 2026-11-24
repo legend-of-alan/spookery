@@ -12,7 +12,7 @@ use crate::mcp_client::{GmClient, RawSession};
 use crate::support;
 use crate::World;
 
-use super::table;
+use super::host;
 
 #[when(expr = "a coding agent calls the GM tools over loopback HTTP")]
 async fn agent_calls_over_http(world: &mut World) {
@@ -26,8 +26,8 @@ async fn agent_calls_over_http(world: &mut World) {
 
 #[when(expr = "the operator runs with an open MCP HTTP address")]
 async fn the_operator_runs_with_an_open_mcp_http_address(world: &mut World) {
-    let pack = support::pack_arg(table::pack(world));
-    table::run(world, &["run", &pack, "--mcp-addr", "0.0.0.0:9"]).await;
+    let pack = support::pack_arg(host::pack(world));
+    host::run(world, &["run", &pack, "--mcp-addr", "0.0.0.0:9"]).await;
 }
 
 #[when(expr = "an HTTP request arrives with a public Origin")]
@@ -52,7 +52,7 @@ fn the_response_is_forbidden(world: &mut World) {
 
 #[then(expr = "a GM hello still holds the seat")]
 async fn a_gm_hello_still_sits(world: &mut World) {
-    table::seat_gm(world).await;
+    host::seat_gm(world).await;
 }
 
 #[when(regex = r"^an HTTP request arrives with Host (\S+)$")]
@@ -63,11 +63,11 @@ async fn an_http_request_arrives_with_host(world: &mut World, host: String) {
 
 #[when(expr = "a human GM connects on the game port")]
 async fn a_human_gm_connects_on_the_game_port(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    let addr = table::game_addr(world);
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    let addr = host::game_addr(world);
     world.gm = Some(support::spawn(&["gm", "--addr", &addr]));
-    world.mark = usize::from(table::live_mut(world).mcp_port);
+    world.mark = usize::from(host::live_mut(world).mcp_port);
     let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
     super::common::wait_proc_until(
         gm,
@@ -109,14 +109,14 @@ fn the_human_gm_leaves(world: &mut World) {
 #[then(expr = "a coding agent can connect at that MCP endpoint")]
 async fn a_coding_agent_can_connect_at_that_mcp_endpoint(world: &mut World) {
     let http = port(world);
-    table::poll_until("the agent to connect", || try_connect_gm(http)).await;
+    host::poll_until("the agent to connect", || try_connect_gm(http)).await;
 }
 
 #[when(expr = "spook run listens with no MCP flag")]
 async fn spook_run_listens_with_no_mcp_flag(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    world.mark = usize::from(table::live_mut(world).mcp_port);
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    world.mark = usize::from(host::live_mut(world).mcp_port);
 }
 
 #[then(expr = "the reported MCP address serves \\/mcp")]
@@ -181,8 +181,8 @@ fn port(world: &World) -> u16 {
 async fn a_docks_table_with_a_seated_player_and_an_open_mcp_endpoint(world: &mut World) {
     world.pack = Some(support::copy_pack("docks", "http-say"));
     let (_tcp, http) = listen_on_free_ports(world).await;
-    let pack = table::pack(world).to_path_buf();
-    table::seat_rowan(world, &pack).await;
+    let pack = host::pack(world).to_path_buf();
+    host::seat_rowan(world, &pack).await;
     world.mark = usize::from(http);
 }
 
@@ -367,14 +367,14 @@ async fn a_queue_call_with_to_is_accepted(world: &mut World) {
 
 #[then(expr = "world time moved forward")]
 fn world_time_moved_forward(world: &mut World) {
-    let now = world_of(table::pack(world));
+    let now = world_of(host::pack(world));
     assert!(now.world_time > 1080, "world_time {}", now.world_time);
 }
 
 #[when(expr = "a coding agent says good evening over HTTP")]
 async fn agent_says_over_http(world: &mut World) {
     let http = port(world);
-    let mark = table::player_mark(world);
+    let mark = host::player_mark(world);
     let mut gm = GmClient::connect(to_addr(http))
         .await
         .unwrap_or_else(|err| panic!("HTTP: {err}"));
@@ -385,7 +385,7 @@ async fn agent_says_over_http(world: &mut World) {
     )
     .await;
     assert_not_refused(&speech, "say");
-    world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"").await;
+    world.player_added = host::wait_player_from(world, mark, "{\"kind\":\"say\"").await;
     world.http_gm = Some(gm);
 }
 
@@ -409,9 +409,9 @@ fn the_unknown_tool_call_was_refused(world: &mut World) {
         panic!("not refused: {}", world.scratch);
     };
     assert_eq!(refused.code.as_str(), "SCHEMA", "{}", world.scratch);
-    let saved = std::fs::read(table::pack(world).join("state/save.yaml"))
+    let saved = std::fs::read(host::pack(world).join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save: {err}"));
-    assert_eq!(saved, table::live_mut(world).opened_save);
+    assert_eq!(saved, host::live_mut(world).opened_save);
 }
 
 async fn call_each_gm_tool(gm: &mut GmClient) {
@@ -450,8 +450,8 @@ fn to_addr(port: u16) -> std::net::SocketAddr {
 }
 
 async fn listen_on_free_ports(world: &mut World) -> (u16, u16) {
-    let pack = table::pack(world).to_path_buf();
-    table::run_with_flags(
+    let pack = host::pack(world).to_path_buf();
+    host::run_with_flags(
         world,
         env!("CARGO_TARGET_TMPDIR").as_ref(),
         &pack,
@@ -511,20 +511,20 @@ pub(crate) fn post_initialize(port: u16, host: &str, origin: Option<&str>) -> St
 async fn an_mcp_gm_and_a_websocket_gm(world: &mut World) {
     let pack = support::copy_pack("docks", "parity-mcp");
     world.pack = Some(pack.clone());
-    table::listen(world, &pack).await;
-    table::seat_gm(world).await;
+    host::listen(world, &pack).await;
+    host::seat_gm(world).await;
     let ws_pack = support::copy_pack("docks", "parity-ws");
     let flags = ["--addr", "127.0.0.1:0"];
-    let running = table::wait_addrs(table::spawn(
+    let running = host::wait_addrs(host::spawn(
         env!("CARGO_TARGET_TMPDIR").as_ref(),
         &ws_pack,
         &flags,
     ))
     .await;
-    let gm = table::Seat::open(running.game.port(), "gm").await;
-    table::wait_suffix(&gm.text, 0, "\"kind\":\"hello\"").await;
-    table::live_mut(world).ws_gm = Some(gm);
-    world.ws_table = Some((running, ws_pack));
+    let gm = host::Seat::open(running.game.port(), "gm").await;
+    host::wait_suffix(&gm.text, 0, "\"kind\":\"hello\"").await;
+    host::live_mut(world).ws_gm = Some(gm);
+    world.ws_host = Some((running, ws_pack));
 }
 
 /// Bram stands in the street. Travel needs a target, and the shop is next to it.
@@ -543,7 +543,7 @@ async fn each_sends_travel_and_commits(world: &mut World) {
     let mut over_ws = Vec::new();
     for (command, args) in TRAVEL_THEN_COMMIT {
         let args: Value = serde_json::from_str(args).unwrap_or_else(|err| panic!("{err}"));
-        let live = table::live_mut(world);
+        let live = host::live_mut(world);
         let gm = live.gm.as_mut().unwrap_or_else(|| panic!("no GM on /mcp"));
         let messages = gm
             .call(command, &args)
@@ -572,7 +572,7 @@ async fn each_sends_travel_and_commits(world: &mut World) {
 }
 
 /// Each call's messages as one line each, its reply last. The reply's `reply_to` and an
-/// intent's id are the client's and the table's own, so they are blanked.
+/// intent's id are the client's and the host's own, so they are blanked.
 fn lines_of(calls: Vec<Vec<Value>>) -> Vec<String> {
     calls
         .into_iter()

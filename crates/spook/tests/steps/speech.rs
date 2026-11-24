@@ -9,16 +9,16 @@ use spookery_client::text;
 use crate::support::{self, copy_pack};
 use crate::World;
 
-use super::table;
+use super::host;
 
 #[when(expr = "the player says {string}")]
 async fn the_player_says(world: &mut World, text: String) {
-    let _ = table::player_send(world, &format!("say {text}"), "\"kind\":\"say\"").await;
+    let _ = host::player_send(world, &format!("say {text}"), "\"kind\":\"say\"").await;
 }
 
 #[when(expr = "the player says {string} to the place")]
 async fn the_player_says_to_the_place(world: &mut World, text: String) {
-    let place = place_of(&world_of(table::pack(world)), "rowan");
+    let place = place_of(&world_of(host::pack(world)), "rowan");
     let args = serde_json::json!({ "to": { "place": place }, "text": text });
     say_as_rowan(world, args).await;
 }
@@ -30,7 +30,7 @@ async fn the_player_says_to(world: &mut World, text: String, actor: String) {
 }
 
 async fn say_as_rowan(world: &World, args: Value) {
-    let seat = &table::player_client(world, "rowan").seat;
+    let seat = &host::player_client(world, "rowan").seat;
     let id = seat.send("say", args);
     let reply = seat.wait_reply(&id).await;
     assert!(reply.contains("\"kind\":\"say\""), "{reply}");
@@ -38,18 +38,18 @@ async fn say_as_rowan(world: &World, args: Value) {
 
 #[when(expr = "the GM says {string} to the place {string} as {string}")]
 async fn the_gm_says_as(world: &mut World, text: String, place: String, speaker: String) {
-    if table::live_mut(world).gm.is_none() {
-        table::seat_gm(world).await;
+    if host::live_mut(world).gm.is_none() {
+        host::seat_gm(world).await;
     }
-    world.before = table::read_files(table::pack(world));
+    world.before = host::read_files(host::pack(world));
     let args = serde_json::json!({ "to": { "place": place }, "text": text, "as": speaker });
-    world.scratch = table::gm_tool_call(world, 1, "say", &args.to_string()).await;
+    world.scratch = host::gm_tool_call(world, 1, "say", &args.to_string()).await;
 }
 
 #[when(expr = "{string} says {string} to the table as {string}")]
 async fn says_to_the_table_as(world: &mut World, actor: String, text: String, speaker: String) {
-    world.before = table::read_files(table::pack(world));
-    let seat = &table::player_client(world, &actor).seat;
+    world.before = host::read_files(host::pack(world));
+    let seat = &host::player_client(world, &actor).seat;
     let args = serde_json::json!({ "to": "table", "text": text, "as": speaker });
     let id = seat.send("say", args);
     world.scratch = seat.wait_reply(&id).await;
@@ -62,7 +62,7 @@ fn that_say_is_refused(world: &mut World) {
         "{}",
         world.scratch
     );
-    assert_eq!(table::read_files(table::pack(world)), world.before);
+    assert_eq!(host::read_files(host::pack(world)), world.before);
 }
 
 #[then(expr = "{string} reads {string} under the GM's seq")]
@@ -84,8 +84,8 @@ pub(super) async fn wait_for_line(
     mark: usize,
     line: &str,
 ) -> ServerMessage {
-    let seen = table::player_client(world, actor).text();
-    table::poll_until(line, async || {
+    let seen = host::player_client(world, actor).text();
+    host::poll_until(line, async || {
         let added = support::text_of(seen)
             .get(mark..)
             .unwrap_or_default()
@@ -109,7 +109,7 @@ fn the_tape_line_is_from(world: &mut World, from: String) {
 
 #[when(expr = "say to aldric is submitted on an empty table saying {string}")]
 fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let opened = spookery_engine::testing::resume(pack);
     world.now_bytes = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
@@ -143,7 +143,7 @@ fn the_tape_already_holds_a_full_mib(world: &mut World) {
         }
         lines.push_str(&line);
     }
-    fs::write(table::pack(world).join("state/tape.jsonl"), lines)
+    fs::write(host::pack(world).join("state/tape.jsonl"), lines)
         .unwrap_or_else(|err| panic!("write tape: {err}"));
 }
 
@@ -176,19 +176,19 @@ fn the_tape_recipients_are(world: &mut World, id: String) {
 }
 
 fn tape_text(world: &World) -> String {
-    fs::read_to_string(table::pack(world).join("state/tape.jsonl"))
+    fs::read_to_string(host::pack(world).join("state/tape.jsonl"))
         .unwrap_or_else(|err| panic!("read tape: {err}"))
 }
 
 #[then(expr = "state_rev is unchanged")]
 fn state_rev_is_unchanged(world: &mut World) {
-    let rev = table::live_mut(world).seated_rev;
-    assert_eq!(world_of(table::pack(world)).state_rev, rev);
+    let rev = host::live_mut(world).seated_rev;
+    assert_eq!(world_of(host::pack(world)).state_rev, rev);
 }
 
 #[then(expr = "save.yaml matches the bytes from before the line")]
 fn save_matches_the_bytes_from_before_the_line(world: &mut World) {
-    let now = fs::read(table::pack(world).join("state/save.yaml"))
+    let now = fs::read(host::pack(world).join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     assert_eq!(now, world.now_bytes);
 }
@@ -196,17 +196,17 @@ fn save_matches_the_bytes_from_before_the_line(world: &mut World) {
 #[given(expr = "a docks table with {string} seated")]
 async fn a_docks_table_with_one_seated(world: &mut World, actor: String) {
     let pack = copy_pack("docks", "speech");
-    table::listen(world, &pack).await;
-    table::seat_actor(world, &pack, &actor).await;
+    host::listen(world, &pack).await;
+    host::seat_actor(world, &pack, &actor).await;
     world.pack = Some(pack);
 }
 
 #[given(expr = "a docks table with {string} and {string} seated")]
 async fn a_docks_table_with_two_seated(world: &mut World, first: String, second: String) {
     let pack = copy_pack("docks", "speech");
-    table::listen(world, &pack).await;
-    table::seat_actor(world, &pack, &first).await;
-    table::seat_actor(world, &pack, &second).await;
+    host::listen(world, &pack).await;
+    host::seat_actor(world, &pack, &first).await;
+    host::seat_actor(world, &pack, &second).await;
     world.pack = Some(pack);
 }
 
@@ -230,16 +230,16 @@ async fn the_gm_has_said_lines_then_more(
 
 #[when(expr = "{string} leaves and claims again")]
 async fn leaves_and_claims_again(world: &mut World, actor: String) {
-    table::close_actor(world, &actor).await;
-    table::wait_presence(world, &format!("{actor} gone"), |_, actors| {
+    host::close_actor(world, &actor).await;
+    host::wait_presence(world, &format!("{actor} gone"), |_, actors| {
         !actors.contains(&actor)
     })
     .await;
-    table::live_mut(world)
+    host::live_mut(world)
         .players
         .retain(|player| player.actor_id != actor);
-    let pack = table::pack(world).to_path_buf();
-    table::seat_actor(world, &pack, &actor).await;
+    let pack = host::pack(world).to_path_buf();
+    host::seat_actor(world, &pack, &actor).await;
 }
 
 #[then(expr = "the replayed lines are {string} through {string}, in order")]
@@ -256,11 +256,11 @@ fn the_replayed_lines_ride_in_the_claims_reply(world: &mut World) {
     let actor = latest_actor(world);
     let claimed = last_claimed(world, &actor);
     assert!(claimed.get("reply_to").is_some(), "{claimed}");
-    let live_speech = table::actor_text(world, &actor)
+    let live_speech = host::actor_text(world, &actor)
         .lines()
         .filter(|line| line.contains("\"kind\":\"say\""))
         .count();
-    assert_eq!(live_speech, 0, "{}", table::actor_text(world, &actor));
+    assert_eq!(live_speech, 0, "{}", host::actor_text(world, &actor));
 }
 
 #[then(expr = "the newest replayed line is {string}")]
@@ -277,14 +277,14 @@ fn gets_exactly_those_lines(world: &mut World, actor: String, count: usize) {
 }
 
 async fn say_lines(world: &mut World, actor: &str, count: usize) -> Vec<String> {
-    if table::live_mut(world).gm.is_none() {
-        table::seat_gm(world).await;
+    if host::live_mut(world).gm.is_none() {
+        host::seat_gm(world).await;
     }
     let mut texts = Vec::with_capacity(count);
     for index in 0..count {
         let text = format!("line{index}");
         let args = format!(r#"{{"to":{{"actor":"{actor}"}},"text":"{text}"}}"#);
-        let body = table::call_gm_tool(world, "say", &args).await;
+        let body = host::call_gm_tool(world, "say", &args).await;
         let addressed = body
             .get("recipient_ids")
             .and_then(Value::as_array)
@@ -296,7 +296,7 @@ async fn say_lines(world: &mut World, actor: &str, count: usize) -> Vec<String> 
 }
 
 fn latest_actor(world: &mut World) -> String {
-    table::live_mut(world)
+    host::live_mut(world)
         .players
         .last()
         .unwrap_or_else(|| panic!("no seated player"))
@@ -328,7 +328,7 @@ fn scrollback(world: &World, actor: &str) -> Vec<Value> {
 
 /// The actor's last `claimed` message.
 fn last_claimed(world: &World, actor: &str) -> Value {
-    table::actor_text(world, actor)
+    host::actor_text(world, actor)
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
         .rfind(|message| message["body"]["kind"] == "claimed")

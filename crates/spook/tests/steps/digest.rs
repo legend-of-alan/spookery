@@ -9,7 +9,7 @@ use spookery_engine::{component, GlobalId, Meter, Note, Presence};
 use crate::support::run_spook;
 use crate::World;
 
-use super::table;
+use super::host;
 
 const METERS: &str = "\
 meter rowan assassination_debt 2 6
@@ -31,7 +31,7 @@ meter mira shop_day 1 1
 
 #[when(expr = "thirteen rounds pass")]
 async fn thirteen_rounds_pass(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
+    let pack = host::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
     for round in 1..=13 {
         let output = run_spook(&["round", arg]).await;
@@ -42,7 +42,7 @@ async fn thirteen_rounds_pass(world: &mut World) {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    world.before = table::read_files(&pack);
+    world.before = host::read_files(&pack);
 }
 
 #[then(expr = "the host text lists the meters")]
@@ -53,7 +53,7 @@ fn the_host_text_lists_the_meters(world: &mut World) {
 #[then(expr = "the host text lists the door note")]
 fn the_host_text_lists_the_door_note(world: &mut World) {
     assert_eq!(world.stdout, HOST);
-    let now = world_of(table::pack(world));
+    let now = world_of(host::pack(world));
     assert_eq!(now.round_index, 13);
     assert_eq!(now.world_time, 1860);
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
@@ -73,10 +73,10 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
 #[given(expr = "a docks table with {string} seated and no GM")]
 async fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
     let pack = crate::support::copy_pack("docks", "host-round");
-    table::listen(world, &pack).await;
-    let printed = table::host_stdout(world).matches(PRINTOUT_END).count();
-    table::seat_actor(world, &pack, &actor).await;
-    table::wait_host_until(world, "the seat's printout", |text| {
+    host::listen(world, &pack).await;
+    let printed = host::host_stdout(world).matches(PRINTOUT_END).count();
+    host::seat_actor(world, &pack, &actor).await;
+    host::wait_host_until(world, "the seat's printout", |text| {
         text.matches(PRINTOUT_END).count() > printed
     })
     .await;
@@ -85,9 +85,9 @@ async fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
 
 #[given(expr = "{string} has waited once")]
 async fn has_waited_once(world: &mut World, actor: String) {
-    let printed = table::host_stdout(world).matches(PRINTOUT_END).count();
-    table::actor_send(world, &actor, "wait", "\"kind\":").await;
-    table::wait_host_until(world, "the wait's printout", |text| {
+    let printed = host::host_stdout(world).matches(PRINTOUT_END).count();
+    host::actor_send(world, &actor, "wait", "\"kind\":").await;
+    host::wait_host_until(world, "the wait's printout", |text| {
         text.matches(PRINTOUT_END).count() > printed
     })
     .await;
@@ -96,16 +96,16 @@ async fn has_waited_once(world: &mut World, actor: String) {
 #[when(expr = "{string} waits three times")]
 async fn waits_three_times(world: &mut World, actor: String) {
     for _ in 0..3 {
-        table::actor_send(world, &actor, "wait", "\"kind\":").await;
+        host::actor_send(world, &actor, "wait", "\"kind\":").await;
     }
 }
 
 #[when(expr = "{string} closes the seat")]
 async fn closes_the_seat(world: &mut World, actor: String) {
-    let mark = table::host_stdout(world).len();
+    let mark = host::host_stdout(world).len();
     world.host_mark = mark;
-    table::close_actor(world, &actor).await;
-    table::wait_host_until(world, "seat close", |text| {
+    host::close_actor(world, &actor).await;
+    host::wait_host_until(world, "seat close", |text| {
         text.get(mark..)
             .is_some_and(|added| added.contains("meter "))
     })
@@ -119,13 +119,13 @@ fn the_status_lists_the_door_note(world: &mut World) {
 
 #[then(expr = "the host printed the door note exactly once")]
 fn the_host_printed_the_door_note_exactly_once(world: &mut World) {
-    let text = table::host_stdout(world);
+    let text = host::host_stdout(world);
     assert_eq!(text.matches(DOOR_NOTE).count(), 1, "{text}");
 }
 
 #[then(expr = "every host printout ends with the meters")]
 fn every_host_printout_ends_with_the_meters(world: &mut World) {
-    let text = table::host_stdout(world);
+    let text = host::host_stdout(world);
     let body = text.split_once('\n').map(|(_, rest)| rest).unwrap_or("");
     let mut in_meters = false;
     let mut open = false;
@@ -157,7 +157,7 @@ fn every_host_printout_ends_with_the_meters(world: &mut World) {
 
 #[then(expr = "the host's last printout lists the meters and no effect rows")]
 fn the_hosts_last_printout_lists_the_meters(world: &mut World) {
-    let text = table::host_stdout(world);
+    let text = host::host_stdout(world);
     let added = text.get(world.host_mark..).unwrap_or("");
     let lines: Vec<&str> = added.lines().filter(|line| !line.is_empty()).collect();
     assert!(
@@ -201,7 +201,7 @@ async fn the_player_resume_lists_the_door_message(world: &mut World) {
 
 #[then(expr = "the player resume for {string} does not list {string}")]
 async fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: String) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let now = world_of(pack);
     let notes = now.globals().get::<Note>(&GlobalId);
     assert!(notes.contains(&note), "the save has no {note}");
@@ -211,7 +211,7 @@ async fn the_player_resume_for_does_not_list(world: &mut World, actor: String, n
 
 #[then(expr = "the perceive view for {string} does not list {string}")]
 fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: String) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let opened = spookery_engine::Session::peek(pack).unwrap();
     let view = opened.perceive(&Presence::default(), &actor).unwrap();
     assert!(
@@ -220,13 +220,13 @@ fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: S
     );
 }
 
-/// The resume frame the host sends when `actor` is claimed at a table on this pack.
+/// The resume frame the host sends when `actor` is claimed on a host running this pack.
 async fn read_player_resume(world: &mut World, actor: &str) -> String {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack).await;
-    table::seat_actor(world, &pack, actor).await;
-    let text = table::actor_text(world, actor);
-    table::stop_host(world);
+    let pack = host::pack(world).to_path_buf();
+    host::listen(world, &pack).await;
+    host::seat_actor(world, &pack, actor).await;
+    let text = host::actor_text(world, actor);
+    host::stop(world);
     text.lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .map(|message| message["body"].clone())
@@ -246,7 +246,7 @@ fn rewrite_mira(pack: &Path, from: &str, to: &str) {
 
 #[then(expr = "the shop lists the oil and the rooms do not")]
 fn the_shop_lists_the_oil(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = host::pack(world);
     let opened = spookery_engine::Session::peek(pack).unwrap();
     let shop = opened.perceive(&Presence::default(), "rowan").unwrap();
     assert_eq!(shop.place, "docks_shop");
