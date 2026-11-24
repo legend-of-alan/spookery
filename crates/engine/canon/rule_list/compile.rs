@@ -29,7 +29,7 @@ pub(in crate::canon) fn compile(
     let mut rules: Vec<Rule> = Vec::new();
     let mut verb_ids = Vec::new();
     for (index, entry) in entries.into_iter().enumerate() {
-        let Some(rule) = diags.keep(compile_one(file, index, entry, owner)) else {
+        let Some(rule) = diags.keep(rule_of(file, index, entry, owner)) else {
             continue;
         };
         if let When::Verb { verb_id, .. } = &rule.when {
@@ -51,8 +51,7 @@ pub(in crate::canon) fn compile(
     diags.into_result(rules)
 }
 
-fn compile_one(
-    // repeats module: the one-entry step that compile runs for each rule
+fn rule_of(
     file: &str,
     index: usize,
     entry: RuleYaml,
