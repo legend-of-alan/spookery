@@ -499,9 +499,9 @@ async fn play_picks_on_that_stub_host(world: &mut World, pc: String) {
     run_play_picking(world, &addr.to_string(), &pc).await;
 }
 
-/// Where a stub host stops answering play.
+/// The step of opening and claiming after which a stub host stops answering play.
 #[derive(Clone, Copy)]
-enum StubHostStopsAfter {
+enum StubHostStop {
     Accept,
     Handshake,
     Hello,
@@ -510,9 +510,9 @@ enum StubHostStopsAfter {
 #[given(regex = r"^a stub host that (.+)$")]
 fn a_stub_host(world: &mut World, behavior: String) {
     let stop = match behavior.as_str() {
-        "accepts the connection and says nothing" => StubHostStopsAfter::Accept,
-        "finishes the handshake and sends no hello" => StubHostStopsAfter::Handshake,
-        "sends the hello and only chatter after the claim" => StubHostStopsAfter::Hello,
+        "accepts the connection and says nothing" => StubHostStop::Accept,
+        "finishes the handshake and sends no hello" => StubHostStop::Handshake,
+        "sends the hello and only chatter after the claim" => StubHostStop::Hello,
         other => panic!("unknown stub host {other}"),
     };
     let listener =
@@ -526,21 +526,21 @@ fn a_stub_host(world: &mut World, behavior: String) {
 
 /// Answers play's connections up to `stop` until play closes the last one it opens. Play
 /// opens one connection for the picker and, once a PC is chosen, one to claim it.
-fn serve_stub_host(listener: &net::TcpListener, stop: StubHostStopsAfter) {
+fn serve_stub_host(listener: &net::TcpListener, stop: StubHostStop) {
     let connections_to_serve = match stop {
-        StubHostStopsAfter::Hello => 2,
+        StubHostStop::Hello => 2,
         _ => 1,
     };
     for stream in listener.incoming().take(connections_to_serve) {
         let mut stream = stream.unwrap_or_else(|err| panic!("accept: {err}"));
-        if let StubHostStopsAfter::Accept = stop {
+        if let StubHostStop::Accept = stop {
             let _ = std::io::copy(&mut stream, &mut std::io::sink());
             continue;
         }
         let Ok(mut socket) = tungstenite::accept(stream) else {
             continue;
         };
-        if let StubHostStopsAfter::Hello = stop {
+        if let StubHostStop::Hello = stop {
             let hello = ServerBody::Hello {
                 version: VERSION,
                 commands: vec!["claim".into(), "release".into(), "wait".into()],
