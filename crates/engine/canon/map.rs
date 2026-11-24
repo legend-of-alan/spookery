@@ -48,7 +48,7 @@ fn compile(row: usize, line: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
     }
     let cost = match &line.cost {
         Some(yaml) => rule_list::cost_of(yaml)
-            .map_err(|fault| vec![source.fault(&format!("paths[{row}].cost"), fault)])?,
+            .map_err(|fault| vec![source.refuse_fault(&format!("paths[{row}].cost"), fault)])?,
         None => Cost {
             ticks: Expr::Num(0),
             meters: Vec::new(),
@@ -58,8 +58,9 @@ fn compile(row: usize, line: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
     let mut diags = Diags::default();
     let if_ = (line.if_.iter())
         .filter_map(|cond| {
-            let fault = |fault| diags.push(source.fault(&format!("paths[{row}].if"), fault));
-            rule_list::cond_of(cond).map_err(fault).ok()
+            let refuse_if_fault =
+                |fault| diags.push(source.refuse_fault(&format!("paths[{row}].if"), fault));
+            rule_list::cond_of(cond).map_err(refuse_if_fault).ok()
         })
         .collect();
     diags.into_result(())?;

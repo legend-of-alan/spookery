@@ -78,14 +78,14 @@ fn rule_of(
     let if_ = match entry.if_.as_ref().map(if_of).transpose() {
         Ok(list) => list.unwrap_or_default(),
         Err(fault) => {
-            diags.push(source.fault("", fault));
+            diags.push(source.refuse_fault("", fault));
             Vec::new()
         }
     };
     let cost = match entry.cost.as_ref().map(cost_of).transpose() {
         Ok(cost) => cost,
         Err(fault) => {
-            diags.push(source.fault("", fault));
+            diags.push(source.refuse_fault("", fault));
             None
         }
     };
@@ -104,7 +104,7 @@ fn rule_of(
         }
         Ok(cost) => cost,
         Err(fault) => {
-            diags.push(source.fault("", fault));
+            diags.push(source.refuse_fault("", fault));
             None
         }
     };
@@ -116,7 +116,7 @@ fn rule_of(
     let lets = match lets {
         Ok(lets) => lets,
         Err(fault) => {
-            diags.push(source.fault("", fault));
+            diags.push(source.refuse_fault("", fault));
             Vec::new()
         }
     };
@@ -126,7 +126,7 @@ fn rule_of(
     {
         Ok(check) => check,
         Err(fault) => {
-            diags.push(source.fault("", fault));
+            diags.push(source.refuse_fault("", fault));
             None
         }
     };
@@ -475,7 +475,7 @@ fn effects_of(file: &str, list: &[EffectYaml]) -> Result<Vec<EffectTemplate>, Ve
         match effect_of(effect) {
             Ok(effect) => out.push(effect),
             Err(fault) => {
-                return Err(vec![FileText::named(file).fault("", fault)]);
+                return Err(vec![FileText::named(file).refuse_fault("", fault)]);
             }
         }
     }
