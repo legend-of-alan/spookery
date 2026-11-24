@@ -7,6 +7,7 @@ use crate::ecs::{self, component, Presence};
 use crate::intent::{Intent, Source, Target};
 use crate::rules::context::Context;
 use crate::rules::expr;
+use crate::rules::owner;
 use crate::rules::rule::Cond;
 use crate::Reason;
 
@@ -58,30 +59,30 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
     let world = context.world;
     match cond {
         Cond::HasItem { subject, id, count } => {
-            let actor = expr::resolve_actor(context, subject)?;
-            let id = expr::resolve_item_id(context, id)?;
+            let actor = owner::resolve_actor(context, subject)?;
+            let id = owner::resolve_item_id(context, id)?;
             let held = world.actors().get::<component::Item>(actor);
             Ok(i64::from(held.get(&id).copied().unwrap_or(0)) >= expr::eval(context, count)?)
         }
         Cond::Wielding { subject, id } => {
-            let actor = expr::resolve_actor(context, subject)?;
-            let id = expr::resolve_item_id(context, id)?;
+            let actor = owner::resolve_actor(context, subject)?;
+            let id = owner::resolve_item_id(context, id)?;
             let wielded = world.actors().get::<component::WieldedItem>(actor).get();
             Ok(wielded.is_some_and(|wielded| wielded == id))
         }
         Cond::Meter { of, key, op, value } => {
-            let entity = expr::resolve_entity(context, of)?;
+            let entity = owner::resolve_entity(context, of)?;
             let current = (world.entities().get::<component::Meter>(&entity)).value(key)?;
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
         }
         Cond::Flag { of, key, is } => {
-            let entity = expr::resolve_entity(context, of)?;
+            let entity = owner::resolve_entity(context, of)?;
             let flag = world.entities().get::<component::Flag>(&entity);
             Ok(flag.contains(key) == *is)
         }
         Cond::At { subject, place } => {
-            let actor = expr::resolve_actor(context, subject)?;
+            let actor = owner::resolve_actor(context, subject)?;
             let at = world.actors().get::<component::Place>(actor).get();
             Ok(at.is_some_and(|at| at.to_string() == *place))
         }
