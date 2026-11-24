@@ -220,9 +220,9 @@ fn find_misplaced_target_problem(rule: &Rule) -> Option<(String, String)> {
         When::Habit | When::Change(_) => TargetKind::None,
     };
     let (key, needs) = rule.mentions().find_misplaced_target(target_kind)?;
-    let (needs, target) = (needs.as_str(), target_kind.as_str());
+    let (needs, verb_target) = (needs.as_str(), target_kind.as_str());
     Some((
-        format!("says target in {key}, but its target is {target}"),
+        format!("says target in {key}, but its target is {verb_target}"),
         format!("give the verb target: {needs}, or name the {needs} by its id"),
     ))
 }
@@ -588,8 +588,8 @@ fn find_rule_band_problem(
     own_check: Option<&rule::Check>,
     effect_lists: [&[EffectTemplate]; 4],
 ) -> Option<(&'static str, &'static str)> {
-    let [_, _, partial_list, _] = effect_lists;
-    let mut checks = Vec::from_iter(own_check.map(|check| (check, partial_list)));
+    let [_, _, own_partial, _] = effect_lists;
+    let mut checks = Vec::from_iter(own_check.map(|check| (check, own_partial)));
     for effect in effect_lists.into_iter().flatten() {
         effect.visit(|nested| {
             if let EffectTemplate::Check { check, partial, .. } = nested {

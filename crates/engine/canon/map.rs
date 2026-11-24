@@ -58,9 +58,9 @@ fn compile(row: usize, line: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
     let mut diags = Diags::default();
     let if_ = (line.if_.iter())
         .filter_map(|cond| {
-            let refuse_if_fault =
+            let refuse_cond_fault =
                 |fault| diags.push(source.refuse_fault(&format!("paths[{row}].if"), fault));
-            rule_list::cond_of(cond).map_err(refuse_if_fault).ok()
+            rule_list::cond_of(cond).map_err(refuse_cond_fault).ok()
         })
         .collect();
     diags.into_result(())?;

@@ -102,7 +102,7 @@ impl<'a> FileText<'a> {
         self.refuse_at(path, Locator::Spot(fault.spot), fault.message, "")
     }
 
-    /// The schema error at `path` with `hint`, placed where `at` points.
+    /// The schema error `message` at `path`, with `hint`, placed where `at` points.
     pub(super) fn refuse_at(
         &self,
         path: &str,
