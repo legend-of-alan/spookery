@@ -586,10 +586,10 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
 /// `do`, `success`, `partial` and `miss` lists, as the words after the rule's id and the hint.
 fn find_rule_band_problem(
     own_check: Option<&rule::Check>,
-    [do_list, success_list, partial_list, miss_list]: [&[EffectTemplate]; 4],
+    effect_lists: [&[EffectTemplate]; 4],
 ) -> Option<(&'static str, &'static str)> {
+    let [_, _, partial_list, _] = effect_lists;
     let mut checks = Vec::from_iter(own_check.map(|check| (check, partial_list)));
-    let effect_lists = [do_list, success_list, partial_list, miss_list];
     for effect in effect_lists.into_iter().flatten() {
         effect.visit(|nested| {
             if let EffectTemplate::Check { check, partial, .. } = nested {
