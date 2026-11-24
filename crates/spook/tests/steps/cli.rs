@@ -1,12 +1,9 @@
-use std::io::{ErrorKind, Write};
-use std::net;
+use std::io::Write;
 
 use cucumber::gherkin::Step;
 use cucumber::{given, then, when};
-use serde_json::json;
 use spookery_engine::testing::stamp_pack_rev;
 use spookery_engine::Meter;
-use tungstenite::Message;
 
 use crate::support;
 use crate::World;
@@ -81,102 +78,13 @@ async fn another_play_picks_on_that_table(world: &mut World, pc: String) {
     run_play_picking(world, &format!("127.0.0.1:{port}"), &pc).await;
 }
 
-#[when(expr = "play picks {word} on that stand-in host")]
-async fn play_picks_on_that_stand_in_host(world: &mut World, pc: String) {
-    let listener = world
-        .listeners
-        .last()
-        .unwrap_or_else(|| panic!("no stand-in host"));
-    let addr = listener.local_addr().unwrap_or_else(|err| panic!("{err}"));
-    run_play_picking(world, &addr.to_string(), &pc).await;
-}
-
-async fn run_play_picking(world: &mut World, addr: &str, pc: &str) {
+/// Runs play on `addr`, picks `pc`, and keeps its exit code and output once it exits.
+pub(crate) async fn run_play_picking(world: &mut World, addr: &str, pc: &str) {
     let mut play = spawn_play(addr, pc, &[]);
     let (status, stdout, stderr) = play.wait_with_output().await;
     world.code = status.code();
     world.stdout = stdout;
     world.stderr = stderr;
-}
-
-#[derive(Clone, Copy)]
-enum StandInReach {
-    TcpOnly,
-    HandshakeOnly,
-    HelloThenChatter,
-}
-
-#[given(regex = r"^a stand-in host that (.+)$")]
-fn a_stand_in_host(world: &mut World, behaviour: String) {
-    let reach = match behaviour.as_str() {
-        "accepts the connection and says nothing" => StandInReach::TcpOnly,
-        "finishes the handshake and sends no hello" => StandInReach::HandshakeOnly,
-        "sends the hello and only chatter after the claim" => StandInReach::HelloThenChatter,
-        other => panic!("unknown stand-in host {other}"),
-    };
-    let listener =
-        net::TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
-    let listener_for_thread = listener
-        .try_clone()
-        .unwrap_or_else(|err| panic!("clone: {err}"));
-    world.listeners.push(listener);
-    std::thread::spawn(move || serve_stand_in(&listener_for_thread, reach));
-}
-
-/// Answers play's connections as far as `reach` goes until play closes the last one it opens. Play
-/// opens one connection for the picker and, once a PC is chosen, one to claim it.
-fn serve_stand_in(listener: &net::TcpListener, reach: StandInReach) {
-    let connections = match reach {
-        StandInReach::HelloThenChatter => 2,
-        _ => 1,
-    };
-    for stream in listener.incoming().take(connections) {
-        let mut stream = stream.unwrap_or_else(|err| panic!("accept: {err}"));
-        if let StandInReach::TcpOnly = reach {
-            let _ = std::io::copy(&mut stream, &mut std::io::sink());
-            continue;
-        }
-        let Ok(mut socket) = tungstenite::accept(stream) else {
-            continue;
-        };
-        if let StandInReach::HelloThenChatter = reach {
-            let hello = json!({ "body": {
-                "kind": "hello",
-                "version": spookery::protocol::VERSION,
-                "commands": ["claim", "release", "wait"],
-                "open": ["rowan"],
-            }});
-            let _ = socket.send(Message::text(hello.to_string()));
-        }
-        read_then_chatter(&mut socket);
-    }
-}
-
-/// Reads until play closes `socket`. Once play sends anything, such as a claim, sends a
-/// message that answers nothing each second, so a deadline that restarted on each message
-/// would never pass.
-fn read_then_chatter(socket: &mut tungstenite::WebSocket<net::TcpStream>) {
-    let mut seq = 0;
-    loop {
-        match socket.read() {
-            Ok(Message::Text(_)) => {
-                let chatter_interval = Some(std::time::Duration::from_secs(1));
-                let _ = socket.get_mut().set_read_timeout(chatter_interval);
-            }
-            Ok(_) => {}
-            Err(tungstenite::Error::Io(err))
-                if matches!(err.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) =>
-            {
-                seq += 1;
-                let presence =
-                    json!({ "seq": seq, "body": { "kind": "presence", "actors_present": [] } });
-                if socket.send(Message::text(presence.to_string())).is_err() {
-                    return;
-                }
-            }
-            Err(_) => return,
-        }
-    }
 }
 
 #[then(expr = "play shows each of these blocks:")]

@@ -27,7 +27,7 @@ impl Connection {
     /// Dial `ws://<addr>/<seat>` and read the hello, within `CONNECTION_TIMEOUT`. A refused GM
     /// seat is `Error::Refused`.
     pub async fn open(addr: SocketAddr, seat: &str) -> Result<(Self, ServerMessage), Error> {
-        let handshake = async {
+        let opening = async {
             let url = format!("ws://{addr}/{seat}");
             let (socket, _) = tokio_tungstenite::connect_async(url)
                 .await
@@ -43,7 +43,7 @@ impl Connection {
                 None => Err(Error::Message("NOT_IN_SPEC".into())),
             }
         };
-        tokio::time::timeout(CONNECTION_TIMEOUT, handshake)
+        tokio::time::timeout(CONNECTION_TIMEOUT, opening)
             .await
             .unwrap_or_else(|_| Err(Error::Message("Opening the connection timed out.".into())))
     }

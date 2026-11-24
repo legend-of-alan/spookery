@@ -131,16 +131,15 @@ async fn reconnect(
     Ok(true)
 }
 
-/// Sends `claim` with `args` and shows its reply, what it missed, and the first view, within
-/// `websocket::CONNECTION_TIMEOUT`. Returns that view and the token. If the host refuses, play
-/// ends.
+/// Sends `claim` with `args` and shows its reply, what it missed, and the first view, all
+/// within `websocket::CONNECTION_TIMEOUT`. Returns that view and the token. A refusal ends play.
 async fn claim_pc(
     connection: &mut websocket::Connection,
     args: Value,
     terminal: &mut Terminal,
     mut view: Option<protocol::View>,
 ) -> Result<(protocol::View, String), Error> {
-    let claim = async {
+    let claiming = async {
         let request_id = connection.send("claim", args).await?;
         let mut reconnect_token = String::new();
         loop {
@@ -175,7 +174,7 @@ async fn claim_pc(
             }
         }
     };
-    tokio::time::timeout(websocket::CONNECTION_TIMEOUT, claim)
+    tokio::time::timeout(websocket::CONNECTION_TIMEOUT, claiming)
         .await
         .unwrap_or_else(|_| Err(Error::Message("Claiming the character timed out.".into())))
 }
