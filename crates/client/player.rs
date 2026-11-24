@@ -131,47 +131,53 @@ async fn reconnect(
     Ok(true)
 }
 
-/// Sends `claim` with `args` and shows its reply, what it missed, and the first view.
-/// Returns that view and the token. If the host refuses, play ends.
+/// Sends `claim` with `args` and shows its reply, what it missed, and the first view, within
+/// `websocket::CONNECTION_TIMEOUT`. Returns that view and the token. If the host refuses, play
+/// ends.
 async fn claim_pc(
     connection: &mut websocket::Connection,
     args: Value,
     terminal: &mut Terminal,
     mut view: Option<protocol::View>,
 ) -> Result<(protocol::View, String), Error> {
-    let request_id = connection.send("claim", args).await?;
-    let mut reconnect_token = String::new();
-    loop {
-        let Some(server_message) = connection.recv().await.transpose()? else {
-            return Err(Error::Message("NOT_IN_SPEC".into()));
-        };
-        if let ServerBody::Refused(refusal) = &server_message.body {
-            if server_message.reply_to.as_deref() == Some(request_id.as_str()) {
-                return Err(Error::Message(text::render_refusal(
-                    refusal,
-                    terminal.is_raw(),
-                )));
+    let claim = async {
+        let request_id = connection.send("claim", args).await?;
+        let mut reconnect_token = String::new();
+        loop {
+            let Some(server_message) = connection.recv().await.transpose()? else {
+                return Err(Error::Message("NOT_IN_SPEC".into()));
+            };
+            if let ServerBody::Refused(refusal) = &server_message.body {
+                if server_message.reply_to.as_deref() == Some(request_id.as_str()) {
+                    return Err(Error::Message(text::render_refusal(
+                        refusal,
+                        terminal.is_raw(),
+                    )));
+                }
+            }
+            let missed_messages = match &server_message.body {
+                ServerBody::Claimed {
+                    missed_messages, ..
+                } => missed_messages.as_slice(),
+                _ => &[],
+            };
+            let messages = std::iter::once(&server_message).chain(missed_messages);
+            for message in messages {
+                if let ServerBody::View(body) = &message.body {
+                    view = Some((**body).clone());
+                }
+                terminal.show(message, view.as_ref())?;
+            }
+            match server_message.body {
+                ServerBody::Claimed { token, .. } => reconnect_token = token,
+                ServerBody::View(body) => return Ok((*body, reconnect_token)),
+                _ => {}
             }
         }
-        let missed_messages = match &server_message.body {
-            ServerBody::Claimed {
-                missed_messages, ..
-            } => missed_messages.as_slice(),
-            _ => &[],
-        };
-        let messages = std::iter::once(&server_message).chain(missed_messages);
-        for message in messages {
-            if let ServerBody::View(body) = &message.body {
-                view = Some((**body).clone());
-            }
-            terminal.show(message, view.as_ref())?;
-        }
-        match server_message.body {
-            ServerBody::Claimed { token, .. } => reconnect_token = token,
-            ServerBody::View(body) => return Ok((*body, reconnect_token)),
-            _ => {}
-        }
-    }
+    };
+    tokio::time::timeout(websocket::CONNECTION_TIMEOUT, claim)
+        .await
+        .unwrap_or_else(|_| Err(Error::Message("Claiming the character timed out.".into())))
 }
 
 /// The command a typed line names, and its arguments. `tell` is the word `say`.
