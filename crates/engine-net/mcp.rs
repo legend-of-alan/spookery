@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{ready, Context, Poll};
 
 use futures_core::Stream;
+use rmcp::handler::server::tool::schema_for_type;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ClientJsonRpcMessage,
     CustomNotification, GetExtensions, InitializeRequestParams, InitializeResult, ListToolsResult,
@@ -23,13 +24,17 @@ use rmcp::transport::streamable_http_server::session::{
 };
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use rmcp::{ErrorData as McpError, ServerHandler};
+use serde_json::{Map, Value};
+use spookery_engine::transport::ConnId;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
-use super::gm;
 use super::host::{report_close, Request};
 use super::limits::GM_BODY_CAP;
-use super::seat::{frame_queue, ConnId, FrameReceiver};
-use crate::protocol::{ClientBody, ClientMessage, Seat, ToolResult, COMMANDS};
+use super::outbound::{frame_queue, FrameReceiver};
+use crate::protocol::{
+    ClientBody, ClientMessage, CommitArgs, NoArgs, PerceiveArgs, QueueArgs, SayArgs, Seat,
+    ToolResult, COMMANDS,
+};
 
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
@@ -323,7 +328,7 @@ fn list_gm_tools() -> Vec<Tool> {
         .iter()
         .filter(|command| command.seat == Seat::Gm)
         .filter_map(|command| {
-            let (about, schema) = gm::describe(command.id)?;
+            let (about, schema) = describe(command.id)?;
             Some(Tool::new(
                 command.id,
                 format!("{about} {SEAT_NOTES}"),
@@ -331,6 +336,39 @@ fn list_gm_tools() -> Vec<Tool> {
             ))
         })
         .collect()
+}
+
+/// What a GM command's MCP tool says about it, and the schema of the command's `args`. `None` for a
+/// command that is not a GM command.
+fn describe(command: &str) -> Option<(&'static str, Arc<Map<String, Value>>)> {
+    let described = match command {
+        "status" => (
+            "status takes no keys. The reply is who is seated, the queue and the pack.",
+            schema_for_type::<NoArgs>(),
+        ),
+        "perceive" => (
+            "perceive requires as. A missing as is UNSCOPED_PERCEIVE.",
+            schema_for_type::<PerceiveArgs>(),
+        ),
+        "queue" => (
+            "queue requires actor_id and move. A habit row is legal when actor_id is an npc. A PC a player holds is ACTOR_MISMATCH.",
+            schema_for_type::<QueueArgs>(),
+        ),
+        "say" => (
+            "say requires text. to is \"table\", {\"place\": id} or {\"actor\": id}, and may be left out only with as, an NPC's id to speak as that NPC, which then speaks to the place that NPC stands. A supplied from is SCHEMA.",
+            schema_for_type::<SayArgs>(),
+        ),
+        "commit" => (
+            "commit requires include_round. session_id may be a string. The round messages come before the reply.",
+            schema_for_type::<CommitArgs>(),
+        ),
+        "release" => (
+            "release takes no keys. The reply is sent after this GM seat is free.",
+            schema_for_type::<NoArgs>(),
+        ),
+        _ => return None,
+    };
+    Some(described)
 }
 
 const SEAT_NOTES: &str = "The result lists every message the command sent this seat, its reply last. Player moves stay queued until commit. say does not tick. Other messages arrive as spook/event notifications on the GET /mcp event stream, which holds the seat.";
@@ -342,10 +380,21 @@ mod tests {
 
     use rmcp::model::ProtocolVersion;
     use serde_json::Value;
+    use spookery_engine::transport::ConnId;
 
-    use super::serve;
+    use super::{describe, serve};
     use crate::host::Request;
-    use crate::seat::ConnId;
+    use crate::protocol::{Seat, COMMANDS};
+
+    /// Every GM command the hello lists has a tool description and schema. A command that is not
+    /// a GM command has none.
+    #[test]
+    fn each_gm_command_is_described() {
+        for command in COMMANDS.iter().filter(|command| command.seat == Seat::Gm) {
+            assert!(describe(command.id).is_some(), "{}", command.id);
+        }
+        assert!(describe("fly").is_none());
+    }
 
     /// A stand-in for the host thread with one GM seat. It refuses a second
     /// claim while the seat is held, like the real host, and sends a seated

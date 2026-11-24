@@ -58,10 +58,10 @@ tests/packs/           docks, the one test pack: a fixture the tests copy, not a
 .grok/skills/          the author-pack skill
 crates/
   protocol/            spookery-protocol: the message envelope, its bodies, and the command table
-  engine/              spookery-engine: world model, rules, rounds, and journal
+  engine/              spookery-engine: world model, rules, rounds, journal, and transport (the router: GM commands, seats)
+  engine-net/          spookery-engine-net: the host thread, the game port's WebSocket endpoint, MCP endpoint, idle timer
   agent/               spookery-agent: the reusable GM brain: connection, model, chat_completions, context (the observation), tool, turn and task (the turn graph)
   client/              spookery-client: player, gm, ai_gm (the three clients), terminal (plain lines or the play window), websocket, http_model, text
-  server/              spookery-server: the host, the game port's WebSocket endpoint, MCP endpoint, GM commands, seats, idle timer
   spook/               package and binary spook, library spookery
     tests/features/    BDD scenarios
 ```

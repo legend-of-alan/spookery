@@ -3164,8 +3164,8 @@ dependencies = [
  "spookery-agent",
  "spookery-client",
  "spookery-engine",
+ "spookery-engine-net",
  "spookery-protocol",
- "spookery-server",
  "tokio",
  "tracing-subscriber",
  "tungstenite",
@@ -3223,16 +3223,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "spookery-protocol"
-version = "0.0.0"
-dependencies = [
- "schemars",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "spookery-server"
+name = "spookery-engine-net"
 version = "0.0.0"
 dependencies = [
  "axum",
@@ -3240,7 +3231,6 @@ dependencies = [
  "futures-core",
  "futures-util",
  "rmcp",
- "serde",
  "serde_json",
  "socket2",
  "spookery-engine",
@@ -3248,7 +3238,15 @@ dependencies = [
  "tokio",
  "tracing",
  "tungstenite",
- "uuid",
+]
+
+[[package]]
+name = "spookery-protocol"
+version = "0.0.0"
+dependencies = [
+ "schemars",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

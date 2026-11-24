@@ -10,6 +10,7 @@ pub mod round;
 pub(crate) mod rules;
 pub(crate) mod session;
 pub(crate) mod store;
+pub mod transport;
 
 /// Any entity's id, as rules name it; `ecs::World::entities` reads its components.
 pub mod entity {

@@ -1,14 +1,16 @@
 //! Engine output as message bodies. The one place a `protocol::Refusal` is built.
 
-use super::seat::Claim;
-use crate::protocol::{
-    self, CommitBody, HostStatus, PackSummary, QueuedMove, Roll, ServerBody, Speech, StatusPresence,
+use spookery_protocol::{
+    self as protocol, CommitBody, HostStatus, PackSummary, QueuedMove, Roll, ServerBody, Speech,
+    StatusPresence,
 };
-use spookery_engine::{self as engine, ActorId, Intent, MoveReport, Presence, TapeRecord};
+
+use super::participants::Claim;
+use crate::{ActorId, Intent, MoveReport, Presence, TapeRecord};
 
 /// A move the gate or a round refused. Its `detail` is the meter or item id, or the
 /// sentence a locked exit shows.
-pub(super) fn build_refused_move(refusal: &engine::Refusal) -> protocol::Refusal {
+pub(super) fn build_refused_move(refusal: &crate::Refusal) -> protocol::Refusal {
     protocol::Refusal {
         code: protocol::Code::Known(refusal.code),
         detail: refusal.detail.clone(),
@@ -33,7 +35,7 @@ pub(super) fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
 /// The reply to a claim: the PC, its token, the round and tick of `now`, `scrollback`, and the
 /// messages `claim` kept after `last_seq`.
 pub(super) fn build_claim_reply(
-    now: &engine::ecs::World,
+    now: &crate::ecs::World,
     claim: &Claim,
     scrollback: &[TapeRecord],
     last_seq: u64,
@@ -79,7 +81,7 @@ fn rolls<'a>(reports: impl IntoIterator<Item = &'a MoveReport>) -> impl Iterator
     })
 }
 
-pub(super) fn build_resume(view: &engine::View) -> ServerBody {
+pub(super) fn build_resume(view: &crate::View) -> ServerBody {
     let actor_id = &view.viewer_id;
     let notes = view
         .notes
@@ -90,7 +92,7 @@ pub(super) fn build_resume(view: &engine::View) -> ServerBody {
     ServerBody::Resume { notes }
 }
 
-pub(super) fn build_view(view: &engine::View) -> ServerBody {
+pub(super) fn build_view(view: &crate::View) -> ServerBody {
     ServerBody::View(Box::new(protocol::View {
         viewer: view.viewer_id.to_string(),
         place: view.place.clone(),
@@ -115,7 +117,7 @@ pub(super) fn build_committed(
     state_rev: u64,
     changed_keys: &[String],
     journal_path: Option<&str>,
-    outputs: &[engine::round::Output],
+    outputs: &[crate::round::Output],
 ) -> ServerBody {
     let checks = rolls(outputs.iter().flat_map(|output| &output.reports))
         .cloned()
@@ -134,7 +136,7 @@ pub(super) fn build_committed(
 }
 
 pub(super) fn build_status(
-    now: &engine::ecs::World,
+    now: &crate::ecs::World,
     presence: &Presence,
     queued: &[Intent],
     pack: PackSummary,

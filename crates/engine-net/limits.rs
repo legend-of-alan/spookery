@@ -23,10 +23,6 @@ pub(super) const BURST: u64 = 10;
 /// Frames queued toward one socket before that socket is dropped.
 pub(super) const OUTBOUND_FRAME_CAP: usize = 256;
 
-/// How many messages a claim keeps for a reconnect. Older ones are dropped, and the
-/// `claimed` reply says `is_missed_truncated`.
-pub(super) const MISSED_MESSAGE_CAP: usize = 256;
-
 /// Bytes queued toward one socket before that socket is dropped.
 /// A 256-frame queue of long speech fills the tape before a large TCP
 /// window fills, so the byte cap is what drops a stopped reader there.

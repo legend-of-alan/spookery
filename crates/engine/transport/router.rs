@@ -1,181 +1,75 @@
-//! The host, the one owner of the session and its seats: connections, commands, say and rounds.
-//! Every message it sends but a hello takes the next `seq` from its one counter.
+//! The router reads one request at a time and returns the messages it sends, each addressed to a
+//! connection. Every message it sends but a hello takes the next `seq` from its one counter.
 
 use std::collections::BTreeMap;
 use std::io::Write;
-use std::sync::mpsc::{Receiver, Sender};
 
 use serde_json::{Map, Value};
-use spookery_engine::{emit_tape_record, ActorId, Presence, Reason, RecipientLine, TapeRecord};
-use tokio::sync::{oneshot, watch};
-
-use super::gm::{self, Reply};
-use super::idle::{self, now_stamp};
-use super::message_body;
-use super::seat::{Claim, ConnId, Connection, FrameSender, Seats};
-use super::Error;
-use crate::protocol::{
+use spookery_protocol::{
     is_built_in, parse_args, Audience, ClaimArgs, ClientBody, ClientMessage, MoveArgs, NoArgs,
     SayArgs, Seat, ServerBody, ServerMessage, COMMANDS, VERSION,
 };
 
-/// The host's cap. A pack may define more PCs than this.
+use super::gm::{self, Reply};
+use super::message_body;
+use super::participants::{Claim, ConnId, Connection, Participants};
+use crate::{emit_tape_record, ActorId, Presence, Reason, RecipientLine, Session, TapeRecord};
+
+/// The router's cap. A pack may define more PCs than this.
 const MAX_PLAYER_SEATS: usize = 3;
 
-/// Commit a queued round, then fast-forward while every seated PC is busy.
-/// An empty queue only fast-forwards.
-pub(crate) fn commit_then_fast_forward(
-    session: &mut spookery_engine::Session,
-    presence: &Presence,
-) -> Result<Vec<spookery_engine::round::Output>, Reason> {
-    let wall = now_stamp();
-    session.commit_then_fast_forward(presence, &wall)
+/// Sent from a network adapter, such as engine-net's game port, to the router: a client message
+/// the adapter could not read, the `id` it named, if any, and why.
+pub struct Rejection {
+    pub id: Option<String>,
+    pub code: Reason,
 }
 
-/// Sent from the game port, the MCP endpoint and the idle timer to the host thread.
-pub(super) enum Request {
-    /// A new connection on `seat`. A GM connection takes the one GM seat.
-    Open {
-        conn: ConnId,
-        seat: Seat,
-        frames_tx: FrameSender,
-        reply: oneshot::Sender<Result<(), Box<ServerMessage>>>,
-    },
-    /// One client message, or why the game port could not read it.
-    Message {
-        conn: ConnId,
-        message: Result<ClientMessage, Rejection>,
-        reply: oneshot::Sender<()>,
-    },
-    /// A connection closed. The host lets go of it, then acks.
-    Close {
-        conn: ConnId,
-        ack: oneshot::Sender<()>,
-    },
-    /// One MCP tool call, as a client message. The reply is every message the host sent
-    /// this connection while it ran the command, the command's own reply last.
-    ToolCall {
-        conn: ConnId,
-        message: ClientMessage,
-        reply: oneshot::Sender<Vec<ServerMessage>>,
-    },
-    Wake,
-    Stop,
+/// Sent from the router back to whatever drives it, such as engine-net's host thread or an
+/// in-process host: what one request made the router send.
+#[derive(Default)]
+pub struct Outbox {
+    /// Each message and the connection it goes to, in send order. A caller that cannot queue
+    /// one closes that connection with `Router::close`.
+    pub messages: Vec<(ConnId, ServerMessage)>,
+    /// Whether rounds were played, so an idle timer starts its wait again.
+    pub restart_idle: bool,
 }
 
-/// A client message the game port could not read, sent from the game port to the host:
-/// the `id` it named, if any, and why.
-pub(super) struct Rejection {
-    pub(super) id: Option<String>,
-    pub(super) code: Reason,
-}
-
-/// Tells the host a connection closed, and waits until the host has let go of it.
-pub(super) async fn report_close(tx: &Sender<Request>, conn: ConnId) {
-    let (ack_tx, ack_rx) = oneshot::channel();
-    if tx.send(Request::Close { conn, ack: ack_tx }).is_err() {
-        return;
-    }
-    let _ = ack_rx.await;
-}
-
-pub(crate) struct Host {
-    session: spookery_engine::Session,
-    seats: Seats,
+/// The one owner of the session and who is seated: connections, commands, say and rounds.
+pub struct Router {
+    session: Session,
+    participants: Participants,
     /// The `seq` of the last message sent.
     seq: u64,
     /// The pack's verbs, which are player commands too.
     verbs: Vec<String>,
-    /// Each send restarts the idle timer.
-    idle: watch::Sender<u64>,
-    /// While an MCP tool call runs: its connection, and the messages sent to it so far.
-    tool_call: Option<(ConnId, Vec<ServerMessage>)>,
+    /// What the request being handled has sent so far.
+    outbox: Outbox,
     out: Box<dyn Write>,
 }
 
-impl Host {
-    pub(crate) fn new(
-        session: spookery_engine::Session,
-        idle: watch::Sender<u64>,
-        out: Box<dyn Write>,
-    ) -> Self {
+impl Router {
+    /// A router for `session`. Its console lines, speech and digests go to `out`.
+    pub fn new(session: Session, out: Box<dyn Write>) -> Self {
         let verbs = session.verbs();
         Self {
             session,
-            seats: Seats::default(),
+            participants: Participants::default(),
             seq: 0,
             verbs,
-            idle,
-            tool_call: None,
+            outbox: Outbox::default(),
             out,
         }
     }
 
-    /// Answer requests until `Stop`. A store fault ends the host.
-    pub(crate) fn run(mut self, rx: Receiver<Request>) -> Result<(), Error> {
-        loop {
-            let request = rx.recv().map_err(|_| Error::Reason(Reason::NotInSpec))?;
-            let mut handled = Ok(());
-            match request {
-                Request::Open {
-                    conn,
-                    seat,
-                    frames_tx,
-                    reply,
-                } => {
-                    let opened = self.open(conn, seat, frames_tx);
-                    let took = opened.is_ok();
-                    if reply.send(opened).is_err() && took {
-                        self.drop_connection(conn);
-                    }
-                }
-                Request::Message {
-                    conn,
-                    message: received,
-                    reply,
-                } => {
-                    self.handle_message(conn, received);
-                    let _ = reply.send(());
-                }
-                Request::Close { conn, ack } => {
-                    self.drop_connection(conn);
-                    let _ = ack.send(());
-                }
-                Request::ToolCall {
-                    conn,
-                    message,
-                    reply,
-                } => {
-                    self.tool_call = Some((conn, Vec::new()));
-                    if self.seats.connection(conn).is_some() {
-                        self.handle_message(conn, Ok(message));
-                    } else {
-                        let refused = ServerBody::Refused(Reason::NotInSpec.into());
-                        self.reply(conn, message.id, refused);
-                    }
-                    let messages = self.tool_call.take().map(|(_, messages)| messages);
-                    let _ = reply.send(messages.unwrap_or_default());
-                }
-                Request::Wake => handled = self.wake(),
-                Request::Stop => {
-                    self.seats = Seats::default();
-                    return Ok(());
-                }
-            }
-            handled.map_err(Error::Reason)?;
-        }
-    }
-
     /// Opens the connection and sends its hello. A GM connection while the seat is held, or a
-    /// second one for an MCP session that already has its stream, is refused, and the
-    /// connection sends that refusal itself.
-    fn open(
-        &mut self,
-        conn: ConnId,
-        seat: Seat,
-        out: FrameSender,
-    ) -> Result<(), Box<ServerMessage>> {
-        if seat == Seat::Gm && (self.seats.gm.is_some() || self.seats.connection(conn).is_some()) {
+    /// second one for an MCP session that already has its stream, is refused, and the caller
+    /// sends that refusal itself.
+    pub fn open(&mut self, conn: ConnId, seat: Seat) -> Result<Outbox, Box<ServerMessage>> {
+        if seat == Seat::Gm
+            && (self.participants.gm.is_some() || self.participants.connection(conn).is_some())
+        {
             tracing::debug!(conn_id = %conn, code = Reason::TableFull.as_str(), "GM seat refused");
             let seq = self.next_seq();
             let refused = stamp_message(seq, None, ServerBody::Refused(Reason::TableFull.into()));
@@ -183,14 +77,12 @@ impl Host {
         }
         if seat == Seat::Gm {
             tracing::info!(conn_id = %conn, "GM seated");
-            self.seats.gm = Some(conn);
+            self.participants.gm = Some(conn);
         }
         tracing::debug!(conn_id = %conn, ?seat, "connection opened");
-        self.seats.connections.push(Connection {
-            id: conn,
-            seat,
-            out,
-        });
+        self.participants
+            .connections
+            .push(Connection { id: conn, seat });
         let mut commands: Vec<String> = COMMANDS
             .iter()
             .filter(|command| command.seat == seat)
@@ -218,12 +110,65 @@ impl Host {
             },
         };
         self.send(conn, hello);
-        Ok(())
+        Ok(self.take_outbox())
+    }
+
+    /// One client message from `conn`, or why the caller could not read it. `wall` stamps any
+    /// round it plays.
+    pub fn receive(
+        &mut self,
+        conn: ConnId,
+        received: Result<ClientMessage, Rejection>,
+        wall: &str,
+    ) -> Outbox {
+        self.handle_message(conn, received, wall);
+        self.take_outbox()
+    }
+
+    /// One MCP tool call, as a client message. A connection that is not open is refused.
+    pub fn call_tool(&mut self, conn: ConnId, message: ClientMessage, wall: &str) -> Outbox {
+        if self.participants.connection(conn).is_some() {
+            self.handle_message(conn, Ok(message), wall);
+        } else {
+            let refused = ServerBody::Refused(Reason::NotInSpec.into());
+            self.reply(conn, message.id, refused);
+        }
+        self.take_outbox()
+    }
+
+    /// Lets go of a connection that closed. A claim it drove is held for its token, and a GM
+    /// seat it held is free.
+    pub fn close(&mut self, conn: ConnId) {
+        tracing::debug!(conn_id = %conn, "connection closed");
+        if self.participants.gm == Some(conn) {
+            self.release_gm();
+        }
+        if let Some(claim) = self.participants.claim_of_mut(conn) {
+            claim.conn = None;
+        }
+        self.participants.remove(conn);
+    }
+
+    /// Plays the idle rounds due while every seat is empty. A claim whose connection dropped
+    /// still seats its player. `catch_up` plays them and says whether world time moved.
+    pub fn wake(
+        &mut self,
+        catch_up: impl FnOnce(&mut Session) -> Result<bool, Reason>,
+    ) -> Result<Outbox, Reason> {
+        let seated = !self.participants.claims.is_empty() || self.participants.gm.is_some();
+        if !seated && catch_up(&mut self.session)? {
+            self.outbox.restart_idle = true;
+        }
+        Ok(self.take_outbox())
+    }
+
+    fn take_outbox(&mut self) -> Outbox {
+        std::mem::take(&mut self.outbox)
     }
 
     /// The hello's `open` and `taken`: the PCs nobody holds now, and the PCs held now.
     fn open_and_taken(&self) -> (Vec<String>, Vec<String>) {
-        let presence = self.seats.presence();
+        let presence = self.participants.presence();
         self.session.pcs().map(ActorId::to_string).partition(|id| {
             !presence
                 .actors_present
@@ -232,9 +177,14 @@ impl Host {
         })
     }
 
-    fn handle_message(&mut self, conn: ConnId, received: Result<ClientMessage, Rejection>) {
+    fn handle_message(
+        &mut self,
+        conn: ConnId,
+        received: Result<ClientMessage, Rejection>,
+        wall: &str,
+    ) {
         let Some(seat) = self
-            .seats
+            .participants
             .connection(conn)
             .map(|connection| connection.seat)
         else {
@@ -248,12 +198,18 @@ impl Host {
         };
         tracing::debug!(conn_id = %conn, ?seat, command_id = %body.kind, "command received");
         match seat {
-            Seat::Player => self.handle_player_command(conn, id, body),
-            Seat::Gm => self.handle_gm_command(conn, id, body),
+            Seat::Player => self.handle_player_command(conn, id, body, wall),
+            Seat::Gm => self.handle_gm_command(conn, id, body, wall),
         }
     }
 
-    fn handle_player_command(&mut self, conn: ConnId, id: Option<String>, body: ClientBody) {
+    fn handle_player_command(
+        &mut self,
+        conn: ConnId,
+        id: Option<String>,
+        body: ClientBody,
+        wall: &str,
+    ) {
         let ClientBody {
             kind: command,
             args,
@@ -266,13 +222,13 @@ impl Host {
             return self.claim(conn, id, &args);
         }
         let Some(actor_id) = self
-            .seats
+            .participants
             .claim_of(conn)
             .map(|claim| claim.actor_id.clone())
         else {
             return self.reply(conn, id, ServerBody::Refused(Reason::ChoosePc.into()));
         };
-        let presence = self.seats.presence();
+        let presence = self.participants.presence();
         let body = match command.as_str() {
             "release" if read::<NoArgs>(&args).is_some() => return self.release_claim(conn, id),
             "say" => match read::<SayArgs>(&args).filter(|args| args.npc_id.is_none()) {
@@ -299,7 +255,10 @@ impl Host {
             },
             "release" | "look" | "help" | "map" => ServerBody::Refused(Reason::Schema.into()),
             _ => match read::<MoveArgs>(&args) {
-                Some(args) => return self.play_move(conn, id, &actor_id, &command, args.target),
+                Some(args) => {
+                    let target = args.target;
+                    return self.play_move(conn, id, &actor_id, &command, target, wall);
+                }
                 None => ServerBody::Refused(Reason::Schema.into()),
             },
         };
@@ -309,7 +268,7 @@ impl Host {
     /// A claim takes a free PC, or by its token takes back one this player held. The reply
     /// is `claimed`, then a refresh.
     fn claim(&mut self, conn: ConnId, id: Option<String>, args: &Map<String, Value>) {
-        let args = read::<ClaimArgs>(args).filter(|_| self.seats.claim_of(conn).is_none());
+        let args = read::<ClaimArgs>(args).filter(|_| self.participants.claim_of(conn).is_none());
         let fresh = matches!(args, Some(ClaimArgs::Actor { .. }));
         let taken = match args {
             Some(ClaimArgs::Actor { actor_id }) => self.claim_free_pc(&actor_id),
@@ -320,18 +279,21 @@ impl Host {
             Ok(taken) => taken,
             Err(code) => return self.reply(conn, id, ServerBody::Refused(code.into())),
         };
-        let [resume, view] = match refresh(&self.session, &self.seats.presence(), &actor_id) {
+        let [resume, view] = match refresh(&self.session, &self.participants.presence(), &actor_id)
+        {
             Ok(bodies) => bodies,
             Err(code) => {
                 if fresh {
-                    self.seats.claims.retain(|claim| claim.token != token);
+                    self.participants
+                        .claims
+                        .retain(|claim| claim.token != token);
                 }
                 return self.reply(conn, id, ServerBody::Refused(code.into()));
             }
         };
         self.reply(conn, id, claim_reply);
         tracing::info!(conn_id = %conn, actor_id = %actor_id, by_token = !fresh, "PC claimed");
-        if let Some(claim) = self.seats.claim_of_actor_mut(&actor_id) {
+        if let Some(claim) = self.participants.claim_of_actor_mut(&actor_id) {
             claim.conn = Some(conn);
         }
         self.notify(conn, resume);
@@ -344,7 +306,7 @@ impl Host {
     /// A new claim on a free PC, named by id or name, under a new token, with the speech this PC
     /// heard before.
     fn claim_free_pc(&mut self, text: &str) -> Result<(String, ActorId, ServerBody), Reason> {
-        let presence = self.seats.presence();
+        let presence = self.participants.presence();
         if presence.actors_present.len() >= MAX_PLAYER_SEATS {
             return Err(Reason::TableFull);
         }
@@ -357,7 +319,7 @@ impl Host {
         let claim_reply =
             message_body::build_claim_reply(self.session.world(), &claim, &scrollback, 0);
         let token = claim.token.clone();
-        self.seats.claims.push(claim);
+        self.participants.claims.push(claim);
         Ok((token, actor_id, claim_reply))
     }
 
@@ -369,7 +331,7 @@ impl Host {
         last_seq: u64,
     ) -> Result<(String, ActorId, ServerBody), Reason> {
         let claim = self
-            .seats
+            .participants
             .claims
             .iter_mut()
             .find(|claim| claim.token == token)
@@ -381,10 +343,12 @@ impl Host {
     }
 
     fn release_claim(&mut self, conn: ConnId, id: Option<String>) {
-        if let Some(claim) = self.seats.claim_of(conn) {
+        if let Some(claim) = self.participants.claim_of(conn) {
             tracing::info!(conn_id = %conn, actor_id = %claim.actor_id, "PC released");
         }
-        self.seats.claims.retain(|claim| claim.conn != Some(conn));
+        self.participants
+            .claims
+            .retain(|claim| claim.conn != Some(conn));
         self.reply(conn, id, ServerBody::Released);
         self.announce_presence();
     }
@@ -397,7 +361,7 @@ impl Host {
         to: &Audience,
         text: &str,
     ) {
-        let presence = self.seats.presence();
+        let presence = self.participants.presence();
         match self.session.say_as_player(&presence, actor_id, to, text) {
             Ok(speech) => self.deliver_speech(&speech, Some((conn, id))),
             Err(refusal) => self.reply(conn, id, ServerBody::Refused(refusal)),
@@ -414,9 +378,10 @@ impl Host {
         actor_id: &ActorId,
         verb: &str,
         target: Option<String>,
+        wall: &str,
     ) {
-        let gm = self.seats.gm;
-        let presence = self.seats.presence();
+        let gm = self.participants.gm;
+        let presence = self.participants.presence();
         let target = target.filter(|target| !target.is_empty());
         let reply =
             match self
@@ -445,7 +410,7 @@ impl Host {
             self.send_to_pc(actor_id, stamp_message(seq, id, reply.clone()));
             return self.send(gm, stamp_message(seq, None, reply));
         }
-        match commit_then_fast_forward(&mut self.session, &presence) {
+        match self.session.commit_then_fast_forward(&presence, wall) {
             Ok(outputs) => {
                 self.reply(conn, id, reply);
                 self.after_rounds(&outputs);
@@ -454,12 +419,18 @@ impl Host {
         }
     }
 
-    fn handle_gm_command(&mut self, conn: ConnId, id: Option<String>, body: ClientBody) {
-        if self.seats.gm != Some(conn) {
+    fn handle_gm_command(
+        &mut self,
+        conn: ConnId,
+        id: Option<String>,
+        body: ClientBody,
+        wall: &str,
+    ) {
+        if self.participants.gm != Some(conn) {
             return self.reply(conn, id, ServerBody::Refused(Reason::NotInSpec.into()));
         }
-        let presence = self.seats.presence();
-        let reply = gm::run(&mut self.session, &presence, &body.kind, &body.args)
+        let presence = self.participants.presence();
+        let reply = gm::run(&mut self.session, &presence, &body.kind, &body.args, wall)
             .unwrap_or_else(Reply::refused);
         self.after_rounds(&reply.outputs);
         match &reply.speech {
@@ -471,33 +442,21 @@ impl Host {
         }
     }
 
-    /// Frees the GM seat and says so on the host console, so the operator sees the seat is open.
+    /// Frees the GM seat and says so on the console, so the operator sees the seat is open.
     fn release_gm(&mut self) {
-        self.seats.gm = None;
+        self.participants.gm = None;
         let _ = writeln!(self.out, "gm seat free");
         let _ = self.out.flush();
     }
 
-    /// Plays the idle rounds due while every seat is empty. A claim whose connection dropped still
-    /// seats its player.
-    fn wake(&mut self) -> Result<(), Reason> {
-        if !self.seats.claims.is_empty() || self.seats.gm.is_some() {
-            return Ok(());
-        }
-        if idle::catch_up_if_due(&mut self.session)? {
-            self.restart_idle_timer();
-        }
-        Ok(())
-    }
-
     /// The one order after rounds: a `round` to every seat, then each player's checks,
     /// refresh and lines, then the digest, then the idle timer restarts.
-    fn after_rounds(&mut self, outputs: &[spookery_engine::round::Output]) {
+    fn after_rounds(&mut self, outputs: &[crate::round::Output]) {
         if outputs.is_empty() {
             return;
         }
         let players: Vec<ActorId> = self
-            .seats
+            .participants
             .claims
             .iter()
             .map(|claim| claim.actor_id.clone())
@@ -512,11 +471,11 @@ impl Host {
             for actor_id in &players {
                 self.send_to_pc(actor_id, round.clone());
             }
-            if let Some(gm) = self.seats.gm {
+            if let Some(gm) = self.participants.gm {
                 self.send(gm, round);
             }
         }
-        let presence = self.seats.presence();
+        let presence = self.participants.presence();
         for actor_id in players {
             let mut bodies: Vec<ServerBody> = outputs
                 .iter()
@@ -544,15 +503,10 @@ impl Host {
             }
         }
         self.write_digest(outputs);
-        self.restart_idle_timer();
+        self.outbox.restart_idle = true;
     }
 
-    fn restart_idle_timer(&self) {
-        self.idle
-            .send_modify(|count| *count = count.wrapping_add(1));
-    }
-
-    /// The one speech path: the host's tape line, then one `say` with one `seq` to the GM and
+    /// The one speech path: the console's tape line, then one `say` with one `seq` to the GM and
     /// to each player who hears it. The sender's copy is its reply.
     fn deliver_speech(&mut self, speech: &TapeRecord, sender: Option<(ConnId, Option<String>)>) {
         let _ = writeln!(self.out, "{}", emit_tape_record(speech));
@@ -562,7 +516,7 @@ impl Host {
         let id = id.flatten();
         let reply_to = |conn: ConnId| (sender == Some(conn)).then(|| id.clone()).flatten();
         let hears: Vec<(ActorId, Option<ConnId>)> = self
-            .seats
+            .participants
             .claims
             .iter()
             .filter(|claim| {
@@ -571,7 +525,7 @@ impl Host {
             })
             .map(|claim| (claim.actor_id.clone(), claim.conn))
             .collect();
-        if let Some(gm) = self.seats.gm {
+        if let Some(gm) = self.participants.gm {
             let body = ServerBody::Say(message_body::build_speech(speech, true));
             self.send(gm, stamp_message(seq, reply_to(gm), body));
         }
@@ -582,13 +536,13 @@ impl Host {
         }
     }
 
-    /// Tells the GM who is present now, and the host.
+    /// Tells the GM who is present now, and the console.
     fn announce_presence(&mut self) {
-        if let Some(gm) = self.seats.gm {
+        if let Some(gm) = self.participants.gm {
             let seq = self.next_seq();
             let body = ServerBody::Presence {
                 actors_present: self
-                    .seats
+                    .participants
                     .presence()
                     .actors_present
                     .into_iter()
@@ -615,7 +569,7 @@ impl Host {
         let seq = self.next_seq();
         let message = stamp_message(seq, id, body);
         match self
-            .seats
+            .participants
             .claim_of(conn)
             .map(|claim| claim.actor_id.clone())
         {
@@ -638,7 +592,7 @@ impl Host {
     /// Keeps the message on the PC's claim for a reconnect, and sends it if a connection
     /// drives that claim.
     fn send_to_pc(&mut self, actor_id: &ActorId, message: ServerMessage) {
-        let Some(claim) = self.seats.claim_of_actor_mut(actor_id) else {
+        let Some(claim) = self.participants.claim_of_actor_mut(actor_id) else {
             return;
         };
         claim.keep(&message);
@@ -647,37 +601,11 @@ impl Host {
         }
     }
 
-    /// A message to an MCP tool call's connection goes in that call's result. A full or
-    /// closed queue drops that connection. The host does not wait.
     fn send(&mut self, conn: ConnId, message: ServerMessage) {
-        if let Some((_, messages)) = self.tool_call.as_mut().filter(|(call, _)| *call == conn) {
-            return messages.push(message);
-        }
-        let bytes = message.to_text().into_bytes();
-        if self
-            .seats
-            .connection(conn)
-            .is_some_and(|connection| !connection.out.send(bytes))
-        {
-            tracing::debug!(conn_id = %conn, "outbound queue full or closed");
-            self.drop_connection(conn);
-        }
+        self.outbox.messages.push((conn, message));
     }
 
-    /// Drops a connection. Dropping it cancels its socket. A claim it drove is held
-    /// for its token, and a GM seat it held is free.
-    fn drop_connection(&mut self, conn: ConnId) {
-        tracing::debug!(conn_id = %conn, "connection closed");
-        if self.seats.gm == Some(conn) {
-            self.release_gm();
-        }
-        if let Some(claim) = self.seats.claim_of_mut(conn) {
-            claim.conn = None;
-        }
-        self.seats.take(conn);
-    }
-
-    fn write_digest(&mut self, outputs: &[spookery_engine::round::Output]) {
+    fn write_digest(&mut self, outputs: &[crate::round::Output]) {
         let text = self.session.digest(outputs);
         if !text.is_empty() {
             let _ = self.out.write_all(text.as_bytes());
@@ -711,7 +639,7 @@ fn narrate_lines_for(lines: &[RecipientLine], viewer: &ActorId) -> Vec<String> {
 }
 
 fn refresh(
-    session: &spookery_engine::Session,
+    session: &Session,
     presence: &Presence,
     actor_id: &ActorId,
 ) -> Result<[ServerBody; 2], Reason> {

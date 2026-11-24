@@ -223,7 +223,7 @@ pub(crate) async fn serve_in_process(world: &mut World, pack: &Path) {
     let (out, out_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let stderr = Arc::new(Mutex::new(String::new()));
     let loopback: SocketAddr = "127.0.0.1:0".parse().unwrap();
-    let mut config = spookery_server::Config::new(loopback);
+    let mut config = spookery_engine_net::Config::new(loopback);
     config.mcp_addr = Some(loopback);
     config.out = Box::new(out_pipe);
     let (advance, mut advances) = tokio::sync::mpsc::unbounded_channel::<Advance>();
@@ -245,7 +245,7 @@ pub(crate) async fn serve_in_process(world: &mut World, pack: &Path) {
             let shutdown = async {
                 let _ = stopped.await;
             };
-            if let Err(err) = spookery_server::serve(opened, config, shutdown).await {
+            if let Err(err) = spookery_engine_net::serve(opened, config, shutdown).await {
                 failed.lock().unwrap().push_str(&format!("serve: {err}\n"));
             }
         });

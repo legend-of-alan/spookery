@@ -1,13 +1,11 @@
-//! The Spookery server: bind the game port's WebSocket endpoint and the MCP endpoint,
-//! then run the host.
+//! The Spookery network adapter: bind the game port's WebSocket endpoint and the MCP endpoint,
+//! then run the host thread that drives the engine's router.
 
-mod gm;
 mod host;
 mod idle;
 mod limits;
 mod mcp;
-mod message_body;
-mod seat;
+mod outbound;
 mod ws;
 
 use std::future::Future;
@@ -17,7 +15,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
 
-use spookery_engine::Reason;
+use spookery_engine::{transport, Reason};
 use spookery_protocol as protocol;
 
 use host::{Host, Request};
@@ -87,8 +85,9 @@ pub async fn serve(
             session.budget().round_every_real_seconds,
         ));
     }
-    let mut host_task =
-        tokio::task::spawn_blocking(move || Host::new(session, restart_tx, config.out).run(rx));
+    let mut host_task = tokio::task::spawn_blocking(move || {
+        Host::new(transport::Router::new(session, config.out), restart_tx).run(rx)
+    });
     let done = tokio::select! {
         done = &mut host_task => done,
         () = shutdown => {

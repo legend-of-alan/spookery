@@ -15,14 +15,15 @@ use axum::response::{IntoResponse, Response};
 use axum::serve::ListenerExt;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
+use spookery_engine::transport::{ConnId, Rejection};
 use spookery_engine::Reason;
 
-use super::host::{report_close, Rejection, Request};
+use super::host::{report_close, Request};
 use super::limits::{
     wait_for_token, TokenBucket, BURST, CLIENT_MESSAGE_CAP, KEEPALIVE, MESSAGE_CAP, RATE_PER_SEC,
     REQUESTED_SEND_BUFFER,
 };
-use super::seat::{frame_queue, write_frames, ConnId};
+use super::outbound::{frame_queue, write_frames};
 use crate::protocol::{ClientMessage, Seat};
 
 #[derive(Clone)]

@@ -1,27 +1,23 @@
-//! The GM commands: how each one runs, and how its MCP tool describes it.
+//! The GM commands: how each one runs.
 
-use std::sync::Arc;
-
-use rmcp::handler::server::tool::schema_for_type;
 use serde_json::{Map, Value};
-use spookery_engine::{ActorId, Presence, Reason, TapeRecord};
-
-use super::host::commit_then_fast_forward;
-use super::message_body;
-use crate::protocol::{
+use spookery_protocol::{
     parse_args, CommitArgs, NoArgs, PerceiveArgs, QueueArgs, SayArgs, ServerBody,
 };
 
-/// Sent from a GM command's run back to the host, which answers the GM and updates seats.
+use super::message_body;
+use crate::{ActorId, Presence, Reason, Session, TapeRecord};
+
+/// Sent from a GM command's run back to the router, which answers the GM and updates seats.
 pub(super) struct Reply {
     pub(super) body: ServerBody,
-    /// The speech this command put on the tape. The host delivers it, and the GM's copy is
+    /// The speech this command put on the tape. The router delivers it, and the GM's copy is
     /// the reply.
     pub(super) speech: Option<TapeRecord>,
     /// The GM seat is cleared once this reply is sent.
     pub(super) release_seat: bool,
     /// Rounds this command played, commit first.
-    pub(super) outputs: Vec<spookery_engine::round::Output>,
+    pub(super) outputs: Vec<crate::round::Output>,
 }
 
 impl Reply {
@@ -40,13 +36,14 @@ impl Reply {
     }
 }
 
-/// Run one GM command. `presence` is who the seats hold. A command that is not a GM command is
-/// `SCHEMA`.
+/// Run one GM command. `presence` is who the seats hold, and `wall` stamps any round it plays. A
+/// command that is not a GM command is `SCHEMA`.
 pub(super) fn run(
-    session: &mut spookery_engine::Session,
+    session: &mut Session,
     presence: &Presence,
     command: &str,
     args: &Map<String, Value>,
+    wall: &str,
 ) -> Result<Reply, Reason> {
     let args = Some(args);
     match command {
@@ -54,48 +51,15 @@ pub(super) fn run(
         "perceive" => perceive(session, presence, args),
         "queue" => queue(session, presence, args),
         "say" => say(session, presence, args),
-        "commit" => commit(session, presence, args),
+        "commit" => commit(session, presence, args, wall),
         "release" => release(args),
         _ => Err(Reason::Schema),
     }
 }
 
-/// What a GM command's MCP tool says about it, and the schema of the command's `args`. `None` for a
-/// command that is not a GM command.
-pub(super) fn describe(command: &str) -> Option<(&'static str, Arc<Map<String, Value>>)> {
-    let described = match command {
-        "status" => (
-            "status takes no keys. The reply is who is seated, the queue and the pack.",
-            schema_for_type::<NoArgs>(),
-        ),
-        "perceive" => (
-            "perceive requires as. A missing as is UNSCOPED_PERCEIVE.",
-            schema_for_type::<PerceiveArgs>(),
-        ),
-        "queue" => (
-            "queue requires actor_id and move. A habit row is legal when actor_id is an npc. A PC a player holds is ACTOR_MISMATCH.",
-            schema_for_type::<QueueArgs>(),
-        ),
-        "say" => (
-            "say requires text. to is \"table\", {\"place\": id} or {\"actor\": id}, and may be left out only with as, an NPC's id to speak as that NPC, which then speaks to the place that NPC stands. A supplied from is SCHEMA.",
-            schema_for_type::<SayArgs>(),
-        ),
-        "commit" => (
-            "commit requires include_round. session_id may be a string. The round messages come before the reply.",
-            schema_for_type::<CommitArgs>(),
-        ),
-        "release" => (
-            "release takes no keys. The reply is sent after this GM seat is free.",
-            schema_for_type::<NoArgs>(),
-        ),
-        _ => return None,
-    };
-    Some(described)
-}
-
 /// GM `say`. `from` is the seat, or the NPC `as` names. A supplied `from` appends nothing.
 fn say(
-    session: &mut spookery_engine::Session,
+    session: &mut Session,
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
@@ -117,9 +81,10 @@ fn release(arguments: Option<&Map<String, Value>>) -> Result<Reply, Reason> {
 
 /// Without `include_round` only an empty queue commits, and it plays nothing.
 fn commit(
-    session: &mut spookery_engine::Session,
+    session: &mut Session,
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
+    wall: &str,
 ) -> Result<Reply, Reason> {
     let include_round = parse_args::<CommitArgs>(arguments)
         .map_err(|_| Reason::Schema)?
@@ -129,7 +94,7 @@ fn commit(
         return Err(Reason::NotInSpec);
     }
     let outputs = if include_round {
-        commit_then_fast_forward(session, presence)?
+        session.commit_then_fast_forward(presence, wall)?
     } else {
         Vec::new()
     };
@@ -156,7 +121,7 @@ fn commit(
 }
 
 fn perceive(
-    session: &mut spookery_engine::Session,
+    session: &mut Session,
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
@@ -167,7 +132,7 @@ fn perceive(
 }
 
 fn status(
-    session: &mut spookery_engine::Session,
+    session: &mut Session,
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
@@ -182,7 +147,7 @@ fn status(
 
 /// A PC a player holds takes only that player's moves, so the GM's is `ACTOR_MISMATCH`.
 fn queue(
-    session: &mut spookery_engine::Session,
+    session: &mut Session,
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
@@ -210,19 +175,20 @@ fn queue(
 #[cfg(test)]
 mod tests {
     use serde_json::json;
-    use spookery_engine::testing::copy_pack;
+    use spookery_protocol::{QueuedMove, Seat, COMMANDS};
 
-    use spookery_engine::{Presence, Reason};
+    use crate::testing::copy_pack;
+    use crate::transport::gm;
+    use crate::{Presence, Reason};
 
-    use crate::gm;
-    use crate::protocol::{QueuedMove, Seat, COMMANDS};
+    const WALL: &str = "2026-01-01T00:00:00Z";
 
     /// `gm::run` runs each GM command the hello lists: well-formed arguments are not
     /// `SCHEMA`, and a command that is not one is.
     #[test]
     fn each_gm_command_runs() {
         let pack = copy_pack("docks", "gm_commands");
-        let mut session = spookery_engine::testing::resume(&pack);
+        let mut session = crate::testing::resume(&pack);
         let calls = [
             ("status", json!({})),
             ("perceive", json!({"as": "rowan"})),
@@ -240,7 +206,7 @@ mod tests {
         assert_eq!(called, gm_commands);
         for (command, args) in calls {
             let args = args.as_object().cloned().unwrap_or_default();
-            let ran = gm::run(&mut session, &Presence::default(), command, &args);
+            let ran = gm::run(&mut session, &Presence::default(), command, &args, WALL);
             assert!(!matches!(ran, Err(Reason::Schema)), "{command}");
         }
         assert!(matches!(
@@ -248,28 +214,19 @@ mod tests {
                 &mut session,
                 &Presence::default(),
                 "fly",
-                &Default::default()
+                &Default::default(),
+                WALL
             ),
             Err(Reason::Schema)
         ));
     }
 
-    /// Every GM command the hello lists has a tool description and schema. A command that is not
-    /// a GM command has none.
-    #[test]
-    fn each_gm_command_is_described() {
-        for command in COMMANDS.iter().filter(|command| command.seat == Seat::Gm) {
-            assert!(gm::describe(command.id).is_some(), "{}", command.id);
-        }
-        assert!(gm::describe("fly").is_none());
-    }
-
     #[test]
     fn parsed_intent_reaches_the_session_with_move_and_to() {
         let pack = copy_pack("docks", "gm_intent");
-        let mut session = spookery_engine::Session::open(&pack).unwrap();
+        let mut session = crate::Session::open(&pack).unwrap();
         let args = json!({"actor": "rowan", "move": "wait", "to": ["wren"]});
-        let call = crate::protocol::parse_args(args.as_object()).unwrap();
+        let call = spookery_protocol::parse_args(args.as_object()).unwrap();
         let queued = session
             .queue_gm_intent(&Presence::default(), call, || Ok("i1".into()))
             .unwrap();

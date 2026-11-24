@@ -151,7 +151,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             if let Some(path) = &log_path {
                 eprintln!("logging to {}", path.display());
             }
-            let mut config = spookery_server::Config::new(addr);
+            let mut config = spookery_engine_net::Config::new(addr);
             config.mcp_addr = mcp_addr;
             config.out = Box::new(std::io::stdout());
             let interrupt = tokio::spawn(wait_for_interrupt());
@@ -168,7 +168,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                     std::process::exit(130);
                 });
             };
-            spookery_server::serve(session, config, shutdown)
+            spookery_engine_net::serve(session, config, shutdown)
                 .await
                 .map_err(|e| e.to_string())
         }
