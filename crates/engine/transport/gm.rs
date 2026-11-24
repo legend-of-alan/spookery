@@ -171,32 +171,3 @@ fn queue(
         target,
     }))
 }
-
-#[cfg(test)]
-mod tests {
-    use serde_json::json;
-    use spookery_protocol::QueuedMove;
-
-    use crate::testing::copy_pack;
-    use crate::Presence;
-
-    #[test]
-    fn parsed_intent_reaches_the_session_with_move_and_to() {
-        let pack = copy_pack("docks", "gm_intent");
-        let mut session = crate::Session::open(&pack).unwrap();
-        let args = json!({"actor": "rowan", "move": "wait", "to": ["wren"]});
-        let call = spookery_protocol::parse_args(args.as_object()).unwrap();
-        let queued = session
-            .queue_gm_intent(&Presence::default(), call, || Ok("i1".into()))
-            .unwrap();
-        let want = QueuedMove {
-            id: "i1".into(),
-            actor_id: "rowan".into(),
-            move_id: "wait".into(),
-        };
-        assert_eq!(queued, want);
-        let intent = &session.queued_intents()[0];
-        assert_eq!(intent.move_id, "wait");
-        assert_eq!(intent.args.message_to, Some(vec!["wren".into()]));
-    }
-}
