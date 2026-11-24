@@ -33,7 +33,7 @@ async fn ci_replays_it(world: &mut World) {
     let port = host::live_mut(world).game_port;
     let mut seats: Vec<(String, Seat)> = Vec::new();
     let mut read = Vec::new();
-    let mut recording = String::new();
+    let mut own_recording = String::new();
     for line in &world.recorded {
         let seat_id = line["seat"]
             .as_str()
@@ -53,20 +53,20 @@ async fn ci_replays_it(world: &mut World) {
             .as_str()
             .unwrap_or_else(|| panic!("a send has no id\n{line}"));
         seats[at].1.send_raw(Message::text(message.to_string()));
-        recording.push_str(&format!("{}\n", json!({"seat": seat_id, "send": message})));
+        own_recording.push_str(&format!("{}\n", json!({"seat": seat_id, "send": message})));
         seats[at].1.wait_reply(id).await;
         for ((seat_id, seat), mark) in seats.iter().zip(&mut read) {
             let text = support::text_of(&seat.text);
             for got in parse_lines(&text[*mark..]) {
                 let got = scrub_tokens(got);
-                recording.push_str(&format!("{}\n", json!({"seat": seat_id, "get": got})));
+                own_recording.push_str(&format!("{}\n", json!({"seat": seat_id, "get": got})));
             }
             *mark = text.len();
         }
     }
-    world.replay_recording_path =
+    world.own_recording_path =
         support::fresh_dir("recorded-session").join("spook-recorded-session.jsonl");
-    std::fs::write(&world.replay_recording_path, recording).unwrap_or_else(|err| panic!("{err}"));
+    std::fs::write(&world.own_recording_path, own_recording).unwrap_or_else(|err| panic!("{err}"));
     world.replayed = seats;
 }
 
@@ -89,7 +89,7 @@ async fn every_known_message_is_unchanged(world: &mut World) {
                 None => Ok(()),
                 Some(lost) => Err(format!(
                     "{seat_id} no longer gets {lost}\nthis build's session: {}",
-                    world.replay_recording_path.display()
+                    world.own_recording_path.display()
                 )),
             }
         })

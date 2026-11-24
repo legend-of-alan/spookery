@@ -344,25 +344,25 @@ mod tests {
     #[cfg(feature = "schema")]
     #[test]
     fn the_published_schema_matches_this_build() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("schema");
+        let published_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("schema");
         for (file, schema) in [
             ("client.json", generate_client_schema()),
             ("server.json", generate_server_schema()),
         ] {
-            let published = std::fs::read_to_string(dir.join(file)).unwrap_or_default();
+            let published = std::fs::read_to_string(published_dir.join(file)).unwrap_or_default();
             let published: Option<Value> = serde_json::from_str(&published).ok();
             if published.as_ref() == Some(schema.as_value()) {
                 continue;
             }
-            let schema_dir =
-                std::env::temp_dir().join(format!("spookery-schema-{}", std::process::id()));
-            std::fs::create_dir_all(&schema_dir).unwrap();
-            let schema_path = schema_dir.join(file);
+            let build_schema_dir =
+                std::env::temp_dir().join(format!("spook-schema-{}", std::process::id()));
+            std::fs::create_dir_all(&build_schema_dir).unwrap();
+            let build_schema_path = build_schema_dir.join(file);
             let text = serde_json::to_string_pretty(&schema).unwrap() + "\n";
-            std::fs::write(&schema_path, text).unwrap();
+            std::fs::write(&build_schema_path, text).unwrap();
             panic!(
                 "schema/{file} is not this build's; copy {} over it",
-                schema_path.display()
+                build_schema_path.display()
             );
         }
     }

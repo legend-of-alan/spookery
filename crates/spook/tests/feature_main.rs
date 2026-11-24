@@ -47,8 +47,8 @@ pub struct World {
     pub recorded: Vec<serde_json::Value>,
     /// The seats a recorded session was replayed on, by the name the recording gives each.
     pub replayed: Vec<(String, host::Seat)>,
-    /// This build's own recording of the replayed session.
-    pub replay_recording_path: PathBuf,
+    /// Where this build's own recording of the replayed session was written.
+    pub own_recording_path: PathBuf,
     /// The scripted model a scenario's AI GM plays with.
     pub model: scripted_gm::ScriptedModel,
     /// The AI GM once it connects, run in this process.
