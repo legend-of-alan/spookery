@@ -1,10 +1,5 @@
-//! Typed YAML for a rule. Serde picks the effect and condition variants.
-//! Kind names are enum variants, not strings compared in this module.
+//! Compiles a rule list's typed YAML into rules.
 
-use std::fmt;
-
-use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
-use serde::Deserialize;
 use serde_saphyr::Spanned;
 use spookery_protocol::{is_built_in, Seat};
 
@@ -12,7 +7,6 @@ use crate::canon::source::{
     load_tagged, spot_of, Diags, Fault, FileText, Locator, Problem, VERBS_SCHEMA,
 };
 use crate::diagnostic::{schema_error, Diagnostic};
-use crate::ecs::id::{ActorId, PlaceId};
 use crate::rules::expr::{self, stamp_spots, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
@@ -20,355 +14,12 @@ use crate::rules::rule::{
     Phase, Rule, TargetKind, When,
 };
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct VerbsDoc {
-    #[serde(rename = "schema")]
-    pub _schema: String,
-    #[serde(default)]
-    pub rules: Vec<RuleYaml>,
-}
+use super::parse::{
+    ChangeYaml, CondYaml, CostYaml, Counts, EffectYaml, ExprYaml, IfYaml, RuleYaml, VerbsDoc,
+    WhenYaml,
+};
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct RuleYaml {
-    pub id: Spanned<String>,
-    pub when: Spanned<WhenYaml>,
-    #[serde(rename = "if")]
-    pub if_: Option<IfYaml>,
-    pub cost: Option<CostYaml>,
-    pub start: Option<StartYaml>,
-    pub finish: Option<FinishYaml>,
-    /// Ticks the actor stays busy after the finish.
-    #[serde(default)]
-    pub cooldown: u64,
-    /// Whether the actor may cancel the action while it is under way.
-    #[serde(default)]
-    pub cancellable: bool,
-    /// `let:`: each id and its number. A map keeps no order, so `compile_one` sorts the
-    /// numbers by where they are written; an id written twice is the YAML's duplicate key.
-    #[serde(rename = "let", default)]
-    pub lets: std::collections::BTreeMap<String, Spanned<ExprYaml>>,
-    pub check: Option<CheckYaml>,
-    #[serde(rename = "do", default)]
-    pub do_: Vec<EffectYaml>,
-    #[serde(default)]
-    pub success: Vec<EffectYaml>,
-    #[serde(default)]
-    pub partial: Vec<EffectYaml>,
-    #[serde(default)]
-    pub miss: Vec<EffectYaml>,
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-pub(super) enum WhenYaml {
-    Word(String),
-    Map(Box<WhenMap>),
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct WhenMap {
-    pub verb: Option<String>,
-    pub target: Option<String>,
-    pub change: Option<ChangeYaml>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct ChangeYaml {
-    pub arrive: Option<String>,
-    pub leave: Option<String>,
-    pub subject: Option<String>,
-    pub meter: Option<String>,
-    pub crosses: Option<String>,
-    pub flag: Option<String>,
-    pub becomes: Option<bool>,
-    pub item: Option<String>,
-    pub gained: Option<bool>,
-    pub lost: Option<bool>,
-}
-
-pub(super) enum IfYaml {
-    List(Vec<CondYaml>),
-    One(Box<CondYaml>),
-}
-
-impl<'de> Deserialize<'de> for IfYaml {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct IfVisitor;
-
-        impl<'de> Visitor<'de> for IfVisitor {
-            type Value = IfYaml;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("one condition or a list of conditions")
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<IfYaml, A::Error>
-            where
-                A: SeqAccess<'de>,
-            {
-                let mut list = Vec::new();
-                while let Some(cond) = seq.next_element()? {
-                    list.push(cond);
-                }
-                Ok(IfYaml::List(list))
-            }
-
-            fn visit_map<A>(self, map: A) -> Result<IfYaml, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                let cond = CondYaml::deserialize(de::value::MapAccessDeserializer::new(map))?;
-                Ok(IfYaml::One(Box::new(cond)))
-            }
-        }
-
-        deserializer.deserialize_any(IfVisitor)
-    }
-}
-
-/// One condition; its one key names the condition.
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[allow(clippy::large_enum_variant)]
-pub(super) enum CondYaml {
-    HasItem(HasItemYaml),
-    Meter(MeterCondYaml),
-    Flag(FlagCondYaml),
-    At(AtYaml),
-    Cycle(CycleYaml),
-    Players(PlayersYaml),
-    NoteExists(String),
-    Wielding(WieldingYaml),
-    All(Vec<CondYaml>),
-    Any(Vec<CondYaml>),
-    Not(Box<CondYaml>),
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct HasItemYaml {
-    pub subject: Spanned<String>,
-    pub id: String,
-    /// How many the subject holds at least; 1 when left out.
-    pub count: Option<Spanned<ExprYaml>>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct WieldingYaml {
-    pub subject: Spanned<String>,
-    pub id: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct MeterCondYaml {
-    pub of: Spanned<String>,
-    pub id: String,
-    pub op: String,
-    pub value: Spanned<ExprYaml>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct FlagCondYaml {
-    pub of: Spanned<String>,
-    pub key: String,
-    #[serde(rename = "is")]
-    pub is_: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct AtYaml {
-    pub subject: Spanned<String>,
-    pub place: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct CycleYaml {
-    pub id: String,
-    pub from: Spanned<ExprYaml>,
-    pub to: Spanned<ExprYaml>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct PlayersYaml {
-    pub op: String,
-    pub value: Spanned<ExprYaml>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct CostYaml {
-    pub ticks: Option<Spanned<ExprYaml>>,
-    #[serde(default)]
-    pub meters: Counts,
-    #[serde(default)]
-    pub items: Counts,
-}
-
-/// Counts by key under a cost. A plain map, so each count keeps its line.
-pub(super) type Counts = std::collections::BTreeMap<String, Spanned<ExprYaml>>;
-
-/// The start of an action. Its cost is the rule's `cost`.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct StartYaml {
-    #[serde(default)]
-    pub counts_as_act: Option<bool>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct FinishYaml {
-    pub cost: Option<CostYaml>,
-    #[serde(default)]
-    pub counts_as_act: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct CheckYaml {
-    pub total: Spanned<ExprYaml>,
-    pub success_at: Spanned<ExprYaml>,
-    pub partial_at: Option<Spanned<ExprYaml>>,
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-pub(super) enum ExprYaml {
-    Literal(i64),
-    Text(String),
-}
-
-/// One effect under a dash; its one key names the effect.
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[allow(clippy::large_enum_variant)]
-pub(super) enum EffectYaml {
-    Meter(MeterEffectYaml),
-    Flag(FlagEffectYaml),
-    Modifier(ModifierEffectYaml),
-    Location(LocationYaml),
-    Note(NoteYaml),
-    Narrate(NarrateYaml),
-    Memory(MemoryYaml),
-    Item(ItemEffectYaml),
-    Wield(WieldYaml),
-    Unwield(UnwieldYaml),
-    Check(CheckEffectYaml),
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct MeterEffectYaml {
-    pub of: Spanned<String>,
-    pub key: String,
-    pub add: Option<Spanned<ExprYaml>>,
-    pub set: Option<Spanned<ExprYaml>>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct FlagEffectYaml {
-    pub of: Spanned<String>,
-    pub key: String,
-    pub value: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct ModifierEffectYaml {
-    pub to: Spanned<String>,
-    pub id: String,
-    pub add: Spanned<ExprYaml>,
-    /// How long this application lasts, 1 or more.
-    pub ticks: Spanned<ExprYaml>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct LocationYaml {
-    pub to: Option<String>,
-    pub via: Option<String>,
-    #[serde(default)]
-    pub teleport: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct NoteYaml {
-    pub id: String,
-    #[serde(default)]
-    pub to_ids: Vec<ActorId>,
-    pub place_id: Option<PlaceId>,
-    pub text: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct NarrateYaml {
-    pub to: Option<String>,
-    pub text: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct MemoryYaml {
-    pub to: Spanned<String>,
-    pub text: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct ItemEffectYaml {
-    pub of: Spanned<String>,
-    pub id: String,
-    pub add: Spanned<ExprYaml>,
-    pub max: Option<Spanned<ExprYaml>>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct WieldYaml {
-    pub subject: Spanned<String>,
-    pub id: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct UnwieldYaml {
-    pub subject: Spanned<String>,
-}
-
-/// A nested `check:`: `by` (`self` when left out) rolls `total` against `success_at`, and the
-/// outcome picks one of the lists, any of which may be left out.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct CheckEffectYaml {
-    pub by: Option<Spanned<String>>,
-    pub total: Spanned<ExprYaml>,
-    pub success_at: Spanned<ExprYaml>,
-    pub partial_at: Option<Spanned<ExprYaml>>,
-    #[serde(default)]
-    pub success: Vec<EffectYaml>,
-    #[serde(default)]
-    pub partial: Vec<EffectYaml>,
-    #[serde(default)]
-    pub miss: Vec<EffectYaml>,
-}
-
-pub(crate) fn compile(
+pub(in crate::canon) fn compile(
     file: &str,
     entries: Vec<RuleYaml>,
     owner: &Owner,
@@ -401,6 +52,7 @@ pub(crate) fn compile(
 }
 
 fn compile_one(
+    // repeats module: the one-entry step that compile runs for each rule
     file: &str,
     index: usize,
     entry: RuleYaml,
@@ -734,7 +386,7 @@ fn if_of(yaml: &IfYaml) -> Result<Vec<Cond>, Fault> {
     }
 }
 
-pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
+pub(in crate::canon) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     Ok(match yaml {
         CondYaml::HasItem(item) => Cond::HasItem {
             subject: actor_of(&item.subject)?,
@@ -783,7 +435,7 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     })
 }
 
-pub(super) fn cost_of(yaml: &CostYaml) -> Result<Cost, Fault> {
+pub(in crate::canon) fn cost_of(yaml: &CostYaml) -> Result<Cost, Fault> {
     Ok(Cost {
         ticks: (yaml.ticks.as_ref()).map_or(Ok(Expr::Num(0)), refuse_dice)?,
         meters: counts_of(&yaml.meters)?,
@@ -1021,7 +673,7 @@ fn cross_of(text: &str) -> Result<(Op, i64), String> {
         .ok_or_else(|| format!("crosses '{text}' needs an operator and a number"))
 }
 
-pub(super) fn load_verbs(rel: &str, text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
+pub(in crate::canon) fn load_verbs(rel: &str, text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
     let doc: VerbsDoc = load_tagged(rel, text, VERBS_SCHEMA)?;
     compile(rel, doc.rules, &Owner::Verb)
 }
