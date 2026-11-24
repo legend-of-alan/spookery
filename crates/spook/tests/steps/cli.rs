@@ -259,18 +259,13 @@ fn hp_has_no_name(world: &mut World) {
     spookery_engine::migrate_pack(table::pack(world)).unwrap_or_else(|err| panic!("{err}"));
 }
 
-#[given(expr = "a docks table where a spill reveals a hidden fact to Briar and costs Briar 1 hp")]
-fn a_spill_reveals_a_hidden_fact(world: &mut World) {
+#[given(expr = "a docks table where a spill leaves Briar a note and costs Briar 1 hp")]
+fn a_spill_leaves_briar_a_note(world: &mut World) {
     a_docks_table(world);
     let pack = table::pack(world).to_path_buf();
-    replace_in_file(
-        &pack.join("world/places/mill_lane.md"),
-        "facts: []\n",
-        "facts:\n  - id: fact_sealed_name\n    text: the sealed name\n    hidden: true\n",
-    );
     add_verb(
         &pack,
-        "  - id: spill\n    when:\n      verb: spill\n    do:\n      - reveal:\n          to: briar\n          fact: fact_sealed_name\n      - flag:\n          of: world\n          key: fact_sealed_name\n          value: true\n      - meter:\n          of: briar\n          key: hp\n          add: -1\n",
+        "  - id: spill\n    when:\n      verb: spill\n    do:\n      - note:\n          id: note_sealed_name\n          to_ids:\n            - briar\n          text: the sealed name\n      - flag:\n          of: world\n          key: sealed_name_spilled\n          value: true\n      - meter:\n          of: briar\n          key: hp\n          add: -1\n",
     );
     stamp_pack_rev(&pack);
 }

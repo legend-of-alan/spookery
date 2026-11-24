@@ -13,7 +13,6 @@ use crate::ecs::id::{ActorId, ExitId, GlobalId, PlaceId};
 use crate::ecs::{self, component, MemoryLine, Presence};
 use crate::entity;
 use crate::intent::Intent;
-use crate::rules::visibility::can_see_fact;
 use crate::Reason;
 
 /// One effect. JSON is `kind`, `as`, `intent_id`, then the fields of `kind`.
@@ -69,7 +68,6 @@ pub enum EffectKind {
     },
     Memory {
         actor_id: ActorId,
-        fact_ids: Vec<String>,
         tags: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         text: Option<String>,
@@ -90,17 +88,11 @@ pub enum EffectKind {
         to_ids: Vec<ActorId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         place_id: Option<PlaceId>,
-        fact_ids: Vec<String>,
         text: String,
     },
     Narrate {
         to: Vec<ActorId>,
-        fact_ids: Vec<String>,
         text: String,
-    },
-    Reveal {
-        actor_id: ActorId,
-        fact: String,
     },
 }
 
@@ -227,10 +219,9 @@ impl Effect {
             } => move_actor(canon, world, presence, intent, &actor_id, &from, &to),
             EffectKind::Memory {
                 actor_id,
-                fact_ids,
                 tags,
                 text,
-            } => remember(canon, world, intent, &actor_id, fact_ids, tags, text),
+            } => remember(world, intent, &actor_id, tags, text),
             EffectKind::Flag { entity, key, value } => {
                 if key.is_empty() {
                     return Err(Reason::UnknownId);
@@ -249,7 +240,6 @@ impl Effect {
                 note_id,
                 to_ids,
                 place_id,
-                fact_ids,
                 text,
             } => {
                 if place_id
@@ -261,20 +251,12 @@ impl Effect {
                 let note = Note {
                     to_ids: to_ids.into_iter().collect(),
                     place_id,
-                    fact_ids: fact_ids.into_iter().collect(),
                     text,
                 };
                 let mut globals = world.globals_mut();
                 globals.get_mut::<Note>(&GlobalId).leave(&note_id, note)
             }
             EffectKind::Narrate { .. } => Ok(()),
-            EffectKind::Reveal { actor_id, fact } => {
-                if !canon.facts.contains_key(&fact) {
-                    return Err(Reason::UnknownId);
-                }
-                let mut actors = world.actors_mut();
-                (actors.get_mut::<component::KnownFacts>(&actor_id)).learn(&[fact])
-            }
         }
     }
 }
@@ -293,7 +275,6 @@ impl EffectKind {
             EffectKind::ExitOpen { .. } => "exit_open",
             EffectKind::Note { .. } => "note",
             EffectKind::Narrate { .. } => "narrate",
-            EffectKind::Reveal { .. } => "reveal",
         }
     }
 }
@@ -366,11 +347,9 @@ fn move_actor(
 }
 
 fn remember(
-    canon: &Canon,
     world: &mut ecs::World,
     intent: &Intent,
     actor_id: &ActorId,
-    mut fact_ids: Vec<String>,
     mut tags: Vec<String>,
     text: Option<String>,
 ) -> Result<(), Reason> {
@@ -380,21 +359,12 @@ fn remember(
     if text.as_ref().is_some_and(|text| text.chars().count() > 240) {
         return Err(Reason::Schema);
     }
-    for fact in &fact_ids {
-        if !can_see_fact(canon, world, actor_id, fact) {
-            return Err(Reason::IllegalKnowledge);
-        }
-    }
     world.count_memory_write()?;
-    ecs::sort_unique(&mut fact_ids);
-    let mut actors = world.actors_mut();
-    (actors.get_mut::<component::KnownFacts>(actor_id)).learn(&fact_ids)?;
     ecs::sort_unique(&mut tags);
     world.push_memory(MemoryLine {
         round_index: world.round_index,
         actor_id: actor_id.clone(),
         intent_id: intent.id.clone(),
-        fact_ids,
         tags,
         text,
     });

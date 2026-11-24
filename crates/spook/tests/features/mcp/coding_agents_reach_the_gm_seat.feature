@@ -52,7 +52,7 @@ Feature: Coding agents reach the GM seat
     Then the tools are the GM commands, and each input schema names these fields
       | tool     | fields                                                | required           |
       | status   |                                                       |                    |
-      | perceive | as max_body_chars                                     | as                 |
+      | perceive | as                                                    | as                 |
       | queue    | id round_index actor move target to rationale_code    | actor move         |
       | say      | to text as                                            | text               |
       | commit   | include_round session_id                              | include_round      |

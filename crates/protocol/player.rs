@@ -25,9 +25,7 @@ pub struct View {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub busy: String,
     pub visible_actors: Vec<String>,
-    pub known_facts: Vec<KnownFact>,
     pub notes: Vec<NoteView>,
-    pub unknown_mentions: Vec<String>,
     /// The items lying in the viewer's place.
     pub items: Vec<ItemStack>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -68,21 +66,11 @@ pub struct ExitView {
 /// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct KnownFact {
-    pub id: String,
-    pub text: String,
-    pub owner_body: String,
-}
-
-/// Part of a `View`, sent from the table to a player client.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct NoteView {
     pub id: String,
     pub to_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub place_id: Option<String>,
-    pub fact_ids: Vec<String>,
     pub text: String,
 }
 
@@ -203,7 +191,7 @@ mod tests {
 
     #[test]
     fn a_view_body_ignores_unknown_fields() {
-        let body = r#"{"kind":"view","viewer":"rowan","place":"shop","visible_actors":[],"known_facts":[],"notes":[],"unknown_mentions":[],"items":[{"id":"oil","count":1,"extra":true}],"habits":[],"future":1}"#;
+        let body = r#"{"kind":"view","viewer":"rowan","place":"shop","visible_actors":[],"notes":[],"items":[{"id":"oil","count":1,"extra":true}],"habits":[],"future":1}"#;
         assert!(matches!(
             serde_json::from_str(body),
             Ok(ServerBody::View(_))
@@ -212,7 +200,7 @@ mod tests {
 
     #[test]
     fn a_view_body_keeps_the_scene_after_the_place() {
-        let body = r#"{"kind":"view","viewer":"rowan","place":"shop","place_name":"Shop","body":"b","actor_names":["Rowan"],"cant_act":"s","visible_actors":["rowan"],"known_facts":[],"notes":[],"unknown_mentions":[],"items":[],"habits":[]}"#;
+        let body = r#"{"kind":"view","viewer":"rowan","place":"shop","place_name":"Shop","body":"b","actor_names":["Rowan"],"cant_act":"s","visible_actors":["rowan"],"notes":[],"items":[],"habits":[]}"#;
         let view: ServerBody = serde_json::from_str(body).unwrap();
         assert_eq!(serde_json::to_string(&view).unwrap(), body);
     }

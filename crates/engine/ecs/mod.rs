@@ -261,7 +261,6 @@ pub struct MemoryLine {
     pub round_index: u64,
     pub actor_id: ActorId,
     pub intent_id: String,
-    pub fact_ids: Vec<String>,
     pub tags: Vec<String>,
     pub text: Option<String>,
 }

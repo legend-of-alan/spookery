@@ -123,7 +123,7 @@ Feature: Play shows readable text
     Then play shows "Your place is now Loft."
 
   Scenario: Changes the player may not know stay hidden
-    Given a docks table where a spill reveals a hidden fact to Briar and costs Briar 1 hp
+    Given a docks table where a spill leaves Briar a note and costs Briar 1 hp
     When play joins the table as "harbormouse"
     And play types "spill"
     And play says "done"

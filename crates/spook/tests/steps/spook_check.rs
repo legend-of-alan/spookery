@@ -45,12 +45,18 @@ fn the_pack_gm_notes_run_to(world: &mut World, chars: usize) {
     table::append_gm_notes(table::pack(world), &"a".repeat(chars));
 }
 
-#[when(expr = "a verb tests rowan's flag {string}, which no rule sets")]
-fn a_verb_tests_an_unset_flag(world: &mut World, flag: String) {
+#[when(expr = "a verb's if names flag {string}, which no rule sets")]
+fn a_verb_names_an_unset_flag(world: &mut World, flag: String) {
     let verb_yaml = format!(
         "\n  - id: test_{flag}\n    when:\n      verb: test_{flag}\n    if:\n      - flag: {{ of: rowan, key: {flag}, is: true }}\n    do: []\n"
     );
     super::common::add_verb(table::pack(world), &verb_yaml);
+}
+
+#[when(expr = "an exit's revealed_by names flag {string}, which no rule sets")]
+fn an_exit_names_an_unset_flag(world: &mut World, flag: String) {
+    let path_line = format!("  - path: loft -> mill_lane\n    revealed_by: {flag}\n");
+    crate::support::append(&table::pack(world).join("world/map.yaml"), &path_line);
 }
 
 #[when(expr = "the save gives rowan the flag {string}")]

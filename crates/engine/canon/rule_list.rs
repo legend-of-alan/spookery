@@ -88,7 +88,6 @@ pub(super) struct ChangeYaml {
     pub item: Option<String>,
     pub gained: Option<bool>,
     pub lost: Option<bool>,
-    pub knows: Option<String>,
 }
 
 pub(super) enum IfYaml {
@@ -143,7 +142,6 @@ pub(super) enum CondYaml {
     Meter(MeterCondYaml),
     Flag(FlagCondYaml),
     At(AtYaml),
-    Knows(KnowsYaml),
     Cycle(CycleYaml),
     Players(PlayersYaml),
     NoteExists(String),
@@ -192,13 +190,6 @@ pub(super) struct FlagCondYaml {
 pub(super) struct AtYaml {
     pub subject: Spanned<String>,
     pub place: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct KnowsYaml {
-    pub subject: Spanned<String>,
-    pub fact: String,
 }
 
 #[derive(Deserialize)]
@@ -273,7 +264,6 @@ pub(super) enum EffectYaml {
     Narrate(NarrateYaml),
     Memory(MemoryYaml),
     Item(ItemEffectYaml),
-    Reveal(RevealYaml),
     Wield(WieldYaml),
     Unwield(UnwieldYaml),
     Check(CheckEffectYaml),
@@ -322,8 +312,6 @@ pub(super) struct NoteYaml {
     #[serde(default)]
     pub to_ids: Vec<ActorId>,
     pub place_id: Option<PlaceId>,
-    #[serde(default)]
-    pub fact_ids: Vec<String>,
     pub text: String,
 }
 
@@ -332,16 +320,12 @@ pub(super) struct NoteYaml {
 pub(super) struct NarrateYaml {
     pub to: Option<String>,
     pub text: String,
-    #[serde(default)]
-    pub fact_ids: Vec<String>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct MemoryYaml {
     pub to: Spanned<String>,
-    #[serde(default)]
-    pub fact_ids: Vec<String>,
     pub text: Option<String>,
 }
 
@@ -352,13 +336,6 @@ pub(super) struct ItemEffectYaml {
     pub id: String,
     pub add: Spanned<ExprYaml>,
     pub max: Option<Spanned<ExprYaml>>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct RevealYaml {
-    pub to: Spanned<String>,
-    pub fact: String,
 }
 
 #[derive(Deserialize)]
@@ -747,10 +724,7 @@ fn change_of(yaml: &ChangeYaml) -> Result<When, String> {
             gained,
         }));
     }
-    if let Some(fact) = &yaml.knows {
-        return Ok(When::Change(ChangeWatch::Knows { fact: fact.clone() }));
-    }
-    Err("a change needs arrive, leave, meter, flag, item, or knows".to_string())
+    Err("a change needs arrive, leave, meter, flag, or item".to_string())
 }
 
 fn if_of(yaml: &IfYaml) -> Result<Vec<Cond>, Fault> {
@@ -781,10 +755,6 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
         CondYaml::At(at) => Cond::At {
             subject: actor_of(&at.subject)?,
             place: at.place.clone(),
-        },
-        CondYaml::Knows(knows) => Cond::Knows {
-            subject: actor_of(&knows.subject)?,
-            fact: knows.fact.clone(),
         },
         CondYaml::Cycle(cycle) => {
             let from = refuse_dice(&cycle.from)?;
@@ -943,7 +913,6 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             id: note.id.clone(),
             to_ids: note.to_ids.clone(),
             place_id: note.place_id.clone(),
-            fact_ids: note.fact_ids.clone(),
             text: note.text.clone(),
         },
         EffectYaml::Narrate(narrate) => EffectTemplate::Narrate {
@@ -954,11 +923,9 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
                 None => NarrateTo::Present,
             },
             text: narrate.text.clone(),
-            fact_ids: narrate.fact_ids.clone(),
         },
         EffectYaml::Memory(memory) => EffectTemplate::Memory {
             to: actor_of(&memory.to)?,
-            fact_ids: memory.fact_ids.clone(),
             text: memory.text.clone(),
         },
         EffectYaml::Item(item) => EffectTemplate::Item {
@@ -966,10 +933,6 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             id: item.id.clone(),
             add: expr_of(&item.add)?,
             max: item.max.as_ref().map(expr_of).transpose()?,
-        },
-        EffectYaml::Reveal(reveal) => EffectTemplate::Reveal {
-            to: actor_of(&reveal.to)?,
-            fact: reveal.fact.clone(),
         },
         EffectYaml::Wield(wield) => EffectTemplate::Wield {
             subject: actor_of(&wield.subject)?,

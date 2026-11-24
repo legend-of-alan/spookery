@@ -28,7 +28,6 @@ rules:
           to_ids:
             - rowan
           place_id: docks_shop
-          fact_ids: []
           text: Back at dusk. Oil on the shelf.
 
   - id: restock_lamp_oil

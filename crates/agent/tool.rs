@@ -9,9 +9,11 @@ use serde_json::{json, Value};
 
 use crate::protocol::{
     self, ItemStack, MeterView, NoteView, PackSummary, Reason, ServerBody, CLIENT_SCHEMA,
-    PERCEIVE_BODY_CHARS,
 };
 use crate::{Agent, Connection, Model, ToolCall};
+
+/// How much of a place's or a cast member's prose a perceive result keeps, in characters.
+const PERCEIVE_BODY_CHARS: usize = 800;
 
 /// The tools that send the GM command of the same name.
 const COMMAND_TOOLS: [&str; 3] = ["perceive", "say", "queue"];
@@ -33,7 +35,7 @@ pub(crate) static TOOLS: LazyLock<Value> = LazyLock::new(|| {
     json!([
         tool(
             perceive,
-            "See what one actor sees now: where they are, who is there, what they carry and know. `as` is the actor's id.",
+            "See what one actor sees now: where they are, who is there, what they carry and the notes they read. `as` is the actor's id.",
             args("PerceiveArgs"),
         ),
         tool(
@@ -89,16 +91,11 @@ fn render_result(pack: &PackSummary, body: ServerBody) -> String {
         .filter_map(|id| Some((id.clone(), cut(pack.cast.get(id)?))))
         .collect();
     let npc = pack.control_types.get(&view.viewer) != Some(&protocol::ControlType::PcTemplate);
-    let facts = view.known_facts.into_iter().map(|fact| FactLine {
-        id: fact.id,
-        text: fact.text,
-    });
     let result = PerceiveResult {
         place_body: pack.places.get(&view.place).map(cut).unwrap_or_default(),
         viewer: view.viewer,
         place: view.place,
         visible_actors: view.visible_actors,
-        facts: npc.then(|| facts.collect()),
         notes: npc.then_some(view.notes),
         meters: view.meters,
         items: view.items,
@@ -108,16 +105,14 @@ fn render_result(pack: &PackSummary, body: ServerBody) -> String {
     serde_json::to_string(&result).expect("perceive result")
 }
 
-/// A view as `perceive` shows it to the model: who and what is here, an NPC's facts and notes
-/// (a player's view has neither), and the prose of the place and of the viewer and everyone it
-/// sees, each cut at the perceive budget.
+/// A view as `perceive` shows it to the model: who and what is here, an NPC's notes (a
+/// player's view has none), and the prose of the place and of the viewer and everyone it sees,
+/// each cut at the perceive budget.
 #[derive(Serialize)]
 struct PerceiveResult {
     viewer: String,
     place: String,
     visible_actors: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    facts: Option<Vec<FactLine>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     notes: Option<Vec<NoteView>>,
     meters: Vec<MeterView>,
@@ -125,13 +120,6 @@ struct PerceiveResult {
     habits: Vec<String>,
     place_body: String,
     cast: BTreeMap<String, String>,
-}
-
-/// A known fact as the model reads it. Never `owner_body`: a type rule, not a filter.
-#[derive(Serialize)]
-struct FactLine {
-    id: String,
-    text: String,
 }
 
 #[cfg(test)]
@@ -149,7 +137,7 @@ mod tests {
         };
         let view = serde_json::from_value(json!({
             "viewer": "mira", "place": "docks_shop", "visible_actors": ["aldric", "mira"],
-            "known_facts": [], "notes": [], "unknown_mentions": [], "items": [], "habits": []
+            "notes": [], "items": [], "habits": []
         }))
         .unwrap();
         let seen = render_result(&pack, ServerBody::View(Box::new(view)));

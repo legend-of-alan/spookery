@@ -1,4 +1,4 @@
-Feature: A place with no facts still plays
+Feature: A PC's moves play in a docks round
 
   Scenario: Harbormouse walks into the Loft and back
     Given a docks table
@@ -10,8 +10,3 @@ Feature: A place with no facts still plays
     Given a docks table
     When Harbormouse plays "wait"
     Then the wait lands with nothing refused
-
-  Scenario: A docks NPC habit fires in a place with no facts
-    Given Mira stands in a place with no facts
-    When a docks round plays
-    Then Mira's habit fires

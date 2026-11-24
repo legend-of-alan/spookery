@@ -39,8 +39,8 @@ pub(crate) fn save_of(pack: &Path) -> serde_json::Value {
     serde_json::to_value(&*world_of(pack)).unwrap_or_else(|err| panic!("save: {err}"))
 }
 
-/// Edit the save as its file holds it, for a fixture no writer makes: a count set outright, a
-/// fact forgotten.
+/// Edit the save as its file holds it, for a fixture no writer makes, such as a count set
+/// outright.
 pub(crate) fn edit_as_saved(now: &mut ecs::World, edit: impl FnOnce(&mut serde_json::Value)) {
     let mut save = serde_json::to_value(&**now).unwrap();
     edit(&mut save);

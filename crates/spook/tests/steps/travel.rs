@@ -45,15 +45,22 @@ async fn rowan_travels_to_mira_rooms(world: &mut World) {
     world.player_added = added;
 }
 
-#[then(expr = "the intent is refused with NO_EXIT and rowan stays put")]
-fn refused_no_exit_and_stays(world: &mut World) {
+#[when(expr = "rowan travels via the trapdoor")]
+async fn rowan_travels_via_the_trapdoor(world: &mut World) {
+    let (mark, added) = table::player_send(world, "travel trapdoor", "NO_EXIT").await;
+    world.mark = mark;
+    world.player_added = added;
+}
+
+#[then(expr = "the intent is refused with NO_EXIT and rowan stays in {word}")]
+fn refused_no_exit_and_stays(world: &mut World, place: String) {
     assert!(
         world.player_added.contains("NO_EXIT"),
         "{}",
         world.player_added
     );
     let now = world_of(table::pack(world));
-    assert_eq!(place_of(&now, "rowan"), "docks_street");
+    assert_eq!(place_of(&now, "rowan"), place);
     assert_eq!(now.world_time, 1080);
 }
 

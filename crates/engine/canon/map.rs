@@ -70,7 +70,6 @@ fn compile(row: usize, line: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
         cost,
         if_,
         locked_text: line.locked_text.clone(),
-        hidden: line.hidden,
         revealed_by: line.revealed_by.clone(),
     };
     if let Some((key, _)) = path.mentions().find_misplaced_target(TargetKind::None) {
@@ -183,7 +182,5 @@ struct PathYaml {
     if_: Vec<rule_list::CondYaml>,
     #[serde(default)]
     locked_text: String,
-    #[serde(default)]
-    hidden: bool,
     revealed_by: Option<String>,
 }

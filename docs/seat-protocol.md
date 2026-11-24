@@ -4,7 +4,7 @@ This page is the wire a player client or a GM speaks to `spook run`. [Engine gua
 
 - this page, whose examples are one live session of `tests/packs/docks`. A test plays that session and fails when an example and the table disagree.
 - the JSON Schema, [`client.json`](../crates/protocol/schema/client.json) for what a client sends and [`server.json`](../crates/protocol/schema/server.json) for what the table sends. A test fails when the schema `spookery-protocol` derives with its `schema` feature is not the published one.
-- the recorded session, [`v2.jsonl`](../crates/protocol/sessions/v2.jsonl), a player and a GM recorded against version 2. The `compatibility-replay` CI job replays it against each build.
+- the recorded session, [`v3.jsonl`](../crates/protocol/sessions/v3.jsonl), a player and a GM recorded against version 3. The `compatibility-replay` CI job replays it against each build.
 
 In the examples, Rowan is the player, in the shop, at game time 1080. A tick is game time. A round is one batch of queued moves.
 
@@ -46,12 +46,12 @@ The table speaks first, with `version`, the `commands` this seat may send, and, 
 
 <!-- example: player-hello -->
 ```json
-{"body":{"kind":"hello","version":2,"commands":["claim","release","say","look","help","map","cancel","ask","chock","drop","exert","strike","take","travel","unwield","use","wait","wield"],"open":["harbormouse","rowan","wren"],"pc_names":{"harbormouse":"Harbormouse","rowan":"Rowan","wren":"Wren"}}}
+{"body":{"kind":"hello","version":3,"commands":["claim","release","say","look","help","map","cancel","ask","chock","drop","exert","strike","take","travel","unwield","use","wait","wield"],"open":["harbormouse","rowan","wren"],"pc_names":{"harbormouse":"Harbormouse","rowan":"Rowan","wren":"Wren"}}}
 ```
 
 <!-- example: gm-hello -->
 ```json
-{"body":{"kind":"hello","version":2,"commands":["status","perceive","queue","say","commit","release"]}}
+{"body":{"kind":"hello","version":3,"commands":["status","perceive","queue","say","commit","release"]}}
 ```
 
 One GM holds the seat at a time, on `/gm` or on `/mcp`. A second GM on `/gm` gets one `refused` with `TABLE_FULL`, and the connection closes.
@@ -71,7 +71,7 @@ Each command reads `args` as one type, and the schema's `$defs` in `client.json`
 | `cancel` | player | `NoArgs` | `queued` |
 | a pack verb | player | `MoveArgs`: `target`, when the verb takes one | `queued` |
 | `status` | GM | `NoArgs` | `status` |
-| `perceive` | GM | `PerceiveArgs`: `as`, `max_body_chars` | `view` |
+| `perceive` | GM | `PerceiveArgs`: `as` | `view` |
 | `queue` | GM | `QueueArgs`: `actor`, `move`, `id`, `target`, `to`, `round_index`, `rationale_code` | `queued` |
 | `commit` | GM | `CommitArgs`: `include_round`, `session_id` | a `round` for each round played, then `committed` |
 
@@ -200,7 +200,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:589c993b77533a72cebcfb77ffda9e25a2240ea48a41ea8b5a06c4072b8a71aa",
+    "pack_rev": "blake2s:d7fca765ec8f29cb42fdd4bed0cfb83a7a6f2d868072e1504505d6084be2ef4a",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {
@@ -266,12 +266,12 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
         "wren": "pc_template"
       },
       "places": {
-        "docks_shop": "The shop faces the water. Tins sit in a row.\n",
-        "docks_street": "The street runs between the shop and the rooms.\n",
+        "docks_shop": "The shop faces the water. Tins sit in a row. Oil is on the shelf.\n",
+        "docks_street": "The street runs between the shop and the rooms. The street is quiet.\n",
         "gate_yard": "Wagon ruts cross the mud behind the street. A stick leans by the post. Briar stands in the ruts, and a mill cart sits across the lane.\n",
         "loft": "A ladder leads to a dry loft above the yard.\n",
         "mill_lane": "The lane runs past a small mill. Flour dusts the step.\n",
-        "mira_rooms": "A lamp burns past the shop's back stair.\n",
+        "mira_rooms": "A lamp burns in the room, past the shop's back stair.\n",
         "wheel_shed": "The shed smells of grease. A nail by the door holds a wooden chock.\n"
       },
       "cast": {
@@ -290,7 +290,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 
 ### perceive
 
-`as` is a bare actor id, not `player:<id>` or `npc:<id>`. A missing `as`, or `gm`, is `UNSCOPED_PERCEIVE`. `max_body_chars` is the prose budget, 800 by default. The reply is the `view` that actor would get.
+`as` is a bare actor id, not `player:<id>` or `npc:<id>`. A missing `as`, or `gm`, is `UNSCOPED_PERCEIVE`. The reply is the `view` that actor would get.
 
 ### queue
 
@@ -327,7 +327,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 
 `changed_keys` are the state keys the round changed, every one of them. Each is spelled `<collection>_<component> <id> <entry>`: the collection is `actor`, `place`, `story` or `world`, the world has no `<id>`, and a component an entity holds one of has no `<entry>`. So a meter is `actor_meter <actor> <id>` or `world_meter <id>`, a modifier is `actor_modifier <actor> <id>`, and an exit opening is `place_exit_open <place> <exit>`. The keys are:
 
-- `actor_place`, `actor_busy`, `actor_known_facts`, `actor_wielded_item`, `actor_last_act_round`, `actor_idle_acts_this_window` and `actor_live_acts_this_window`, one per actor;
+- `actor_place`, `actor_busy`, `actor_wielded_item`, `actor_last_act_round`, `actor_idle_acts_this_window` and `actor_live_acts_this_window`, one per actor;
 - `actor_flag`, `actor_meter`, `actor_modifier` and `actor_item`, under the flag, meter, modifier or item;
 - `place_flag`, `place_meter`, `place_item` and `place_exit_open`, under the flag, meter, item or exit;
 - `story_flag` and `story_meter`;
@@ -361,7 +361,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 ### view and resume
 
-`viewer` is the bare actor id. `place_name`, `actor_names` and each item's `name` are the pack's names, and `body` is the place prose. Each exit has its `exit_id`, the `name` a player reads for it, and where it goes as `place_id` and `place_name`. `known_facts` hold only the facts that actor knows, with the prose that actor may read. Each note has its `id`, the actor ids it addresses as `to_ids`, an optional `place_id`, its `fact_ids`, and `text`. `items` lie in the viewer's place. `items_carried` are the items the viewer holds, and `wielded_item_id` is the one of them they wield. Each is left out when there is none. `meters` are the viewer's own, without hidden ones, and each has the pack's `name` when its row gives one. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`, except `cancel` (see [Moves](#moves)). `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
+`viewer` is the bare actor id. `place_name`, `actor_names` and each item's `name` are the pack's names, and `body` is the place prose. Each exit has its `exit_id`, the `name` a player reads for it, and where it goes as `place_id` and `place_name`. `notes` are the notes left to the viewer and those lying in their place. Each note has its `id`, the actor ids it addresses as `to_ids`, an optional `place_id`, and `text`. `items` lie in the viewer's place. `items_carried` are the items the viewer holds, and `wielded_item_id` is the one of them they wield. Each is left out when there is none. `meters` are the viewer's own, without hidden ones, and each has the pack's `name` when its row gives one. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`, except `cancel` (see [Moves](#moves)). `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
 
 <!-- example: player-resume -->
 ```json
@@ -377,7 +377,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
     "viewer": "rowan",
     "place": "docks_shop",
     "place_name": "Docks Shop",
-    "body": "The shop faces the water. Tins sit in a row.",
+    "body": "The shop faces the water. Tins sit in a row. Oil is on the shelf.",
     "actor_names": [
       "Aldric",
       "Rowan"
@@ -386,15 +386,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
       "aldric",
       "rowan"
     ],
-    "known_facts": [
-      {
-        "id": "fact_oil_on_shelf",
-        "text": "Oil is on the shelf.",
-        "owner_body": "The shop faces the water. Tins sit in a row.\n"
-      }
-    ],
     "notes": [],
-    "unknown_mentions": [],
     "items": [
       {
         "id": "lamp_oil",
@@ -455,9 +447,9 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 ### After a round
 
-Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `changes` with every change that player may know. A player is told their own meter changes and the world's shown ones, not another actor's, even in the same place, and never a flag change. They are also told the items, place and wielded item of each actor in their place, their own known facts, and the notes they may read. A modifier or busy change is not sent: neither has a wire value yet. An empty `changes` is not sent, and a narrate line that would show a fact the player may not know is left out.
+Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `changes` with every change that player may know. A player is told their own meter changes and the world's shown ones, not another actor's, even in the same place, and never a flag change. They are also told the items, place and wielded item of each actor in their place and the notes they may read. A modifier or busy change is not sent: neither has a wire value yet. An empty `changes` is not sent.
 
-`changes` holds one object per change, in key order, not the order the round made them, and the client writes the sentence. `component_id` names what changed, as an open set: `meter`, `item`, `place`, `wielded_item`, `known_facts` and `note` today, and a client ignores one it does not know. `entity_id` is whose it is as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's, place's or story's name, and is left out for the world. `entry_id` is which one of the entity's, such as the meter or item id, and is left out when the entity holds one, as with `place`. `entry_name` is the item's name for `item`, the meter's name for a `meter` whose row gives one, or for `place` the name of the place moved to, and is left out otherwise. `before` and `after` are the values as JSON writes them: a number for a meter or an item count, text for a place or a wielded item, `true` for a note, and a list for known facts. Either is left out when there was none, as with a meter that did not read. When an item moves between an actor and a place, both counts are in `changes`, so `spook play` reads the take below as `You picked up the Lamp oil.` `spook play` words only meters, items and places, so a move reads like `Your place is now Docks Street.`, and prints nothing for the rest. An NPC's roll or refused habit sends no player message.
+`changes` holds one object per change, in key order, not the order the round made them, and the client writes the sentence. `component_id` names what changed, as an open set: `meter`, `item`, `place`, `wielded_item` and `note` today, and a client ignores one it does not know. `entity_id` is whose it is as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's, place's or story's name, and is left out for the world. `entry_id` is which one of the entity's, such as the meter or item id, and is left out when the entity holds one, as with `place`. `entry_name` is the item's name for `item`, the meter's name for a `meter` whose row gives one, or for `place` the name of the place moved to, and is left out otherwise. `before` and `after` are the values as JSON writes them: a number for a meter or an item count, text for a place or a wielded item and `true` for a note. Either is left out when there was none, as with a meter that did not read. When an item moves between an actor and a place, both counts are in `changes`, so `spook play` reads the take below as `You picked up the Lamp oil.` `spook play` words only meters, items and places, so a move reads like `Your place is now Docks Street.`, and prints nothing for the rest. An NPC's roll or refused habit sends no player message.
 
 <!-- example: player-round -->
 ```json
@@ -626,7 +618,7 @@ A refusal is a `refused` body, and the connection stays up. `detail` is there on
 | `NO_EXIT`, `CANT_AFFORD`, `MISSING_ITEM`, `NOT_A_WEAPON`, `BUSY` | The move was not queued. `BUSY` clears when the character is free. |
 | `AMBIGUOUS_NAME` | Two things in sight, or two PCs, share that name. Name one by an id `detail` lists. |
 | `UNKNOWN_MOVE`, `UNKNOWN_ID` | That move or id is not in the world, or the token is no claim's. |
-| `INELIGIBLE`, `OUT_OF_RANGE`, `BUDGET`, `UNKNOWN_EFFECT`, `ILLEGAL_KNOWLEDGE`, `VIEWER_MISMATCH`, `ENGINE_ON_PLAYER`, `TABLE_EMPTY` | The rules refused the change, and nothing of it was kept. |
+| `INELIGIBLE`, `OUT_OF_RANGE`, `BUDGET`, `UNKNOWN_EFFECT`, `VIEWER_MISMATCH`, `ENGINE_ON_PLAYER`, `TABLE_EMPTY` | The rules refused the change, and nothing of it was kept. |
 | `COMMIT_CONFLICT` | Another process holds the pack. Stop. |
 | `HAND_EDIT` | The save was edited by hand. Stop until it is migrated. |
 | `JOURNAL_DIVERGED` | The journal no longer replays. `spook verify` names the record. Stop. |
@@ -640,7 +632,7 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 
 - A client ignores a body `kind` and a field it does not know.
 - Changes only add. A field never changes meaning, and a new meaning gets a new name.
-- The hello announces `version` and the commands. A command is removed only after one release of being marked as going away. Version 2 has no such command and no marker yet. The marker is added to the hello before the first command needs it.
+- The hello announces `version` and the commands. A command is removed only after one release of being marked as going away. Version 3 has no such command and no marker yet. The marker is added to the hello before the first command needs it.
 - Version 2 broke version 1 once, on purpose: clocks left the wire with world clocks. `clocks` left `view` and `resume`, `pause` left `status`, `PAUSED_CLOCK` left the refusal codes, and `view.status` became `view.cant_act`. `view.world_meters` was added. The session recorded against version 1 was replaced by one recorded against version 2.
 - Version 2 dropped one field before any release, on purpose: `CHOOSE_PC` no longer lists the open PCs in `detail`, since the hello's `open` already does, so `detail` is always a string. The version stayed 2 because no build had shipped.
 - Version 2 renamed two things before any release, on purpose, when game time became ticks: an exit's `minutes` became `ticks`, and the changed key `live_acts_this_hour` became `live_acts_this_window`. The recording took the docks pack's new `pack_rev` with them. The version stayed 2 because no build had shipped.
@@ -658,5 +650,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 added fields a player window needs, and the version stayed 2 because each only adds: `view.items_carried` and `view.wielded_item_id`, a meter's `name` in `view` and its `entry_name` in `changes`, a `map` place's `place_id`, and `round_index` and `world_time` in `claimed`. The recording took the docks pack's new `pack_rev` with it.
 - Version 2 renamed two `claimed` fields on purpose, so each says what it holds: `missed` became `missed_messages` and `gap` became `is_missed_truncated`. The alpha pre-releases send and read the old names. A client and a table from either side of the rename still play, but a reconnect shows no missed messages, since each side ignores a field it does not know. The recording has neither field.
 - Version 2 renamed the GM `queue` field and the actor id on `status.queued[]` before any release, on purpose, so they match the other actor ids: `actor_id` became `actor`. There is no alias for the old key. The recording took the new name with it. The version stayed 2 because no build had shipped.
+- Version 3 broke version 2 once, on purpose, when known facts left the engine: a place's public facts moved into its prose, and what someone has found out became a flag, which never reaches a player. `known_facts` and `unknown_mentions` left `view`, `fact_ids` left a note, `max_body_chars` left the GM's `perceive`, the changed key `actor_known_facts` went, and `ILLEGAL_KNOWLEDGE` left the refusal codes. The session recorded against version 2 was replaced by one recorded against version 3.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

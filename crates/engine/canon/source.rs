@@ -131,7 +131,7 @@ pub(super) enum Locator<'a> {
     Nowhere,
     /// The first `key` in the text.
     Key(&'a str),
-    /// `key` inside the `row`th item of the top-level `list` (such as `facts:`), counted
+    /// `key` inside the `row`th item of the top-level `list` (such as `meters:`), counted
     /// in the text. Each item starts at its `id:` key.
     Row {
         list: &'a str,

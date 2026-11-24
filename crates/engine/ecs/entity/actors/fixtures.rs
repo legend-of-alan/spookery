@@ -31,7 +31,6 @@ impl Writer<'_, entity::Actors> {
             control_type,
             place: _,
             wielded,
-            known_facts,
             visited,
             acts,
             items,
@@ -47,8 +46,6 @@ impl Writer<'_, entity::Actors> {
         }
         let wielded = wielded.get(from).map(String::as_str);
         (self.get_mut::<component::WieldedItem>(to)).set(wielded)?;
-        (self.get_mut::<component::KnownFacts>(to))
-            .learn(known_facts.get(from).into_iter().flatten())?;
         for (place, exits) in nested_map::entries_of(&visited, from) {
             (self.get_mut::<component::Visit>(to)).set(place, exits.clone())?;
         }
@@ -70,7 +67,6 @@ impl Writer<'_, entity::Actors> {
             control_type: _,
             place: _,
             wielded: _,
-            known_facts: _,
             visited,
             acts: _,
             items,
@@ -92,9 +88,6 @@ impl Writer<'_, entity::Actors> {
             self.get_mut::<component::Flag>(actor).set(key, false)?;
         }
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
-        components
-            .known_facts
-            .set(transaction, actor.clone(), None, [])?;
         for (place, _) in nested_map::entries_of(&visited, actor) {
             let entry = (actor.clone(), place.to_string());
             components.visited.set(transaction, entry, None, [])?;

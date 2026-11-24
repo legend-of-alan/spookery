@@ -1,4 +1,4 @@
-//! Cross-file validation of rules, paths, meters, items, facts, and triggers.
+//! Cross-file validation of rules, paths, meters, items, and triggers.
 
 mod entity_scope;
 mod trigger;
@@ -6,7 +6,7 @@ mod trigger;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::canon::map::MAP_FILE;
-use crate::canon::{Canon, FactDef, ItemDef, PathDef, PlaceDef};
+use crate::canon::{Canon, ItemDef, PathDef, PlaceDef};
 use crate::diagnostic::{schema_error, warning, Diagnostic};
 use crate::ecs::component::modifier;
 use crate::ecs::id::PlaceId;
@@ -16,11 +16,10 @@ use crate::rules::rule::{self, Cond, EffectTemplate, Owner};
 
 pub(super) use entity_scope::{check_carriers, check_meter_reads, EntityScope};
 
-/// Paths whose ends are not places, and facts or items a path names but the pack does not.
+/// Paths whose ends are not places, and items a path names but the pack does not.
 pub(super) fn check_paths(
     paths: &[PathDef],
     places: &BTreeMap<PlaceId, PlaceDef>,
-    facts: &BTreeMap<String, FactDef>,
     items: &BTreeMap<String, ItemDef>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -34,14 +33,6 @@ pub(super) fn check_paths(
         for end in path.ends.iter().filter(|end| !places.contains_key(*end)) {
             let problem = format!("path '{line}' names '{end}', which is not a place");
             refuse(".path", problem, "name a place from world/places");
-        }
-        if path.hidden && path.revealed_by.is_none() {
-            let problem = format!("hidden path '{line}' has no revealed_by fact");
-            refuse(".revealed_by", problem, "set revealed_by to a fact id");
-        }
-        if let Some(fact) = (path.revealed_by.as_ref()).filter(|fact| !facts.contains_key(*fact)) {
-            let problem = format!("path '{line}' reveals '{fact}', which is not a fact");
-            refuse(".revealed_by", problem, "use a fact id from this pack");
         }
         for id in path.mentions().item_ids {
             if !items.contains_key(id) {
@@ -109,34 +100,6 @@ pub(crate) fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
     .at_path(path)
 }
 
-pub(super) fn check_reveals(
-    rules: &rule::Table,
-    facts: &BTreeMap<String, FactDef>,
-) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    for rule in rules.iter() {
-        rule.visit_templates(|effect| {
-            let EffectTemplate::Reveal { fact, .. } = effect else {
-                return;
-            };
-            if !facts.contains_key(fact) {
-                diags.push(
-                    schema_error(
-                        &rule.file,
-                        &format!(
-                            "rule '{}' reveals '{fact}', which is not a fact",
-                            rule.local_id
-                        ),
-                        "name a fact from this pack",
-                    )
-                    .at_path(format!("rules[{}]", rule.index)),
-                );
-            }
-        });
-    }
-    diags
-}
-
 /// Static warnings and trigger-reach errors on a loaded `Canon`, whose save lists the flag keys in
 /// `held_flags`.
 pub(crate) fn check_canon(canon: &Canon, held_flags: &BTreeSet<&str>) -> Vec<Diagnostic> {
@@ -165,27 +128,34 @@ fn conditions(canon: &Canon) -> impl Iterator<Item = (&str, String, &[Cond])> {
     rules.chain(paths)
 }
 
-/// Flag conditions, on a rule or a path, that test a key no rule sets and `held` does not list,
-/// so its value never moves: most likely a misspelt key. An exit's `open` is left to
-/// `check_carriers`.
+/// Flag conditions, on a rule or a path, and a path's `revealed_by`, that name a key no rule
+/// sets and `held` does not list, so its value never moves: most likely a misspelt key. An
+/// exit's `open` is left to `check_carriers`.
 fn check_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
+    let is_ever_set = |key| held.contains(key) || find_flag_holders(canon, key).next().is_some();
+    let hint = "set the flag in a rule or the save, or name a flag that is set";
     for (file, at, conds) in conditions(canon) {
         for cond in conds {
             cond.visit(|cond| {
                 let Cond::Flag { of, key, .. } = cond else {
                     return;
                 };
-                let is_ever_set =
-                    |key| held.contains(key) || find_flag_holders(canon, key).next().is_some();
                 if matches!(of, grammar::Object::Exit(_)) || is_ever_set(key.as_str()) {
                     return;
                 }
-                let problem = format!("tests flag '{key}', which no rule sets and no save holds");
-                let hint = "set the flag in a rule or the save, or test a flag that is set";
+                let problem = format!("names flag '{key}', which no rule sets and no save holds");
                 diags.push(warning(file, &problem, hint).at_path(at.clone()));
             });
         }
+    }
+    for (row, path) in canon.paths.iter().enumerate() {
+        let Some(key) = path.revealed_by.as_deref().filter(|key| !is_ever_set(key)) else {
+            continue;
+        };
+        let problem = format!("names flag '{key}', which no rule sets and no save holds");
+        let at = format!("paths[{row}].revealed_by");
+        diags.push(warning(MAP_FILE, &problem, hint).at_path(at));
     }
     diags
 }

@@ -17,7 +17,7 @@ A place, item, cast member or story may have `name`, the name a player sees. Wit
 | `rules/meters.yaml` | The meters every actor carries. Tag `meters`. |
 | `rules/modifiers.yaml` | Optional. Modifiers that move an actor's meter for a while. Tag `modifiers`. |
 | `rules/budget.yaml` | Round budgets and the idle policy. Tag `budget`. |
-| `world/places/<id>.md` | One place: facts, the meters only it carries, and that place's rules. |
+| `world/places/<id>.md` | One place: its prose, the meters only it carries, and that place's rules. |
 | `world/map.yaml` | Every path between places. Tag `map`. Required; `paths: []` when there are none. |
 | `world/items/<id>.md` | One item: name, tags, prose, and that item's rules. |
 | `world/meters.yaml` | Optional. The meters the world holds once. Tag `meters`. |
@@ -52,9 +52,9 @@ gm_notes: >-
 
 A place file is Markdown. The header between the `---` lines is the frontmatter. The prose after the closing `---` is the body a viewer can read.
 
-Only places own facts. A fact has `id`, `text`, and optional `hidden`, which defaults to false. A player in the place sees every fact that is not hidden. A hidden fact is seen only by an actor whose `known_facts` lists it.
+A sentence everyone in the place should read belongs in the body. Words meant for one reader go in a `note`, and what someone has found out is a flag on them or on the world. See [Effects](#effects).
 
-`world/map.yaml` lists every path between places under `paths:`. Each `path` is one place id, then `->` or `<->`, then another place id. `a -> b` is a way from `a` to `b`, and `a <-> b` is a way both ways. A path may have `id`, `cost`, `if`, `locked_text`, and `hidden` together with `revealed_by`, and on a `<->` line each one holds from both ends. When the two directions differ, write two one-way lines. A place's exits are the paths that leave it, in file order. `id` is the word a player types for the exit at each end; left out, it is the id of the place at the other end. A player reads an exit as the name of the place it goes to when its word is that place's id, or else as its word. Two exits at one place with the same word are rejected, so two paths from one place to another need their own ids. Both ends are place ids. A hidden exit needs `revealed_by`, and that value is a fact id from this pack. A place no path reaches from the start, counting hidden and locked exits, is a warning. A player's `map` shows each place's exits as they last saw them: at the end of each round, every actor notes the exits they can see where they stand. A hidden exit revealed while they are elsewhere shows on the map only after they go back. Where an exit goes, its ticks and whether it is locked are read when `map` prints.
+`world/map.yaml` lists every path between places under `paths:`. Each `path` is one place id, then `->` or `<->`, then another place id. `a -> b` is a way from `a` to `b`, and `a <-> b` is a way both ways. A path may have `id`, `cost`, `if`, `locked_text`, and `revealed_by`, and on a `<->` line each one holds from both ends. When the two directions differ, write two one-way lines. A place's exits are the paths that leave it, in file order. `id` is the word a player types for the exit at each end; left out, it is the id of the place at the other end. A player reads an exit as the name of the place it goes to when its word is that place's id, or else as its word. Two exits at one place with the same word are rejected, so two paths from one place to another need their own ids. Both ends are place ids. `revealed_by` names a flag, and the exit is hidden until it is set: an actor sees the exit in their view and on `map`, and may travel it, once they or the world carry that flag. A place no path reaches from the start, counting hidden and locked exits, is a warning. A player's `map` shows each place's exits as they last saw them: at the end of each round, every actor notes the exits they can see where they stand. A hidden exit revealed while they are elsewhere shows on the map only after they go back. Where an exit goes, its ticks and whether it is locked are read when `map` prints.
 
 `meters` lists the meters only this place carries, in the shape of `rules/meters.yaml`. A rule names them, and the place's flags, with `of: place:<id>`, or `of: here` for the actor's own place. `world/places/loft.md` declares `light`.
 
@@ -71,12 +71,6 @@ A walk that takes ticks puts the traveller on the exit as soon as it starts. The
 schema: place
 id: yard
 name: Yard
-facts:
-  - id: fact_yard_open
-    text: The yard gate stands open.
-  - id: fact_hidden_stair
-    text: Ivy hides a stair.
-    hidden: true
 rules:
   - id: bell
     when:
@@ -100,7 +94,7 @@ rules:
           key: open
           value: false
 ---
-Gravel underfoot.
+Gravel underfoot. The yard gate stands open.
 ```
 
 ```yaml file=world/map.yaml
@@ -111,8 +105,7 @@ paths:
       ticks: 10
   - path: yard -> loft
     id: stair
-    hidden: true
-    revealed_by: fact_hidden_stair
+    revealed_by: found_stair
   - path: loft -> yard
   - path: yard <-> cellar
     if:
@@ -128,11 +121,8 @@ paths:
 schema: place
 id: lane
 name: Lane
-facts:
-  - id: fact_lane_empty
-    text: The lane is empty.
 ---
-The lane runs past the yard.
+The lane runs past the yard. The lane is empty.
 ```
 
 ```yaml file=world/places/loft.md
@@ -140,9 +130,6 @@ The lane runs past the yard.
 schema: place
 id: loft
 name: Loft
-facts:
-  - id: fact_loft_rope
-    text: The loft smells of rope.
 meters:
   - id: light
     min: 0
@@ -151,7 +138,7 @@ meters:
     base: 0
     hidden: false
 ---
-Rope, and a view of the yard.
+Rope, and a view of the yard. The loft smells of rope.
 ```
 
 ```yaml file=world/places/cellar.md
@@ -159,14 +146,8 @@ Rope, and a view of the yard.
 schema: place
 id: cellar
 name: Cellar
-facts:
-  - id: fact_cellar_dark
-    text: The cellar is dark.
-  - id: fact_ledger_short
-    text: The oil ledger is one tin short.
-    hidden: true
 ---
-Stone, and a low door.
+Stone, and a low door. The cellar is dark.
 ```
 
 ## Items
@@ -207,9 +188,9 @@ A short knife.
 
 ## Cast
 
-`control_type` is `npc` or `pc_template`. A template does not seat a player. The save does. The file name is not the id: `cast/pc-ada.md` has id `ada`. A cast page has no `facts`: what an actor knows is `known_facts` on the save.
+`control_type` is `npc` or `pc_template`. A template does not seat a player. The save does. The file name is not the id: `cast/pc-ada.md` has id `ada`. What an actor has found out is a flag on that actor, and words meant for them alone are a `note`.
 
-`flags` lists the flags an effect may set on this actor. A flag effect or condition whose `of` is fixed by the pack, as for meters, names a flag that entity's file lists, or check refuses it. World flags are not listed: any name but `busy` is one. `meters` lists the meters only this actor carries, in the shape of `rules/meters.yaml`; see [Meters](#meters). `idle.eligible` says whether the idle runner may pick this NPC. `when: habit` is a habit of that NPC. The runner takes the first habit whose `if` holds and whose `do` list expands.
+An actor may carry any flag but `busy`, and the cast file does not list them. `meters` lists the meters only this actor carries, in the shape of `rules/meters.yaml`; see [Meters](#meters). `idle.eligible` says whether the idle runner may pick this NPC. `when: habit` is a habit of that NPC. The runner takes the first habit whose `if` holds and whose `do` list expands.
 
 A meter never pauses. To stop a rule from advancing a meter while no player is seated, give the rule `if: players >= 1`.
 
@@ -279,9 +260,10 @@ rules:
               of: self
               key: tended
               is: false
-          - knows:
-              subject: ada
-              fact: fact_yard_open
+          - flag:
+              of: ada
+              key: found_stair
+              is: true
       - not:
           note_exists: note_tended
       - has_item:
@@ -317,7 +299,6 @@ rules:
           to_ids:
             - ada
           place_id: yard
-          fact_ids: []
           text: The yard is swept.
 ---
 Keeper sweeps the yard.
@@ -369,7 +350,7 @@ A pack line reads as a clause. Each word keeps one part of speech and one role:
 
 | Word | Part of speech | Role |
 |---|---|---|
-| `subject` | subject | the actor the verb is about: who plays the move, or who has, is at, knows or wields in a condition |
+| `subject` | subject | the actor the verb is about: who plays the move, or who has, is at or wields in a condition |
 | verb | verb | the action |
 | `target` | direct object | the thing the verb acts on, and nothing else |
 | `of` | preposition | the owner of the meter, flag or item count the line names, e.g. `meter: hp, of: target` reads as "hp of the target" |
@@ -478,13 +459,12 @@ A change rule fires when its watch becomes true. It does not fire again while th
 | Meter | `meter` is a meter id, on any entity that carries it. `crosses` is an operator and a number, such as `<=0`. |
 | Flag | `flag` is the flag. `becomes` is `true` or `false`. |
 | Item | `item` is an item id, with `gained: true` or `lost: true`. |
-| Knows | `knows` is a fact id. The watch is that fact becoming known. |
 
 A change rule has no `cost`, `start`, `finish`, `cooldown`, or `cancellable`. Check rejects them. It may have `if`, `check`, and the outcome lists. `if` is read after the change.
 
 Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. The subject is the actor whose value changed. A flag or meter of the world, a place, a story or an exit has no subject, so a rule watching one runs once per change, whoever is seated, and check refuses `self`, `here`, `location`, and `check` in it: name the actor, or `world`. A flag counts as the world's when a rule sets it on the world, a place, a story or an exit; a flag only the save sets is not checked, and a `self` there is refused when the rule runs. A key the world and an actor both carry fires the rule for each, and `TRIGGER_LEAK` reads it as an actor's change. Change rules run right after each action starts and right after each one finishes, so a rule sees every action's change and can change the world before the next action in the round. A walk fires `leave` at its start and `arrive` at its finish. Two changes to one key inside one action count as one. They run once more at the end of the round, after locked exits open. `max_trigger_depth` in `rules/budget.yaml` caps the passes each time they run. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
 
-`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `subject` on `has_item`, `at`, `knows`, and `wielding` is the subject of that verb: `has_item: { subject: self, id: key }` reads as *self has the key*. It is an actor: `self`, `target`, or an actor id; check refuses any other owner on that word's line. `of` on a meter, flag, or item is the owner whose value or count the line reads or changes: `self`, `target`, `here`, `world`, `place:<id>`, `story:<id>`, `exit:<place>.<exit>`, or an actor id. An exit holds only its flag `open`. An owner `target`, in a slot or a number such as `target.hp`, is the move's target, and check refuses it unless the rule targets an actor. On `has_item`, `wielding`, an item effect, `wield`, and a cost's `items`, `id: target` is the intent's target, and check refuses it unless the rule targets an item. A habit and a change rule target nothing, and a path's `if` and `cost` cannot say `target`. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `id`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are ticks below the cycle's length and they differ; check compares them when they are integers, and a bound read from a meter that falls outside the cycle refuses the move `OUT_OF_RANGE`.
+`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `subject` on `has_item`, `at`, and `wielding` is the subject of that verb: `has_item: { subject: self, id: key }` reads as *self has the key*. It is an actor: `self`, `target`, or an actor id; check refuses any other owner on that word's line. `of` on a meter, flag, or item is the owner whose value or count the line reads or changes: `self`, `target`, `here`, `world`, `place:<id>`, `story:<id>`, `exit:<place>.<exit>`, or an actor id. An exit holds only its flag `open`. An owner `target`, in a slot or a number such as `target.hp`, is the move's target, and check refuses it unless the rule targets an actor. On `has_item`, `wielding`, an item effect, `wield`, and a cost's `items`, `id: target` is the intent's target, and check refuses it unless the rule targets an item. A habit and a change rule target nothing, and a path's `if` and `cost` cannot say `target`. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `id`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are ticks below the cycle's length and they differ; check compares them when they are integers, and a bound read from a meter that falls outside the cycle refuses the move `OUT_OF_RANGE`.
 
 Every move but `say` is an action that starts and finishes. `cost` is what the start costs, and it may name `ticks`, `meters`, and `items`. `cost.ticks` is how long the action takes, read for the acting actor; omitted, it finishes in the round it starts. A count below 0 refuses the move `OUT_OF_RANGE`. An exit's ticks in a view and on `map` are read for the viewer, and show 0 when they cannot be read. A cost the actor cannot pay is refused when the move is played, and the world stays as it was. The start is checked again when the round runs it, since an earlier move may have changed the world.
 
@@ -560,7 +540,6 @@ rules:
       - narrate:
           to: ada
           text: You set your weight.
-          fact_ids: []
     success:
       - flag:
           of: self
@@ -575,7 +554,6 @@ rules:
       - narrate:
           to: self
           text: The press slips.
-          fact_ids: []
 
   - id: meter_add
     when:
@@ -625,7 +603,6 @@ rules:
             - narrate:
                 to: self
                 text: They hold their nerve.
-                fact_ids: []
           miss:
             - meter:
                 of: self
@@ -668,7 +645,6 @@ rules:
           to_ids:
             - ada
           place_id: yard
-          fact_ids: []
           text: A chalk mark points down the lane.
 
   - id: ring_bell
@@ -678,7 +654,6 @@ rules:
       - narrate:
           to: here
           text: A bell rings once.
-          fact_ids: []
 
   - id: advance_day
     when:
@@ -704,8 +679,6 @@ rules:
     do:
       - memory:
           to: self
-          fact_ids:
-            - fact_yard_open
           text: The gate was open at dawn.
 
   - id: give_oil
@@ -726,9 +699,10 @@ rules:
     when:
       verb: show_stair
     do:
-      - reveal:
-          to: self
-          fact: fact_hidden_stair
+      - flag:
+          of: self
+          key: found_stair
+          value: true
 
   - id: scorch
     when:
@@ -772,7 +746,7 @@ rules:
 
 A meter effect, condition or read whose `of` is fixed by the pack names one entity: `world`, `place:<id>`, `story:<id>`, an actor id, or `self` on a cast member's own habit. Check refuses one that names a meter that entity does not carry. `target` and other entities known only at play time are not guessed.
 
-Visibility: the GM sees every meter change. An actor's meter change is shown to that actor only, not to others in the same place. A world meter is hidden from players unless its row says `hidden: false`; then every player sees its changes and its current value in their view. A story or place meter is hidden the same way; with `hidden: false` every player sees a story meter's changes, and the players standing in a place see that place's, but neither is listed in a view. `hidden: true` keeps an actor's meter off that actor's own view. A flag change, on an actor, a place, a story or the world, is never shown to a player: use a meter with `hidden: false` or a fact for state players should see.
+Visibility: the GM sees every meter change. An actor's meter change is shown to that actor only, not to others in the same place. A world meter is hidden from players unless its row says `hidden: false`; then every player sees its changes and its current value in their view. A story or place meter is hidden the same way; with `hidden: false` every player sees a story meter's changes, and the players standing in a place see that place's, but neither is listed in a view. `hidden: true` keeps an actor's meter off that actor's own view. A flag change, on an actor, a place, a story or the world, is never shown to a player: use a meter with `hidden: false`, the place's prose or a note for state players should see.
 
 ```yaml file=rules/meters.yaml
 schema: meters
@@ -854,11 +828,11 @@ One effect under each dash. The rules in `rules/verbs.yaml` are the examples. `s
 
 `location.via` names an exit from the actor's current place. `travel` uses `via: target`, which needs a rule that targets an exit. `location.to` names a place, or `target`, which needs a rule that targets a place. Playing `to` without `teleport: true` is refused. `teleport: true` in `rules/verbs.yaml` is a warning.
 
-`note` names its readers as `to_ids` and its place as `place_id`. It is stored on the save under `globals.notes`, keyed by the note's `id`, with its `to_ids` and `fact_ids` each in order and listed once. A note is shown to everyone named in `to_ids`, wherever they are, and to anyone standing in `place_id`. It is hidden from a viewer when one of its `fact_ids` is one that viewer may not know. Place bodies and note text are shown as written. A hidden fact's sentence pasted into either one reaches every reader, and `spook check` does not warn. `narrate` is one-off text for the people its `to` names, written on the round and left out of the save. `to` is `self`, `here`, or an actor id. A world change rule may leave it out, and then it is every player present; check refuses a missing `to` anywhere else. `reveal` adds its fact to the actor `to` names and writes no memory line. `memory` writes a memory line to the actor `to` names and teaches them its facts. The save groups what each kind of entity holds by component: an actor's flags are under `actors.flags`, a place's items, meters and flags under `places.items`, `places.meters` and `places.flags` and its open exits under `places.open_exits`, a story's under `stories`, and the world's under `globals.meters`, `globals.flags` and `globals.notes`, each listed by the entity's id. The save lists no places or stories of its own: every place and story the pack defines exists. It lists an actor's action state under `actors.acts` only while it differs from that of an actor who has not acted, and a meter only while it differs from its `base`.
+`note` names its readers as `to_ids` and its place as `place_id`. It is stored on the save under `globals.notes`, keyed by the note's `id`, with its `to_ids` in order and listed once. A note is shown to everyone named in `to_ids`, wherever they are, and to anyone standing in `place_id`. Place bodies and note text are shown as written to everyone who reads them. `narrate` is one-off text for the people its `to` names, written on the round and left out of the save. `to` is `self`, `here`, or an actor id. A world change rule may leave it out, and then it is every player present; check refuses a missing `to` anywhere else. A rule that should not speak to everyone it names gets an `if`. `memory` writes a memory line to the actor `to` names. The save groups what each kind of entity holds by component: an actor's flags are under `actors.flags`, a place's items, meters and flags under `places.items`, `places.meters` and `places.flags` and its open exits under `places.open_exits`, a story's under `stories`, and the world's under `globals.meters`, `globals.flags` and `globals.notes`, each listed by the entity's id. The save lists no places or stories of its own: every place and story the pack defines exists. It lists an actor's action state under `actors.acts` only while it differs from that of an actor who has not acted, and a meter only while it differs from its `base`.
 
-`flag` sets a flag on its `of` or takes it off. Any actor, place, story or the world may carry any flag but `busy`, and no file lists them. A flag that is not set reads false. Check warns about a flag a rule or a path tests that no rule sets and no save holds, which is most often a misspelt key.
+`flag` sets a flag on its `of` or takes it off. Any actor, place, story or the world may carry any flag but `busy`, and no file lists them. A flag that is not set reads false. Check warns about a flag a condition or a path's `revealed_by` names that no rule sets and no save holds, which is most often a misspelt key.
 
-`wield` fills the actor's one wielded slot. `unwield` empties it. `subject` on those effects, and on `has_item`, `at`, `knows`, and `wielding`, is the subject of that verb. `to` on `reveal`, `modifier`, and `memory` is who the fact, the modifier, or the memory line lands on: an actor, as `subject` is. `of` on a meter, flag, or item is the owner whose value or count the line reads or changes.
+`wield` fills the actor's one wielded slot. `unwield` empties it. `subject` on those effects, and on `has_item`, `at`, and `wielding`, is the subject of that verb. `to` on `modifier` and `memory` is who the modifier or the memory line lands on: an actor, as `subject` is. `of` on a meter, flag, or item is the owner whose value or count the line reads or changes.
 
 ## Check codes
 

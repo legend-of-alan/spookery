@@ -51,32 +51,24 @@ fn shop_exits_mira_knows(pack: &Path) -> Vec<String> {
     shop.exits.iter().map(|exit| exit.exit_id.clone()).collect()
 }
 
-/// The trapdoor under the shop's rug, and a `dig` verb on the shop and the street that
-/// teaches whoever digs `fact_trapdoor`. Mira starts in the shop and keeps no habits.
-#[given(expr = "the shop has a hidden exit revealed by fact_trapdoor")]
+/// The trapdoor under the shop's rug, and a `dig` verb on the shop and the street that sets
+/// `found_trapdoor` on whoever digs. Mira starts in the shop and keeps no habits.
+#[given(expr = "the shop has an exit revealed by the found_trapdoor flag")]
 fn the_shop_has_a_trapdoor(world: &mut World) {
     let pack = support::copy_pack("docks", "map-last-seen");
-    let path = pack.join("world/places/docks_shop.md");
-    let text = fs::read_to_string(&path).unwrap();
-    let next = text.replace(
-        "    text: Oil is on the shelf.\n",
-        "    text: Oil is on the shelf.\n  - id: fact_trapdoor\n    text: A trapdoor is under the rug.\n    hidden: true\n",
-    );
-    assert_ne!(text, next);
-    fs::write(&path, next).unwrap();
     support::append(
         &pack.join("world/map.yaml"),
-        "  - path: docks_shop -> cellar\n    id: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
+        "  - path: docks_shop -> cellar\n    id: trapdoor\n    revealed_by: found_trapdoor\n",
     );
     fs::write(
         pack.join("world/places/cellar.md"),
-        "---\nschema: place\nid: cellar\nname: Cellar\nfacts: []\n---\nUnder the shop.\n",
+        "---\nschema: place\nid: cellar\nname: Cellar\n---\nUnder the shop.\n",
     )
     .unwrap();
     let dig = "  - id: dig
     when: { verb: dig }
     do:
-      - reveal: { to: self, fact: fact_trapdoor }";
+      - flag: { of: self, key: found_trapdoor, value: true }";
     for place in ["docks_shop", "docks_street"] {
         super::round_play::add_place_rules(&pack, place, dig);
     }
@@ -111,18 +103,18 @@ fn mira_is_standing_in_the_shop(world: &mut World) {
     assert!(!shop_exits_mira_knows(world.pack()).contains(&"trapdoor".to_string()));
 }
 
-#[when(expr = "Mira learns fact_trapdoor on the street")]
-fn mira_learns_on_the_street(world: &mut World) {
+#[when(expr = "Mira finds the trapdoor on the street")]
+fn mira_finds_the_trapdoor_on_the_street(world: &mut World) {
     mira_plays(world.pack(), "dig", None);
     let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     let (ecs_world, mira) = (saved.world(), "mira".into());
     assert_eq!(support::place_of(ecs_world, "mira"), "docks_street");
-    let known_facts = ecs_world.actors().get::<component::KnownFacts>(&mira).get();
-    assert!(known_facts.unwrap().contains(&"fact_trapdoor".to_string()));
+    let flags = ecs_world.actors().get::<component::Flag>(&mira);
+    assert!(flags.contains("found_trapdoor"));
 }
 
-#[when(expr = "Mira learns fact_trapdoor")]
-fn mira_learns(world: &mut World) {
+#[when(expr = "Mira finds the trapdoor")]
+fn mira_finds_the_trapdoor(world: &mut World) {
     mira_plays(world.pack(), "dig", None);
     let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     assert_eq!(support::place_of(saved.world(), "mira"), "docks_shop");

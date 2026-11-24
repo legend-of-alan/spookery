@@ -61,7 +61,7 @@ A **log** is everything else: a `tracing` event that records what the program di
 - **Only the terminals print.** `spook`'s `main.rs` and the `spook play` and `spook gm` terminals (`client/terminal.rs`, `client/gm.rs`) write to stdout and stderr. Other crates hand their output to a writer or callback the caller passes in: `spookery_server::Config::out` for the host console, and the AI GM's `report`. Output never goes through `tracing`, and a log never stands in for output.
 - **Refusals and errors are output.** Logging one again at `warn` or `error` would report it twice. If it lacks its cause, such as the disk error behind `STORE_IO`, log the cause at `debug`.
 - **Logs never copy the game record.** The tape holds what was said and the journal holds what each round did. A log names a round, seat or command by its id. It never carries speech, effects, dice, views or message bodies.
-- **Logs never carry secrets or prompts.** No key, claim token, model prompt, model reply text or fact body, at any level.
+- **Logs never carry secrets or prompts.** No key, claim token, model prompt or model reply text, at any level.
 - **No flag sets the log level.** `RUST_LOG` is the only setting, and `spook` reads it once. Spookery has no `-v` or `-q`. A command that someday shows more or less output decides that itself, and never reads or sets the log level.
 - **Fields, not formatted text.** Write `tracing::info!` with its crate path and keep the default target, which is the module path. Fields are ids and codes (named by Naming rule 17, so `actor_id`, `conn_id` and `command_id`), counts, and `elapsed_ms`. A field that copies a wire or save name keeps that name, such as `world_time`.
 

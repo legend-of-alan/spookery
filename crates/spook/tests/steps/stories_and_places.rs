@@ -44,7 +44,7 @@ fn append_story_rule(pack: &Path, story: &str, effect: &str) {
 /// Write `world/places/attic.md`, above the shop, with these extra keys.
 fn write_attic(world: &mut World, keys: &str) {
     let text = format!(
-        "---\nschema: place\nid: attic\nname: Attic\nfacts:\n  - id: fact_attic_dust\n    text: Dust lies on the boards.\n{keys}---\nThe attic is over the shop.\n"
+        "---\nschema: place\nid: attic\nname: Attic\n{keys}---\nThe attic is over the shop.\n"
     );
     fs::write(pack(world).join("world/places/attic.md"), text).unwrap();
     let ladder = "  - path: attic -> docks_shop\n    id: ladder\n";

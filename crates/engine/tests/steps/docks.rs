@@ -15,8 +15,6 @@ use spookery_engine::{
 
 use crate::World;
 
-const LEDGER: &str = "The lamp-oil ledger is short.";
-
 /// Put actor `id`, controlled as `control_type` says, in `place`, with vigor `vigor`, the docks
 /// pack's other meters at their base, and nothing else.
 fn add_actor(
@@ -81,7 +79,6 @@ fn door_note() -> Note {
     Note {
         to_ids: BTreeSet::from(["rowan".into()]),
         place_id: Some("docks_shop".into()),
-        fact_ids: BTreeSet::new(),
         text: "Back at dusk. Oil on the shelf.".to_string(),
     }
 }
@@ -117,7 +114,7 @@ fn evening_note() {
     assert_eq!(place_of(&world, "mira"), "mira_rooms");
     let notes = world.globals().get::<Note>(&GlobalId);
     let door = notes.get("note_mira_door").expect("the door note");
-    assert_eq!(note_ids(&world), ["note_mira_door"]);
+    assert_eq!(note_ids(&world), ["note_ledger_short", "note_mira_door"]);
     assert_eq!(door.place_id, Some("docks_shop".into()));
     let _ = fs::remove_dir_all(&pack);
 }
@@ -142,7 +139,7 @@ fn morning_restock() {
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 8);
     assert_eq!(place_of(&world, "mira"), "mira_rooms");
-    assert_eq!(note_ids(&world), ["note_mira_door"]);
+    assert_eq!(note_ids(&world), ["note_ledger_short", "note_mira_door"]);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -185,7 +182,7 @@ fn off_hours_hold() {
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 4);
-    assert_eq!(note_ids(&world), ["note_mira_door"]);
+    assert_eq!(note_ids(&world), ["note_ledger_short", "note_mira_door"]);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -211,7 +208,7 @@ fn player_in_the_shop() {
         .unwrap_or_else(|err| panic!("round: {err}"));
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 4);
-    assert_eq!(note_ids(&world), ["note_mira_door"]);
+    assert_eq!(note_ids(&world), ["note_ledger_short", "note_mira_door"]);
     assert_eq!(act_of(&world, "mira").last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
@@ -254,7 +251,10 @@ fn gm_restocks() {
     queue_gm_intent(&mut opened, "gm-1", "mira", "restock_lamp_oil");
     opened.play(&rowan(), &wall).unwrap();
     assert_eq!(lamp_oil(opened.world()), 8);
-    assert_eq!(note_ids(opened.world()), ["note_mira_door"]);
+    assert_eq!(
+        note_ids(opened.world()),
+        ["note_ledger_short", "note_mira_door"]
+    );
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -335,9 +335,6 @@ paths: []
 schema: place
 id: gate
 name: Gate
-facts:
-  - id: fact_gate
-    text: The gate is shut.
 ---
 A gate.
 ",
@@ -444,9 +441,6 @@ paths: []
 schema: place
 id: yard
 name: Yard
-facts:
-  - id: fact_yard
-    text: The yard is open.
 ---
 A yard.
 ",
@@ -508,97 +502,16 @@ rules:
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn a_zero_budget_strips_fact_bodies() {
+/// A viewer that is no actor, such as `gm`, is refused, and the pack is not written.
+fn a_gm_perceive_is_refused_and_writes_nothing() {
     let pack = support::copy_pack("docks", "scope");
     let before = snapshot(&pack);
     let opened = spookery_engine::Session::open(&pack).unwrap();
-    let call = |viewer_id: &str, budget: usize| {
-        opened.perceive_trimmed(&Presence::default(), viewer_id, budget)
-    };
-    let kernel = opened.perceive(&Presence::default(), "mira").unwrap();
-    assert_eq!(call("mira", 800).unwrap(), kernel);
-    let capped = call("mira", 0).unwrap();
-    assert!(kernel
-        .known_facts
-        .iter()
-        .any(|fact| !fact.owner_body.is_empty()));
-    assert_eq!(capped.known_facts.len(), kernel.known_facts.len());
-    assert!(capped
-        .known_facts
-        .iter()
-        .all(|fact| fact.owner_body.is_empty()));
-    let ledger = capped
-        .known_facts
-        .iter()
-        .find(|fact| fact.id == "fact_ledger_short")
-        .unwrap();
-    assert_eq!(ledger.text, LEDGER);
-    assert!(!capped
-        .unknown_mentions
-        .iter()
-        .any(|id| id == "fact_ledger_short"));
-    assert!(capped
-        .unknown_mentions
-        .iter()
-        .any(|id| id == "fact_room_lamp"));
-    let unscoped = spookery_engine::Reason::UnscopedPerceive;
-    assert_eq!(call("gm", 800).unwrap_err(), unscoped);
+    opened.perceive(&Presence::default(), "mira").unwrap();
+    let refused = opened.perceive(&Presence::default(), "gm").unwrap_err();
+    assert_eq!(refused, spookery_engine::Reason::UnscopedPerceive);
     drop(opened);
     assert_eq!(snapshot(&pack), before);
-    let _ = fs::remove_dir_all(&pack);
-}
-
-fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    if !dir.exists() {
-        return;
-    }
-    let mut entries: Vec<_> = fs::read_dir(dir)
-        .unwrap()
-        .map(|entry| entry.unwrap())
-        .collect();
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_markdown_files(&path, out);
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
-            out.push(path);
-        }
-    }
-}
-
-fn strip_bodies() {
-    let pack = support::copy_pack("docks", "strip");
-    let mut files = Vec::new();
-    collect_markdown_files(&pack.join("cast"), &mut files);
-    collect_markdown_files(&pack.join("world"), &mut files);
-    assert!(!files.is_empty());
-    for path in &files {
-        let text = fs::read_to_string(path).unwrap();
-        let stripped = spookery_engine::testing::strip_body(&text).unwrap();
-        assert!(
-            !stripped.contains("Mira keeps the shop"),
-            "{}",
-            path.display()
-        );
-        assert!(!stripped.contains("Bram walks"), "{}", path.display());
-        fs::write(path, stripped).unwrap();
-    }
-    let shop = fs::read_to_string(pack.join("world/places/docks_shop.md")).unwrap();
-    assert!(shop.contains(LEDGER), "frontmatter secret removed");
-    assert!(!fs::read_to_string(pack.join("cast/aldric.md"))
-        .unwrap()
-        .contains(LEDGER));
-    stamp_pack_rev(&pack);
-    resume(&pack);
-    play_pack_once(&pack).unwrap_or_else(|err| panic!("stripped pack did not tick: {err}"));
-    let perceive = format!(
-        "{:?}",
-        resume(&pack)
-            .perceive(&Presence::default(), "aldric")
-            .unwrap()
-    );
-    assert!(!perceive.contains(LEDGER));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -836,14 +749,9 @@ fn fifty_npcs_share_one_round(_world: &mut World) {
     budget_caps();
 }
 
-#[when(expr = "an npc perceive is called with a zero budget")]
-fn an_npc_perceive_is_called(_world: &mut World) {
-    a_zero_budget_strips_fact_bodies();
-}
-
-#[when(expr = "prose is stripped")]
-fn prose_is_stripped(_world: &mut World) {
-    strip_bodies();
+#[when(expr = "the GM's own seat is perceived")]
+fn the_gms_own_seat_is_perceived(_world: &mut World) {
+    a_gm_perceive_is_refused_and_writes_nothing();
 }
 
 #[when(expr = "effect rows and outcome lists are played")]

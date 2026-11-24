@@ -10,7 +10,6 @@ use super::message_body;
 use super::table::commit_then_fast_forward;
 use crate::protocol::{
     parse_args, CommitArgs, NoArgs, PerceiveArgs, QueueArgs, SayArgs, ServerBody,
-    PERCEIVE_BODY_CHARS,
 };
 
 /// Sent from a GM command's run back to the table, which answers the GM and updates seats.
@@ -70,7 +69,7 @@ pub(super) fn describe(command: &str) -> Option<(&'static str, Arc<Map<String, V
             schema_for_type::<NoArgs>(),
         ),
         "perceive" => (
-            "perceive requires as. max_body_chars may be sent. A missing as is UNSCOPED_PERCEIVE.",
+            "perceive requires as. A missing as is UNSCOPED_PERCEIVE.",
             schema_for_type::<PerceiveArgs>(),
         ),
         "queue" => (
@@ -163,11 +162,7 @@ fn perceive(
 ) -> Result<Reply, Reason> {
     let args: PerceiveArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
     let viewer_id = args.viewer_id.ok_or(Reason::UnscopedPerceive)?;
-    let budget = args
-        .max_body_chars
-        .map_or(Ok(PERCEIVE_BODY_CHARS), usize::try_from)
-        .map_err(|_| Reason::Schema)?;
-    let view = session.perceive_trimmed(presence, &viewer_id, budget)?;
+    let view = session.perceive(presence, &viewer_id)?;
     Ok(Reply::new(message_body::build_view(&view)))
 }
 

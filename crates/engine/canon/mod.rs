@@ -1,4 +1,4 @@
-//! The loaded pack: places, cast, facts, and rules.
+//! The loaded pack: places, cast, and rules.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -19,7 +19,6 @@ pub(crate) use spookery_protocol::{ControlType, MenuRow, PackSummary};
 
 mod budget;
 mod cast;
-mod fact;
 mod item;
 mod lint;
 mod map;
@@ -32,11 +31,9 @@ mod source;
 mod story;
 
 pub(crate) use budget::Budget;
-use fact::Facts;
 pub(crate) use lint::{check_canon, unknown_item};
 use lint::{
-    check_carriers, check_meter_reads, check_modifiers, check_paths, check_reveals,
-    check_rule_items, EntityScope,
+    check_carriers, check_meter_reads, check_modifiers, check_paths, check_rule_items, EntityScope,
 };
 pub(crate) use map::Paths;
 use map::MAP_FILE;
@@ -57,7 +54,6 @@ pub struct Canon {
     /// place's exits.
     pub paths: Paths,
     pub cast: BTreeMap<ActorId, CastDef>,
-    pub facts: BTreeMap<String, FactDef>,
     pub stories: BTreeMap<StoryId, StoryDef>,
     pub rules: rule::Table,
     /// The meters `rules/meters.yaml` gives every actor, and those one cast, place or story
@@ -83,13 +79,6 @@ pub struct ItemDef {
     pub body: String,
 }
 
-#[derive(Clone, Debug)]
-pub struct FactDef {
-    pub text: String,
-    pub hidden: bool,
-    pub place_id: String,
-}
-
 /// The one flag an exit with an `if` carries, set once someone there meets the `if`.
 pub(crate) const OPEN: &str = "open";
 
@@ -106,7 +95,8 @@ pub struct PathDef {
     pub cost: Cost,
     pub if_: Vec<Cond>,
     pub locked_text: String,
-    pub hidden: bool,
+    /// The flag that shows the exit, to an actor who carries it or to everyone once the world
+    /// does. An exit without one is always shown.
     pub revealed_by: Option<String>,
 }
 
@@ -294,15 +284,6 @@ impl Canon {
             .or_else(story)
             .map(String::as_str)
     }
-
-    pub(crate) fn body_of_fact(&self, fact_id: &str) -> &str {
-        let Some(fact) = self.facts.get(fact_id) else {
-            return "";
-        };
-        self.places
-            .get(fact.place_id.as_str())
-            .map_or("", |place| &place.body)
-    }
 }
 
 pub fn pack_rev(root: &Path) -> Result<String, Reason> {
@@ -331,7 +312,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let mut diags = Diags::default();
     let mut places = BTreeMap::new();
     let mut cast = BTreeMap::new();
-    let mut facts = Facts::default();
     let mut items = BTreeMap::new();
     let mut place_meters = Vec::new();
     let mut loaded = Vec::new();
@@ -343,7 +323,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         let rules = if page.file.starts_with("world/items/") {
             item::add(page, &mut items, &mut diags)
         } else if page.file.starts_with("world/places/") {
-            place::add(page, &mut facts, &mut places, &mut place_meters, &mut diags)
+            place::add(page, &mut places, &mut place_meters, &mut diags)
         } else {
             None
         };
@@ -413,9 +393,8 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.extend(check_modifiers(&rules, modifiers));
     }
     diags.extend(check_rule_items(&rules, &items));
-    diags.extend(check_reveals(&rules, &facts.0));
     if let Some(path_lines) = &path_lines {
-        diags.extend(check_paths(path_lines, &places, &facts.0, &items));
+        diags.extend(check_paths(path_lines, &places, &items));
     }
     let checkpoint_every = pack
         .as_ref()
@@ -449,7 +428,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         places,
         paths,
         cast,
-        facts: facts.0,
         stories,
         rules,
         meters,
@@ -462,23 +440,9 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     })
 }
 
-/// Markdown with the body removed. Frontmatter stays. The trailing delimiter is kept.
-#[cfg(any(test, feature = "testing"))]
-pub fn strip_body(text: &str) -> Result<String, Reason> {
-    let (yaml, _) = source::split_frontmatter("", text).map_err(|_| Reason::Schema)?;
-    Ok(format!("{yaml}\n---\n"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Reason;
-
-    #[test]
-    fn strip_body_rejects_a_missing_fence() {
-        assert_eq!(strip_body("no fence\n"), Err(Reason::Schema));
-        assert_eq!(strip_body("---\nno closer\n"), Err(Reason::Schema));
-    }
 
     #[test]
     fn menu_rows_keep_verbs_and_habits_and_control_types() {

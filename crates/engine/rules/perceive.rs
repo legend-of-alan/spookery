@@ -1,6 +1,4 @@
-//! What one viewer is shown, trimmed to the prose budget.
-
-use std::collections::BTreeSet;
+//! What one viewer is shown.
 
 use crate::canon::Canon;
 use crate::ecs::component::Meter;
@@ -9,11 +7,10 @@ use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component, Presence};
 use crate::entity;
 use crate::rules::habits::list_whose_if_holds;
-use crate::rules::visibility::can_see_fact;
 use crate::session;
 use crate::Reason;
-use spookery_protocol::{ExitView, NoteView, PERCEIVE_BODY_CHARS};
-pub(crate) use spookery_protocol::{ItemStack, KnownFact, MeterView};
+use spookery_protocol::{ExitView, NoteView};
+pub(crate) use spookery_protocol::{ItemStack, MeterView};
 
 /// What one viewer is shown. Returned from the engine to the host table, which renders it as
 /// a player or GM view.
@@ -25,9 +22,7 @@ pub struct View {
     pub place_prose: String,
     pub visible_actors: Vec<ActorId>,
     pub actor_names: Vec<String>,
-    pub known_facts: Vec<KnownFact>,
     pub notes: Vec<NoteView>,
-    pub unknown_mentions: Vec<String>,
     /// The items lying in the viewer's place.
     pub items: Vec<ItemStack>,
     pub items_carried: Vec<ItemStack>,
@@ -47,7 +42,6 @@ pub(crate) fn build_view_by_id<Lock>(
     session: &session::Session<Lock>,
     presence: &Presence,
     viewer_id: &str,
-    max_body_chars: usize,
 ) -> Result<View, Reason> {
     if viewer_id.is_empty()
         || viewer_id == "gm"
@@ -61,7 +55,7 @@ pub(crate) fn build_view_by_id<Lock>(
     if !world.actors().contains(&id) {
         return Err(Reason::UnknownId);
     }
-    build_capped_view(canon, world, presence, &id, max_body_chars)
+    build_view(canon, world, presence, &id)
 }
 
 pub(crate) fn build_view(
@@ -69,16 +63,6 @@ pub(crate) fn build_view(
     world: &ecs::World,
     presence: &Presence,
     viewer_id: &ActorId,
-) -> Result<View, Reason> {
-    build_capped_view(canon, world, presence, viewer_id, PERCEIVE_BODY_CHARS)
-}
-
-fn build_capped_view(
-    canon: &Canon,
-    world: &ecs::World,
-    presence: &Presence,
-    viewer_id: &ActorId,
-    max_body_chars: usize,
 ) -> Result<View, Reason> {
     let place_id = PlaceId::from(
         world
@@ -90,68 +74,15 @@ fn build_capped_view(
     let mut visible_actors: Vec<ActorId> = world.actors_at(place_id.as_str());
     visible_actors.sort();
 
-    let mut fact_ids = BTreeSet::new();
-    for id in canon.facts.keys() {
-        fact_ids.insert(id.clone());
-    }
-    for id in world
-        .actors()
-        .get::<component::KnownFacts>(viewer_id)
-        .get()
-        .into_iter()
-        .flatten()
-    {
-        fact_ids.insert(id.clone());
-    }
-    let mut known_facts = Vec::new();
-    let mut public_flags = Vec::new();
-    for id in fact_ids {
-        if !can_see_fact(canon, world, viewer_id, &id) {
-            continue;
-        }
-        let text = canon
-            .facts
-            .get(&id)
-            .map(|fact| fact.text.clone())
-            .unwrap_or_default();
-        let body = canon.body_of_fact(&id).to_string();
-        let public = canon.facts.get(&id).is_some_and(|fact| !fact.hidden);
-        known_facts.push(KnownFact {
-            id,
-            text,
-            owner_body: body,
-        });
-        public_flags.push(public);
-    }
-
-    let mut unknown_mentions = Vec::new();
-    cap_bodies(
-        &mut known_facts,
-        &public_flags,
-        &mut unknown_mentions,
-        max_body_chars,
-    );
-    unknown_mentions.sort();
-
     let mut notes = Vec::new();
     for (note_id, note) in world.globals().get::<Note>(&GlobalId).iter() {
-        let is_here = note.place_id.as_ref() == Some(&place_id);
-        let is_addressed = note.to_ids.contains(viewer_id);
-        if !is_here && !is_addressed {
-            continue;
-        }
-        if note
-            .fact_ids
-            .iter()
-            .any(|fact| !can_see_fact(canon, world, viewer_id, fact))
-        {
+        if !note.is_read_by(viewer_id, Some(place_id.as_str())) {
             continue;
         }
         notes.push(NoteView {
             id: note_id.to_string(),
             to_ids: note.to_ids.iter().map(ActorId::to_string).collect(),
             place_id: note.place_id.as_ref().map(PlaceId::to_string),
-            fact_ids: note.fact_ids.iter().cloned().collect(),
             text: note.text.clone(),
         });
     }
@@ -190,9 +121,7 @@ fn build_capped_view(
         place_prose,
         visible_actors,
         actor_names,
-        known_facts,
         notes,
-        unknown_mentions,
         items,
         items_carried,
         wielded_item_id,
@@ -242,42 +171,4 @@ fn shown_meters(canon: &Canon, world: &ecs::World, carrier: &entity::Id) -> Vec<
             })
         })
         .collect()
-}
-
-fn cap_bodies(
-    facts: &mut [KnownFact],
-    public_flags: &[bool],
-    unknown: &mut Vec<String>,
-    max_body_chars: usize,
-) {
-    let mut sum = facts
-        .iter()
-        .map(|fact| fact.owner_body.chars().count())
-        .sum::<usize>();
-    if sum <= max_body_chars {
-        return;
-    }
-    let mut order: Vec<usize> = (0..facts.len()).collect();
-    order.sort_by(|&left, &right| facts[right].id.cmp(&facts[left].id));
-    for index in order {
-        if sum <= max_body_chars {
-            break;
-        }
-        let len = facts[index].owner_body.chars().count();
-        if len == 0 {
-            continue;
-        }
-        let rest = sum - len;
-        if len > max_body_chars && rest <= max_body_chars {
-            let keep = max_body_chars - rest;
-            facts[index].owner_body = facts[index].owner_body.chars().take(keep).collect();
-            sum = max_body_chars;
-        } else {
-            facts[index].owner_body.clear();
-            sum = rest;
-        }
-        if public_flags.get(index).copied().unwrap_or(false) {
-            unknown.push(facts[index].id.clone());
-        }
-    }
 }

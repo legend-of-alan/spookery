@@ -6,12 +6,17 @@ Feature: Trigger delivery
     And "wren" is not told "The bell rings."
     And spook verify passes on this pack
 
-  Scenario: Reveal teaches the fact that uncovers an exit
-    Given the street has a hidden trapdoor
-    When nell reveals fact_trapdoor
-    Then nell knows fact_trapdoor
-    And nell can see the trapdoor
+  Scenario Outline: A flag on <carrier> uncovers an exit
+    Given the street has an exit revealed by the found_trapdoor flag, which uncover sets on <carrier>
+    When nell uncovers the trapdoor
+    Then nell can see the trapdoor
+    And wren <wren_can> see the trapdoor
     And spook verify passes on this pack
+
+    Examples:
+      | carrier | wren_can |
+      | self    | cannot   |
+      | world   | can      |
 
   Scenario: A rule watching a world flag runs when it turns
     Given a verb sets world flag tide_turned
@@ -33,12 +38,6 @@ Feature: Trigger delivery
     When a round runs
     Then the GM summary lists a round counter change
     And "nell"'s summary lists no round counter change
-
-  Scenario: A learned fact is told only to that person
-    When nell learns fact_trapdoor while wren is in the same room
-    Then the GM summary lists "actor_known_facts nell"
-    And "nell"'s summary lists "actor_known_facts nell"
-    And "wren"'s summary does not list "actor_known_facts nell"
 
   Scenario: An item change is seen in that room only
     When an item is taken from docks_shop

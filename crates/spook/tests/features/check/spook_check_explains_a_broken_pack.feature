@@ -64,7 +64,7 @@ Feature: spook check explains a broken pack
       | self in a world change rule         | story/tide.yaml            | SCHEMA            | rule 'mark' watches a world change, which has no self    |
       | a check in a world change rule      | story/tide.yaml            | SCHEMA            | rule 'mark' watches a world change, which has no self    |
       | a narrate with no to                | rules/verbs.yaml           | SCHEMA            | rule 'ring' has a narrate with no to                     |
-      | a room narrate of a known fact      | story/secret.yaml          | TRIGGER_LEAK      | leak                                                     |
+      | a named narrate of an arrival       | story/greet.yaml           | TRIGGER_LEAK      | leak                                                     |
       | max_stacks 0                        | rules/modifiers.yaml       | SCHEMA            | max_stacks below 1                                       |
       | a modifier of no meter              | rules/modifiers.yaml       | SCHEMA            | meter 'warmth'                                           |
       | a modifier for 0 ticks              | rules/verbs.yaml           | SCHEMA            | a modifier effect has ticks below 1                      |
@@ -86,7 +86,6 @@ Feature: spook check explains a broken pack
       | a nested partial_at without partial | rules/verbs.yaml           | SCHEMA            | rule 'press' sets partial_at without a partial list      |
       | a cast id world                     | cast/world.md              | SCHEMA            | rename this cast member                                  |
       | a saved actor world                 | state/save.yaml            | SCHEMA            | actor id world is reserved                               |
-      | a reveal of a missing fact          | rules/verbs.yaml           | SCHEMA            | not a fact                                               |
 
   Scenario: Two problems in two files are both reported
     Given a docks table
@@ -97,28 +96,6 @@ Feature: spook check explains a broken pack
     And the report names "rules/verbs.yaml"
     And the report names "world/map.yaml"
     And stdout is empty
-    And the pack bytes are unchanged
-
-  Scenario Outline: A repeated fact points at its own row
-    Given a docks table
-    When the copy is broken by "<fault>"
-    And the operator runs spook check --json
-    Then the check exits 1
-    And a JSON diagnostic has code "SCHEMA" file "<file>" path "facts[1].id" at line <line> column 5
-    And stderr is empty
-    And the pack bytes are unchanged
-
-    Examples:
-      | fault                | file                       | line |
-      | duplicate place fact | world/places/docks_shop.md | 8    |
-
-  Scenario: A cast page cannot own facts
-    Given a docks table
-    When the copy is broken by "cast facts"
-    And the operator runs spook check --json
-    Then the check exits 1
-    And a JSON diagnostic has code "SCHEMA" file "cast/pc-rowan.md" path "facts" at line 6 column 1
-    And stderr is empty
     And the pack bytes are unchanged
 
   Scenario: A clean pack prints an empty JSON array
@@ -194,20 +171,25 @@ Feature: spook check explains a broken pack
       | at once               |
       | inside a nested check |
 
-  Scenario: A flag a rule reads that no rule sets and no save holds is a warning
+  Scenario Outline: A flag <reader> names that no rule sets and no save holds is a warning
     Given a docks table
-    When a verb tests rowan's flag "sealed", which no rule sets
+    When <reader> names flag "sealed", which no rule sets
     And the pack_rev is restamped
     And the operator runs spook check
     Then the check exits 0
     And the report names "WARNING"
     And the report says "flag 'sealed', which no rule sets and no save holds"
     When the operator runs spook check --json
-    Then the JSON array is one diagnostic code "WARNING" file "rules/verbs.yaml" path "rules[8].if"
+    Then the JSON array is one diagnostic code "WARNING" file "<file>" path "<path>"
     When the save gives rowan the flag "sealed"
     And the operator runs spook check --json
     Then the check exits 0
     And stdout says "[]"
+
+    Examples:
+      | reader                | file             | path                 |
+      | a verb's if           | rules/verbs.yaml | rules[8].if          |
+      | an exit's revealed_by | world/map.yaml   | paths[7].revealed_by |
 
   Scenario: Long gm_notes are a warning and the check still exits 0
     Given a docks table

@@ -21,7 +21,6 @@ rules:
           to_ids:
             - corin
           place_id: shed
-          fact_ids: []
           text: "Oden calls from the shed: \"Bring iron, or bring a shoulder. And don't go mocking that goblin. It bites.\""
 ---
 Oden works in the shed and stays out of the yard. He wants the cart's wheel set before dark, and he will put his shoulder to it with anyone who comes to the shed with the nail.

@@ -25,7 +25,7 @@ Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 
 ## How this differs
 
-The model does not keep the world. It can talk, and it can ask the engine to commit a round. Dice, items, and places change only inside that commit. The journal records the round. Replay repeats the recorded rolls. `spook verify` checks the journal. A player sees a hidden fact only when that character knows it.
+The model does not keep the world. It can talk, and it can ask the engine to commit a round. Dice, items, and places change only inside that commit. The journal records the round. Replay repeats the recorded rolls. `spook verify` checks the journal. A player reads a note only when it is left to that character or lies where they stand, and never sees a flag.
 
 ## Glossary
 
@@ -36,7 +36,7 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 | **Seat** | One place at the table. Each player character is a seat, and the GM is one more. |
 | **Canon** | Files under `world/`, `cast/` and `rules/` in a pack. They don't change while the world runs. |
 | **`spook`** | The program that loads a pack. It is the only thing that writes the pack's state. |
-| **Engine** | The code that decides what is legal, rolls checks and tracks who knows what. |
+| **Engine** | The code that decides what is legal, rolls checks and decides what each seat sees. |
 | **Path** | A way from one place to another, one-way or both, in `world/map.yaml`. |
 | **Exit** | A path as seen from a place it leaves, named by the word a player types there. |
 | **Tick** | The only unit of game time. The engine counts world time in ticks. The engine knows no day or hour: a pack names its own cycles, such as a day or a tide, in `rules/budget.yaml`. Talking takes no ticks. Moving and acting do. Players and the GM see plain ticks. |
@@ -91,7 +91,7 @@ spook verify /tmp/docks
 
 While `spook run` serves a pack, `round` and `migrate` on that pack exit 1 with `COMMIT_CONFLICT` and write nothing. Stop `spook run` to use them.
 
-At a terminal, `spook play` opens a game window: the transcript on the left, the place and the places past its exits on the right, a tab box with your meters (F2), what you carry (F3) and what you know (F4), and the line you type at the bottom. Pressing the open tab's key again hides the box. From 120 columns the place and the tab box stand side by side. F1 shows the commands you can use, and Esc closes them. Tab completes a command, Up and Down walk what you typed, PgUp and PgDn scroll the transcript, and typing quit or Ctrl+C releases your character. Piped, or with `--plain`, it prints plain lines instead, which suits screen readers. `--raw` prints each protocol frame as one JSON line.
+At a terminal, `spook play` opens a game window: the transcript on the left, the place and the places past its exits on the right, a tab box with your meters (F2), what you carry (F3) and your notes (F4), and the line you type at the bottom. Pressing the open tab's key again hides the box. From 120 columns the place and the tab box stand side by side. F1 shows the commands you can use, and Esc closes them. Tab completes a command, Up and Down walk what you typed, PgUp and PgDn scroll the transcript, and typing quit or Ctrl+C releases your character. Piped, or with `--plain`, it prints plain lines instead, which suits screen readers. `--raw` prints each protocol frame as one JSON line.
 
 If you join as a character who's already seated, `spook play` exits 1 with `That character is already taken. [SEAT_TAKEN]`. A fourth player gets `The table is full. [TABLE_FULL]`.
 
@@ -170,7 +170,7 @@ Each call is one chat-completions POST. The body has the model name, `"stream": 
 
 The conversation starts with one user message, a bounded JSON prompt. It holds the last 16 lines of speech this process has handled, the new player lines, the move menu, the queued intents, what started the turn (`cause`) and who is seated. Then come the model's tool calls and the table's reply to each: the views it perceived, the speech, the queue replies and refusals, and after `end_turn` the rolls and their dice lines. The conversation lasts one turn. The next turn starts again from a new prompt.
 
-The views are trimmed on purpose. A player's view is only a room census: it drops known facts, notes and unknown mentions. An NPC's view keeps each fact's id and text and its notes. Fact bodies are always dropped.
+The views are trimmed on purpose. A player's view is only a room census: it drops notes. An NPC's view keeps its notes.
 
 A view does include the Markdown body of its place and of the viewer and each cast member it sees. Each body is cut at 800 characters.
 

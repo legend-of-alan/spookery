@@ -36,18 +36,15 @@ meters:
 
 ## Add a place
 
-A place is a Markdown file under `world/places/`. The header is the frontmatter. The prose after the closing `---` is what a viewer can read when the fact is public. `name` is the name they see. Without one they see the id.
+A place is a Markdown file under `world/places/`. The header is the frontmatter. The prose after the closing `---` is what everyone in the place reads. `name` is the name they see. Without one they see the id.
 
 ```yaml path=world/places/porch.md mode=create
 ---
 schema: place
 id: porch
 name: Porch
-facts:
-  - id: fact_porch_dry
-    text: The porch is dry.
 ---
-The porch faces the yard.
+The porch faces the yard. The porch is dry.
 ```
 
 The porch needs a path to the yard, or `spook check` warns that the porch cannot be reached. One two-way line in `world/map.yaml` gives the yard an exit to the porch and the porch an exit back to the yard.
@@ -110,7 +107,6 @@ A habit is a rule on the cast file with `when: habit`. The cast file keeps a `# 
           to_ids:
             - ada
           place_id: yard
-          fact_ids: []
           text: The lamp is lit.
 ```
 

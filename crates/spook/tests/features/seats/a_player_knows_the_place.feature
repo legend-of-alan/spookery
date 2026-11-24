@@ -53,9 +53,6 @@ Feature: A player knows where they are and what they can do
     When play joins the table on a free loopback address
     Then play shows each of these blocks:
       """
-      You know:
-      Oil is on the shelf.
-
       Items here:
       Lamp oil: 4
 

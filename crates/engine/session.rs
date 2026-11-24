@@ -21,7 +21,7 @@ use crate::store::journal;
 use crate::store::records::Record;
 use crate::store::tape::{append_record, read_scrollback, TapeRecord};
 use crate::Reason;
-use spookery_protocol::{Audience, QueuedMove, Refusal, Speaker, PERCEIVE_BODY_CHARS};
+use spookery_protocol::{Audience, QueuedMove, Refusal, Speaker};
 
 /// One say, in characters. Four kibibytes still fits in an 8 KiB client message.
 const MAX_SAY_CHARS: usize = 4 * 1024;
@@ -428,7 +428,7 @@ impl<Lock> Session<Lock> {
         presence: &Presence,
         viewer_id: &str,
     ) -> Result<crate::rules::perceive::View, Reason> {
-        crate::rules::perceive::build_view_by_id(self, presence, viewer_id, PERCEIVE_BODY_CHARS)
+        crate::rules::perceive::build_view_by_id(self, presence, viewer_id)
     }
 
     /// The `help` commands for `actor_id`: what they can do now, and what they can name.
@@ -443,15 +443,6 @@ impl<Lock> Session<Lock> {
     /// The `map` for `actor_id`: each place they visited, with the exits they saw there last.
     pub fn map(&self, actor_id: &ActorId) -> Result<Vec<PlaceView>, Reason> {
         crate::rules::lines::map(self.canon(), &self.world, actor_id)
-    }
-
-    pub fn perceive_trimmed(
-        &self,
-        presence: &Presence,
-        viewer_id: &str,
-        max_body_chars: usize,
-    ) -> Result<crate::rules::perceive::View, Reason> {
-        crate::rules::perceive::build_view_by_id(self, presence, viewer_id, max_body_chars)
     }
 
     fn read_digest(&self) -> Result<String, Reason> {

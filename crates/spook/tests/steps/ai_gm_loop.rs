@@ -223,29 +223,24 @@ fn assert_shop_prose(result: &Value) {
     assert!(result["cast"].get("bram").is_none(), "{result}");
 }
 
-#[then(expr = "the perceive as Mira holds the cast's prose and Mira's facts, but no fact body")]
-fn miras_perceive_holds_her_facts(world: &mut World) {
+#[then(expr = "the perceive as Mira holds the cast's prose and Mira's notes")]
+fn miras_perceive_holds_her_notes(world: &mut World) {
     let result = read_perceive_result(world, "mira");
     assert_shop_prose(&result);
-    let facts = result["facts"]
+    let notes = result["notes"]
         .as_array()
         .unwrap_or_else(|| panic!("{result}"));
-    let texts: Vec<&str> = facts
+    let texts: Vec<&str> = notes
         .iter()
-        .filter_map(|fact| fact["text"].as_str())
+        .filter_map(|note| note["text"].as_str())
         .collect();
     assert!(texts.contains(&"The lamp-oil ledger is short."), "{result}");
-    for fact in facts {
-        let keys: Vec<&String> = fact.as_object().unwrap().keys().collect();
-        assert_eq!(keys, ["id", "text"], "{result}");
-    }
 }
 
-#[then(expr = "the perceive as Rowan holds the cast's prose but no facts or notes")]
-fn rowans_perceive_holds_no_facts(world: &mut World) {
+#[then(expr = "the perceive as Rowan holds the cast's prose but no notes")]
+fn rowans_perceive_holds_no_notes(world: &mut World) {
     let result = read_perceive_result(world, "rowan");
     assert_shop_prose(&result);
-    assert!(result.get("facts").is_none(), "{result}");
     assert!(result.get("notes").is_none(), "{result}");
 }
 

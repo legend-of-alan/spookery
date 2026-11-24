@@ -7,20 +7,20 @@ expression: shown
 ╭ Transcript ────────────────────────────────╮╭ Docks Shop ────────────────────╮
 │▌ Docks Shop                                ││Here: Aldric, You               │
 │The shop faces the water. Tins sit in a row.││Exits                           │
-│› look                                      ││Docks Street — 0 ticks          │
-│› say evening                               ││stairs (locked) — 2 ticks       │
-│You: evening                                ││Items here                      │
-│GM: good evening                            ││Lamp oil: 3                     │
+│Oil is on the shelf.                        ││Docks Street — 0 ticks          │
+│› look                                      ││stairs (locked) — 2 ticks       │
+│› say evening                               ││Items here                      │
+│You: evening                                ││Lamp oil: 3                     │
+│GM: good evening                            ││                                │
 │› exert                                     ││                                │
 │Your action is queued.                      ││                                │
-│◆ Your roll succeeded.                      ││                                │
-│› take lamp_oil                             │╰────────────────────────────────╯
-│Your action is queued.                      │╭ Stats │ Carried │ Known ───────╮
-│You picked up the Lamp oil.                 ││Assassination debt: 2/6 ━━──────│
-│› travel stairs                             ││Hp: 8/16                ━━━━────│
-│The stair door is locked. [NO_EXIT]         ││Might: 1/45             ────────│
-│› fly                                       ││Rest: 3/5               ━━━━────│
-│That line is not valid. [SCHEMA]            ││Vigor: 1/110            ────────│
+│◆ Your roll succeeded.                      │╰────────────────────────────────╯
+│› take lamp_oil                             │╭ Stats │ Carried │ Known ───────╮
+│Your action is queued.                      ││Assassination debt: 2/6 ━━──────│
+│You picked up the Lamp oil.                 ││Health: 8/16            ━━━━────│
+│› travel stairs                             ││Might: 1/45             ────────│
+│The stair door is locked. [NO_EXIT]         ││Rest: 3/5               ━━━━────│
+│› fly                                       ││Vigor: 1/110            ────────│
 ╰────────────────────────────────────────────╯╰F2 F3 F4 switch · same key hides╯
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │›                                                                             │

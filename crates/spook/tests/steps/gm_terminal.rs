@@ -190,11 +190,6 @@ async fn the_gm_shows_each_block(world: &mut World, step: &Step) {
     }
 }
 
-#[then(expr = "the GM shows {string} twice")]
-async fn the_gm_shows_twice(world: &mut World, text: String) {
-    wait_gm_count(world, &text, 2).await;
-}
-
 #[then(expr = "the GM does not show {string}")]
 fn the_gm_does_not_show(world: &mut World, text: String) {
     let stdout = capture_gm_stdout(world);
