@@ -59,8 +59,8 @@ fn rule_of(
 ) -> Result<Rule, Vec<Diagnostic>> {
     let source = FileText::named(file);
     let mut diags = Vec::new();
-    let local = entry.id.value.clone();
-    if local.is_empty() || local == "say" {
+    let local_id = entry.id.value.clone();
+    if local_id.is_empty() || local_id == "say" {
         diags.push(
             Problem {
                 source: &source,
@@ -110,7 +110,7 @@ fn rule_of(
         Ok(Some(_)) if finish_yaml.is_some_and(|cost| cost.ticks.is_some()) => {
             diags.push(schema_error(
                 file,
-                &format!("rule '{local}' has ticks in its finish cost"),
+                &format!("rule '{local_id}' has ticks in its finish cost"),
                 "put the action's ticks in cost; the finish takes no time",
             ));
             None
@@ -163,14 +163,14 @@ fn rule_of(
         if check.is_none() && (!success.is_empty() || !partial.is_empty() || !miss.is_empty()) {
             diags.push(schema_error(
                 file,
-                &format!("rule '{local}' lists an outcome without a check"),
+                &format!("rule '{local_id}' lists an outcome without a check"),
                 "add check or move those effects to do",
             ));
         }
         if check.is_some() && success.is_empty() && (!partial.is_empty() || !miss.is_empty()) {
             diags.push(schema_error(
                 file,
-                &format!("rule '{local}' has a check without a success list"),
+                &format!("rule '{local_id}' has a check without a success list"),
                 "add success",
             ));
         }
@@ -190,7 +190,7 @@ fn rule_of(
                     source: &source,
                     path: &format!("rules[{index}].id"),
                     at: Locator::Spot(spot_of(&entry.id)),
-                    message: format!("rule '{local}' {problem}"),
+                    message: format!("rule '{local_id}' {problem}"),
                     hint,
                 }
                 .into_diagnostic(),
@@ -202,8 +202,8 @@ fn rule_of(
     }
     let when = when.expect("when checked");
     let rule = Rule {
-        id: owner.rule_id(&local),
-        local_id: local,
+        id: owner.rule_id(&local_id),
+        local_id,
         owner: owner.clone(),
         when,
         if_,
