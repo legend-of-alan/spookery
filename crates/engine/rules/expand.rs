@@ -1,8 +1,8 @@
 //! Turn a rule template into effects for one intent.
 
-use crate::canon::OPEN;
 use crate::ecs::component;
 use crate::ecs::component::meter;
+use crate::ecs::component::Location;
 use crate::entity;
 use crate::intent::Target;
 use crate::round::dice::Roller;
@@ -115,16 +115,10 @@ fn push_effects(
     let (world, intent) = (context.world, context.intent);
     match template {
         EffectTemplate::Flag { of, key, value } => {
-            let kind = match of {
-                grammar::Object::Exit(exit) if key == OPEN => EffectKind::ExitOpen {
-                    exit: exit.clone(),
-                    open: *value,
-                },
-                _ => EffectKind::Flag {
-                    entity: expr::resolve_entity(context, of)?,
-                    key: key.clone(),
-                    value: *value,
-                },
+            let kind = EffectKind::Flag {
+                entity: expr::resolve_entity(context, of)?,
+                key: key.clone(),
+                value: *value,
             };
             effects.push(Effect::new(intent.actor_id.as_ref(), &intent.id, kind));
         }
@@ -143,19 +137,19 @@ fn push_effects(
             ));
         }
         EffectTemplate::Location { to, teleport } => {
-            let place = match to {
+            let place_id = match to {
                 LocationTo::Via(via) => {
                     let exit = crate::rules::travel::exit_via(context, via)?;
-                    exit.ok_or(Reason::Schema)?.to.to_string()
+                    exit.ok_or(Reason::Schema)?.to.clone()
                 }
-                LocationTo::Place(id) if *teleport => id.clone(),
+                LocationTo::Place(id) if *teleport => id.as_str().into(),
                 LocationTo::Target if *teleport => match &intent.target {
-                    Target::Place(id) => id.to_string(),
+                    Target::Place(id) => id.clone(),
                     _ => return Err(Reason::Schema),
                 },
                 LocationTo::Place(_) | LocationTo::Target => return Err(Reason::NotInSpec),
             };
-            effects.push(location_effect(context, &place)?);
+            effects.push(location_effect(context, Location::Place(place_id))?);
         }
         EffectTemplate::Meter { of, key, add, set } => {
             let entity = expr::resolve_entity(context, of)?;
@@ -175,7 +169,9 @@ fn push_effects(
             let (actor_id, place) = match expr::resolve_entity(context, of)? {
                 entity::Id::Actor(id) => (Some(id), None),
                 entity::Id::Place(id) => (None, Some(id)),
-                entity::Id::Story(_) | entity::Id::Global => return Err(Reason::Schema),
+                entity::Id::Path(_) | entity::Id::Story(_) | entity::Id::Global => {
+                    return Err(Reason::Schema)
+                }
             };
             effects.push(Effect::new(
                 intent.actor_id.as_ref(),
@@ -296,7 +292,7 @@ fn meter_offset(
     ))
 }
 
-fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
+fn location_effect(context: &Context, to: Location) -> Result<Effect, Reason> {
     let intent = context.intent;
     let actor_id = expr::resolve_actor(context, &grammar::Actor::Self_)?.clone();
     let from = context
@@ -304,14 +300,14 @@ fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
         .actors()
         .get::<component::Place>(&actor_id)
         .get();
-    let from = from.ok_or(Reason::UnknownId)?.to_string();
+    let from = from.ok_or(Reason::UnknownId)?.clone();
     Ok(Effect::new(
         intent.actor_id.as_ref(),
         &intent.id,
         EffectKind::Location {
             actor_id,
             from,
-            to: to.to_string(),
+            to,
             arrived_at: None,
         },
     ))

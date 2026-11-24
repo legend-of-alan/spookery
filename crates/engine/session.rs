@@ -171,12 +171,14 @@ impl Session {
     ) -> Result<TapeRecord, Reason> {
         let text = check_speech_text(text)?.to_string();
         let actors = self.world.actors();
-        let here = speaker.and_then(|speaker| actors.get::<component::Place>(speaker).get());
+        let here = speaker.and_then(|speaker| actors.get::<component::Place>(speaker).place_id());
         let to = match audience {
             Some(Audience::Actor(actor)) if !actors.contains(&ActorId::from(actor.as_str())) => {
                 return Err(Reason::Schema);
             }
-            Some(Audience::Place(place)) if speaker.is_some() && here != Some(place.as_str()) => {
+            Some(Audience::Place(place))
+                if speaker.is_some() && here.is_none_or(|here| here != place.as_str()) =>
+            {
                 return Err(Reason::Schema);
             }
             Some(Audience::Place(place))

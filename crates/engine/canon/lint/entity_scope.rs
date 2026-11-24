@@ -4,14 +4,14 @@ use std::collections::BTreeMap;
 
 use crate::canon::map::MAP_FILE;
 use crate::canon::source::{FileText, Locator, Problem};
-use crate::canon::{CastDef, Exit, Paths, PlaceDef, StoryDef, OPEN};
+use crate::canon::{self, CastDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::component::meter;
-use crate::ecs::id::{ActorId, ExitId, PlaceId, StoryId};
+use crate::ecs::id::{ActorId, PlaceId, StoryId};
 use crate::entity;
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
-use crate::rules::rule::{self, Cond, EffectTemplate, Owner, Rule, When};
+use crate::rules::rule::{self, Cond, EffectTemplate, Owner, Rule, TargetKind, When};
 
 pub(in crate::canon) fn check_meter_reads(
     scope: &EntityScope,
@@ -33,7 +33,7 @@ pub(in crate::canon) fn check_meter_reads(
 }
 
 /// Meter effects and conditions whose entity is fixed by the pack and does not carry the meter,
-/// and flag effects and conditions on an exit that cannot carry the flag. Any other entity may
+/// and flag effects and conditions on a path that cannot carry the flag. Any other entity may
 /// carry any flag.
 pub(in crate::canon) fn check_carriers(
     scope: &EntityScope,
@@ -55,10 +55,17 @@ pub(in crate::canon) fn check_carriers(
             _ => {}
         });
         let fixed = fixed_self_id(rule);
+        let rule_targets_exit = matches!(
+            rule.when,
+            When::Verb {
+                target: TargetKind::Exit,
+                ..
+            }
+        );
         for (kind, of, key) in named {
             let why = match kind {
                 "meter" => scope.why_meter_not_carried(fixed, of, key),
-                _ => scope.why_exit_lacks_flag(of, key),
+                _ => scope.why_path_lacks_flag(of, key, rule_targets_exit),
             };
             let Some(why) = why else {
                 continue;
@@ -90,7 +97,7 @@ pub(in crate::canon) struct EntityScope<'c> {
     pub world_meters: &'c BTreeMap<String, meter::Descriptor>,
     pub cast: &'c BTreeMap<ActorId, CastDef>,
     pub places: &'c BTreeMap<PlaceId, PlaceDef>,
-    pub paths: &'c Paths,
+    pub paths: &'c canon::Paths,
     pub stories: &'c BTreeMap<StoryId, StoryDef>,
 }
 
@@ -116,22 +123,27 @@ impl EntityScope<'_> {
         }
     }
 
-    /// Why flag `key` of the exit `of` names can never be set or tested, or `None` when it may be
-    /// or `of` is no exit.
-    fn why_exit_lacks_flag(&self, of: &grammar::Object, key: &str) -> Option<String> {
-        let grammar::Object::Exit(exit) = of else {
-            return None;
+    /// Why flag `key` of the path `of` names can never be set or tested, or `None` when it may be
+    /// or `of` names no path.
+    fn why_path_lacks_flag(
+        &self,
+        of: &grammar::Object,
+        key: &str,
+        rule_targets_exit: bool,
+    ) -> Option<String> {
+        let path = match of {
+            grammar::Object::Path(id) => match self.paths.get(id) {
+                Some(path) => Some(path),
+                None => return Some(format!("path:{id} is not a path")),
+            },
+            grammar::Object::Actor(grammar::Actor::Target) if rule_targets_exit => None,
+            _ => return None,
         };
-        if self.unknown_object_id(of).is_some() {
-            Some(format!("{exit} is not an exit"))
-        } else if key != OPEN {
-            Some(format!("an exit carries only the flag '{OPEN}'"))
-        } else {
-            let is_conditional = self
-                .find_exit(exit)
-                .is_some_and(|exit| exit.path.is_conditional());
-            (!is_conditional).then(|| format!("{exit} has no if, so it is always open"))
+        if key != OPEN {
+            return Some(format!("a path carries only the flag '{OPEN}'"));
         }
+        let always_open_path = path.filter(|path| !path.is_conditional());
+        always_open_path.map(|path| format!("path:{} has no if, so it is always open", path.id))
     }
 
     /// Why meter `key` of the owner `of` names can never be read or written, or `None` when it
@@ -144,8 +156,8 @@ impl EntityScope<'_> {
         key: &str,
     ) -> Option<String> {
         let desc = self.meters.get(key);
-        if let grammar::Object::Exit(exit) = of {
-            return Some(format!("{exit} carries no meter '{key}'"));
+        if let grammar::Object::Path(id) = of {
+            return Some(format!("path:{id} carries no meter '{key}'"));
         }
         match self.fixed_entity_id(fixed_self_id, of) {
             Some(entity::Id::Global) if self.world_meters.contains_key(key) => None,
@@ -161,12 +173,7 @@ impl EntityScope<'_> {
         }
     }
 
-    /// The exit `exit` names, when its place has one by that word.
-    fn find_exit(&self, exit: &ExitId) -> Option<Exit<'_>> {
-        self.paths.find_exit(exit.place.as_str(), &exit.exit)
-    }
-
-    /// The id `of` gives when no place, exit, story or cast member has it.
+    /// The id `of` gives when no place, path, story or cast member has it.
     fn unknown_object_id(&self, of: &grammar::Object) -> Option<String> {
         match of {
             grammar::Object::Actor(grammar::Actor::Self_ | grammar::Actor::Target)
@@ -176,7 +183,8 @@ impl EntityScope<'_> {
             grammar::Object::Place(id) => Some(format!("place:{id}")),
             grammar::Object::Story(id) if self.stories.contains_key(id) => None,
             grammar::Object::Story(id) => Some(format!("story:{id}")),
-            grammar::Object::Exit(exit) => self.find_exit(exit).is_none().then(|| exit.to_string()),
+            grammar::Object::Path(id) if self.paths.get(id).is_some() => None,
+            grammar::Object::Path(id) => Some(format!("path:{id}")),
             grammar::Object::Actor(grammar::Actor::Id(id)) if self.cast.contains_key(id) => None,
             grammar::Object::Actor(grammar::Actor::Id(id)) => Some(id.to_string()),
         }

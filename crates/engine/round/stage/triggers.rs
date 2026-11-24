@@ -1,8 +1,8 @@
 //! Change rules, edge-triggered, to a fixpoint, after each start and each finish lands.
 
-use crate::canon::{Canon, OPEN};
+use crate::canon::Canon;
 use crate::ecs::change::{Change, ChangeValue};
-use crate::ecs::component::{Component, Flag, Item, Meter, OpenExit, Place};
+use crate::ecs::component::{Component, Flag, Item, Meter, Place};
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, entity, Presence};
 use crate::intent::Intent;
@@ -152,9 +152,6 @@ fn matches_watch(world: &ecs::World, rule: &Rule, watch: &ChangeWatch, change: &
         (ChangeWatch::Flag { key, becomes }, Flag::ID, _)
             if changed.entry_id.as_ref() == Some(key) =>
         {
-            flips(before, after, *becomes)
-        }
-        (ChangeWatch::Flag { key, becomes }, OpenExit::ID, _) if key == OPEN => {
             flips(before, after, *becomes)
         }
         (ChangeWatch::Item { id, gained }, Item::ID, entity::Id::Actor(_))

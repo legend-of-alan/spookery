@@ -1,6 +1,6 @@
 //! The words a pack line names its actor, its owner and its receiver with: `subject:`, `of:` and `to:`.
 
-use crate::ecs::id::{ActorId, ExitId, PlaceId, StoryId};
+use crate::ecs::id::{ActorId, PathId, PlaceId, StoryId};
 
 /// The actor an arrive or leave watch names with `subject:`. Omitted, it is `any`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -42,14 +42,14 @@ pub enum Object {
     Here,
     Global,
     Place(PlaceId),
+    /// A path, `path:<id>`, whose one flag is `open`.
+    Path(PathId),
     Story(StoryId),
-    /// An exit, by its place and its exit id: `exit:<place>.<exit>`.
-    Exit(ExitId),
 }
 
 impl Object {
-    /// Reads an owner word: `self`, `target`, `here`, `world`, `place:<id>`, `story:<id>`,
-    /// `exit:<place>.<exit>` or a cast id. It refuses `subject`, an empty word and the selector
+    /// Reads an owner word: `self`, `target`, `here`, `world`, `place:<id>`, `path:<id>`,
+    /// `story:<id>` or a cast id. It refuses `subject`, an empty word and the selector
     /// words retired packs wrote as owners; the error is the refusal a pack author reads.
     pub(crate) fn parse(word: &str) -> Result<Object, String> {
         if let Some(place) = word.strip_prefix("place:") {
@@ -64,16 +64,11 @@ impl Object {
             }
             return Ok(Object::Story(story.into()));
         }
-        if let Some(exit) = word.strip_prefix("exit:") {
-            return match exit.split_once('.') {
-                Some((place, exit_id)) if !place.is_empty() && !exit_id.is_empty() => {
-                    Ok(Object::Exit(ExitId {
-                        place: place.into(),
-                        exit: exit_id.to_string(),
-                    }))
-                }
-                _ => Err("exit: needs <place>.<exit>".to_string()),
-            };
+        if let Some(path) = word.strip_prefix("path:") {
+            if path.is_empty() {
+                return Err("path: needs an id".to_string());
+            }
+            return Ok(Object::Path(path.into()));
         }
         match word {
             "self" => Ok(Object::Actor(Actor::Self_)),

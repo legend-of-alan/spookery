@@ -98,7 +98,7 @@ pub(crate) fn verb_for<'a>(
             return Some(rule);
         }
     }
-    if let Some(place) = world.actors().get::<component::Place>(actor_id).get() {
+    if let Some(place) = world.actors().get::<component::Place>(actor_id).place_id() {
         if let Some(rule) = owner_verb(canon, &Owner::Place(place.to_string()), verb_id) {
             return Some(rule);
         }
@@ -194,7 +194,7 @@ pub(crate) fn admit_cancel(context: &Context) -> Result<(), Refusal> {
         .and_then(|act| act.pending.as_ref());
     let walking = actor_id
         .and_then(|id| actors.get::<component::Place>(id).get())
-        .is_some_and(|place| crate::ecs::exit_parts(place).is_some());
+        .is_some_and(|location| matches!(location, component::Location::Path { .. }));
     let rule = pending.and_then(|pending| context.canon.rules.get(&pending.rule));
     if walking || !rule.is_some_and(|rule| rule.cancellable) {
         return Err(Refusal::new(intent, Reason::Ineligible));

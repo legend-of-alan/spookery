@@ -20,9 +20,7 @@ impl Writer<'_, entity::Actors> {
             .control_type
             .set(transaction, actor.clone(), Some(control_type), []);
         added.expect("a write that reports nothing is never refused");
-        components
-            .place
-            .put(transaction, actor, Some(place.to_string()));
+        components.place.put(transaction, actor, Some(place.into()));
     }
 
     /// Add `to`, standing at `place`, with everything `from` has.

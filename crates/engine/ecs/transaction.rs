@@ -144,6 +144,7 @@ impl ecs::World {
         let save = &mut self.save;
         (save.actors.history_mut().into_iter())
             .chain(save.places.history_mut())
+            .chain(save.paths.history_mut())
             .chain(save.stories.history_mut())
             .chain(save.globals.history_mut())
     }
@@ -196,7 +197,7 @@ impl ecs::World {
             Reader::new(entities, canon)
                 .get::<Meter>(id)
                 .get_or_base(entry_id)
-        });
+        }, on_path: None);
         let sum_now = match id {
             entity::Id::Actor(actor) => self.actors().get::<Modifier>(actor).sum(entry_id),
             _ => Ok(0),

@@ -30,11 +30,10 @@ pub(crate) fn give_key(now: &mut ecs::World) {
         .get_mut::<component::Item>(&"rowan".into())
         .shift("brass_key", 1, None)
         .unwrap();
-    let stairs = spookery_engine::ExitId {
-        place: "docks_shop".into(),
-        exit: "stairs".to_string(),
-    };
-    now.places_mut().set_exit_open(&stairs, true).unwrap();
+    let mut paths = now.paths_mut();
+    (paths.get_mut::<component::Flag>(&"docks_shop.stairs".into()))
+        .set("open", true)
+        .unwrap();
 }
 
 /// A trapdoor from the shop to a cellar, shown only to whoever carries `found_trapdoor`.
@@ -313,6 +312,22 @@ fn break_pack(pack: &Path, fault: &str) {
             "      verb: drop\n      target: item\n    do:\n",
             "      verb: drop\n      target: item\n    do:\n      - meter: { of: target, key: hp, add: -1 }\n",
         ),
+        "a meter on a travel move's target" => replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "          via: target
+",
+            "          via: target
+      - meter: { of: target, key: hp, add: -1 }
+",
+        ),
+        "a travel move's target flag besides open" => replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "          via: target
+",
+            "          via: target
+      - flag: { of: target, key: worn, value: true }
+",
+        ),
         "id: target with no target" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "      verb: wait\n    do: []\n",
@@ -413,7 +428,7 @@ fn break_pack(pack: &Path, fault: &str) {
         "a walker on a missing exit" => replace_in_file(
             &pack.join("state/save.yaml"),
             "    rowan: docks_shop\n",
-            "    rowan: exit:docks_shop.ladder\n",
+            "    rowan: { path: docks_shop.ladder, to: mira_rooms }\n",
         ),
         "a verb named cancel" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
@@ -533,10 +548,14 @@ pub(crate) fn capture_play_stdout(world: &mut World) -> String {
 
 /// Put `actor` on the exit `<place>.<exit>`, walking it until tick `until`.
 pub(crate) fn set_busy(now: &mut ecs::World, actor: &str, until: u64, exit: &str) {
+    let (from, exit_id) = exit
+        .split_once('.')
+        .unwrap_or_else(|| panic!("no exit in {exit}"));
+    let walker = spookery_engine::testing::walker_location(now, from, exit_id);
     let (mut actors, actor) = (now.actors_mut(), actor.into());
     actors
         .get_mut::<component::Place>(&actor)
-        .set(&format!("exit:{exit}"))
+        .set(walker)
         .unwrap();
     actors
         .get_mut::<component::Act>(&actor)

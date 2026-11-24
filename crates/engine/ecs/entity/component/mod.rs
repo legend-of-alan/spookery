@@ -3,7 +3,6 @@
 
 pub(in crate::ecs) mod act;
 pub(in crate::ecs) mod control_type;
-pub(in crate::ecs) mod exit;
 pub(in crate::ecs) mod flag;
 pub(in crate::ecs) mod item;
 pub(crate) mod meter;
@@ -20,13 +19,12 @@ use std::marker::PhantomData;
 pub(crate) use act::WindowCount;
 pub use act::{Act, PendingAction};
 pub use control_type::ControlType;
-pub use exit::OpenExit;
 pub use flag::Flag;
 pub use item::Item;
 pub use meter::Meter;
 pub use modifier::Modifier;
 pub use note::Note;
-pub use place::Place;
+pub use place::{Location, Place};
 pub use visit::Visit;
 pub use wielded_item::WieldedItem;
 
@@ -146,7 +144,7 @@ where
     E: entity::Has<C, Store = entity::MapStore<E, C>>,
     C: Component<Value = ()>,
 {
-    /// Put `entry_id` on or take it off: set a flag, or open or shut an exit.
+    /// Put `entry_id` on or take it off: set a flag or clear it.
     pub fn set(&mut self, entry_id: &str, on: bool) -> Result<(), Reason> {
         self.check_exists()?;
         let (before, after) = (Some(ChangeValue::Bool(!on)), Some(ChangeValue::Bool(on)));

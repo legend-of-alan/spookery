@@ -168,9 +168,16 @@ impl<T: Entries> Store<T> {
 
 /// Holds a value for every actor. Production code can only set a value for an actor already
 /// present; adding and taking one off are for the actor lifecycle only fixtures run.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct DenseStore<V: PartialEq + Debug>(Store<BTreeMap<ActorId, V>>);
+
+/// Empty, whether or not `V` has a default.
+impl<V: PartialEq + Debug> Default for DenseStore<V> {
+    fn default() -> Self {
+        DenseStore(Store::default())
+    }
+}
 
 /// Reads; there is no `DerefMut`.
 impl<V: PartialEq + Debug> Deref for DenseStore<V> {

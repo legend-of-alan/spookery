@@ -836,10 +836,13 @@
       ]
     },
     "ExitView": {
-      "description": "Part of a `View`, sent from the host to a player client. `name` is what a player reads for\nthe exit, such as `stairs` or `Docks Street`. `place_id` and `place_name` are where it goes.",
+      "description": "Part of a `View`, sent from the host to a player client. `name` is what a player reads for\nthe exit, such as `stairs` or `Docks Street`. `path_id` is the path it walks, as a\n`path_flag` change and a walker's `path:<id>` name it. `place_id` and `place_name` are where\nit goes.",
       "type": "object",
       "properties": {
         "exit_id": {
+          "type": "string"
+        },
+        "path_id": {
           "type": "string"
         },
         "name": {
@@ -862,6 +865,7 @@
       },
       "required": [
         "exit_id",
+        "path_id",
         "name",
         "place_id",
         "place_name",

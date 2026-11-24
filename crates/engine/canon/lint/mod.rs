@@ -130,8 +130,8 @@ fn conditions(canon: &Canon) -> impl Iterator<Item = (&str, String, &[Cond])> {
 
 /// Flag conditions, on a rule or a path, a change rule's flag watch and a path's `revealed_by`,
 /// that name a key no rule sets and `held` does not list, so its value never moves: most likely
-/// a misspelt key. An exit's `open` gets no warning here: `check_carriers` checks it in a
-/// condition, and the round sets it on exits, not through rules.
+/// a misspelt key. `open` gets no warning here: the round sets it on paths, not through rules,
+/// and `check_carriers` checks it in a condition.
 fn check_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let is_ever_set = |key| held.contains(key) || find_flag_holders(canon, key).next().is_some();
@@ -141,10 +141,10 @@ fn check_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
     for (file, at, conds) in conditions(canon) {
         for cond in conds {
             cond.visit(|cond| {
-                let Cond::Flag { of, key, .. } = cond else {
+                let Cond::Flag { key, .. } = cond else {
                     return;
                 };
-                if matches!(of, grammar::Object::Exit(_)) || is_ever_set(key.as_str()) {
+                if key == OPEN || is_ever_set(key.as_str()) {
                     return;
                 }
                 diags.push(warning(file, &unset_problem(key), hint).at_path(at.clone()));

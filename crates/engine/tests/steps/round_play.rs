@@ -543,15 +543,13 @@ fn neither_flag_is_set(world: &mut World) {
     assert_eq!(world.count, 0, "flags were set");
 }
 
-/// Only the shop's side of the stair door opens with the key, so this opens the rooms' side.
-#[given(expr = "the stair door stands open on Mira's side")]
-fn the_stair_door_stands_open_on_miras_side(world: &mut World) {
+#[given(expr = "the stair door stands open")]
+fn the_stair_door_stands_open(world: &mut World) {
     support::edit_save(world.pack(), |now| {
-        let stairs = spookery_engine::ExitId {
-            place: "mira_rooms".into(),
-            exit: "stairs".to_string(),
-        };
-        now.places_mut().set_exit_open(&stairs, true).unwrap();
+        let mut paths = now.paths_mut();
+        (paths.get_mut::<component::Flag>(&"docks_shop.stairs".into()))
+            .set("open", true)
+            .unwrap();
     });
 }
 

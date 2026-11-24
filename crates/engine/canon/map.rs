@@ -1,4 +1,5 @@
-//! `world/map.yaml`: every path between places, and the index of each place's exits.
+//! `world/map.yaml`: every path between places, each path as an exit from a place it leaves,
+//! and the index of each place's exits.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -6,11 +7,12 @@ use serde::Deserialize;
 
 use crate::canon::rule_list;
 use crate::canon::source::{load_tagged, Diags, FileText, MAP_SCHEMA};
-use crate::canon::{Exit, PathDef};
+use crate::canon::Canon;
 use crate::diagnostic::{schema_error, Diagnostic};
-use crate::ecs::id::PlaceId;
+use crate::ecs::component::Location;
+use crate::ecs::id::{PathId, PlaceId};
 use crate::rules::expr::Expr;
-use crate::rules::rule::{Cost, TargetKind};
+use crate::rules::rule::{self, Cond, Cost, TargetKind};
 
 /// The one pack file that lists the paths.
 pub(super) const MAP_FILE: &str = "world/map.yaml";
@@ -63,10 +65,12 @@ fn compile(row: usize, line: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
         })
         .collect();
     diags.into_result(())?;
+    let exit_id = line.id.as_deref().unwrap_or(ends[1].as_str());
     let path = PathDef {
+        id: PathId::from(format!("{}.{exit_id}", ends[0])),
         ends,
         bidirectional,
-        id: line.id.clone(),
+        exit_id: line.id.clone(),
         cost,
         if_,
         locked_text: line.locked_text.clone(),
@@ -120,7 +124,11 @@ pub(super) fn index_exits(
             }
             let problem = format!("exit '{}' is listed twice at {}", exit.id, exit.from);
             let hint = "give one of these paths its own id";
-            let field = if path.id.is_some() { ".id" } else { ".path" };
+            let field = if path.exit_id.is_some() {
+                ".id"
+            } else {
+                ".path"
+            };
             diags.push(
                 schema_error(MAP_FILE, &problem, hint).at_path(format!("paths[{row}]{field}")),
             );
@@ -129,18 +137,144 @@ pub(super) fn index_exits(
     diags.into_result(exit_rows)
 }
 
-/// The pack's paths, and the index of each place's exits.
+/// The one flag a path with an `if` carries, set once someone at either end meets the `if`.
+pub(crate) const OPEN: &str = "open";
+
+/// What the pack says about one path.
+#[derive(Clone, Debug)]
+pub struct PathDef {
+    pub id: PathId,
+    /// The two places the line names, in its order.
+    pub ends: [PlaceId; 2],
+    /// The line says `<->`.
+    pub bidirectional: bool,
+    /// The word a player types at each end, the pack's `id`. Left out, the other end's place id.
+    pub exit_id: Option<String>,
+    /// `cost.ticks` is the game time the walk takes.
+    pub cost: Cost,
+    pub if_: Vec<Cond>,
+    pub locked_text: String,
+    /// The flag that shows the exit, to an actor who carries it or to everyone once the world
+    /// does. An exit without one is always shown.
+    pub revealed_by: Option<String>,
+}
+
+impl PathDef {
+    /// The path walked toward `to_id`: from its first end, or from its second when it goes both
+    /// ways. `None` when it does not lead there.
+    pub(crate) fn exit_to(&self, to_id: &str) -> Option<Exit<'_>> {
+        let [first, second] = &self.ends;
+        let from = if second == to_id { first } else { second };
+        self.exit_from(from.as_str())
+            .filter(|exit| exit.to == to_id)
+    }
+
+    /// This path as an exit from `place`: from its first end, or from its second when it goes
+    /// both ways. `None` when it does not leave `place`.
+    pub fn exit_from(&self, place: &str) -> Option<Exit<'_>> {
+        let [first, second] = &self.ends;
+        let (from, to) = if first == place {
+            (first, second)
+        } else if self.bidirectional && second == place {
+            (second, first)
+        } else {
+            return None;
+        };
+        let id = self.exit_id.as_deref().unwrap_or(to.as_str());
+        Some(Exit {
+            id,
+            from,
+            to,
+            path: self,
+        })
+    }
+
+    /// Every number the path holds: its cost's, then its conditions'.
+    pub(crate) fn exprs(&self) -> Vec<&Expr> {
+        let cond_numbers = self.if_.iter().flat_map(Cond::exprs);
+        self.cost.exprs().chain(cond_numbers).collect()
+    }
+
+    /// The owners, item ids and `target`s the path's conditions, cost and numbers name.
+    pub(crate) fn mentions(&self) -> rule::Mentions<'_> {
+        rule::Mentions::of_lines(&self.if_, [&self.cost], self.exprs())
+    }
+
+    /// The path has an `if`, so the exit can stay locked until it opens.
+    pub(crate) fn is_conditional(&self) -> bool {
+        !self.if_.is_empty()
+    }
+
+    /// The name a player reads for the path: its exit's from its first end.
+    pub(crate) fn name<'c>(&'c self, canon: &'c Canon) -> &'c str {
+        let [first, _] = &self.ends;
+        self.exit_from(first.as_str())
+            .map_or(first.as_str(), |exit| exit.name(canon))
+    }
+
+    /// Whether the path carries flag `key`: only `open`, and only on a path with an `if`.
+    pub(crate) fn carries_flag(&self, key: &str) -> bool {
+        key == OPEN && self.is_conditional()
+    }
+}
+
+/// A path as seen from a place it leaves, named by the word a player types there.
+#[derive(Clone, Copy, Debug)]
+pub struct Exit<'c> {
+    pub id: &'c str,
+    pub from: &'c PlaceId,
+    pub to: &'c PlaceId,
+    pub path: &'c PathDef,
+}
+
+impl<'c> Exit<'c> {
+    /// Where someone walking this exit stands: on its path, heading where it leads.
+    pub(crate) fn walker_location(&self) -> Location {
+        Location::Path {
+            path: self.path.id.clone(),
+            to: self.to.clone(),
+        }
+    }
+
+    /// The name a player reads: the name of the place it goes to when `id` is that place's id,
+    /// or else `id`.
+    pub(crate) fn name(&self, canon: &'c Canon) -> &'c str {
+        match canon.places.get(self.to) {
+            Some(place) if self.to == self.id => &place.name,
+            _ => self.id,
+        }
+    }
+}
+
+/// The pack's paths, and the index of each place's exits and of each path's id.
 #[derive(Clone, Debug)]
 pub struct Paths {
     paths: Vec<PathDef>,
     exit_rows: BTreeMap<PlaceId, Vec<usize>>,
+    rows_by_id: BTreeMap<PathId, usize>,
 }
 
 impl Paths {
-    /// Index each place's exits from `paths`, in file order.
+    /// Index each place's exits and each path's id from `paths`, in file order. Two paths
+    /// never share an id: an id is an exit's place and word, which `index_exits` keeps unique.
     pub(super) fn index(paths: Vec<PathDef>) -> Result<Self, Vec<Diagnostic>> {
         let exit_rows = index_exits(&paths)?;
-        Ok(Self { paths, exit_rows })
+        let rows = paths.iter().enumerate();
+        let rows_by_id = rows.map(|(row, path)| (path.id.clone(), row)).collect();
+        Ok(Self {
+            paths,
+            exit_rows,
+            rows_by_id,
+        })
+    }
+
+    pub(crate) fn get(&self, id: &PathId) -> Option<&PathDef> {
+        self.rows_by_id.get(id).map(|&row| &self.paths[row])
+    }
+
+    /// Every path's id, in id order.
+    pub(crate) fn ids(&self) -> impl Iterator<Item = &PathId> {
+        self.rows_by_id.keys()
     }
 
     /// The exits of `place`, in the file order of their paths.

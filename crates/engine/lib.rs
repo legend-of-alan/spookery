@@ -23,7 +23,7 @@ pub use ecs::component;
 pub use ecs::component::meter::Meter;
 pub use ecs::component::modifier::Modifier;
 pub use ecs::component::Note;
-pub use ecs::id::{ActorId, ExitId, GlobalId, PlaceId, StoryId};
+pub use ecs::id::{ActorId, GlobalId, PathId, PlaceId, StoryId};
 pub use ecs::{Presence, Reader, Save, Writer};
 pub use intent::{Intent, IntentArgs, Source, Target};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick};
@@ -41,7 +41,7 @@ pub mod testing {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use crate::ecs::component::Place;
+    use crate::ecs::component::{Location, Place};
     use crate::store::lock::WriteGuard;
 
     pub use crate::canon::Canon;
@@ -59,8 +59,19 @@ pub mod testing {
     /// Where `actor` stands, read through `Reader::get`. Panics when they stand nowhere.
     pub fn place_of(world: &crate::ecs::World, actor: &str) -> String {
         let actors = world.actors();
-        let place = actors.get::<Place>(&actor.into()).get().map(String::from);
+        let place = actors
+            .get::<Place>(&actor.into())
+            .get()
+            .map(ToString::to_string);
         place.unwrap_or_else(|| panic!("{actor} stands nowhere"))
+    }
+
+    /// Where someone walking the exit `exit_id` from `from` stands. Panics when `from` has no
+    /// such exit.
+    pub fn walker_location(world: &crate::ecs::World, from: &str, exit_id: &str) -> Location {
+        let exit = world.canon().find_exit(from, exit_id);
+        let exit = exit.unwrap_or_else(|| panic!("{from} has no exit {exit_id}"));
+        exit.walker_location()
     }
 
     /// What `actor` is doing, read through `Reader::get`.

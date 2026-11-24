@@ -1,13 +1,12 @@
 //! Whether the conditions on a rule hold.
 
-use crate::canon::{Canon, OPEN};
+use crate::canon::Canon;
 use crate::ecs::component::Note;
 use crate::ecs::id::{ActorId, GlobalId};
 use crate::ecs::{self, component, Presence};
 use crate::intent::{Intent, Source, Target};
 use crate::rules::context::Context;
 use crate::rules::expr;
-use crate::rules::grammar;
 use crate::rules::rule::Cond;
 use crate::Reason;
 
@@ -76,11 +75,6 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
         }
-        Cond::Flag {
-            of: grammar::Object::Exit(exit),
-            key,
-            is,
-        } => Ok((key == OPEN && world.places().is_exit_open(exit)) == *is),
         Cond::Flag { of, key, is } => {
             let entity = expr::resolve_entity(context, of)?;
             let flag = world.entities().get::<component::Flag>(&entity);
@@ -89,7 +83,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         Cond::At { subject, place } => {
             let actor = expr::resolve_actor(context, subject)?;
             let at = world.actors().get::<component::Place>(actor).get();
-            Ok(at.is_some_and(|at| at == place))
+            Ok(at.is_some_and(|at| at.to_string() == *place))
         }
         Cond::Cycle { id, from, to } => {
             let cycles = &context.canon.budget.cycles;

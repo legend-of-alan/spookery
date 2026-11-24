@@ -1,7 +1,7 @@
 schema: save
 world_id: starter
 pack_rev: blake2s:ab018a57c4eb4b17162b9028834b42c51427329cca6f505e5b77b8b83671d162
-rules_rev: 32
+rules_rev: 33
 state_rev: 0
 round_index: 0
 world_time: 0
@@ -25,7 +25,8 @@ places:
   items: {}
   meters: {}
   flags: {}
-  open_exits: {}
+paths:
+  flags: {}
 stories:
   meters: {}
   flags: {}

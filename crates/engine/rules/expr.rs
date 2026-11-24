@@ -1,7 +1,7 @@
 //! Dice and arithmetic inside a rule number.
 
 use crate::ecs::component;
-use crate::ecs::id::ActorId;
+use crate::ecs::id::{ActorId, PlaceId};
 use crate::entity;
 use crate::intent::Target;
 use crate::rules::context::Context;
@@ -253,9 +253,9 @@ pub(crate) fn resolve_item_id(context: &Context, id: &str) -> Result<String, Rea
     Ok(id.to_string())
 }
 
-/// Who holds the meter, flag or item a rule names: `here` and `place:` are a place, `story:`
-/// is a story, `world` is the world, and anyone else is an actor. An exit holds none of them:
-/// whether it is open is an `exit_open`, and its `open` flag is read by `cond::holds`.
+/// Who holds the meter, flag or item a rule names: `here` and `place:` are a place, `path:`
+/// is a path, `story:` is a story, `world` is the world, `target` on a rule that targets an
+/// exit is that exit's path, and anyone else is an actor.
 pub(crate) fn resolve_entity(
     context: &Context,
     of: &grammar::Object,
@@ -263,9 +263,16 @@ pub(crate) fn resolve_entity(
     match of {
         grammar::Object::Global => Ok(entity::Id::Global),
         grammar::Object::Story(id) => Ok(entity::Id::Story(id.clone())),
-        grammar::Object::Exit(_) => Err(Reason::UnknownId),
+        grammar::Object::Path(id) => Ok(entity::Id::Path(id.clone())),
         grammar::Object::Place(id) => Ok(entity::Id::Place(id.clone())),
         grammar::Object::Here => Ok(entity::Id::Place(resolve_here(context)?.into())),
+        grammar::Object::Actor(grammar::Actor::Target)
+            if matches!(context.intent.target, Target::Exit(_)) =>
+        {
+            let exit = crate::rules::travel::exit_via(context, "target")?;
+            let path = exit.ok_or(Reason::NoExit)?.path;
+            Ok(entity::Id::Path(path.id.clone()))
+        }
         grammar::Object::Actor(actor) => {
             Ok(entity::Id::Actor(resolve_actor(context, actor)?.clone()))
         }
@@ -289,11 +296,14 @@ pub(crate) fn resolve_actor<'a>(
     }
 }
 
-/// Where the acting actor stands: a place id, or an exit's address while they walk.
+/// The place the acting actor stands in. A walker is in no place, so it is `UNKNOWN_ID`.
 pub(crate) fn resolve_here<'a>(context: &Context<'_, 'a>) -> Result<&'a str, Reason> {
     let actor_id = context.intent.actor_id.as_ref().ok_or(Reason::Schema)?;
     let place = context.world.actors().get::<component::Place>(actor_id);
-    place.get().ok_or(Reason::UnknownId)
+    place
+        .place_id()
+        .map(PlaceId::as_str)
+        .ok_or(Reason::UnknownId)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -643,8 +653,8 @@ impl<'a> Parser<'a> {
             return Err(self.error());
         }
         let of = match grammar::Object::parse(owner)? {
-            grammar::Object::Exit(_) => {
-                return Err(format!("'{owner}' is an exit, which has no meters"))
+            grammar::Object::Path(_) => {
+                return Err(format!("'{owner}' is a path, which has no meters"))
             }
             of => of,
         };

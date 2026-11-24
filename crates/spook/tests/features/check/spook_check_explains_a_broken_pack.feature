@@ -55,6 +55,8 @@ Feature: spook check explains a broken pack
       | world as an actor                   | world/places/gate_yard.md  | SCHEMA            | 'world' is not an actor                                  |
       | target on a move with none          | rules/verbs.yaml           | SCHEMA            | in of:, but its target is none                           |
       | owner target on an item move        | rules/verbs.yaml           | SCHEMA            | in of:, but its target is item                           |
+      | a meter on a travel move's target   | rules/verbs.yaml           | SCHEMA            | in of:, but its target is exit                           |
+      | a travel move's target flag besides open | rules/verbs.yaml      | SCHEMA            | a path carries only the flag 'open'                      |
       | id: target with no target           | rules/verbs.yaml           | SCHEMA            | in id:, but its target is none                           |
       | a save by target with none          | rules/verbs.yaml           | SCHEMA            | in by:, but its target is none                           |
       | target on an exit                   | world/map.yaml             | SCHEMA            | but an exit has no target                                |
@@ -76,7 +78,7 @@ Feature: spook check explains a broken pack
       | an undeclared place meter           | rules/verbs.yaml           | SCHEMA            | place:docks_street carries no meter 'light'              |
       | a repeated story id                 | story/later.yaml           | SCHEMA            | story 'ending' is already defined                        |
       | an empty story id                   | story/ending.yaml          | SCHEMA            | id is empty                                              |
-      | a walker on a missing exit          | state/save.yaml            | SCHEMA            | 'exit:docks_shop.ladder', which the pack does not define |
+      | a walker on a missing exit          | state/save.yaml            | SCHEMA            | 'path:docks_shop.ladder', which the pack does not define |
       | a verb named cancel                 | rules/verbs.yaml           | SCHEMA            | 'cancel' is a built-in command                           |
       | a saved item with no definition     | state/save.yaml            | SCHEMA            | unknown item 'ghost'                                     |
       | partial_at without partial          | rules/verbs.yaml           | SCHEMA            | without a partial                                        |

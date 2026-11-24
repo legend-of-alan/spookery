@@ -51,11 +51,14 @@ impl View {
 }
 
 /// Part of a `View`, sent from the host to a player client. `name` is what a player reads for
-/// the exit, such as `stairs` or `Docks Street`. `place_id` and `place_name` are where it goes.
+/// the exit, such as `stairs` or `Docks Street`. `path_id` is the path it walks, as a
+/// `path_flag` change and a walker's `path:<id>` name it. `place_id` and `place_name` are where
+/// it goes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ExitView {
     pub exit_id: String,
+    pub path_id: String,
     pub name: String,
     pub place_id: String,
     pub place_name: String,

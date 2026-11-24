@@ -122,17 +122,16 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
     do:
       - item: { of: self, id: target, add: -1 }
       - item: { of: here, id: target, add: 1 }
-      - flag: { of: \"exit:gate_yard.loft\", key: open, value: false }
+      - flag: { of: \"path:gate_yard.loft\", key: open, value: false }
 ";
     let next = text.replacen("rules:\n", drop, 1);
     assert_ne!(text, next, "the loft exit was not locked");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write yard: {err}"));
     edit_save(&pack, |now| {
-        let loft = spookery_engine::ExitId {
-            place: "gate_yard".into(),
-            exit: "loft".to_string(),
-        };
-        now.places_mut().set_exit_open(&loft, true).unwrap();
+        let mut paths = now.paths_mut();
+        (paths.get_mut::<spookery_engine::component::Flag>(&"gate_yard.loft".into()))
+            .set("open", true)
+            .unwrap();
     });
     world.pack = Some(pack);
 }

@@ -14,7 +14,7 @@ Feature: One action lifecycle
   Scenario: A walker is on the stairs and in neither room
     Given the stairs take 10 ticks and Rowan holds the brass key
     When Rowan plays "travel stairs"
-    Then Rowan is at exit:docks_shop.stairs
+    Then Rowan is at path:docks_shop.stairs
     And Wren's look does not show Rowan
     And Rowan's look shows "on the stairs until tick 1090"
     And spook verify passes on this pack
@@ -24,7 +24,7 @@ Feature: One action lifecycle
   Scenario: A walker on an unnamed exit to the street reads the street's name
     Given the shop's exit to the street takes 10 ticks
     When Rowan plays "travel docks_street"
-    Then Rowan is at exit:docks_shop.docks_street
+    Then Rowan is at path:docks_shop.docks_street
     And Rowan's look shows "on the Docks Street until tick 1090"
 
   Scenario: A timed teleport lands like travel

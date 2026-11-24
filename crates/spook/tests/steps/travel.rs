@@ -73,7 +73,7 @@ async fn stairs_need_a_key(world: &mut World, place: String, walk: String) {
         edit_save(&pack, |now| {
             let rowan = &"rowan".into();
             (now.actors_mut().get_mut::<component::Place>(rowan))
-                .set(&place)
+                .set(place.as_str())
                 .unwrap();
         });
     }

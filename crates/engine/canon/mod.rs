@@ -9,11 +9,10 @@ use crate::canon;
 use crate::diagnostic::Diagnostic;
 use crate::ecs::component::meter;
 use crate::ecs::component::modifier;
-use crate::ecs::id::{ActorId, ExitId, PlaceId, StoryId};
+use crate::ecs::id::{ActorId, PlaceId, StoryId};
 use crate::entity;
 use crate::hash::blake2s_tagged;
-use crate::rules::expr::Expr;
-use crate::rules::rule::{self, Cond, Cost, Owner, TargetKind, When};
+use crate::rules::rule::{self, Owner, TargetKind, When};
 use crate::Reason;
 pub(crate) use spookery_protocol::{ControlType, MenuRow, PackSummary};
 
@@ -35,8 +34,8 @@ pub(crate) use lint::{check_canon, unknown_item};
 use lint::{
     check_carriers, check_meter_reads, check_modifiers, check_paths, check_rule_items, EntityScope,
 };
-pub(crate) use map::Paths;
 use map::MAP_FILE;
+pub(crate) use map::{Exit, PathDef, Paths, OPEN};
 use modifiers::MODIFIERS_FILE;
 use pack::load_pack_yaml;
 use rule_list::load_verbs;
@@ -77,93 +76,6 @@ pub struct ItemDef {
     pub name: String,
     pub tags: Vec<String>,
     pub body: String,
-}
-
-/// The one flag an exit with an `if` carries, set once someone there meets the `if`.
-pub(crate) const OPEN: &str = "open";
-
-/// What the pack says about one path.
-#[derive(Clone, Debug)]
-pub struct PathDef {
-    /// The two places the line names, in its order.
-    pub ends: [PlaceId; 2],
-    /// The line says `<->`.
-    pub bidirectional: bool,
-    /// The word a player types at each end. Left out, the other end's place id.
-    pub id: Option<String>,
-    /// `cost.ticks` is the game time the walk takes.
-    pub cost: Cost,
-    pub if_: Vec<Cond>,
-    pub locked_text: String,
-    /// The flag that shows the exit, to an actor who carries it or to everyone once the world
-    /// does. An exit without one is always shown.
-    pub revealed_by: Option<String>,
-}
-
-impl PathDef {
-    /// This path as an exit from `place`: from its first end, or from its second when it goes
-    /// both ways. `None` when it does not leave `place`.
-    pub fn exit_from(&self, place: &str) -> Option<Exit<'_>> {
-        let [first, second] = &self.ends;
-        let (from, to) = if first == place {
-            (first, second)
-        } else if self.bidirectional && second == place {
-            (second, first)
-        } else {
-            return None;
-        };
-        let id = self.id.as_deref().unwrap_or(to.as_str());
-        Some(Exit {
-            id,
-            from,
-            to,
-            path: self,
-        })
-    }
-
-    /// Every number the path holds: its cost's, then its conditions'.
-    pub(crate) fn exprs(&self) -> Vec<&Expr> {
-        let cond_numbers = self.if_.iter().flat_map(Cond::exprs);
-        self.cost.exprs().chain(cond_numbers).collect()
-    }
-
-    /// The owners, item ids and `target`s the path's conditions, cost and numbers name.
-    pub(crate) fn mentions(&self) -> rule::Mentions<'_> {
-        rule::Mentions::of_lines(&self.if_, [&self.cost], self.exprs())
-    }
-
-    /// The path has an `if`, so the exit can stay locked until it opens.
-    pub(crate) fn is_conditional(&self) -> bool {
-        !self.if_.is_empty()
-    }
-}
-
-/// A path as seen from a place it leaves, named by the word a player types there.
-#[derive(Clone, Copy, Debug)]
-pub struct Exit<'c> {
-    pub id: &'c str,
-    pub from: &'c PlaceId,
-    pub to: &'c PlaceId,
-    pub path: &'c PathDef,
-}
-
-impl<'c> Exit<'c> {
-    /// This exit, by its place and the word a player types there.
-    pub(crate) fn exit_id(&self) -> ExitId {
-        ExitId {
-            place: self.from.clone(),
-            exit: self.id.to_string(),
-        }
-    }
-
-    /// The name a player reads: the name of the place it goes to when `id` is that place's id,
-    /// or else `id`.
-    pub(crate) fn name(&self, canon: &'c Canon) -> &'c str {
-        match canon.places.get(self.to) {
-            Some(place) if self.to == self.id => &place.name,
-            _ => self.id,
-        }
-    }
 }
 
 #[derive(Clone, Debug)]

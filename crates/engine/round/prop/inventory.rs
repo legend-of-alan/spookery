@@ -134,7 +134,7 @@ fn is_known_entity(canon: &Canon, world: &ecs::World, carrier: &entity::Id) -> b
     match carrier {
         entity::Id::Actor(id) => world.actors().contains(id),
         entity::Id::Place(id) => canon.places.contains_key(id),
-        entity::Id::Story(_) | entity::Id::Global => false,
+        entity::Id::Path(_) | entity::Id::Story(_) | entity::Id::Global => false,
     }
 }
 
@@ -152,7 +152,7 @@ fn count_of(world: &ecs::World, carrier: &entity::Id, id: &str) -> u32 {
             .get(id)
             .copied()
             .unwrap_or(0),
-        entity::Id::Story(_) | entity::Id::Global => 0,
+        entity::Id::Path(_) | entity::Id::Story(_) | entity::Id::Global => 0,
     }
 }
 
@@ -180,7 +180,7 @@ fn item_effect(step: &ItemChange) -> Effect {
     let (actor_id, place) = match &step.carrier {
         entity::Id::Actor(id) => (Some(id.clone()), None),
         entity::Id::Place(id) => (None, Some(id.clone())),
-        entity::Id::Story(_) | entity::Id::Global => (None, None),
+        entity::Id::Path(_) | entity::Id::Story(_) | entity::Id::Global => (None, None),
     };
     Effect {
         kind: EffectKind::Item {

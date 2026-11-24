@@ -50,6 +50,8 @@ pub struct Save {
     #[serde(default)]
     places: entity::Places,
     #[serde(default)]
+    paths: entity::Paths,
+    #[serde(default)]
     stories: entity::Stories,
     #[serde(default)]
     globals: entity::Globals,
@@ -186,10 +188,11 @@ impl World {
         &self.canon
     }
 
-    /// The actors in `place`, in id order.
-    pub(crate) fn actors_at(&self, place: &str) -> Vec<ActorId> {
+    /// The actors at `location_text`, a place id or `path:<id>` for those walking that path, in
+    /// id order.
+    pub(crate) fn actors_at(&self, location_text: &str) -> Vec<ActorId> {
         let actors = self.actors().query::<(ActorId, &component::Place)>();
-        let here = actors.iter().filter(|(_, at)| *at == place);
+        let here = (actors.iter()).filter(|(_, at)| at.to_string() == location_text);
         here.map(|(id, _)| id.clone()).collect()
     }
 
@@ -199,6 +202,10 @@ impl World {
 
     pub fn places(&self) -> Reader<'_, entity::Places> {
         Reader::new(&self.save.places, &self.canon)
+    }
+
+    pub fn paths(&self) -> Reader<'_, entity::Paths> {
+        Reader::new(&self.save.paths, &self.canon)
     }
 
     pub fn stories(&self) -> Reader<'_, entity::Stories> {
@@ -215,6 +222,10 @@ impl World {
 
     pub fn places_mut(&mut self) -> Writer<'_, entity::Places> {
         Writer::new(&mut self.save.places, &mut self.transaction, &self.canon)
+    }
+
+    pub fn paths_mut(&mut self) -> Writer<'_, entity::Paths> {
+        Writer::new(&mut self.save.paths, &mut self.transaction, &self.canon)
     }
 
     pub fn stories_mut(&mut self) -> Writer<'_, entity::Stories> {
@@ -241,13 +252,6 @@ impl World {
 pub struct Presence {
     pub players: u32,
     pub actors_present: Vec<ActorId>,
-}
-
-/// The place and exit names in an exit's id, `exit:<place>.<exit>`: where a walker stands
-/// until they arrive. `None` for any other id.
-pub(crate) fn exit_parts(id: &str) -> Option<(&str, &str)> {
-    let (place, exit) = id.strip_prefix("exit:")?.split_once('.')?;
-    (!place.is_empty() && !exit.is_empty()).then_some((place, exit))
 }
 
 pub(crate) fn sort_unique<T: Ord>(items: &mut Vec<T>) {

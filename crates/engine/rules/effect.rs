@@ -8,8 +8,9 @@ use serde_json::{Map, Value};
 use crate::canon::Canon;
 use crate::ecs::component::meter;
 use crate::ecs::component::modifier::{self, Modifier};
+use crate::ecs::component::Location;
 use crate::ecs::component::Note;
-use crate::ecs::id::{ActorId, ExitId, GlobalId, PlaceId};
+use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component, MemoryLine, Presence};
 use crate::entity;
 use crate::intent::Intent;
@@ -60,8 +61,8 @@ pub enum EffectKind {
     },
     Location {
         actor_id: ActorId,
-        from: String,
-        to: String,
+        from: Location,
+        to: Location,
         /// Exact tick of a timed arrival. Instant moves leave this empty.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         arrived_at: Option<u64>,
@@ -76,12 +77,6 @@ pub enum EffectKind {
         entity: entity::Id,
         key: String,
         value: bool,
-    },
-    /// Open or shut an exit. JSON writes it as `place` and `exit`.
-    ExitOpen {
-        #[serde(flatten)]
-        exit: ExitId,
-        open: bool,
     },
     Note {
         note_id: String,
@@ -223,18 +218,14 @@ impl Effect {
                 text,
             } => remember(world, intent, &actor_id, tags, text),
             EffectKind::Flag { entity, key, value } => {
-                if key.is_empty() {
+                let path = match &entity {
+                    entity::Id::Path(id) => canon.paths.get(id),
+                    _ => None,
+                };
+                if key.is_empty() || path.is_some_and(|path| !path.carries_flag(&key)) {
                     return Err(Reason::UnknownId);
                 }
                 (world.entities_mut().get_mut::<component::Flag>(&entity)).set(&key, value)
-            }
-            EffectKind::ExitOpen { exit, open } => {
-                canon
-                    .find_exit(exit.place.as_str(), &exit.exit)
-                    .is_some_and(|exit| exit.path.is_conditional())
-                    .then_some(())
-                    .ok_or(Reason::UnknownId)?;
-                world.places_mut().set_exit_open(&exit, open)
             }
             EffectKind::Note {
                 note_id,
@@ -272,7 +263,6 @@ impl EffectKind {
             EffectKind::Location { .. } => "location",
             EffectKind::Memory { .. } => "memory",
             EffectKind::Flag { .. } => "flag",
-            EffectKind::ExitOpen { .. } => "exit_open",
             EffectKind::Note { .. } => "note",
             EffectKind::Narrate { .. } => "narrate",
         }
@@ -325,8 +315,8 @@ fn move_actor(
     presence: &Presence,
     intent: &Intent,
     actor_id: &ActorId,
-    from: &str,
-    to: &str,
+    from: &Location,
+    to: &Location,
 ) -> Result<(), Reason> {
     if intent.actor_id.as_ref() != Some(actor_id) {
         return Err(Reason::ActorMismatch);
@@ -339,11 +329,10 @@ fn move_actor(
     if place.ok_or(Reason::UnknownId)? != from {
         return Err(Reason::OutOfRange);
     }
-    let on_exit = crate::rules::travel::exit_stood_on(canon, to).is_some();
-    if !canon.places.contains_key(to) && !on_exit {
+    if !crate::rules::travel::is_known_location(canon, to) {
         return Err(Reason::NoExit);
     }
-    (world.actors_mut().get_mut::<component::Place>(actor_id)).set(to)
+    (world.actors_mut().get_mut::<component::Place>(actor_id)).set(to.clone())
 }
 
 fn remember(

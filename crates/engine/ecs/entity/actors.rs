@@ -21,8 +21,8 @@ use crate::ecs::{entity, nested_map, undo, Reader};
 pub struct Actors {
     /// Who controls each actor, a player or the engine. An actor exists when it has one.
     control_type: undo::Store<BTreeMap<ActorId, component::ControlType>>,
-    /// Where each actor stands: a place id, or `exit:<place>.<exit>` while they walk.
-    place: undo::DenseStore<String>,
+    /// Where each actor stands: in a place, or on a path while they walk.
+    place: undo::DenseStore<component::Location>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     wielded: undo::Store<BTreeMap<ActorId, String>>,
     /// Each place an actor has stood at the end of a round, with the names of the exits they
@@ -60,7 +60,7 @@ entity::has!(Actors, component::Flag, flags);
 entity::has!(Actors, Modifier, modifiers);
 entity::has!(Actors, component::Visit, visited);
 entity::has!(Actors, component::ControlType, control_type: undo::Store<BTreeMap<ActorId, component::ControlType>>);
-entity::has!(Actors, component::Place, place: undo::DenseStore<String>);
+entity::has!(Actors, component::Place, place: undo::DenseStore<component::Location>);
 entity::has!(Actors, component::WieldedItem, wielded: undo::Store<BTreeMap<ActorId, String>>);
 entity::has!(Actors, Act, acts: undo::Store<BTreeMap<ActorId, Act>>);
 

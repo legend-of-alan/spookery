@@ -889,7 +889,9 @@ fn harbormouse_in_the_yard_plays(world: &mut World, line: String) {
 fn harbormouse_alone_plays(world: &mut World, line: String) {
     let now = world_of(world.pack.as_ref().unwrap());
     let actors = now.actors().query::<(ActorId, &component::Place)>();
-    let yard = actors.iter().filter(|(_, place)| *place == "gate_yard");
+    let yard = actors
+        .iter()
+        .filter(|(_, place)| *place == &"gate_yard".into());
     assert_eq!(
         yard.map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
         ["harbormouse"]
