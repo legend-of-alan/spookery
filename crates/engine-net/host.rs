@@ -127,8 +127,8 @@ impl Host {
         }
     }
 
-    /// Queues each message the router sent. A full or closed queue drops that connection. The
-    /// host does not wait.
+    /// Restarts the idle timer when the router played rounds, then queues each message the router
+    /// sent. A full or closed queue drops that connection. The host does not wait.
     fn enqueue(&mut self, outbox: Outbox) {
         if outbox.restart_idle {
             self.idle

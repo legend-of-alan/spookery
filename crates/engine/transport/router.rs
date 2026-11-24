@@ -10,9 +10,9 @@ use spookery_protocol::{
     SayArgs, Seat, ServerBody, ServerMessage, COMMANDS, VERSION,
 };
 
-use super::gm::{self, Reply};
+use super::gm;
 use super::message_body;
-use super::participants::{Claim, ConnId, Connection, Participants};
+use super::participants::{self, Claim, ConnId, Participants};
 use crate::{emit_tape_record, ActorId, Presence, Reason, RecipientLine, Session, TapeRecord};
 
 /// The router's cap. A pack may define more PCs than this.
@@ -36,7 +36,7 @@ pub struct Outbox {
     pub restart_idle: bool,
 }
 
-/// The one owner of the session and who is seated: connections, commands, say and rounds.
+/// The owner of the session and its `Participants`: connections, commands, say and rounds.
 pub struct Router {
     session: Session,
     participants: Participants,
@@ -82,7 +82,7 @@ impl Router {
         tracing::debug!(conn_id = %conn, ?seat, "connection opened");
         self.participants
             .connections
-            .push(Connection { id: conn, seat });
+            .push(participants::Connection { id: conn, seat });
         let mut commands: Vec<String> = COMMANDS
             .iter()
             .filter(|command| command.seat == seat)
@@ -431,7 +431,7 @@ impl Router {
         }
         let presence = self.participants.presence();
         let reply = gm::run(&mut self.session, &presence, &body.kind, &body.args, wall)
-            .unwrap_or_else(Reply::refused);
+            .unwrap_or_else(gm::Reply::refused);
         self.after_rounds(&reply.outputs);
         match &reply.speech {
             Some(speech) => self.deliver_speech(speech, Some((conn, id))),
