@@ -9,6 +9,7 @@ Start with the [README](../README.md) to build and play. This page points at eve
 | [Pack reference](pack-reference.md) | Every pack field, for people and agents writing packs. |
 | [Expressions](spec.md) | The small number language pack fields use, like `2d6` or `self.might`. |
 | [Seat protocol](seat-protocol.md) | The seat protocol for player clients and GMs, including how to point a coding agent at the host. |
+| [Concept map](concept-map.md) | The one word each concept gets in code, and the synonyms banned for it. |
 | [CONTRIBUTING](../CONTRIBUTING.md) | Issue rules and running the tests. |
 
 Further down this page you'll find the [glossary](#glossary), [host options](#host-options), [GM setup](#game-master), [what the model sees](#privacy) and the [license](#license).
