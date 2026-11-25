@@ -106,8 +106,8 @@ pub(crate) fn build_view(
         list_whose_if_holds(canon, world, presence, viewer_id)
     };
     let exits = crate::rules::travel::visible_exits(canon, world, viewer_id);
-    let mut nearby = crate::rules::lines::map(canon, world, viewer_id)?;
-    nearby.retain(|place| exits.iter().any(|exit| exit.place_id == place.place_id));
+    let is_past_an_exit = |place_id: &str| exits.iter().any(|exit| exit.place_id == place_id);
+    let nearby = crate::rules::lines::map(canon, world, viewer_id, is_past_an_exit)?;
     let actor_names = visible_actors
         .iter()
         .map(|id| canon.name(id.as_str()).map(str::to_string))

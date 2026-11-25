@@ -444,7 +444,7 @@ impl<Lock> Session<Lock> {
 
     /// The `map` for `actor_id`: each place they visited, with the exits they saw there last.
     pub fn map(&self, actor_id: &ActorId) -> Result<Vec<PlaceView>, Reason> {
-        crate::rules::lines::map(self.canon(), &self.world, actor_id)
+        crate::rules::lines::map(self.canon(), &self.world, actor_id, |_| true)
     }
 
     fn read_digest(&self) -> Result<String, Reason> {
