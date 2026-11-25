@@ -5,10 +5,12 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_tagged, Diags, DuplicateWords, FileText, Locator, METERS_SCHEMA};
+use crate::canon::source::{load_tagged, Diags, DuplicateWords, FileText, Locator};
 use crate::diagnostic::Diagnostic;
 use crate::ecs::component::meter;
 use crate::entity;
+
+const SCHEMA: &str = "meters";
 
 /// A meters file, whose meters `carrier` carries.
 pub(super) fn load(
@@ -16,7 +18,7 @@ pub(super) fn load(
     text: &str,
     carrier: Option<entity::Id>,
 ) -> Result<BTreeMap<String, meter::Descriptor>, Vec<Diagnostic>> {
-    let doc: MetersDoc = load_tagged(rel, text, METERS_SCHEMA, false)?;
+    let doc: MetersDoc = load_tagged(rel, text, SCHEMA, false)?;
     let source = FileText { file: rel, text };
     meter_descs(&source, doc.meters, carrier)
 }

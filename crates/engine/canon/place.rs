@@ -6,13 +6,15 @@ use serde::Deserialize;
 
 use crate::canon::meters::{meter_descs, MeterYaml};
 use crate::canon::rule_list::{self, parse::RuleYaml};
-use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, PLACE_SCHEMA};
+use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page};
 use crate::canon::PlaceDef;
 use crate::diagnostic::Diagnostic;
 use crate::ecs::component::meter;
 use crate::ecs::id::PlaceId;
 use crate::entity;
 use crate::rules::rule::{Owner, Rule};
+
+const SCHEMA: &str = "place";
 
 /// The meters one place file declares, by that file, for `load_canon` to add once the meters
 /// every actor carries have loaded.
@@ -58,7 +60,7 @@ pub(super) fn add(
 }
 
 fn load(file: &str, yaml: &str) -> Result<PlaceDoc, Vec<Diagnostic>> {
-    let parsed: PlaceDoc = load_tagged(file, yaml, PLACE_SCHEMA, true)?;
+    let parsed: PlaceDoc = load_tagged(file, yaml, SCHEMA, true)?;
     let source = FileText { file, text: yaml };
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short place id");

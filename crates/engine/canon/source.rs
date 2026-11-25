@@ -9,17 +9,6 @@ use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, 
 use crate::rules::rule::LineColumn;
 use crate::Reason;
 
-pub(super) const PACK_SCHEMA: &str = "pack";
-pub(super) const PLACE_SCHEMA: &str = "place";
-pub(super) const CAST_SCHEMA: &str = "cast";
-pub(super) const METERS_SCHEMA: &str = "meters";
-pub(super) const MODIFIERS_SCHEMA: &str = "modifiers";
-pub(super) const VERBS_SCHEMA: &str = "verbs";
-pub(super) const ITEM_SCHEMA: &str = "item";
-pub(super) const STORY_SCHEMA: &str = "story";
-pub(super) const BUDGET_SCHEMA: &str = "budget";
-pub(super) const MAP_SCHEMA: &str = "map";
-
 /// One pack file as the loader sees it: its pack-relative name and its YAML text, which
 /// starts on the file's first line.
 pub(super) struct FileText<'a> {

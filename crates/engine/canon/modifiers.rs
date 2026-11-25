@@ -5,19 +5,20 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_tagged, Diags, FileText, MODIFIERS_SCHEMA};
+use crate::canon::source::{load_tagged, Diags, FileText};
 use crate::diagnostic::Diagnostic;
 use crate::ecs::component::meter;
 use crate::ecs::component::modifier;
 
 pub(super) const MODIFIERS_FILE: &str = "rules/modifiers.yaml";
+const SCHEMA: &str = "modifiers";
 
 /// The modifiers file. Each modifier names one of the actor `meters`.
 pub(super) fn load(
     text: &str,
     meters: &BTreeMap<String, meter::Descriptor>,
 ) -> Result<BTreeMap<String, modifier::Descriptor>, Vec<Diagnostic>> {
-    let doc: ModifiersDoc = load_tagged(MODIFIERS_FILE, text, MODIFIERS_SCHEMA, false)?;
+    let doc: ModifiersDoc = load_tagged(MODIFIERS_FILE, text, SCHEMA, false)?;
     let source = FileText {
         file: MODIFIERS_FILE,
         text,

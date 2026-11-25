@@ -4,8 +4,10 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_tagged, FileText, Locator, Problem, BUDGET_SCHEMA};
+use crate::canon::source::{load_tagged, FileText, Locator, Problem};
 use crate::diagnostic::Diagnostic;
+
+const SCHEMA: &str = "budget";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Budget {
@@ -61,7 +63,7 @@ impl Default for Budget {
 }
 
 pub(crate) fn load(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    let doc: BudgetDoc = load_tagged(rel, text, BUDGET_SCHEMA, false)?;
+    let doc: BudgetDoc = load_tagged(rel, text, SCHEMA, false)?;
     let source = FileText { file: rel, text };
     let mut diags = Vec::new();
     let mut budget = Budget::default();
