@@ -957,8 +957,7 @@
           }
         },
         "nearby": {
-          "description": "The places `exits` go to that the viewer's `map` knows, each with the exits the viewer saw
-there.",
+          "description": "The places `exits` go to that the viewer's `map` knows, each with the exits the viewer saw\nthere.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/PlaceView"
