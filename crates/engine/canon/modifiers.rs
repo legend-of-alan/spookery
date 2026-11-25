@@ -5,10 +5,12 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_tagged, Diags, FileText, MODIFIERS_SCHEMA};
-use crate::diagnostic::Diagnostic;
+use crate::canon::refusal::{Diags, FileText};
+use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::component::modifier;
+
+const MODIFIERS_SCHEMA: &str = "modifiers";
 
 pub(super) const MODIFIERS_FILE: &str = "rules/modifiers.yaml";
 
@@ -17,7 +19,7 @@ pub(super) fn load(
     text: &str,
     meters: &BTreeMap<String, meter::Descriptor>,
 ) -> Result<BTreeMap<String, modifier::Descriptor>, Vec<Diagnostic>> {
-    let doc: ModifiersDoc = load_tagged(MODIFIERS_FILE, text, MODIFIERS_SCHEMA)?;
+    let doc: ModifiersDoc = parse_tagged(MODIFIERS_FILE, text, MODIFIERS_SCHEMA, false)?;
     let source = FileText {
         file: MODIFIERS_FILE,
         text,

@@ -3,10 +3,8 @@
 use serde_saphyr::Spanned;
 use spookery_protocol::{is_built_in, Seat};
 
-use crate::canon::source::{
-    load_tagged, spot_of, Diags, FileText, Locator, UnplacedRefusal, VERBS_SCHEMA,
-};
-use crate::diagnostic::{schema_error, Diagnostic};
+use crate::canon::refusal::{spot_of, Diags, FileText, Locator, UnplacedRefusal};
+use crate::diagnostic::{parse_tagged, schema_error, Diagnostic};
 use crate::rules::expr::{self, stamp_spots, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
@@ -18,6 +16,8 @@ use super::yaml_types::{
     ChangeYaml, CondYaml, CostYaml, Counts, EffectYaml, ExprYaml, IfYaml, RuleYaml, VerbsDoc,
     WhenYaml,
 };
+
+const VERBS_SCHEMA: &str = "verbs";
 
 pub(in crate::canon) fn rules_from_yaml(
     file: &str,
@@ -672,6 +672,6 @@ pub(in crate::canon) fn verbs_from_text(
     rel: &str,
     text: &str,
 ) -> Result<Vec<Rule>, Vec<Diagnostic>> {
-    let doc: VerbsDoc = load_tagged(rel, text, VERBS_SCHEMA)?;
+    let doc: VerbsDoc = parse_tagged(rel, text, VERBS_SCHEMA, true)?;
     rules_from_yaml(rel, doc.rules, &Owner::Verb)
 }

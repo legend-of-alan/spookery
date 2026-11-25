@@ -5,14 +5,17 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::canon::meters::{self, meter_descs, MeterYaml};
+use crate::canon::pack_files::Page;
+use crate::canon::refusal::{Diags, FileText, Locator, Problem};
 use crate::canon::rule_list::{self, RuleYaml};
-use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem, CAST_SCHEMA};
 use crate::canon::{self, CastDef, IdleProfile};
-use crate::diagnostic::Diagnostic;
+use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::ActorId;
 use crate::entity;
 use crate::rules::rule::{Owner, Rule};
+
+const CAST_SCHEMA: &str = "cast";
 
 /// One cast page into `cast`, its own meters into `meters` when those loaded, and its rules.
 pub(super) fn add(
@@ -63,7 +66,7 @@ pub(super) fn add(
 }
 
 fn load(file: &str, yaml: &str) -> Result<CastDoc, Vec<Diagnostic>> {
-    let parsed: CastDoc = load_tagged(file, yaml, CAST_SCHEMA)?;
+    let parsed: CastDoc = parse_tagged(file, yaml, CAST_SCHEMA, true)?;
     let source = FileText { file, text: yaml };
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short cast id");

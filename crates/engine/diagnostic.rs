@@ -313,6 +313,20 @@ pub(crate) fn parse_file<T: serde::de::DeserializeOwned>(
     serde_saphyr::from_str(text).map_err(|err| vec![diagnose_yaml(file, &err, holds_rule_lines)])
 }
 
+/// The typed YAML in `text` once its `schema` tag is `expected`, or the diagnostic for the tag or
+/// for the YAML. `holds_rule_lines` is true for a file whose YAML has rule lines.
+pub(crate) fn parse_tagged<T: serde::de::DeserializeOwned>(
+    file: &str,
+    text: &str,
+    expected: &str,
+    holds_rule_lines: bool,
+) -> Result<T, Vec<Diagnostic>> {
+    if let Some(diag) = check_tag(text, expected, file) {
+        return Err(vec![diag]);
+    }
+    parse_file(file, text, holds_rule_lines)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

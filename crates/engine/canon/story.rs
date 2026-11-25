@@ -7,16 +7,18 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::canon::meters::{self, meter_descs, MeterYaml};
+use crate::canon::pack_files::{collect_files, unreadable_dir};
+use crate::canon::refusal::{Diags, FileText, Locator};
 use crate::canon::rule_list::{self, RuleYaml};
-use crate::canon::source::{
-    collect_files, load_tagged, unreadable_dir, Diags, FileText, Locator, STORY_SCHEMA,
-};
 use crate::canon::StoryDef;
+use crate::diagnostic::parse_tagged;
 use crate::diagnostic::schema_error;
 use crate::ecs::component::meter;
 use crate::ecs::id::StoryId;
 use crate::entity;
 use crate::rules::rule::{Owner, Rule};
+
+const STORY_SCHEMA: &str = "story";
 
 /// Every `story/*.yaml` file in directory order: its rules built from YAML, and its meters added to
 /// `meters` when those loaded. A file with an empty id, or an id an earlier file has, is refused
@@ -46,7 +48,8 @@ pub(super) fn load_stories(
             ));
             continue;
         };
-        let Some(story) = diags.keep(load_tagged::<StoryDoc>(&file, text, STORY_SCHEMA)) else {
+        let Some(story) = diags.keep(parse_tagged::<StoryDoc>(&file, text, STORY_SCHEMA, true))
+        else {
             continue;
         };
         let source = FileText { file: &file, text };

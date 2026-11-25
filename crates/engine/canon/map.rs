@@ -4,20 +4,22 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
 
+use crate::canon::refusal::{Diags, FileText};
 use crate::canon::rule_list;
-use crate::canon::source::{load_tagged, Diags, FileText, MAP_SCHEMA};
 use crate::canon::{Exit, PathDef};
-use crate::diagnostic::{schema_error, Diagnostic};
+use crate::diagnostic::{parse_tagged, schema_error, Diagnostic};
 use crate::ecs::id::PlaceId;
 use crate::rules::expr::Expr;
 use crate::rules::rule::{Cost, TargetKind};
+
+const MAP_SCHEMA: &str = "map";
 
 /// The one pack file that lists the paths.
 pub(super) const MAP_FILE: &str = "world/map.yaml";
 
 /// Every line under `paths:`, in file order, or the refusals of the lines that cannot become a path.
 pub(super) fn load(text: &str) -> Result<Vec<PathDef>, Vec<Diagnostic>> {
-    let doc: MapDoc = load_tagged(MAP_FILE, text, MAP_SCHEMA)?;
+    let doc: MapDoc = parse_tagged(MAP_FILE, text, MAP_SCHEMA, true)?;
     let mut diags = Diags::default();
     let paths = (doc.paths.iter().enumerate())
         .filter_map(|(row, line)| diags.keep(path_from_yaml(row, line)))

@@ -2,11 +2,13 @@
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_tagged, FileText, Locator, PACK_SCHEMA};
-use crate::diagnostic::{schema_error, Diagnostic};
+use crate::canon::refusal::{FileText, Locator};
+use crate::diagnostic::{parse_tagged, schema_error, Diagnostic};
+
+const PACK_SCHEMA: &str = "pack";
 
 pub(super) fn load_pack_yaml(text: &str) -> Result<PackDoc, Vec<Diagnostic>> {
-    let doc: PackDoc = load_tagged("pack.yaml", text, PACK_SCHEMA)?;
+    let doc: PackDoc = parse_tagged("pack.yaml", text, PACK_SCHEMA, false)?;
     let empty = ("id is empty", "set id to a short pack id");
     let refused = FileText::named("pack.yaml").refuse_empty(&doc.id, "id", Locator::Nowhere, empty);
     refused.map_or(Ok(doc), |diag| Err(vec![diag]))

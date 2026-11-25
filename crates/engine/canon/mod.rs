@@ -25,9 +25,10 @@ mod map;
 mod meters;
 mod modifiers;
 mod pack;
+mod pack_files;
 mod place;
+mod refusal;
 mod rule_list;
-mod source;
 mod story;
 
 pub(crate) use budget::Budget;
@@ -39,8 +40,9 @@ pub(crate) use map::Paths;
 use map::MAP_FILE;
 use modifiers::MODIFIERS_FILE;
 use pack::load_pack_yaml;
+use pack_files::{collect_files, collect_markdown_files, utf8_text};
+use refusal::{Diags, FileText, Locator};
 use rule_list::verbs_from_text;
-use source::{collect_files, collect_markdown_files, read_text, Diags, FileText, Locator};
 use story::load_stories;
 
 #[derive(Clone, Debug)]
@@ -315,7 +317,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let mut items = BTreeMap::new();
     let mut place_meters = Vec::new();
     let mut loaded = Vec::new();
-    let pack = diags.keep(read_text(root, "pack.yaml").and_then(|text| load_pack_yaml(&text)));
+    let pack = diags.keep(utf8_text(root, "pack.yaml").and_then(|text| load_pack_yaml(&text)));
     for page in collect_markdown_files(root, "world") {
         let Some(page) = diags.keep(page) else {
             continue;
@@ -329,12 +331,12 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         };
         loaded.extend(rules.unwrap_or_default());
     }
-    let path_lines = diags.keep(read_text(root, MAP_FILE).and_then(|text| map::load(&text)));
+    let path_lines = diags.keep(utf8_text(root, MAP_FILE).and_then(|text| map::load(&text)));
     let paths = (path_lines.as_ref()).and_then(|lines| diags.keep(Paths::index(lines.clone())));
     let world_meters = if root.join("world/meters.yaml").is_file() {
         let rel = "world/meters.yaml";
         diags.keep(
-            read_text(root, rel)
+            utf8_text(root, rel)
                 .and_then(|text| meters::load(rel, &text, Some(entity::Id::Global))),
         )
     } else {
@@ -342,7 +344,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     };
     let rel = "rules/meters.yaml";
     let mut meters =
-        diags.keep(read_text(root, rel).and_then(|text| meters::load(rel, &text, None)));
+        diags.keep(utf8_text(root, rel).and_then(|text| meters::load(rel, &text, None)));
     for page in collect_markdown_files(root, "cast") {
         let Some(page) = diags.keep(page) else {
             continue;
@@ -357,11 +359,11 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     }
     let modifiers = match &meters {
         Some(meters) if root.join(MODIFIERS_FILE).is_file() => diags
-            .keep(read_text(root, MODIFIERS_FILE).and_then(|text| modifiers::load(&text, meters))),
+            .keep(utf8_text(root, MODIFIERS_FILE).and_then(|text| modifiers::load(&text, meters))),
         _ => Some(BTreeMap::new()),
     };
     let [verbs, budget] = ["rules/verbs.yaml", "rules/budget.yaml"]
-        .map(|rel| diags.keep(read_text(root, rel)).map(|text| (rel, text)));
+        .map(|rel| diags.keep(utf8_text(root, rel)).map(|text| (rel, text)));
     if let Some((rel, text)) = &verbs {
         loaded.extend(diags.keep(verbs_from_text(rel, text)).unwrap_or_default());
     }

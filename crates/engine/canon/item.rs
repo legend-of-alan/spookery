@@ -4,10 +4,14 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::canon::pack_files::Page;
+use crate::canon::refusal::{Diags, FileText, Locator};
 use crate::canon::rule_list::{self, RuleYaml};
-use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, ITEM_SCHEMA};
 use crate::canon::ItemDef;
+use crate::diagnostic::parse_tagged;
 use crate::rules::rule::{Owner, Rule};
+
+const ITEM_SCHEMA: &str = "item";
 
 /// One item page into `items`, and its rules. The item is kept even when its rules cannot
 /// be built, so a later item with the same id is still refused.
@@ -16,7 +20,7 @@ pub(super) fn add(
     items: &mut BTreeMap<String, ItemDef>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
-    let item: ItemDoc = diags.keep(load_tagged(&page.file, &page.yaml, ITEM_SCHEMA))?;
+    let item: ItemDoc = diags.keep(parse_tagged(&page.file, &page.yaml, ITEM_SCHEMA, true))?;
     let source = FileText::named(&page.file);
     let empty = ("an item id is empty", "set id to a short item id");
     let twice = ("item", "is already defined", "keep one item with this id");
