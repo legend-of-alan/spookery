@@ -72,14 +72,14 @@ impl Connection {
         let Ok(id) = self.send("release", serde_json::json!({})).await else {
             return Ok(());
         };
-        let until_reply = async {
+        let releasing = async {
             while let Some(Ok(message)) = self.recv().await {
                 if message.reply_to.as_deref() == Some(id.as_str()) {
                     break;
                 }
             }
         };
-        tokio::time::timeout(CONNECTION_TIMEOUT, until_reply)
+        tokio::time::timeout(CONNECTION_TIMEOUT, releasing)
             .await
             .map_err(|_| Error::Message("Releasing the character timed out.".into()))
     }
