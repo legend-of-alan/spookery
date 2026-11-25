@@ -199,7 +199,7 @@ impl<'c> Exit<'c> {
     }
 
     /// Where someone walking this exit stands: on its path, heading where it leads.
-    pub(crate) fn walker_location(self) -> ActorLocation {
+    pub fn walker_location(self) -> ActorLocation {
         ActorLocation::Path {
             path_id: self.path_def.id.clone(),
             to_place_id: self.to_place_id().clone(),
@@ -260,7 +260,7 @@ impl Paths {
         })
     }
 
-    pub(crate) fn get(&self, id: &PathId) -> Option<&PathDef> {
+    pub fn get(&self, id: &PathId) -> Option<&PathDef> {
         (self.def_index_by_path_id.get(id)).map(|&index| &self.path_defs[index])
     }
 

@@ -1,6 +1,11 @@
-//! The words a pack line names its actor, its owner and its receiver with: `subject:`, `of:` and `to:`.
+//! The words a pack line names its actor, its owner and its receiver with: `subject:`, `of:` and
+//! `to:`, and who they name for an intent.
 
 use crate::ecs::id::{ActorId, PathId, PlaceId, StoryId};
+use crate::entity;
+use crate::intent::Target;
+use crate::rules::context::Context;
+use crate::Reason;
 
 /// The actor an arrive or leave watch names with `subject:`. Omitted, it is `any`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -29,6 +34,21 @@ impl Actor {
             _ => Err(format!(
                 "'{word}' is not an actor; name self, target or a cast id"
             )),
+        }
+    }
+
+    /// The actor this word names for `context`'s intent: the one acting, the move's target, or
+    /// an actor by id. A target that is a place, a path or an item names no actor, so it is
+    /// `UNKNOWN_ID`.
+    pub(crate) fn actor_id<'a>(&'a self, context: &Context<'_, 'a>) -> Result<&'a ActorId, Reason> {
+        match self {
+            Actor::Self_ => context.intent.actor_id.as_ref().ok_or(Reason::Schema),
+            Actor::Target => match &context.intent.target {
+                Target::Actor(id) => Ok(id),
+                Target::Empty => Err(Reason::Schema),
+                Target::Place(_) | Target::Path(_) | Target::Item(_) => Err(Reason::UnknownId),
+            },
+            Actor::Id(id) => Ok(id),
         }
     }
 }
@@ -83,6 +103,24 @@ impl Object {
                 Err(format!("'{word}' is not an owner"))
             }
             actor_id => Ok(Object::Actor(Actor::Id(actor_id.into()))),
+        }
+    }
+
+    /// Who holds the meter, flag or item this owner names for `context`'s intent: `here` and
+    /// `place:` are a place, `path:` is a path, `story:` is a story, `world` is the world,
+    /// `target` on a move whose target is a path is that path, and anyone else is an actor.
+    pub(crate) fn entity_id(&self, context: &Context) -> Result<entity::Id, Reason> {
+        match self {
+            Object::Global => Ok(entity::Id::Global),
+            Object::Story(id) => Ok(entity::Id::Story(id.clone())),
+            Object::Path(id) => Ok(entity::Id::Path(id.clone())),
+            Object::Place(id) => Ok(entity::Id::Place(id.clone())),
+            Object::Here => Ok(entity::Id::Place(context.actor_place_id()?.into())),
+            Object::Actor(Actor::Target) => match &context.intent.target {
+                Target::Path(id) => Ok(entity::Id::Path(id.clone())),
+                _ => Ok(entity::Id::Actor(Actor::Target.actor_id(context)?.clone())),
+            },
+            Object::Actor(actor) => Ok(entity::Id::Actor(actor.actor_id(context)?.clone())),
         }
     }
 }

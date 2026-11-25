@@ -55,17 +55,11 @@ pub(in crate::canon) fn check_carriers(
             _ => {}
         });
         let fixed = fixed_self_id(rule);
-        let rule_targets_path = matches!(
-            rule.when,
-            When::Verb {
-                target: TargetKind::Path,
-                ..
-            }
-        );
+        let target = rule.when.target_kind();
         for (kind, of, key) in named {
             let why = match kind {
                 "meter" => scope.why_meter_not_carried(fixed, of, key),
-                _ => scope.why_path_lacks_flag(of, key, rule_targets_path),
+                _ => scope.why_path_lacks_flag(of, key, target),
             };
             let Some(why) = why else {
                 continue;
@@ -124,19 +118,20 @@ impl EntityScope<'_> {
     }
 
     /// Why flag `key` of the path `of` names can never be set or tested, or `None` when it may be
-    /// or `of` names no path.
+    /// or `of` names no path. `target` is what the rule's move targets, so `of: target` names a
+    /// path only on a move that targets one.
     fn why_path_lacks_flag(
         &self,
         of: &grammar::Object,
         key: &str,
-        rule_targets_path: bool,
+        target: TargetKind,
     ) -> Option<String> {
         let path = match of {
             grammar::Object::Path(id) => match self.paths.get(id) {
                 Some(path) => Some(path),
                 None => return Some(format!("path:{id} is not a path")),
             },
-            grammar::Object::Actor(grammar::Actor::Target) if rule_targets_path => None,
+            grammar::Object::Actor(grammar::Actor::Target) if target == TargetKind::Path => None,
             _ => return None,
         };
         if key != OPEN {

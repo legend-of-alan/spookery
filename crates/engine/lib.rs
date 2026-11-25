@@ -41,7 +41,7 @@ pub mod testing {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use crate::ecs::component::{ActorLocation, Place};
+    use crate::ecs::component::Place;
     use crate::store::lock::WriteGuard;
 
     pub use crate::canon::Canon;
@@ -64,19 +64,6 @@ pub mod testing {
             .get()
             .map(ToString::to_string);
         place.unwrap_or_else(|| panic!("{actor} stands nowhere"))
-    }
-
-    /// Where someone walking path `path_id` from `from_place_id` stands. Panics when the path
-    /// does not leave `from_place_id`.
-    pub fn walker_location(
-        world: &crate::ecs::World,
-        from_place_id: &str,
-        path_id: &str,
-    ) -> ActorLocation {
-        let path_def = world.canon().paths.get(&path_id.into());
-        let exit = path_def.and_then(|path_def| path_def.exit_from(from_place_id));
-        let exit = exit.unwrap_or_else(|| panic!("path {path_id} does not leave {from_place_id}"));
-        exit.walker_location()
     }
 
     /// What `actor` is doing, read through `Reader::get`.

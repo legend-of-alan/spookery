@@ -559,11 +559,14 @@ pub(crate) fn set_busy(
     from_place_id: &str,
     path_id: &str,
 ) {
-    let walker = spookery_engine::testing::walker_location(now, from_place_id, path_id);
+    let canon = now.canon().clone();
+    let path_def = canon.paths.get(&path_id.into());
+    let exit = path_def.and_then(|path_def| path_def.exit_from(from_place_id));
+    let exit = exit.unwrap_or_else(|| panic!("path {path_id} does not leave {from_place_id}"));
     let (mut actors, actor_id) = (now.actors_mut(), actor_id.into());
     actors
         .get_mut::<component::Place>(&actor_id)
-        .set(walker)
+        .set(exit.walker_location())
         .unwrap();
     actors
         .get_mut::<component::Act>(&actor_id)
@@ -771,6 +774,17 @@ async fn the_player_waits(world: &mut World) {
     let (mark, added) = host::player_send(world, "wait", "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
+}
+
+/// The player's line was refused with `refusal`: its code, or `CODE: detail` for a refusal
+/// that carries a detail.
+#[then(expr = "the player is refused with {string}")]
+fn the_player_is_refused_with(world: &mut World, refusal: String) {
+    let wire = match refusal.split_once(": ") {
+        Some((code, detail)) => format!("\"code\":\"{code}\",\"detail\":\"{detail}\""),
+        None => format!("\"code\":\"{refusal}\""),
+    };
+    assert!(world.player_added.contains(&wire), "{}", world.player_added);
 }
 
 #[when(expr = "the player travels to {string}")]

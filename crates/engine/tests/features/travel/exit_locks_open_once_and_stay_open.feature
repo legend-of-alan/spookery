@@ -10,6 +10,11 @@ Feature: Exit locks open once and stay open
     Then Mira can still take the stairs
     And the stair door is open from Mira's rooms too
 
+  Scenario: The door opens from Mira's rooms when the key holder waits there
+    Given the stair door in the shop needs brass_key, and Mira holds it in her rooms
+    When Aldric waits a round
+    Then after that round the stair door is open
+
   Scenario: Another actor walks through an opened door
     Given Mira opened the stair door
     When Aldric, who has no key, takes the stairs

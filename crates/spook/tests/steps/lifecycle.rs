@@ -253,26 +253,6 @@ fn rowans_look_and_last_round_place_changes_name(world: &mut World, name: String
     }
 }
 
-#[given(expr = "the brass key lies in Mira's rooms")]
-fn the_brass_key_lies_in_miras_rooms(world: &mut World) {
-    edit_save(world.pack.as_ref().unwrap(), |now| {
-        (now.places_mut()
-            .get_mut::<component::Item>(&"mira_rooms".into()))
-        .shift("brass_key", 1, None)
-        .unwrap();
-    });
-}
-
-#[then(expr = "the stair door is open")]
-fn the_stair_door_is_open(world: &mut World) {
-    let now = world_of(world.pack.as_ref().unwrap());
-    let stairs_id = "stairs".into();
-    assert!(now
-        .paths()
-        .get::<component::Flag>(&stairs_id)
-        .contains("open"));
-}
-
 #[then(expr = "Rowan's look shows {string}")]
 fn rowans_look_shows(world: &mut World, line: String) {
     let opened = open(world.pack.as_ref().unwrap());

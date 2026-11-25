@@ -3,7 +3,6 @@
 use crate::ecs::component;
 use crate::rules::context::Context;
 use crate::rules::grammar;
-use crate::rules::owner;
 use crate::rules::rule::LineColumn;
 use crate::Reason;
 
@@ -234,7 +233,7 @@ fn negate_body(body: &str) -> String {
 }
 
 fn read_meter(context: &Context, of: &grammar::Object, key: &str) -> Result<i64, Reason> {
-    let id = owner::resolve_entity(context, of)?;
+    let id = of.entity_id(context)?;
     (context.world.entities().get::<component::Meter>(&id)).value(key)
 }
 

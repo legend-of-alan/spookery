@@ -8,7 +8,7 @@ use crate::ecs::{self, component, Presence};
 use crate::intent::Target;
 use crate::rules::cond;
 use crate::rules::gate::{list_ids, verb_for, NamedId};
-use crate::rules::rule::{Owner, TargetKind, When};
+use crate::rules::rule::{Owner, TargetKind};
 use crate::rules::travel::{exit_view, exits_at};
 use crate::Reason;
 
@@ -61,10 +61,7 @@ pub(crate) fn help(
             ) {
                 continue;
             }
-            let kind = match &rule.when {
-                When::Verb { target, .. } => *target,
-                _ => TargetKind::None,
-            };
+            let kind = rule.when.target_kind();
             let target_ids = match owner {
                 Some(owner) => vec![owner.clone()],
                 None => list_target_ids(canon, world, actor_id, kind, &ids),

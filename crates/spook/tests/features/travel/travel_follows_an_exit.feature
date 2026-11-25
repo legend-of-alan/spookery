@@ -18,7 +18,7 @@ Feature: Travel follows an exit
   Scenario: A word two exits answer to is refused with both path ids, and the path's name picks one
     Given a docks table with a seated player and a second path to the street, alley, named back door
     When the player travels to "Docks Street"
-    Then the player is refused AMBIGUOUS_NAME with "Docks Street: alley, docks_shop.docks_street"
+    Then the player is refused with "AMBIGUOUS_NAME: Docks Street: alley, docks_shop.docks_street"
     And Rowan is in docks_shop
     When the player travels to "back door"
     Then Rowan is in docks_street

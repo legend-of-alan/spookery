@@ -39,16 +39,6 @@ async fn a_second_path_to_the_street(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "the player is refused {word} with {string}")]
-fn the_player_is_refused_code_with_detail(world: &mut World, code: String, detail: String) {
-    let refusal = format!("\"code\":\"{code}\",\"detail\":\"{detail}\"");
-    assert!(
-        world.player_added.contains(&refusal),
-        "{}",
-        world.player_added
-    );
-}
-
 #[given(expr = "docks_street has no exit to mira_rooms")]
 async fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
     let pack = copy_pack("docks", "no-exit");

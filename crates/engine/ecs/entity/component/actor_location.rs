@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::canon::{Canon, Exit};
 use crate::ecs::entity;
 use crate::ecs::id::{PathId, PlaceId};
+use crate::rules::grammar;
 
 /// Where an actor stands: in a place, or on a path while they walk it, in neither place. The
 /// save writes a place as its id and a walk as `{path: <id>, to: <place>}`: a two-way path
@@ -49,13 +50,31 @@ impl ActorLocation {
         canon.paths.get(path_id)?.exit_to(to_place_id.as_str())
     }
 
-    /// Path `path_id` as an exit from their place, or for a walker the exit they walk.
+    /// Path `path_id` as an exit from their place, or as the exit a walker on it walks. `None`
+    /// for a walker on another path.
     pub(crate) fn find_exit<'c>(&self, canon: &'c Canon, path_id: &PathId) -> Option<Exit<'c>> {
         match self {
             ActorLocation::Place(from_place_id) => {
                 canon.paths.get(path_id)?.exit_from(from_place_id.as_str())
             }
-            ActorLocation::Path { .. } => self.find_walked_exit(canon),
+            ActorLocation::Path {
+                path_id: walked_path_id,
+                ..
+            } if walked_path_id == path_id => self.find_walked_exit(canon),
+            ActorLocation::Path { .. } => None,
+        }
+    }
+
+    /// They stand at `location_text`: a place id, or `path:<id>` for anyone on that path,
+    /// whichever way they head. An `at` condition and a change name where someone stands this
+    /// way.
+    pub(crate) fn is_at(&self, location_text: &str) -> bool {
+        match self {
+            ActorLocation::Place(place_id) => *place_id == *location_text,
+            ActorLocation::Path { path_id, .. } => matches!(
+                grammar::Object::parse(location_text),
+                Ok(grammar::Object::Path(id)) if id == *path_id
+            ),
         }
     }
 

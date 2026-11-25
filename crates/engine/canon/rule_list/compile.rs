@@ -233,10 +233,7 @@ fn rule_of(
         file: file.to_string(),
         index,
     };
-    let target_kind = match &rule.when {
-        When::Verb { target, .. } => *target,
-        When::Habit | When::Change(_) => TargetKind::None,
-    };
+    let target_kind = rule.when.target_kind();
     let misplaced_target = rule.mentions().find_misplaced_target(target_kind);
     let misplaced_problem = misplaced_target.map(|(key, needs)| {
         let (needs, target) = (needs.as_str(), target_kind.as_str());

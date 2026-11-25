@@ -6,7 +6,9 @@ use spookery_protocol::ChangeView;
 
 use crate::canon::Canon;
 use crate::ecs::change::{Change, ChangeValue};
-use crate::ecs::component::{Act, Component, Item, Meter, Modifier, Note, Place, WieldedItem};
+use crate::ecs::component::{
+    Act, ActorLocation, Component, Item, Meter, Modifier, Note, Place, WieldedItem,
+};
 use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component};
 use crate::entity;
@@ -191,25 +193,24 @@ fn place_of<'a>(world: &'a ecs::World, viewer_id: &'a ActorId) -> Option<&'a str
     place.map(PlaceId::as_str)
 }
 
-/// Where `actor_id` stands as a change names it: a place id, or `path:<id>` while they walk.
-fn location_text_of(world: &ecs::World, actor_id: &ActorId) -> Option<String> {
-    let location = world.actors().get::<component::Place>(actor_id).get();
-    location.map(ToString::to_string)
+/// Where `actor_id` stands. The location is borrowed for as long as both the save and the id
+/// are.
+fn location_of<'a>(world: &'a ecs::World, actor_id: &'a ActorId) -> Option<&'a ActorLocation> {
+    world.actors().get::<component::Place>(actor_id).get()
 }
 
+/// The viewer stands where `actor_id` does: in one place, or on one path either way.
 fn same_place(world: &ecs::World, viewer_id: &ActorId, actor_id: &ActorId) -> bool {
-    match (
-        location_text_of(world, viewer_id),
-        location_text_of(world, actor_id),
-    ) {
-        (Some(left), Some(right)) => left == right,
+    let actor_location_text = location_of(world, actor_id).map(ToString::to_string);
+    match (location_of(world, viewer_id), actor_location_text) {
+        (Some(viewer), Some(location_text)) => viewer.is_at(&location_text),
         _ => false,
     }
 }
 
 fn is_at(world: &ecs::World, viewer_id: &ActorId, change_side: Option<&ChangeValue>) -> bool {
-    match (location_text_of(world, viewer_id), change_side) {
-        (Some(location), Some(ChangeValue::Text(text))) => location == *text,
+    match (location_of(world, viewer_id), change_side) {
+        (Some(location), Some(ChangeValue::Text(location_text))) => location.is_at(location_text),
         _ => false,
     }
 }

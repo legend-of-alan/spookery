@@ -10,7 +10,6 @@ pub(crate) mod gate;
 pub(crate) mod grammar;
 pub(crate) mod habits;
 pub(crate) mod lines;
-pub(crate) mod owner;
 pub(crate) mod perceive;
 pub(crate) mod roll;
 pub(crate) mod rule;

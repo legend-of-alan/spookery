@@ -192,7 +192,7 @@ impl World {
     /// id order.
     pub(crate) fn actors_at(&self, location_text: &str) -> Vec<ActorId> {
         let actors = self.actors().query::<(ActorId, &component::Place)>();
-        let here = (actors.iter()).filter(|(_, at)| at.to_string() == location_text);
+        let here = (actors.iter()).filter(|(_, at)| at.is_at(location_text));
         here.map(|(id, _)| id.clone()).collect()
     }
 

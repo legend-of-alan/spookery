@@ -259,6 +259,16 @@ pub(crate) enum When {
     Change(ChangeWatch),
 }
 
+impl When {
+    /// What the rule's move targets. A habit and a change rule target nothing.
+    pub(crate) fn target_kind(&self) -> TargetKind {
+        match self {
+            When::Verb { target, .. } => *target,
+            When::Habit | When::Change(_) => TargetKind::None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TargetKind {
     None,

@@ -91,6 +91,24 @@ fn the_stair_door_needs_the_key(world: &mut World) {
     world.pack = Some(pack);
 }
 
+#[given(expr = "the stair door in the shop needs brass_key, and Mira holds it in her rooms")]
+fn the_key_holder_is_in_miras_rooms(world: &mut World) {
+    the_stair_door_needs_the_key(world);
+    support::edit_save(world.pack(), |ecs_world| {
+        (ecs_world
+            .actors_mut()
+            .get_mut::<component::Place>(&"mira".into()))
+        .set("mira_rooms")
+        .unwrap();
+    });
+    assert!(!stairs_open(world.pack()));
+}
+
+#[when(expr = "Aldric waits a round")]
+fn aldric_waits_a_round(world: &mut World) {
+    plays(world, "aldric", "wait", None);
+}
+
 #[when(expr = "Mira arrives at the shop holding brass_key")]
 fn mira_arrives_with_the_key(world: &mut World) {
     assert!(!stairs_open(world.pack()));
