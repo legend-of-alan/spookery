@@ -22,7 +22,7 @@ One word per concept, and the synonyms banned for it. Names should be obvious fr
 | actor | character, creature, person |
 | place | room, location, area, site |
 | position: where an actor is | location |
-| move: the effect that puts an actor in a place | |
+| move: the effect that puts an actor in a place | location (for the effect) |
 | file_location: a line and column in a file | line_column, spot, offset |
 | item: a pack item only | thing, object, stuff, gear, inventory |
 | entry: one thing in a list or map | item |
@@ -36,7 +36,7 @@ One word per concept, and the synonyms banned for it. Names should be obvious fr
 | refusal, with Refusal.message | reject, deny, fail, detail |
 | diagnostic | problem, fault, diag |
 | Reason: why something was refused or flagged. code: a number or an enum, never a string. | code as a string |
-| Severity: error or warning | |
+| Severity: error or warning | error (as a severity) |
 | check: a dice roll. lint: a pack rule. verify: a journal test. | validate |
 | stage | phase, step, turn, beat |
 | message: one wire text. payload: what it carries. | frame, packet, body |
