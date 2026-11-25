@@ -8,7 +8,8 @@ use crate::intent::Target;
 use crate::round::dice::Roller;
 use crate::rules::context::Context;
 use crate::rules::effect::{Effect, EffectKind};
-use crate::rules::expr::{self, Dice, Expr};
+use crate::rules::expr::eval::{self, Dice};
+use crate::rules::expr::Expr;
 use crate::rules::grammar;
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{MoveReport, Roll};
@@ -44,7 +45,7 @@ pub(crate) fn expand(
     cause: Cause,
     mut roller: Roller,
 ) -> Result<Expansion, Reason> {
-    let lets = expr::roll_lets(context, &rule.lets, &mut roller)?;
+    let lets = eval::roll_lets(context, &rule.lets, &mut roller)?;
     let context = &context.bind(&lets);
     let rolled = match &rule.check {
         Some(check) => Some(check.roll(context, &mut roller)?),
@@ -68,7 +69,7 @@ pub(crate) fn expand(
 /// rolled on them, told to nobody: their shapes are what the pick stage and habits read before
 /// the round rolls.
 pub(crate) fn preview(context: &Context, rule: &Rule) -> Result<Vec<Effect>, Reason> {
-    let lets = expr::roll_lets(context, &rule.lets, &mut PreviewDice)?;
+    let lets = eval::roll_lets(context, &rule.lets, &mut PreviewDice)?;
     let context = &context.bind(&lets);
     build_effects(context, rule, None, &mut PreviewDice, &mut Vec::new())
 }
@@ -129,8 +130,8 @@ fn push_effects(
                 EffectKind::Modifier {
                     actor_id: to.actor_id(context)?.clone(),
                     id: id.clone(),
-                    add: expr::eval_with_dice(context, add, dice)?,
-                    ticks: (u64::try_from(expr::eval_with_dice(context, ticks, dice)?).ok())
+                    add: eval::roll_number(context, add, dice)?,
+                    ticks: (u64::try_from(eval::roll_number(context, ticks, dice)?).ok())
                         .filter(|ticks| *ticks >= 1)
                         .ok_or(Reason::OutOfRange)?,
                 },
@@ -180,9 +181,9 @@ fn push_effects(
                     actor_id,
                     place,
                     id: item_id,
-                    delta: expr::eval_with_dice(context, add, dice)?,
+                    delta: eval::roll_number(context, add, dice)?,
                     max: (max.as_ref())
-                        .map(|max| expr::eval_with_dice(context, max, dice))
+                        .map(|max| eval::roll_number(context, max, dice))
                         .transpose()?,
                 },
             ));
@@ -281,11 +282,11 @@ fn meter_offset(
     dice: &mut dyn Dice,
 ) -> Result<meter::Write, Reason> {
     if let Some(expr) = add {
-        return Ok(meter::Write::Offset(expr::eval_with_dice(
+        return Ok(meter::Write::Offset(eval::roll_number(
             context, expr, dice,
         )?));
     }
-    let desired = expr::eval_with_dice(context, set.ok_or(Reason::Schema)?, dice)?;
+    let desired = eval::roll_number(context, set.ok_or(Reason::Schema)?, dice)?;
     let current = (context.world.entities().get::<component::Meter>(id)).value(key)?;
     Ok(meter::Write::Offset(
         desired.checked_sub(current).ok_or(Reason::OutOfRange)?,

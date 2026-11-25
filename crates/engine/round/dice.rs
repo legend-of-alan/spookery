@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use crate::ecs::id::ActorId;
 use crate::hash::blake2s_256;
 use crate::round::Ledger;
-use crate::rules::expr;
+use crate::rules::expr::eval;
 use crate::rules::roll::{self, faces};
 use crate::Reason;
 
@@ -73,7 +73,7 @@ pub(crate) struct Roller<'a> {
     drawn: usize,
 }
 
-impl expr::Dice for Roller<'_> {
+impl eval::Dice for Roller<'_> {
     fn begin(&mut self) {
         self.key = None;
         self.drawn = 0;

@@ -4,7 +4,7 @@ use crate::canon::Canon;
 use crate::ecs::id::PlaceId;
 use crate::ecs::{self, component, Presence};
 use crate::intent::Intent;
-use crate::rules::expr::LetValue;
+use crate::rules::expr::eval::LetValue;
 use crate::Reason;
 
 /// The canon, the save, who is seated, and the intent a rule's conditions, costs and effects read.

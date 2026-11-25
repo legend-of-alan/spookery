@@ -5,7 +5,7 @@ use crate::ecs::component::{self, modifier, Component, Meter};
 use crate::ecs::{self, change, entity, Presence};
 use crate::intent::Intent;
 use crate::rules::context::Context;
-use crate::rules::expr;
+use crate::rules::expr::eval;
 use crate::rules::gate;
 use crate::rules::rule::Cost;
 use crate::Reason;
@@ -23,7 +23,7 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         detail: Some(missing.to_string()),
     };
     for (key, expr) in &cost.meters {
-        let amount = expr::eval(context, expr).map_err(|_| cant_afford(key))?;
+        let amount = eval::eval(context, expr).map_err(|_| cant_afford(key))?;
         if amount < 0 {
             return Err(cant_afford(key));
         }
@@ -34,7 +34,7 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         }
     }
     for (id, expr) in &cost.items {
-        let amount = expr::eval(context, expr).map_err(|_| cant_afford(id))?;
+        let amount = eval::eval(context, expr).map_err(|_| cant_afford(id))?;
         let count = item_count(amount).map_err(|_| cant_afford(id))?;
         let held = world.actors().get::<component::Item>(actor_id);
         if held.get(id).copied().unwrap_or(0) < count {
@@ -50,7 +50,7 @@ fn item_count(amount: i64) -> Result<u32, Reason> {
 
 /// The ticks `cost` takes, read for the intent's actor. A negative count is `OUT_OF_RANGE`.
 pub(crate) fn read_ticks(context: &Context, cost: &Cost) -> Result<u64, Reason> {
-    u64::try_from(expr::eval(context, &cost.ticks)?).map_err(|_| Reason::OutOfRange)
+    u64::try_from(eval::eval(context, &cost.ticks)?).map_err(|_| Reason::OutOfRange)
 }
 
 /// Meters and items are paid at the start. Time is a duration for later completion. A meter
@@ -65,7 +65,7 @@ pub(crate) fn pay(
     let actor_id = intent.actor_id.as_ref().ok_or(Reason::UnknownId)?;
     for (key, expr) in &cost.meters {
         let context = Context::new(canon, world, presence, intent);
-        let amount = expr::eval(&context, expr)?;
+        let amount = eval::eval(&context, expr)?;
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
@@ -80,7 +80,7 @@ pub(crate) fn pay(
     }
     for (id, expr) in &cost.items {
         let context = Context::new(canon, world, presence, intent);
-        let count = item_count(expr::eval(&context, expr)?)?;
+        let count = item_count(eval::eval(&context, expr)?)?;
         let taken = -i64::from(count);
         match (world.actors_mut().get_mut::<component::Item>(actor_id)).shift(id, taken, None) {
             Err(Reason::Budget) => return Err(Reason::Budget),
