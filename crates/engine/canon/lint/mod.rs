@@ -242,7 +242,8 @@ fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
         if !seen.insert(place.clone()) {
             continue;
         }
-        queue.extend(canon.exits(&place).map(|exit| exit.to_place_id.to_string()));
+        let exits = canon.exits(&place);
+        queue.extend(exits.map(|exit| exit.to_place_id().to_string()));
     }
     let mut diags = Vec::new();
     for id in canon.places.keys() {

@@ -118,14 +118,15 @@ pub(super) fn index_exits(
         for exit in
             from_place_ids.filter_map(|from_place_id| path.exit_from(from_place_id.as_str()))
         {
-            if taken.insert((exit.from_place_id, exit.id)) {
+            if taken.insert((exit.from_place_id, exit.id())) {
                 let indexes = exit_def_indexes_by_place_id.entry(exit.from_place_id.clone());
                 indexes.or_default().push(row);
                 continue;
             }
             let problem = format!(
                 "exit '{}' is listed twice at {}",
-                exit.id, exit.from_place_id
+                exit.id(),
+                exit.from_place_id
             );
             let hint = "give one of these paths its own id";
             let field = if path.exit_id.is_some() {
@@ -170,26 +171,23 @@ impl PathDef {
         let [first, second] = &self.end_place_ids;
         let from_place_id = if second == to_place_id { first } else { second };
         self.exit_from(from_place_id.as_str())
-            .filter(|exit| exit.to_place_id == to_place_id)
+            .filter(|exit| exit.to_place_id() == to_place_id)
     }
 
     /// This path as an exit from `from_place_id`: from its first end, or from its second when it
     /// goes both ways. `None` when it does not leave `from_place_id`.
     pub fn exit_from(&self, from_place_id: &str) -> Option<Exit<'_>> {
         let [first, second] = &self.end_place_ids;
-        let (from_place_id, to_place_id) = if first == from_place_id {
-            (first, second)
+        let from_place_id = if first == from_place_id {
+            first
         } else if self.bidirectional && second == from_place_id {
-            (second, first)
+            second
         } else {
             return None;
         };
-        let id = self.exit_id.as_deref().unwrap_or(to_place_id.as_str());
         Some(Exit {
-            id,
-            from_place_id,
-            to_place_id,
             path_def: self,
+            from_place_id,
         })
     }
 
@@ -218,27 +216,42 @@ impl PathDef {
 /// A path as seen from a place it leaves, named by the word a player types there.
 #[derive(Clone, Copy, Debug)]
 pub struct Exit<'c> {
-    pub id: &'c str,
-    pub from_place_id: &'c PlaceId,
-    pub to_place_id: &'c PlaceId,
     pub path_def: &'c PathDef,
+    pub from_place_id: &'c PlaceId,
 }
 
 impl<'c> Exit<'c> {
+    /// The word a player types here: the pack's `id`, or else the place it goes to.
+    pub(crate) fn id(self) -> &'c str {
+        let to_place_id = self.to_place_id().as_str();
+        self.path_def.exit_id.as_deref().unwrap_or(to_place_id)
+    }
+
+    /// Where it goes: the end of its path that it does not leave from.
+    pub(crate) fn to_place_id(self) -> &'c PlaceId {
+        let [first, second] = &self.path_def.end_place_ids;
+        if first == self.from_place_id {
+            second
+        } else {
+            first
+        }
+    }
+
     /// Where someone walking this exit stands: on its path, heading where it leads.
     pub(crate) fn walker_location(&self) -> ActorLocation {
         ActorLocation::Path {
             path_id: self.path_def.id.clone(),
-            to_place_id: self.to_place_id.clone(),
+            to_place_id: self.to_place_id().clone(),
         }
     }
 
     /// The name a player reads: the name of the place it goes to when `id` is that place's id,
     /// or else `id`.
     pub(crate) fn name(&self, canon: &'c Canon) -> &'c str {
-        match canon.places.get(self.to_place_id) {
-            Some(place) if self.to_place_id == self.id => &place.name,
-            _ => self.id,
+        let to_place_id = self.to_place_id();
+        match canon.places.get(to_place_id) {
+            Some(place) if to_place_id == self.id() => &place.name,
+            _ => self.id(),
         }
     }
 }
@@ -289,7 +302,7 @@ impl Paths {
 
     /// The exit at `from_place_id` that a player names `id`.
     pub(crate) fn find_exit(&self, from_place_id: &str, id: &str) -> Option<Exit<'_>> {
-        self.exits(from_place_id).find(|exit| exit.id == id)
+        self.exits(from_place_id).find(|exit| exit.id() == id)
     }
 
     /// Each path, in file order.

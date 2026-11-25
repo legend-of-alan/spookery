@@ -141,7 +141,7 @@ fn push_effects(
             let place_id = match to {
                 LocationTo::Via(via) => {
                     let exit = crate::rules::travel::exit_via(context, via)?;
-                    exit.ok_or(Reason::Schema)?.to_place_id.clone()
+                    exit.ok_or(Reason::Schema)?.to_place_id().clone()
                 }
                 LocationTo::Place(id) if *teleport => id.as_str().into(),
                 LocationTo::Target if *teleport => match &intent.target {

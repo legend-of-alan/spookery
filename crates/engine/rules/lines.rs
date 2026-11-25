@@ -145,7 +145,7 @@ pub(crate) fn map(
             place_id: id.to_string(),
             name: find_place_name(canon, id).ok_or(Reason::UnknownId)?,
             exits: (canon.exits(id))
-                .filter(|exit| seen.iter().any(|seen| seen == exit.id))
+                .filter(|exit| seen.iter().any(|seen| seen == exit.id()))
                 .map(|exit| exit_view(canon, world, actor_id, exit))
                 .collect(),
         })

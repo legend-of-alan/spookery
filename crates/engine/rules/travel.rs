@@ -118,7 +118,7 @@ pub(crate) fn open_conditional_paths(
     let mut opens = Vec::new();
     for path in canon.paths.iter().filter(|path| is_locked(world, path)) {
         let exits = (path.end_place_ids.iter()).filter_map(|id| path.exit_from(id.as_str()));
-        let mut sides = exits.map(|exit| (exit.from_place_id, Target::Exit(exit.id.to_string())));
+        let mut sides = exits.map(|exit| (exit.from_place_id, Target::Exit(exit.id().to_string())));
         let opening_side = sides.find(|(from_place_id, target)| {
             (world.actors_at(from_place_id.as_str()).iter()).any(|actor_id| {
                 let target = target.clone();
@@ -180,16 +180,16 @@ pub(crate) fn exit_view(
         Some(actor_id.clone()),
         Source::Player,
         "travel",
-        Target::Exit(exit.id.to_string()),
+        Target::Exit(exit.id().to_string()),
     );
     let presence = Presence::default();
     let context = Context::new(canon, world, &presence, &travel_intent);
     ExitView {
-        exit_id: exit.id.to_string(),
+        exit_id: exit.id().to_string(),
         path_id: exit.path_def.id.to_string(),
         name: exit.name(canon).to_string(),
-        place_id: exit.to_place_id.to_string(),
-        place_name: find_place_name(canon, exit.to_place_id.as_str()).unwrap_or_default(),
+        place_id: exit.to_place_id().to_string(),
+        place_name: find_place_name(canon, exit.to_place_id().as_str()).unwrap_or_default(),
         ticks: cost::read_ticks(&context, &exit.path_def.cost).unwrap_or(0),
         locked: is_locked(world, exit.path_def),
     }
