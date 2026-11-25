@@ -433,7 +433,7 @@ fn break_pack(pack: &Path, fault: &str) {
         "a walker on a missing exit" => replace_in_file(
             &pack.join("state/save.yaml"),
             "    rowan: docks_shop\n",
-            "    rowan: { path_id: docks_shop.ladder, to_place_id: mira_rooms }\n",
+            "    rowan: { path: docks_shop.ladder, to: mira_rooms }\n",
         ),
         "a verb named cancel" => replace_in_file(
             &pack.join("rules/verbs.yaml"),

@@ -9,14 +9,16 @@ use crate::ecs::entity;
 use crate::ecs::id::{PathId, PlaceId};
 
 /// Where an actor stands: in a place, or on a path while they walk it, in neither room. The
-/// save writes a place as its id and a walk as `{path_id: <id>, to_place_id: <place>}`: a
-/// two-way path alone cannot say which way they go.
+/// save writes a place as its id and a walk as `{path: <id>, to: <place>}`: a two-way path
+/// alone cannot say which way they go.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum ActorLocation {
     Place(PlaceId),
     Path {
+        #[serde(rename = "path")]
         path_id: PathId,
+        #[serde(rename = "to")]
         to_place_id: PlaceId,
     },
 }

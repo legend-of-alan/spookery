@@ -64,7 +64,7 @@ A path is an entity. Its `id` is one word with no dot, and left out it is `<firs
 
 A path with an `if` carries one flag, `open`: a rule names it with `of: path:<id>` and `key: open`, or with `of: target` on a rule with `target: path`, which is the path of the exit it names. It sets it to `false` to lock the path again, and may watch it like any flag. A path with no `if` has no flag and is always open, and no path carries a meter. The `bar` rule below locks the cellar path again.
 
-A walk that takes ticks puts the traveller on the path as soon as it starts. The save writes their place as `{path_id: <id>, to_place_id: <place>}`, since a two-way path alone does not say which way they go, and a condition or a change names it `path:<id>`. They are in neither room, so nobody in either room sees them, and they arrive at the end they head for when the walk finishes. `at: { place: path:<id> }` holds for anyone walking that path. The busy time is the rule's ticks plus the exit's ticks. A walk of no ticks goes straight to the other side.
+A walk that takes ticks puts the traveller on the path as soon as it starts. The save writes their place as `{path: <id>, to: <place>}`, since a two-way path alone does not say which way they go, and a condition or a change names it `path:<id>`. They are in neither room, so nobody in either room sees them, and they arrive at the end they head for when the walk finishes. `at: { place: path:<id> }` holds for anyone walking that path. The busy time is the rule's ticks plus the exit's ticks. A walk of no ticks goes straight to the other side.
 
 ```yaml file=world/places/yard.md
 ---
