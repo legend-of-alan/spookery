@@ -10,7 +10,7 @@ mod window;
 use window::Window;
 
 /// Where play shows each message and reads each line the player sends, and the last `seq` it
-/// showed, so a reconnect asks for what came after.
+/// received, so a reconnect asks for what came after.
 pub struct Terminal {
     surface: Surface,
     last_seq: u64,
@@ -72,12 +72,23 @@ impl Terminal {
         }
     }
 
-    /// Takes the request id play sent the last line from `next_line` under, so the window knows
-    /// the reply to its own request.
-    pub(crate) fn record_request_id(&mut self, request_id: String) {
-        if let Surface::Window(window) = &mut self.surface {
-            window.record_request_id(request_id);
+    /// Records the `seq` of the reply to play's own `map` and fills the window's place panel
+    /// from it, keeping it out of the transcript. A refusal of that `map` shows nowhere.
+    pub(crate) fn show_map(
+        &mut self,
+        message: &ServerMessage,
+        view: Option<&protocol::View>,
+    ) -> Result<(), Error> {
+        self.last_seq = self.last_seq.max(message.seq.unwrap_or(0));
+        match (&mut self.surface, &message.body) {
+            (Surface::Window(window), ServerBody::Map { places }) => window.show_map(places, view),
+            _ => Ok(()),
         }
+    }
+
+    /// Whether the surface has a place panel, which lists the places past the exits.
+    pub(crate) fn has_place_panel(&self) -> bool {
+        matches!(self.surface, Surface::Window(_))
     }
 
     /// Whether refusals show as their bare code.

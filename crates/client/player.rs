@@ -1,8 +1,10 @@
 //! The human player: claims a PC, turns typed lines into commands, and shows each message as
-//! lines or in the game window. Quitting releases the PC. A dropped connection opens again and
-//! takes it back by token. Opens a fresh connection after the PC choice, so a slow choice never
-//! trips the first-message deadline. If the host is gone, returns `ExitReason::HostClosed` so the
-//! caller can print `host closed` after the terminal is restored.
+//! lines or in the game window. For the window's place panel it asks for the map at each new
+//! place and keeps that reply out of the transcript. Quitting releases the PC. A dropped
+//! connection opens again, takes the PC back by token and asks for the map again. Opens a fresh
+//! connection after the PC choice, so a slow choice never trips the first-message deadline. If
+//! the host is gone, returns `ExitReason::HostClosed` so the caller can print `host closed` after
+//! the terminal is restored.
 
 use std::net::SocketAddr;
 
@@ -44,68 +46,95 @@ pub async fn play(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReaso
     }
     let mut connection = websocket::Connection::open(addr, "player").await?.0;
     let args = json!({ "actor": actor_id });
-    let (mut view, mut token) = claim_pc(&mut connection, args, terminal, None).await?;
+    let (mut view, mut token) = claim_pc(&mut connection, args, terminal, None, None).await?;
+    let asks_for_map = terminal.has_place_panel() && commands.iter().any(|known| known == "map");
+    let mut is_map_due = true;
+    let mut map_request_id: Option<String> = None;
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
     loop {
-        let unsent = tokio::select! {
-            message = connection.recv() => match message {
-                Some(Ok(message)) => {
-                    if let ServerBody::View(body) = &message.body {
-                        view = (**body).clone();
-                    }
-                    terminal.show(&message, Some(&view))?;
+        let unsent = if asks_for_map && is_map_due && map_request_id.is_none() {
+            is_map_due = false;
+            match connection.send("map", json!({})).await {
+                Ok(request_id) => {
+                    map_request_id = Some(request_id);
                     continue;
                 }
-                Some(Err(Error::Io(_))) | None => None,
-                Some(Err(err)) => return Err(err),
-            },
-            _ = &mut ctrl_c => break,
-            line = terminal.next_line(Some(&view), &commands) => {
-                let Some(line) = line? else {
-                    break;
-                };
-                if line.trim() == "quit" {
-                    break;
-                }
-                let Some((command, args)) = parse_command(&line, &view) else {
-                    continue;
-                };
-                if !commands.iter().any(|known| known == command) {
-                    terminal.show(
-                        &ServerMessage {
-                            id: None,
-                            seq: None,
-                            reply_to: None,
-                            body: ServerBody::Refused(Refusal::from(Reason::NotInSpec)),
-                        },
-                        Some(&view),
-                    )?;
-                    continue;
-                }
-                match connection.send(command, args.clone()).await {
-                    Ok(request_id) => {
-                        terminal.record_request_id(request_id);
+                Err(Error::Io(_)) => None,
+                Err(err) => return Err(err),
+            }
+        } else {
+            tokio::select! {
+                message = connection.recv() => match message {
+                    Some(Ok(message)) => {
+                        if map_request_id.is_some() && message.reply_to == map_request_id {
+                            map_request_id = None;
+                            terminal.show_map(&message, Some(&view))?;
+                            continue;
+                        }
+                        if let ServerBody::View(new_view) = &message.body {
+                            is_map_due |= new_view.place != view.place;
+                            view = (**new_view).clone();
+                        }
+                        terminal.show(&message, Some(&view))?;
                         continue;
                     }
-                    Err(Error::Io(_)) => Some((command.to_string(), args)),
-                    Err(err) => return Err(err),
+                    Some(Err(Error::Io(_))) | None => None,
+                    Some(Err(err)) => return Err(err),
+                },
+                _ = &mut ctrl_c => break,
+                line = terminal.next_line(Some(&view), &commands) => {
+                    let Some(line) = line? else {
+                        break;
+                    };
+                    if line.trim() == "quit" {
+                        break;
+                    }
+                    let Some((command, args)) = parse_command(&line, &view) else {
+                        continue;
+                    };
+                    if !commands.iter().any(|known| known == command) {
+                        terminal.show(
+                            &ServerMessage {
+                                id: None,
+                                seq: None,
+                                reply_to: None,
+                                body: ServerBody::Refused(Refusal::from(Reason::NotInSpec)),
+                            },
+                            Some(&view),
+                        )?;
+                        continue;
+                    }
+                    match connection.send(command, args.clone()).await {
+                        Ok(_) => continue,
+                        Err(Error::Io(_)) => Some((command.to_string(), args)),
+                        Err(err) => return Err(err),
+                    }
                 }
             }
         };
-        if !reconnect(addr, &mut connection, &mut view, &mut token, terminal).await? {
+        if !reconnect(
+            addr,
+            &mut connection,
+            &mut view,
+            &mut token,
+            terminal,
+            map_request_id.take().as_deref(),
+        )
+        .await?
+        {
             return Ok(ExitReason::HostClosed);
         }
+        is_map_due = true;
         if let Some((command, args)) = unsent {
-            let request_id = connection.send(&command, args).await?;
-            terminal.record_request_id(request_id);
+            connection.send(&command, args).await?;
         }
     }
     connection.release().await?;
     Ok(ExitReason::PlayerLeft)
 }
 
-/// Opens a connection again and takes the PC back by its token, after the last `seq` shown.
+/// Opens a connection again and takes the PC back by its token, after the last `seq` received.
 /// Replaces the live connection, view and token only when that succeeds. `false` when
 /// `spook run` is gone, leaving those live values untouched.
 async fn reconnect(
@@ -114,6 +143,7 @@ async fn reconnect(
     view: &mut protocol::View,
     token: &mut String,
     terminal: &mut Terminal,
+    map_request_id: Option<&str>,
 ) -> Result<bool, Error> {
     let mut new_connection = match websocket::Connection::open(addr, "player").await {
         Ok((connection, _)) => connection,
@@ -123,8 +153,14 @@ async fn reconnect(
         }
     };
     let args = json!({ "token": token.as_str(), "last_seq": terminal.last_seq() });
-    let (new_view, reconnect_token) =
-        claim_pc(&mut new_connection, args, terminal, Some(view.clone())).await?;
+    let (new_view, reconnect_token) = claim_pc(
+        &mut new_connection,
+        args,
+        terminal,
+        Some(view.clone()),
+        map_request_id,
+    )
+    .await?;
     *connection = new_connection;
     *view = new_view;
     *token = reconnect_token;
@@ -132,12 +168,16 @@ async fn reconnect(
 }
 
 /// Sends `claim` with `args` and shows its reply, what it missed, and the first view, all
-/// within `websocket::CONNECTION_TIMEOUT`. Returns that view and the token. A refusal ends play.
+/// within `websocket::CONNECTION_TIMEOUT`. A missed `map` reply to `map_request_id`, sent on the
+/// connection that dropped, goes to the place panel. Request ids restart at `c1` on each
+/// connection, so a missed reply of another kind can carry that id too. Returns that view and the
+/// token. A refusal ends play.
 async fn claim_pc(
     connection: &mut websocket::Connection,
     args: Value,
     terminal: &mut Terminal,
     mut view: Option<protocol::View>,
+    map_request_id: Option<&str>,
 ) -> Result<(protocol::View, String), Error> {
     let claiming = async {
         let request_id = connection.send("claim", args).await?;
@@ -162,8 +202,16 @@ async fn claim_pc(
             };
             let messages = std::iter::once(&server_message).chain(missed_messages);
             for message in messages {
-                if let ServerBody::View(body) = &message.body {
-                    view = Some((**body).clone());
+                let is_map = matches!(message.body, ServerBody::Map { .. });
+                if is_map
+                    && map_request_id.is_some()
+                    && message.reply_to.as_deref() == map_request_id
+                {
+                    terminal.show_map(message, view.as_ref())?;
+                    continue;
+                }
+                if let ServerBody::View(new_view) = &message.body {
+                    view = Some((**new_view).clone());
                 }
                 terminal.show(message, view.as_ref())?;
             }

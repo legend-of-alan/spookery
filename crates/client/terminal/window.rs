@@ -141,22 +141,23 @@ impl Window {
         self.draw(view)
     }
 
-    /// Takes the request id play sent the last line under.
-    pub(crate) fn record_request_id(&mut self, request_id: String) {
-        self.screen.record_request_id(request_id);
+    /// Fills the place panel from a `map` reply.
+    pub(crate) fn show_map(
+        &mut self,
+        places: &[protocol::PlaceView],
+        view: Option<&protocol::View>,
+    ) -> Result<(), Error> {
+        self.screen.place_panel.keep_map_places(places);
+        self.draw(view)
     }
 
     /// Handles keys until the player sends a line: a PC id at the PC picker, else a typed line,
-    /// or `help` for F1. `map` at once when the PC has just arrived at a new place. `None` when
-    /// they quit with Ctrl+C.
+    /// or `help` for F1. `None` when they quit with Ctrl+C.
     pub(crate) async fn next_line(
         &mut self,
         view: Option<&protocol::View>,
         commands: &[String],
     ) -> Result<Option<String>, Error> {
-        if let Some(line) = self.screen.take_own_line() {
-            return Ok(Some(line));
-        }
         self.draw(view)?;
         while let Some(event) = self.event_stream.next().await {
             let key_request = match event.map_err(Error::Io)? {
@@ -267,24 +268,10 @@ impl Screen {
         }
     }
 
-    /// The line the window sends without a key: `map` once after each arrival.
-    fn take_own_line(&mut self) -> Option<String> {
-        self.place_panel.take_map_line()
-    }
-
-    /// Takes the request id play sent the last line under.
-    fn record_request_id(&mut self, request_id: String) {
-        self.place_panel.record_request_id(request_id);
-    }
-
     /// Adds what the message shows to the transcript, after the scrollback separator when the
-    /// renderer says one is due. A reply to the window's own `map` only updates the place panel.
+    /// renderer says one is due.
     fn show(&mut self, message: &ServerMessage) {
         let body = &message.body;
-        self.place_panel.keep_map_places(body);
-        if (self.place_panel).remove_own_map_request(message.reply_to.as_deref()) {
-            return;
-        }
         let first_new_line = self.transcript.line_count();
         self.push_body(body, message.reply_to.is_some());
         let has_text = self.transcript.line_count() > first_new_line;
@@ -321,7 +308,6 @@ impl Screen {
                 let is_new_place = view.place != self.last_place_id;
                 if is_new_place {
                     self.last_place_id = view.place.clone();
-                    self.place_panel.mark_map_due();
                 }
                 if is_new_place || answers_own_command {
                     self.push_place(view);
@@ -349,7 +335,10 @@ impl Screen {
                 self.push_text(&content, ASH);
             }
             ServerBody::Help { commands } => self.help_text = Some(text::render_help(commands)),
-            ServerBody::Map { places } => self.push_text(&text::render_map(places), PARCHMENT),
+            ServerBody::Map { places } => {
+                self.place_panel.keep_map_places(places);
+                self.push_text(&text::render_map(places), PARCHMENT);
+            }
             ServerBody::Claimed { .. } | ServerBody::Resume { .. } | ServerBody::Lines { .. } => {
                 let content = self.renderer.render_without_separator(body);
                 self.push_text(&content, PARCHMENT);
@@ -742,27 +731,13 @@ mod tests {
     /// this build.
     const HELP_REPLY: &str = r#"{"seq":9,"reply_to":"c3","body":{"kind":"help","commands":[{"id":"look","target":"none"},{"id":"strike","target":"actor","names":["Aldric"]},{"id":"travel","target":"path","names":["Docks Street","stairs"]}]}}"#;
 
-    /// `MAP_REPLY` as the reply to `request_id`.
-    fn map_reply(request_id: &str) -> ServerMessage {
-        let mut reply: ServerMessage = serde_json::from_str(MAP_REPLY).unwrap();
-        reply.reply_to = Some(request_id.into());
-        reply
-    }
-
-    fn view_message(view: protocol::View) -> ServerMessage {
-        ServerMessage {
-            id: None,
-            seq: None,
-            reply_to: None,
-            body: ServerBody::View(Box::new(view)),
-        }
-    }
-
-    /// Takes the line the window sends on its own, which must be `map`, and sends it under
-    /// `request_id`.
-    fn send_own_map(screen: &mut Screen, request_id: &str) {
-        assert_eq!(screen.take_own_line().as_deref(), Some("map"));
-        screen.record_request_id(request_id.into());
+    /// Fills the place panel from `MAP_REPLY`.
+    fn keep_map_reply_places(screen: &mut Screen) {
+        let reply: ServerMessage = serde_json::from_str(MAP_REPLY).unwrap();
+        let ServerBody::Map { places } = reply.body else {
+            panic!("MAP_REPLY is not a map");
+        };
+        screen.place_panel.keep_map_places(&places);
     }
 
     /// Rowan's recorded session up to `release`, and Rowan's last view there as this build sends
@@ -843,28 +818,10 @@ mod tests {
     }
 
     #[test]
-    fn the_windows_own_map_reply_fills_nearby_and_stays_out_of_the_transcript() {
+    fn nearby_lists_the_map_places_and_a_typed_map_shows_in_the_transcript() {
         let mut screen = Screen::new(true);
         let (view, commands) = seat_rowan_carrying_oil(&mut screen);
-        send_own_map(&mut screen, "c8");
-        let street_view = protocol::View {
-            place: "docks_street".into(),
-            place_name: "Docks Street".into(),
-            ..view.clone()
-        };
-        screen.show(&view_message(street_view));
-        send_own_map(&mut screen, "c9");
-        screen.show(&view_message(view.clone()));
-        send_own_map(&mut screen, "c10");
-        let transcript_rect = |areas: &ScreenAreas| Some(areas.transcript_rect);
-        let transcript_before = region_text(&mut screen, Some(&view), transcript_rect);
-        for request_id in ["c8", "c9", "c10"] {
-            screen.show(&map_reply(request_id));
-        }
-        assert_eq!(
-            region_text(&mut screen, Some(&view), transcript_rect),
-            transcript_before
-        );
+        keep_map_reply_places(&mut screen);
         assert_region("nearby", &mut screen, &view, |areas| {
             Some(areas.place_panel_rect)
         });
@@ -873,19 +830,17 @@ mod tests {
             press(&mut screen, KeyCode::Enter, &commands),
             Some(KeyRequest::Send("map".into()))
         );
-        assert_eq!(screen.take_own_line(), None);
-        screen.record_request_id("c11".into());
-        screen.show(&map_reply("c11"));
-        let transcript_after = region_text(&mut screen, Some(&view), transcript_rect);
-        assert!(transcript_after.contains("Gate Yard — 0 ticks"));
+        screen.show(&serde_json::from_str(MAP_REPLY).unwrap());
+        let transcript_rect = |areas: &ScreenAreas| Some(areas.transcript_rect);
+        let transcript = region_text(&mut screen, Some(&view), transcript_rect);
+        assert!(transcript.contains("Gate Yard — 0 ticks"));
     }
 
     #[test]
     fn a_wide_terminal_shows_the_story_the_place_and_the_tab_box_side_by_side() {
         let mut screen = Screen::new(true);
         let (view, _) = seat_rowan_carrying_oil(&mut screen);
-        send_own_map(&mut screen, "c8");
-        screen.show(&map_reply("c8"));
+        keep_map_reply_places(&mut screen);
         assert_screen_at("wide", &mut screen, Some(&view), 140, 40);
     }
 
