@@ -197,7 +197,7 @@ impl ecs::World {
             Reader::new(entities, canon)
                 .get::<Meter>(id)
                 .get_or_base(entry_id)
-        }, on_path: None);
+        });
         let sum_now = match id {
             entity::Id::Actor(actor) => self.actors().get::<Modifier>(actor).sum(entry_id),
             _ => Ok(0),

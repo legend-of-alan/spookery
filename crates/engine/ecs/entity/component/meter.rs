@@ -153,7 +153,7 @@ impl Ref<'_, Save, Meter> {
                     Reader::new(entities, canon)
                         .get::<Meter>(id)
                         .get_or_base(entry_id)
-                }, on_path: None);
+                });
                 value(desc?, &held.ok_or(Reason::UnknownId)?, 0)
             }
         }
@@ -168,7 +168,7 @@ impl Mut<'_, Save, Meter> {
             Writer::new(entities, transaction, canon)
                 .get_mut::<Meter>(id)
                 .shift(entry_id, delta)
-        }, on_path: Err(Reason::UnknownId))
+        })
     }
 
     /// As on its collection: migrate and fixtures.
@@ -178,7 +178,7 @@ impl Mut<'_, Save, Meter> {
             Writer::new(entities, transaction, canon)
                 .get_mut::<Meter>(id)
                 .set(entry_id, meter)
-        }, on_path: Err(Reason::UnknownId))
+        })
     }
 }
 

@@ -1,10 +1,11 @@
 //! The paths' components, keyed by path id. The pack's paths all exist; the save holds only
-//! the flags set on them, the one a door is: `open`.
+//! the flags set on them, the one a door is: `open`. No pack declares a path meter yet, so
+//! their store stays empty and out of the save.
 
 use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
-use crate::ecs::component;
+use crate::ecs::component::{self, Meter};
 use crate::ecs::id::PathId;
 use crate::ecs::{entity, nested_map, undo};
 
@@ -13,6 +14,8 @@ use crate::ecs::{entity, nested_map, undo};
 pub struct Paths {
     #[serde(with = "nested_map::lists")]
     flags: undo::Store<component::Map<PathId, component::Flag>>,
+    #[serde(skip)]
+    meters: undo::Store<component::Map<PathId, Meter>>,
 }
 
 impl entity::Collection for Paths {
@@ -28,11 +31,12 @@ impl entity::Collection for Paths {
 }
 
 entity::has!(Paths, component::Flag, flags);
+entity::has!(Paths, Meter, meters);
 
 impl Paths {
     /// Every store, as the history a rollback undoes and an accept clears.
-    pub(in crate::ecs) fn history_mut(&mut self) -> [&mut dyn undo::History; 1] {
-        let Paths { flags } = self;
-        [flags]
+    pub(in crate::ecs) fn history_mut(&mut self) -> [&mut dyn undo::History; 2] {
+        let Paths { flags, meters } = self;
+        [flags, meters]
     }
 }

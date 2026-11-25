@@ -97,23 +97,13 @@ use has;
 
 /// `$body`, with `$typed` the id in the collection `$id` names and `$entities` that collection,
 /// the field of the save `$save` (`&save` or `&mut save`). The one place an `entity::Id` picks
-/// its collection, except a meter's value, whose actor arm adds modifiers. `on_path:` is the
-/// result for a path instead of `$body`, for a component paths do not hold, such as a meter.
+/// its collection, except a meter's value, whose actor arm adds modifiers.
 macro_rules! in_collection {
     ($id:expr, [$($save:tt)+], |$entities:ident, $typed:ident| $body:expr) => {
-        $crate::ecs::entity::in_collection!(@match $id, [$($save)+], |$entities, $typed| $body,
-            $crate::ecs::entity::Id::Path($typed) => { let $entities = $($save)+.paths; $body })
-    };
-    ($id:expr, [$($save:tt)+], |$entities:ident, $typed:ident| $body:expr, on_path: $on_path:expr) => {
-        $crate::ecs::entity::in_collection!(@match $id, [$($save)+], |$entities, $typed| $body,
-            $crate::ecs::entity::Id::Path(_) => $on_path)
-    };
-    (@match $id:expr, [$($save:tt)+], |$entities:ident, $typed:ident| $body:expr,
-        $path_arm:pat => $on_path:expr) => {
         match $id {
             $crate::ecs::entity::Id::Actor($typed) => { let $entities = $($save)+.actors; $body },
             $crate::ecs::entity::Id::Place($typed) => { let $entities = $($save)+.places; $body },
-            $path_arm => $on_path,
+            $crate::ecs::entity::Id::Path($typed) => { let $entities = $($save)+.paths; $body },
             $crate::ecs::entity::Id::Story($typed) => { let $entities = $($save)+.stories; $body },
             $crate::ecs::entity::Id::Global => {
                 let ($entities, $typed) = ($($save)+.globals, &$crate::ecs::id::GlobalId);
