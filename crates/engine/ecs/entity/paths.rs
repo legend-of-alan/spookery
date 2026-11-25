@@ -1,6 +1,5 @@
 //! The paths' components, keyed by path id. The pack's paths all exist; the save holds only
-//! the flags set on them, the one a door is: `open`. No pack declares a path meter yet, so
-//! their store stays empty and out of the save.
+//! the flags set on them, the one a door is: `open`.
 
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +13,7 @@ use crate::ecs::{entity, nested_map, undo};
 pub struct Paths {
     #[serde(with = "nested_map::lists")]
     flags: undo::Store<component::Map<PathId, component::Flag>>,
+    /// No pack declares a path meter yet, so this stays empty and out of the save.
     #[serde(skip)]
     meters: undo::Store<component::Map<PathId, Meter>>,
 }

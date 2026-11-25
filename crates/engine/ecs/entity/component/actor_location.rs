@@ -1,4 +1,4 @@
-//! Where an actor stands: in a place, or on a path while they walk it.
+//! The value of an actor's `place` component.
 
 use std::fmt;
 
@@ -8,7 +8,7 @@ use crate::canon::{Canon, Exit};
 use crate::ecs::entity;
 use crate::ecs::id::{PathId, PlaceId};
 
-/// Where an actor stands: in a place, or on a path while they walk it, in neither room. The
+/// Where an actor stands: in a place, or on a path while they walk it, in neither place. The
 /// save writes a place as its id and a walk as `{path: <id>, to: <place>}`: a two-way path
 /// alone cannot say which way they go.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,7 +32,6 @@ impl ActorLocation {
         }
     }
 
-    /// They are on a path, in neither room.
     pub(crate) fn is_walking(&self) -> bool {
         matches!(self, ActorLocation::Path { .. })
     }

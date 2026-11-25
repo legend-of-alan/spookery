@@ -551,28 +551,28 @@ pub(crate) fn capture_play_stdout(world: &mut World) -> String {
     text
 }
 
-/// Put `actor` on path `path_id`, walking it from `from_place_id` until tick `until`.
+/// Put `actor_id` on path `path_id`, walking it from `from_place_id` until tick `until_ticks`.
 pub(crate) fn set_busy(
     now: &mut ecs::World,
-    actor: &str,
-    until: u64,
+    actor_id: &str,
+    until_ticks: u64,
     from_place_id: &str,
     path_id: &str,
 ) {
     let walker = spookery_engine::testing::walker_location(now, from_place_id, path_id);
-    let (mut actors, actor) = (now.actors_mut(), actor.into());
+    let (mut actors, actor_id) = (now.actors_mut(), actor_id.into());
     actors
-        .get_mut::<component::Place>(&actor)
+        .get_mut::<component::Place>(&actor_id)
         .set(walker)
         .unwrap();
     actors
-        .get_mut::<component::Act>(&actor)
-        .set_busy(until, Some(walk(path_id)))
+        .get_mut::<component::Act>(&actor_id)
+        .set_busy(until_ticks, Some(walk_action(path_id)))
         .unwrap();
 }
 
 /// A walk along path `path_id` by the travel verb.
-pub(crate) fn walk(path_id: &str) -> spookery_engine::testing::PendingAction {
+pub(crate) fn walk_action(path_id: &str) -> spookery_engine::testing::PendingAction {
     spookery_engine::testing::PendingAction {
         verb: "travel".to_string(),
         source: spookery_engine::Source::Player,

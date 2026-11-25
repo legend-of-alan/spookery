@@ -218,11 +218,11 @@ impl Effect {
                 text,
             } => remember(world, intent, &actor_id, tags, text),
             EffectKind::Flag { entity, key, value } => {
-                let path = match &entity {
+                let path_def = match &entity {
                     entity::Id::Path(id) => canon.paths.get(id),
                     _ => None,
                 };
-                if key.is_empty() || path.is_some_and(|path| !path.has_flag(&key)) {
+                if key.is_empty() || path_def.is_some_and(|path_def| !path_def.has_flag(&key)) {
                     return Err(Reason::UnknownId);
                 }
                 (world.entities_mut().get_mut::<component::Flag>(&entity)).set(&key, value)

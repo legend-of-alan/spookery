@@ -238,11 +238,11 @@ fn check_cycle_conditions(canon: &Canon) -> Vec<Diagnostic> {
 fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
     let mut seen = BTreeSet::new();
     let mut queue = vec![canon.start_place.clone()];
-    while let Some(place) = queue.pop() {
-        if !seen.insert(place.clone()) {
+    while let Some(place_id) = queue.pop() {
+        if !seen.insert(place_id.clone()) {
             continue;
         }
-        let exits = canon.exits(&place);
+        let exits = canon.exits(&place_id);
         queue.extend(exits.map(|exit| exit.to_place_id().to_string()));
     }
     let mut diags = Vec::new();

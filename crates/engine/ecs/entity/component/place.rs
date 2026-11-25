@@ -1,4 +1,4 @@
-//! Where each actor stands.
+//! The `place` component: where each actor stands, as an `ActorLocation`.
 
 use crate::ecs::change::Change;
 use crate::ecs::component::ActorLocation;
@@ -7,7 +7,6 @@ use crate::ecs::entity;
 use crate::ecs::id::PlaceId;
 use crate::Reason;
 
-/// Where an actor stands.
 pub struct Place;
 
 impl Component for Place {

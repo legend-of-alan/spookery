@@ -25,7 +25,7 @@ pub struct Actors {
     place: undo::DenseStore<component::ActorLocation>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     wielded: undo::Store<BTreeMap<ActorId, String>>,
-    /// Each place an actor has stood at the end of a round, with the names of the exits they
+    /// Each place an actor has stood at the end of a round, with the path ids of the exits they
     /// saw there then.
     #[serde(with = "nested_map", skip_serializing_if = "BTreeMap::is_empty")]
     visited: undo::Store<component::Map<ActorId, component::Visit>>,

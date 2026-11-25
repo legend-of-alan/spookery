@@ -187,9 +187,10 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
             diags.push(diag.at_path(format!("actors.place.{id}")));
         }
     }
-    for (id, place) in actors.query::<(ActorId, &component::Place)>().iter() {
-        if !place.is_known(canon) {
-            let problem = format!("actor '{id}' is at '{place}', which the pack does not define");
+    for (id, location) in actors.query::<(ActorId, &component::Place)>().iter() {
+        if !location.is_known(canon) {
+            let problem =
+                format!("actor '{id}' is at '{location}', which the pack does not define");
             let diag = schema_error(FILE, &problem, "move the actor to a place");
             diags.push(diag.at_path(format!("actors.place.{id}")));
         }

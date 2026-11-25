@@ -199,7 +199,7 @@ impl<'c> Exit<'c> {
     }
 
     /// Where someone walking this exit stands: on its path, heading where it leads.
-    pub(crate) fn walker_location(&self) -> ActorLocation {
+    pub(crate) fn walker_location(self) -> ActorLocation {
         ActorLocation::Path {
             path_id: self.path_def.id.clone(),
             to_place_id: self.to_place_id().clone(),
@@ -238,11 +238,8 @@ impl Paths {
                 .insert(path_def.id.clone(), index)
                 .is_some()
             {
-                let field = if path_def.id.as_str().contains('.') {
-                    ".path"
-                } else {
-                    ".id"
-                };
+                let id_from_ends = path_def.id.as_str().contains('.');
+                let field = if id_from_ends { ".path" } else { ".id" };
                 let problem = format!("path id '{}' is used twice", path_def.id);
                 let at = format!("paths[{index}]{field}");
                 let hint = "give one of these paths its own id";
@@ -250,8 +247,9 @@ impl Paths {
             }
             let ends = path_def.end_place_ids.iter();
             for from_place_id in ends.take(if path_def.bidirectional { 2 } else { 1 }) {
-                let indexes = exit_def_indexes_by_place_id.entry(from_place_id.clone());
-                indexes.or_default().push(index);
+                (exit_def_indexes_by_place_id.entry(from_place_id.clone()))
+                    .or_default()
+                    .push(index);
             }
         }
         diags.into_result(())?;
@@ -271,14 +269,15 @@ impl Paths {
         self.def_index_by_path_id.keys()
     }
 
-    /// The exits of `from_place_id`, in the file order of their paths.
+    /// The exits of `from_place_id`, in the file order of their paths. The place id the iterator
+    /// reads is the index's own key, so it borrows only `self`.
     pub(crate) fn exits(&self, from_place_id: &str) -> impl Iterator<Item = Exit<'_>> {
-        let indexes = self
+        let entry = self
             .exit_def_indexes_by_place_id
             .get_key_value(from_place_id);
-        indexes.into_iter().flat_map(|(from_place_id, indexes)| {
-            (indexes.iter())
-                .filter_map(|&index| self.path_defs[index].exit_from(from_place_id.as_str()))
+        entry.into_iter().flat_map(|(place_id, def_indexes)| {
+            (def_indexes.iter())
+                .filter_map(|&index| self.path_defs[index].exit_from(place_id.as_str()))
         })
     }
 

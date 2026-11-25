@@ -140,12 +140,17 @@ pub(crate) fn map(
     if !world.actors().contains(actor_id) {
         return Err(Reason::UnknownId);
     }
-    let places = (world.actors().get::<component::Visit>(actor_id).iter()).map(|(id, seen)| {
+    let visits = world.actors().get::<component::Visit>(actor_id);
+    let places = visits.iter().map(|(id, seen_path_ids)| {
         Ok(PlaceView {
             place_id: id.to_string(),
             name: find_place_name(canon, id).ok_or(Reason::UnknownId)?,
             exits: (canon.exits(id))
-                .filter(|exit| seen.iter().any(|seen| exit.path_def.id == **seen))
+                .filter(|exit| {
+                    seen_path_ids
+                        .iter()
+                        .any(|path_id| exit.path_def.id == **path_id)
+                })
                 .map(|exit| exit_view(canon, world, actor_id, exit))
                 .collect(),
         })
@@ -159,12 +164,12 @@ pub(crate) fn map(
 pub(crate) fn busy_line(canon: &Canon, world: &ecs::World, actor_id: &ActorId) -> Option<String> {
     let act = world.actors().get::<component::Act>(actor_id);
     let act_state = act.get();
-    let place = world.actors().get::<component::Place>(actor_id).get()?;
+    let location = world.actors().get::<component::Place>(actor_id).get()?;
     if !act.is_busy(world.world_time) {
         return None;
     }
     let until = act_state.busy_until?;
-    let doing = match (&act_state.pending, place.find_walked_exit(canon)) {
+    let doing = match (&act_state.pending, location.find_walked_exit(canon)) {
         (Some(_), Some(exit)) => format!("on the {}", exit.name(canon)),
         (Some(pending), None) => gerund(&pending.verb),
         (None, _) => "recovering".to_string(),

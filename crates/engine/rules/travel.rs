@@ -38,7 +38,6 @@ pub(crate) fn exit_of<'c>(
 
 /// The exit `via` names from the actor's place, or `NO_EXIT`. `via: target` is the intent's
 /// path target, and `None` when the target is not a path; any other word is a path id.
-/// A walker on an exit is still on it when the walk finishes, so it is that exit.
 pub(crate) fn exit_via<'c>(
     context: &Context<'c, '_>,
     via: &str,
@@ -116,24 +115,27 @@ pub(crate) fn open_conditional_paths(
     ledger: &mut Ledger,
 ) {
     let mut opens = Vec::new();
-    for path in canon.paths.iter().filter(|path| is_locked(world, path)) {
-        let exits = (path.end_place_ids.iter()).filter_map(|id| path.exit_from(id.as_str()));
-        let mut sides = exits.map(|exit| (exit.from_place_id, Target::Path(path.id.clone())));
-        let opening_side = sides.find(|(from_place_id, target)| {
+    let locked_path_defs = canon
+        .paths
+        .iter()
+        .filter(|path_def| is_locked(world, path_def));
+    for path_def in locked_path_defs {
+        let target = Target::Path(path_def.id.clone());
+        let mut from_place_ids = (path_def.end_place_ids.iter())
+            .filter(|place_id| path_def.exit_from(place_id.as_str()).is_some());
+        let meets_if = from_place_ids.any(|from_place_id| {
             (world.actors_at(from_place_id.as_str()).iter()).any(|actor_id| {
-                let target = target.clone();
-                cond::if_holds(
-                    canon, world, presence, actor_id, "travel", target, &path.if_,
-                )
+                let (target, if_) = (target.clone(), &path_def.if_);
+                cond::if_holds(canon, world, presence, actor_id, "travel", target, if_)
             })
         });
-        let Some((_, target)) = opening_side else {
+        if !meets_if {
             continue;
-        };
-        let id = format!("open:{}", path.id);
+        }
+        let id = format!("open:{}", path_def.id);
         let intent = Intent::new(id, world.round_index, None, Source::Engine, "open", target);
         let kind = EffectKind::Flag {
-            entity: entity::Id::Path(path.id.clone()),
+            entity: entity::Id::Path(path_def.id.clone()),
             key: OPEN.to_string(),
             value: true,
         };
