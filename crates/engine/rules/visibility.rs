@@ -201,9 +201,8 @@ fn location_of<'a>(world: &'a ecs::World, actor_id: &'a ActorId) -> Option<&'a A
 
 /// The viewer stands where `actor_id` does: in one place, or on one path either way.
 fn same_place(world: &ecs::World, viewer_id: &ActorId, actor_id: &ActorId) -> bool {
-    let actor_location_text = location_of(world, actor_id).map(ToString::to_string);
-    match (location_of(world, viewer_id), actor_location_text) {
-        (Some(viewer), Some(location_text)) => viewer.is_at(&location_text),
+    match (location_of(world, viewer_id), location_of(world, actor_id)) {
+        (Some(viewer), Some(actor)) => viewer.is_with(actor),
         _ => false,
     }
 }

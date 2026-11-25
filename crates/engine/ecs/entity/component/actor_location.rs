@@ -78,6 +78,23 @@ impl ActorLocation {
         }
     }
 
+    /// They stand where `other` does: in one place, or on one path whichever way each heads.
+    pub(crate) fn is_with(&self, other: &ActorLocation) -> bool {
+        match (self, other) {
+            (ActorLocation::Place(place_id), ActorLocation::Place(other_place_id)) => {
+                place_id == other_place_id
+            }
+            (
+                ActorLocation::Path { path_id, .. },
+                ActorLocation::Path {
+                    path_id: other_path_id,
+                    ..
+                },
+            ) => path_id == other_path_id,
+            _ => false,
+        }
+    }
+
     /// The pack defines where they stand: their place, or their path walked toward where they
     /// head.
     pub(crate) fn is_known(&self, canon: &Canon) -> bool {
