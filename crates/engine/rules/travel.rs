@@ -201,17 +201,17 @@ pub(crate) fn exit_view(
 pub(crate) fn note_exits(canon: &Canon, world: &mut ecs::World) -> Result<(), Reason> {
     let actors = world.actors().query::<(ActorId, &component::Place)>();
     let seen: Vec<(ActorId, PlaceId, Vec<String>)> = (actors.iter())
-        .filter_map(|(id, at)| Some((id, at.place_id()?)))
-        .filter(|(_, place)| canon.places.contains_key(*place))
-        .map(|(id, place)| {
-            let exits = visible_exits(canon, world, id);
+        .filter_map(|(actor_id, location)| Some((actor_id, location.place_id()?)))
+        .filter(|(_, place_id)| canon.places.contains_key(*place_id))
+        .map(|(actor_id, place_id)| {
+            let exits = visible_exits(canon, world, actor_id);
             let path_ids = exits.into_iter().map(|exit| exit.path_id).collect();
-            (id.clone(), place.clone(), path_ids)
+            (actor_id.clone(), place_id.clone(), path_ids)
         })
         .collect();
     let mut actors = world.actors_mut();
-    for (actor, place, exits) in seen {
-        (actors.get_mut::<component::Visit>(&actor)).set(place.as_str(), exits)?;
+    for (actor_id, place_id, path_ids) in seen {
+        (actors.get_mut::<component::Visit>(&actor_id)).set(place_id.as_str(), path_ids)?;
     }
     Ok(())
 }

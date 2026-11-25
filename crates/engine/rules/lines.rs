@@ -141,11 +141,11 @@ pub(crate) fn map(
         return Err(Reason::UnknownId);
     }
     let visits = world.actors().get::<component::Visit>(actor_id);
-    let places = visits.iter().map(|(id, seen_path_ids)| {
+    let places = visits.iter().map(|(place_id, seen_path_ids)| {
         Ok(PlaceView {
-            place_id: id.to_string(),
-            name: find_place_name(canon, id).ok_or(Reason::UnknownId)?,
-            exits: (canon.exits(id))
+            place_id: place_id.to_string(),
+            name: find_place_name(canon, place_id).ok_or(Reason::UnknownId)?,
+            exits: (canon.exits(place_id))
                 .filter(|exit| {
                     seen_path_ids
                         .iter()

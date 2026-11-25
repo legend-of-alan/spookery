@@ -49,8 +49,7 @@ impl ActorLocation {
         canon.paths.get(path_id)?.exit_to(to_place_id.as_str())
     }
 
-    /// Path `path_id` as an exit from their place. A walker is still on their exit when the walk
-    /// finishes, so for a walker it is that exit, whatever `path_id` says.
+    /// Path `path_id` as an exit from their place, or for a walker the exit they walk.
     pub(crate) fn find_exit<'c>(&self, canon: &'c Canon, path_id: &PathId) -> Option<Exit<'c>> {
         match self {
             ActorLocation::Place(from_place_id) => {

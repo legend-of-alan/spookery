@@ -44,8 +44,8 @@ impl Writer<'_, entity::Actors> {
         }
         let wielded = wielded.get(from).map(String::as_str);
         (self.get_mut::<component::WieldedItem>(to)).set(wielded)?;
-        for (place, exits) in nested_map::entries_of(&visited, from) {
-            (self.get_mut::<component::Visit>(to)).set(place, exits.clone())?;
+        for (place_id, path_ids) in nested_map::entries_of(&visited, from) {
+            (self.get_mut::<component::Visit>(to)).set(place_id, path_ids.clone())?;
         }
         for (key, meter) in nested_map::entries_of(&meters, from) {
             self.get_mut::<Meter>(to).set(key, Some(*meter))?;

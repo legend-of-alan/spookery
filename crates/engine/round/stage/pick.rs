@@ -187,8 +187,8 @@ fn touches_seated_player(
         Target::Path(path_id) => intent
             .actor_id
             .as_ref()
-            .and_then(|id| world.actors().get::<component::Place>(id).get())
-            .and_then(|location| location.find_exit(canon, path_id))
+            .and_then(|actor_id| world.actors().get::<component::Place>(actor_id).place_id())
+            .and_then(|place_id| canon.paths.get(path_id)?.exit_from(place_id.as_str()))
             .is_some_and(|exit| is_player_at(world, presence, exit.to_place_id().as_str())),
         _ => false,
     };
