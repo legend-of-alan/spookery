@@ -3,14 +3,13 @@
 use spookery_protocol::{CommandView, PlaceView, Seat, COMMANDS};
 
 use crate::canon::Canon;
-use crate::ecs::component::ActorLocation;
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, Presence};
 use crate::intent::Target;
 use crate::rules::cond;
 use crate::rules::gate::{list_ids, verb_for, NamedId};
 use crate::rules::rule::{Owner, TargetKind, When};
-use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
+use crate::rules::travel::{exit_view, exits_at};
 use crate::Reason;
 
 /// `help`: the built-in player commands but `claim`, then each pack verb `verb_for` reaches
@@ -165,7 +164,7 @@ pub(crate) fn busy_line(canon: &Canon, world: &ecs::World, actor_id: &ActorId) -
         return None;
     }
     let until = act_state.busy_until?;
-    let doing = match (&act_state.pending, exit_stood_on(canon, place)) {
+    let doing = match (&act_state.pending, place.find_walked_exit(canon)) {
         (Some(_), Some(exit)) => format!("on the {}", exit.name(canon)),
         (Some(pending), None) => gerund(&pending.verb),
         (None, _) => "recovering".to_string(),
@@ -202,13 +201,4 @@ pub(crate) fn place_prose(canon: &Canon, world: &ecs::World, actor_id: &ActorId)
 /// The name a player reads for the place `id`, or `None` when the pack has no such place.
 pub(crate) fn find_place_name(canon: &Canon, id: &str) -> Option<String> {
     canon.places.get(id).map(|place| place.name.clone())
-}
-
-/// The name a player reads for where someone stands: their place's, or for a walker the name of
-/// the exit they walk, which follows the way they head. `None` when the pack has neither.
-pub(crate) fn find_location_name(canon: &Canon, location: &ActorLocation) -> Option<String> {
-    match location {
-        ActorLocation::Place(id) => find_place_name(canon, id.as_str()),
-        walk => exit_stood_on(canon, walk).map(|exit| exit.name(canon).to_string()),
-    }
 }

@@ -329,7 +329,7 @@ fn move_actor(
     if place.ok_or(Reason::UnknownId)? != from {
         return Err(Reason::OutOfRange);
     }
-    if !crate::rules::travel::is_known_location(canon, to) {
+    if !to.is_known(canon) {
         return Err(Reason::NoExit);
     }
     (world.actors_mut().get_mut::<component::Place>(actor_id)).set(to.clone())

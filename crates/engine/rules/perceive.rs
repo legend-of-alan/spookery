@@ -108,8 +108,7 @@ pub(crate) fn build_view(
         .map(|id| canon.name(id.as_str()).map(str::to_string))
         .collect::<Option<_>>()
         .ok_or(Reason::UnknownId)?;
-    let place_name =
-        crate::rules::lines::find_location_name(canon, location).ok_or(Reason::UnknownId)?;
+    let place_name = location.find_name(canon).ok_or(Reason::UnknownId)?;
     let place_prose = crate::rules::lines::place_prose(canon, world, viewer_id);
     let busy = crate::rules::lines::busy_line(canon, world, viewer_id).unwrap_or_default();
 

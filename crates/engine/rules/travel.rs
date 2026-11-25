@@ -1,7 +1,6 @@
 //! Exits, admission, and the journeys that follow them.
 
 use crate::canon::{Canon, Exit, PathDef, OPEN};
-use crate::ecs::component::ActorLocation;
 use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component, entity, PendingAction, Presence};
 use crate::intent::{Intent, Source, Target};
@@ -52,32 +51,8 @@ pub(crate) fn exit_via<'c>(
     let actors = context.world.actors();
     let location =
         (context.intent.actor_id.as_ref()).and_then(|id| actors.get::<component::Place>(id).get());
-    let exit = match location {
-        Some(ActorLocation::Place(from)) => context.canon.find_exit(from.as_str(), exit_id),
-        Some(walk) => exit_stood_on(context.canon, walk),
-        None => None,
-    };
+    let exit = location.and_then(|location| location.find_exit(context.canon, exit_id));
     exit.map(Some).ok_or(Reason::NoExit)
-}
-
-/// Whether the pack defines `location`: its place, or its path walked toward where they head.
-pub(crate) fn is_known_location(canon: &Canon, location: &ActorLocation) -> bool {
-    match location {
-        ActorLocation::Place(id) => canon.places.contains_key(id),
-        walk => exit_stood_on(canon, walk).is_some(),
-    }
-}
-
-/// The exit a walker stands on: their path, walked toward where they head. `None` in a place.
-pub(crate) fn exit_stood_on<'c>(canon: &'c Canon, location: &ActorLocation) -> Option<Exit<'c>> {
-    let ActorLocation::Path {
-        path_id,
-        to_place_id,
-    } = location
-    else {
-        return None;
-    };
-    canon.paths.get(path_id)?.exit_to(to_place_id.as_str())
 }
 
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
