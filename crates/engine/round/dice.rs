@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use crate::ecs::id::ActorId;
 use crate::hash::blake2s_256;
 use crate::round::Ledger;
-use crate::rules::expr;
+use crate::rules::expr::eval;
 use crate::rules::roll::{self, faces};
 use crate::Reason;
 
@@ -46,12 +46,12 @@ impl Dice {
         }
     }
 
-    pub(crate) fn roller<'a>(
-        &'a mut self,
-        ledger: &'a mut Ledger,
-        rule: &'a str,
-        subject: Option<&'a ActorId>,
-    ) -> Roller<'a> {
+    pub(crate) fn roller<'r>(
+        &'r mut self,
+        ledger: &'r mut Ledger,
+        rule: &'r str,
+        subject: Option<&'r ActorId>,
+    ) -> Roller<'r> {
         Roller {
             dice: self,
             ledger,
@@ -64,16 +64,16 @@ impl Dice {
 }
 
 /// Expression dice for one rule and subject, all keyed by the rule id.
-pub(crate) struct Roller<'a> {
-    dice: &'a mut Dice,
-    ledger: &'a mut Ledger,
-    rule: &'a str,
-    subject: Option<&'a ActorId>,
+pub(crate) struct Roller<'r> {
+    dice: &'r mut Dice,
+    ledger: &'r mut Ledger,
+    rule: &'r str,
+    subject: Option<&'r ActorId>,
     key: Option<roll::Key>,
     drawn: usize,
 }
 
-impl expr::Dice for Roller<'_> {
+impl eval::Dice for Roller<'_> {
     fn begin(&mut self) {
         self.key = None;
         self.drawn = 0;

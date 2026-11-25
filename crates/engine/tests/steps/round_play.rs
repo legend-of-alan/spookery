@@ -576,6 +576,30 @@ fn miras_travel_is_picked_first(world: &mut World) {
     }
 }
 
+#[when(expr = "Harbormouse waits and then Wren waits to Rowan while Rowan is present")]
+fn harbormouse_waits_and_wren_waits_to_rowan(world: &mut World) {
+    let wren_wait = spookery_protocol::QueueArgs {
+        message_to: Some(vec!["rowan".to_string()]),
+        ..intent("wren-wait", "wren", "wait", None)
+    };
+    let intents = vec![
+        intent("harbormouse-wait", "harbormouse", "wait", None),
+        wren_wait,
+    ];
+    play_queued(world.pack(), &["rowan"], intents);
+}
+
+/// The round has room for one intent, so only the one picked first acts.
+#[then(expr = "Wren's wait is picked ahead of Harbormouse's")]
+fn wrens_wait_is_picked_first(world: &mut World) {
+    let now = support::world_of(world.pack());
+    let last_act_round = |actor_id| act_of(&now, actor_id).last_act_round;
+    assert_eq!(
+        (last_act_round("wren"), last_act_round("harbormouse")),
+        (1, 0)
+    );
+}
+
 #[then(expr = "Mira has visited the Docks Shop")]
 fn mira_has_visited_the_shop(world: &mut World) {
     let saved = spookery_engine::Session::peek(world.pack()).unwrap();

@@ -6,7 +6,7 @@ use crate::ecs::id::{ActorId, GlobalId};
 use crate::ecs::{self, component, Presence};
 use crate::intent::{Intent, Source, Target};
 use crate::rules::context::Context;
-use crate::rules::expr;
+use crate::rules::expr::eval;
 use crate::rules::rule::Cond;
 use crate::Reason;
 
@@ -61,7 +61,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let actor = subject.actor_id(context)?;
             let id = context.item_id(id)?;
             let held = world.actors().get::<component::Item>(actor);
-            Ok(i64::from(held.get(&id).copied().unwrap_or(0)) >= expr::eval(context, count)?)
+            Ok(i64::from(held.get(&id).copied().unwrap_or(0)) >= eval::eval(context, count)?)
         }
         Cond::Wielding { subject, id } => {
             let actor = subject.actor_id(context)?;
@@ -72,7 +72,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         Cond::Meter { of, key, op, value } => {
             let entity = of.entity_id(context)?;
             let current = (world.entities().get::<component::Meter>(&entity)).value(key)?;
-            let right = expr::eval(context, value)?;
+            let right = eval::eval(context, value)?;
             Ok(op.holds(current, right))
         }
         Cond::Flag { of, key, is } => {
@@ -89,14 +89,14 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let cycles = &context.canon.budget.cycles;
             let length = *cycles.get(id).ok_or(Reason::UnknownId)?;
             let read_tick = |expr| -> Result<u64, Reason> {
-                cycle_tick_of(expr::eval(context, expr)?, length).ok_or(Reason::OutOfRange)
+                cycle_tick_of(eval::eval(context, expr)?, length).ok_or(Reason::OutOfRange)
             };
             let tick = world.world_time % length;
             Ok(is_in_window(read_tick(from)?, read_tick(to)?, tick))
         }
         Cond::Players { op, value } => {
             let players = i64::from(context.presence.players);
-            Ok(op.holds(players, expr::eval(context, value)?))
+            Ok(op.holds(players, eval::eval(context, value)?))
         }
         Cond::NoteExists(id) => Ok(world.globals().get::<Note>(&GlobalId).contains(id)),
         Cond::All(inner) => {
