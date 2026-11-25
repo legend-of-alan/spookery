@@ -267,7 +267,8 @@ mod tests {
 
     use super::{play, ExitReason};
     use crate::protocol::ServerBody;
-    use crate::terminal::{SurfaceCall, Terminal};
+    use crate::terminal::test_surface::SurfaceCall;
+    use crate::terminal::Terminal;
 
     const RECORDING: &str = include_str!("../protocol/sessions/v4.jsonl");
 
@@ -450,13 +451,12 @@ mod tests {
             let mut connection = HostConnection::accept(&listener).await;
             connection.answer_claim(json!([]), shop_view()).await;
             connection.answer_map(&mut surface_ends).await;
-            let ends = &mut surface_ends;
             connection
-                .answer_line(ends, "look", "look", shop_view())
+                .answer_line(&mut surface_ends, "look", "look", shop_view())
                 .await;
             let travel = "travel Docks Street";
             connection
-                .answer_line(ends, travel, "travel", street_view())
+                .answer_line(&mut surface_ends, travel, "travel", street_view())
                 .await;
             connection.answer_map(&mut surface_ends).await;
             drop(surface_ends);
@@ -472,19 +472,17 @@ mod tests {
             let mut connection = HostConnection::accept(&listener).await;
             connection.answer_claim(json!([]), shop_view()).await;
             connection.answer_map(&mut surface_ends).await;
-            let ends = &mut surface_ends;
             let travel = "travel Docks Street";
             connection
-                .answer_line(ends, travel, "travel", street_view())
+                .answer_line(&mut surface_ends, travel, "travel", street_view())
                 .await;
             let lost_map_request_id = connection.expect_command("map").await;
             drop(connection);
             let mut connection = HostConnection::accept(&listener).await;
             connection.answer_claim(json!([]), street_view()).await;
             connection.answer_map(&mut surface_ends).await;
-            let ends = &mut surface_ends;
             connection
-                .answer_line(ends, "look", "look", street_view())
+                .answer_line(&mut surface_ends, "look", "look", street_view())
                 .await;
             surface_ends.line_sender.send("look".into()).unwrap();
             let reused_id = connection.expect_command("look").await;

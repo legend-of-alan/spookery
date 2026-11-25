@@ -1,13 +1,13 @@
 //! The play terminal: plain lines or the game window.
 
 use tokio::sync::mpsc::UnboundedReceiver;
-#[cfg(test)]
-use tokio::sync::mpsc::UnboundedSender;
 
 use crate::protocol::{self, ServerBody, ServerMessage};
 use crate::text;
 use crate::Error;
 
+#[cfg(test)]
+pub(crate) mod test_surface;
 mod window;
 use window::Window;
 
@@ -23,23 +23,7 @@ enum Surface {
     Plain(Plain),
     Window(Box<Window>),
     #[cfg(test)]
-    Test(TestSurface),
-}
-
-/// The surface play's tests drive: it has a place panel, takes each line from a channel and
-/// sends each call play makes on it, in order.
-#[cfg(test)]
-struct TestSurface {
-    lines: UnboundedReceiver<String>,
-    calls: UnboundedSender<SurfaceCall>,
-}
-
-/// A call play made on the test surface, with the message it passed.
-#[cfg(test)]
-#[derive(Debug)]
-pub(crate) enum SurfaceCall {
-    Show(ServerMessage),
-    FillPlacePanel(ServerMessage),
+    Test(test_surface::TestSurface),
 }
 
 impl Terminal {
@@ -49,18 +33,6 @@ impl Terminal {
             surface: Surface::Window(Box::new(Window::open()?)),
             last_seq: 0,
         })
-    }
-
-    /// The test surface: sends each line `lines` gives, and each call play makes to `calls`.
-    #[cfg(test)]
-    pub(crate) fn test(
-        lines: UnboundedReceiver<String>,
-        calls: UnboundedSender<SurfaceCall>,
-    ) -> Self {
-        Self {
-            surface: Surface::Test(TestSurface { lines, calls }),
-            last_seq: 0,
-        }
     }
 
     /// Prints plain lines, as text or with `raw` as protocol frames.
@@ -89,10 +61,8 @@ impl Terminal {
             }
             Surface::Window(window) => window.show(message, view),
             #[cfg(test)]
-            Surface::Test(test_surface) => {
-                (test_surface.calls)
-                    .send(SurfaceCall::Show(message.clone()))
-                    .expect("the test stopped reading the surface");
+            Surface::Test(surface) => {
+                surface.send(test_surface::SurfaceCall::Show(message.clone()));
                 Ok(())
             }
         }
@@ -109,7 +79,7 @@ impl Terminal {
             Surface::Plain(plain) => Ok(plain.stdin_lines.recv().await),
             Surface::Window(window) => window.next_line(view, commands).await,
             #[cfg(test)]
-            Surface::Test(test_surface) => Ok(test_surface.lines.recv().await),
+            Surface::Test(surface) => Ok(surface.next_line().await),
         }
     }
 
@@ -126,10 +96,8 @@ impl Terminal {
                 window.fill_place_panel(places, view)
             }
             #[cfg(test)]
-            (Surface::Test(test_surface), _) => {
-                (test_surface.calls)
-                    .send(SurfaceCall::FillPlacePanel(message.clone()))
-                    .expect("the test stopped reading the surface");
+            (Surface::Test(surface), _) => {
+                surface.send(test_surface::SurfaceCall::FillPlacePanel(message.clone()));
                 Ok(())
             }
             _ => Ok(()),
