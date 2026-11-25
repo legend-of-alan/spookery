@@ -268,14 +268,11 @@ pub(super) fn load_tagged<T: serde::de::DeserializeOwned>(
     file: &str,
     text: &str,
     expected: &str,
+    holds_rule_lines: bool,
 ) -> Result<T, Vec<Diagnostic>> {
     if let Some(diag) = check_tag(text, expected, file) {
         return Err(vec![diag]);
     }
-    let holds_rule_lines = matches!(
-        expected,
-        VERBS_SCHEMA | CAST_SCHEMA | ITEM_SCHEMA | PLACE_SCHEMA | STORY_SCHEMA | MAP_SCHEMA
-    );
     parse_file(file, text, holds_rule_lines)
 }
 

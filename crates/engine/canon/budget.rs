@@ -61,7 +61,7 @@ impl Default for Budget {
 }
 
 pub(crate) fn load(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    let doc: BudgetDoc = load_tagged(rel, text, BUDGET_SCHEMA)?;
+    let doc: BudgetDoc = load_tagged(rel, text, BUDGET_SCHEMA, false)?;
     let source = FileText { file: rel, text };
     let mut diags = Vec::new();
     let mut budget = Budget::default();

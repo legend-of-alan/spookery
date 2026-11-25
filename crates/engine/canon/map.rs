@@ -19,7 +19,7 @@ pub(super) const MAP_FILE: &str = "world/map.yaml";
 
 /// Every line under `paths:`, in file order, or the refusals of the lines that do not compile.
 pub(super) fn load(text: &str) -> Result<Vec<PathDef>, Vec<Diagnostic>> {
-    let doc: MapDoc = load_tagged(MAP_FILE, text, MAP_SCHEMA)?;
+    let doc: MapDoc = load_tagged(MAP_FILE, text, MAP_SCHEMA, true)?;
     let mut diags = Diags::default();
     let paths = (doc.paths.iter().enumerate())
         .filter_map(|(row, line)| diags.keep(compile(row, line)))

@@ -46,7 +46,8 @@ pub(super) fn load_stories(
             ));
             continue;
         };
-        let Some(story) = diags.keep(load_tagged::<StoryDoc>(&file, text, STORY_SCHEMA)) else {
+        let Some(story) = diags.keep(load_tagged::<StoryDoc>(&file, text, STORY_SCHEMA, true))
+        else {
             continue;
         };
         let source = FileText { file: &file, text };

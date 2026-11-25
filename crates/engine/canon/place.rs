@@ -58,7 +58,7 @@ pub(super) fn add(
 }
 
 fn load(file: &str, yaml: &str) -> Result<PlaceDoc, Vec<Diagnostic>> {
-    let parsed: PlaceDoc = load_tagged(file, yaml, PLACE_SCHEMA)?;
+    let parsed: PlaceDoc = load_tagged(file, yaml, PLACE_SCHEMA, true)?;
     let source = FileText { file, text: yaml };
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short place id");

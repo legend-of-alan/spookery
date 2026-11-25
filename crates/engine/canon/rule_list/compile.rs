@@ -670,6 +670,6 @@ fn cross_of(text: &str) -> Result<(Op, i64), String> {
 }
 
 pub(in crate::canon) fn load_verbs(rel: &str, text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
-    let doc: VerbsDoc = load_tagged(rel, text, VERBS_SCHEMA)?;
+    let doc: VerbsDoc = load_tagged(rel, text, VERBS_SCHEMA, true)?;
     compile(rel, doc.rules, &Owner::Verb)
 }

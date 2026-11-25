@@ -63,7 +63,7 @@ pub(super) fn add(
 }
 
 fn load(file: &str, yaml: &str) -> Result<CastDoc, Vec<Diagnostic>> {
-    let parsed: CastDoc = load_tagged(file, yaml, CAST_SCHEMA)?;
+    let parsed: CastDoc = load_tagged(file, yaml, CAST_SCHEMA, true)?;
     let source = FileText { file, text: yaml };
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short cast id");
