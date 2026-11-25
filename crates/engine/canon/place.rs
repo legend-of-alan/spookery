@@ -28,41 +28,44 @@ pub(super) fn add(
     meters: &mut Meters,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
-    let file = diags.keep(load(&page.file, &page.yaml))?;
+    let doc = diags.keep(load(&page.file_path, &page.yaml))?;
     let whole = FileText {
-        file: &page.file,
+        file_path: &page.file_path,
         text: &page.text,
     };
     let twice = ("place", "is already defined", "keep one place with this id");
-    let taken = places.contains_key(file.id.as_str());
+    let taken = places.contains_key(doc.id.as_str());
     if let Some(diag) =
-        taken.then(|| whole.refuse_duplicate(&file.id, "id", Locator::Nowhere, twice))
+        taken.then(|| whole.refuse_duplicate(&doc.id, "id", Locator::Nowhere, twice))
     {
         diags.push(diag);
         return None;
     }
-    let id: PlaceId = file.id.clone().into();
+    let id: PlaceId = doc.id.clone().into();
     let carrier = Some(entity::Id::Place(id.clone()));
-    if let Some(own) = diags.keep(meter_descs(&whole, file.meters, carrier)) {
-        meters.push((page.file.clone(), own));
+    if let Some(own) = diags.keep(meter_descs(&whole, doc.meters, carrier)) {
+        meters.push((page.file_path.clone(), own));
     }
     places.insert(
         id,
         PlaceDef {
-            name: file.name.unwrap_or_else(|| file.id.clone()),
+            name: doc.name.unwrap_or_else(|| doc.id.clone()),
             body: page.body,
         },
     );
     diags.keep(rule_list::rules_from_yaml(
-        &page.file,
-        file.rules,
-        &Owner::Place(file.id),
+        &page.file_path,
+        doc.rules,
+        &Owner::Place(doc.id),
     ))
 }
 
-fn load(file: &str, yaml: &str) -> Result<PlaceDoc, Vec<Diagnostic>> {
-    let parsed: PlaceDoc = parse_tagged(file, yaml, PLACE_SCHEMA, true)?;
-    let source = FileText { file, text: yaml };
+fn load(file_path: &str, yaml: &str) -> Result<PlaceDoc, Vec<Diagnostic>> {
+    let parsed: PlaceDoc = parse_tagged(file_path, yaml, PLACE_SCHEMA, true)?;
+    let source = FileText {
+        file_path,
+        text: yaml,
+    };
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short place id");
     diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));

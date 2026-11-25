@@ -20,8 +20,8 @@ pub(super) fn add(
     items: &mut BTreeMap<String, ItemDef>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
-    let item: ItemDoc = diags.keep(parse_tagged(&page.file, &page.yaml, ITEM_SCHEMA, true))?;
-    let source = FileText::named(&page.file);
+    let item: ItemDoc = diags.keep(parse_tagged(&page.file_path, &page.yaml, ITEM_SCHEMA, true))?;
+    let source = FileText::named(&page.file_path);
     let empty = ("an item id is empty", "set id to a short item id");
     let twice = ("item", "is already defined", "keep one item with this id");
     let taken = items.contains_key(&item.id);
@@ -32,7 +32,8 @@ pub(super) fn add(
         diags.push(diag);
         return None;
     }
-    let rules = rule_list::rules_from_yaml(&page.file, item.rules, &Owner::Item(item.id.clone()));
+    let rules =
+        rule_list::rules_from_yaml(&page.file_path, item.rules, &Owner::Item(item.id.clone()));
     items.insert(
         item.id.clone(),
         ItemDef {

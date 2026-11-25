@@ -24,28 +24,28 @@ pub(super) fn add(
     meters: Option<&mut BTreeMap<String, meter::Descriptor>>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
-    let file = diags.keep(load(&page.file, &page.yaml))?;
+    let doc = diags.keep(load(&page.file_path, &page.yaml))?;
     let whole = FileText {
-        file: &page.file,
+        file_path: &page.file_path,
         text: &page.text,
     };
-    let control_type = if file.control_type == "npc" {
+    let control_type = if doc.control_type == "npc" {
         canon::ControlType::Npc
     } else {
         canon::ControlType::PcTemplate
     };
     let hint = "keep one cast file with this id";
     let twice = ("cast id", "is already defined", hint);
-    let taken = cast.contains_key(file.id.as_str());
+    let taken = cast.contains_key(doc.id.as_str());
     if let Some(diag) =
-        taken.then(|| whole.refuse_duplicate(&file.id, "id", Locator::Nowhere, twice))
+        taken.then(|| whole.refuse_duplicate(&doc.id, "id", Locator::Nowhere, twice))
     {
         diags.push(diag);
         return None;
     }
-    let id: ActorId = file.id.clone().into();
+    let id: ActorId = doc.id.clone().into();
     let carrier = Some(entity::Id::Actor(id.clone()));
-    let own = diags.keep(meter_descs(&whole, file.meters, carrier));
+    let own = diags.keep(meter_descs(&whole, doc.meters, carrier));
     if let (Some(meters), Some(own)) = (meters, own) {
         meters::add_own(meters, own, None, &whole, diags);
     }
@@ -53,21 +53,24 @@ pub(super) fn add(
         id.clone(),
         CastDef {
             control_type,
-            name: file.name.unwrap_or(file.id),
+            name: doc.name.unwrap_or(doc.id),
             body: page.body,
-            idle: file.idle,
+            idle: doc.idle,
         },
     );
     diags.keep(rule_list::rules_from_yaml(
-        &page.file,
-        file.rules,
+        &page.file_path,
+        doc.rules,
         &Owner::Cast(id.into()),
     ))
 }
 
-fn load(file: &str, yaml: &str) -> Result<CastDoc, Vec<Diagnostic>> {
-    let parsed: CastDoc = parse_tagged(file, yaml, CAST_SCHEMA, true)?;
-    let source = FileText { file, text: yaml };
+fn load(file_path: &str, yaml: &str) -> Result<CastDoc, Vec<Diagnostic>> {
+    let parsed: CastDoc = parse_tagged(file_path, yaml, CAST_SCHEMA, true)?;
+    let source = FileText {
+        file_path,
+        text: yaml,
+    };
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short cast id");
     diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));

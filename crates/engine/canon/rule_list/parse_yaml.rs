@@ -20,16 +20,16 @@ use super::yaml_types::{
 const VERBS_SCHEMA: &str = "verbs";
 
 pub(in crate::canon) fn rules_from_yaml(
-    file: &str,
+    file_path: &str,
     entries: Vec<RuleYaml>,
     owner: &Owner,
 ) -> Result<Vec<Rule>, Vec<Diagnostic>> {
-    let source = FileText::named(file);
+    let source = FileText::named(file_path);
     let mut diags = Diags::default();
     let mut rules: Vec<Rule> = Vec::new();
     let mut verb_ids = Vec::new();
     for (index, entry) in entries.into_iter().enumerate() {
-        let Some(rule) = diags.keep(rule_from_yaml(file, index, entry, owner)) else {
+        let Some(rule) = diags.keep(rule_from_yaml(file_path, index, entry, owner)) else {
             continue;
         };
         if let When::Verb { verb_id, .. } = &rule.when {
@@ -52,12 +52,12 @@ pub(in crate::canon) fn rules_from_yaml(
 }
 
 fn rule_from_yaml(
-    file: &str,
+    file_path: &str,
     index: usize,
     entry: RuleYaml,
     owner: &Owner,
 ) -> Result<Rule, Vec<Diagnostic>> {
-    let source = FileText::named(file);
+    let source = FileText::named(file_path);
     let mut diags = Vec::new();
     let refuse_at_id = |message: String, hint: &str| {
         let at = Locator::Spot(spot_of(&entry.id));
@@ -98,7 +98,7 @@ fn rule_from_yaml(
     let finish_cost = match finish_cost_yaml.map(cost_from_yaml).transpose() {
         Ok(Some(_)) if finish_cost_yaml.is_some_and(|cost| cost.ticks.is_some()) => {
             diags.push(schema_error(
-                file,
+                file_path,
                 &format!("rule '{local_id}' has ticks in its finish cost"),
                 "put the action's ticks in cost; the finish takes no time",
             ));
@@ -132,10 +132,10 @@ fn rule_from_yaml(
             None
         }
     };
-    let do_ = effects_from_yaml(file, &entry.do_)?;
-    let success = effects_from_yaml(file, &entry.success)?;
-    let partial = effects_from_yaml(file, &entry.partial)?;
-    let miss = effects_from_yaml(file, &entry.miss)?;
+    let do_ = effects_from_yaml(file_path, &entry.do_)?;
+    let success = effects_from_yaml(file_path, &entry.success)?;
+    let partial = effects_from_yaml(file_path, &entry.partial)?;
+    let miss = effects_from_yaml(file_path, &entry.miss)?;
     if let Some(when) = &when {
         let timed = cost.is_some()
             || entry.start.is_some()
@@ -144,21 +144,21 @@ fn rule_from_yaml(
             || entry.cancellable;
         if matches!(when, When::Change(_)) && timed {
             diags.push(schema_error(
-                file,
+                file_path,
                 "a change rule has a cost, start, finish, cooldown, or cancellable",
                 "remove them; a change is a consequence, not an action",
             ));
         }
         if check.is_none() && (!success.is_empty() || !partial.is_empty() || !miss.is_empty()) {
             diags.push(schema_error(
-                file,
+                file_path,
                 &format!("rule '{local_id}' lists an outcome without a check"),
                 "add check or move those effects to do",
             ));
         }
         if check.is_some() && success.is_empty() && (!partial.is_empty() || !miss.is_empty()) {
             diags.push(schema_error(
-                file,
+                file_path,
                 &format!("rule '{local_id}' has a check without a success list"),
                 "add success",
             ));
@@ -202,7 +202,7 @@ fn rule_from_yaml(
         success,
         partial,
         miss,
-        file: file.to_string(),
+        file: file_path.to_string(),
         index,
     };
     let rule_problem =
@@ -473,7 +473,7 @@ fn expr_from_yaml(yaml: &Spanned<ExprYaml>) -> Result<Expr, UnplacedRefusal> {
 }
 
 fn effects_from_yaml(
-    file: &str,
+    file_path: &str,
     list: &[EffectYaml],
 ) -> Result<Vec<EffectTemplate>, Vec<Diagnostic>> {
     let mut out = Vec::new();
@@ -481,7 +481,9 @@ fn effects_from_yaml(
         match effect_from_yaml(effect) {
             Ok(effect) => out.push(effect),
             Err(unplaced) => {
-                return Err(vec![FileText::named(file).refuse_unplaced("", unplaced)]);
+                return Err(vec![
+                    FileText::named(file_path).refuse_unplaced("", unplaced)
+                ]);
             }
         }
     }
@@ -669,9 +671,9 @@ fn cross_from_yaml(text: &str) -> Result<(Op, i64), String> {
 }
 
 pub(in crate::canon) fn verbs_from_text(
-    rel: &str,
+    file_path: &str,
     text: &str,
 ) -> Result<Vec<Rule>, Vec<Diagnostic>> {
-    let doc: VerbsDoc = parse_tagged(rel, text, VERBS_SCHEMA, true)?;
-    rules_from_yaml(rel, doc.rules, &Owner::Verb)
+    let doc: VerbsDoc = parse_tagged(file_path, text, VERBS_SCHEMA, true)?;
+    rules_from_yaml(file_path, doc.rules, &Owner::Verb)
 }

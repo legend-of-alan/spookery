@@ -295,8 +295,8 @@ pub fn pack_rev(root: &Path) -> Result<String, Reason> {
     }
     files.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
     let mut preimage = Vec::new();
-    for (rel, bytes) in files {
-        preimage.extend(rel.as_bytes());
+    for (file_path, bytes) in files {
+        preimage.extend(file_path.as_bytes());
         preimage.push(0);
         preimage.extend((bytes.len() as u64).to_be_bytes());
         preimage.extend(bytes);
@@ -322,9 +322,9 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         let Some(page) = diags.keep(page) else {
             continue;
         };
-        let rules = if page.file.starts_with("world/items/") {
+        let rules = if page.file_path.starts_with("world/items/") {
             item::add(page, &mut items, &mut diags)
-        } else if page.file.starts_with("world/places/") {
+        } else if page.file_path.starts_with("world/places/") {
             place::add(page, &mut places, &mut place_meters, &mut diags)
         } else {
             None
@@ -334,17 +334,17 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let path_lines = diags.keep(utf8_text(root, MAP_FILE).and_then(|text| map::load(&text)));
     let paths = (path_lines.as_ref()).and_then(|lines| diags.keep(Paths::index(lines.clone())));
     let world_meters = if root.join("world/meters.yaml").is_file() {
-        let rel = "world/meters.yaml";
+        let file_path = "world/meters.yaml";
         diags.keep(
-            utf8_text(root, rel)
-                .and_then(|text| meters::load(rel, &text, Some(entity::Id::Global))),
+            utf8_text(root, file_path)
+                .and_then(|text| meters::load(file_path, &text, Some(entity::Id::Global))),
         )
     } else {
         Some(BTreeMap::new())
     };
-    let rel = "rules/meters.yaml";
-    let mut meters =
-        diags.keep(utf8_text(root, rel).and_then(|text| meters::load(rel, &text, None)));
+    let file_path = "rules/meters.yaml";
+    let mut meters = diags
+        .keep(utf8_text(root, file_path).and_then(|text| meters::load(file_path, &text, None)));
     for page in collect_markdown_files(root, "cast") {
         let Some(page) = diags.keep(page) else {
             continue;
@@ -352,9 +352,9 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         let rules = cast::add(page, &mut cast, meters.as_mut(), &mut diags);
         loaded.extend(rules.unwrap_or_default());
     }
-    for (file, own) in place_meters {
+    for (file_path, own) in place_meters {
         if let Some(meters) = meters.as_mut() {
-            meters::add_own(meters, own, None, &FileText::named(&file), &mut diags);
+            meters::add_own(meters, own, None, &FileText::named(&file_path), &mut diags);
         }
     }
     let modifiers = match &meters {
@@ -362,10 +362,17 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
             .keep(utf8_text(root, MODIFIERS_FILE).and_then(|text| modifiers::load(&text, meters))),
         _ => Some(BTreeMap::new()),
     };
-    let [verbs, budget] = ["rules/verbs.yaml", "rules/budget.yaml"]
-        .map(|rel| diags.keep(utf8_text(root, rel)).map(|text| (rel, text)));
-    if let Some((rel, text)) = &verbs {
-        loaded.extend(diags.keep(verbs_from_text(rel, text)).unwrap_or_default());
+    let [verbs, budget] = ["rules/verbs.yaml", "rules/budget.yaml"].map(|file_path| {
+        diags
+            .keep(utf8_text(root, file_path))
+            .map(|text| (file_path, text))
+    });
+    if let Some((file_path, text)) = &verbs {
+        loaded.extend(
+            diags
+                .keep(verbs_from_text(file_path, text))
+                .unwrap_or_default(),
+        );
     }
     let (story_rules, stories) =
         load_stories(root, meters.as_mut(), world_meters.as_ref(), &mut diags);
@@ -378,7 +385,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.extend(taken.then(|| source.refuse_duplicate(&rule.id, "", Locator::Nowhere, twice)));
     }
     let rules = rule::Table::new(loaded);
-    let budget = budget.and_then(|(rel, text)| diags.keep(budget::load(rel, &text)));
+    let budget = budget.and_then(|(file_path, text)| diags.keep(budget::load(file_path, &text)));
     if let (Some(meters), Some(world_meters), Some(paths)) = (&meters, &world_meters, &paths) {
         let scope = EntityScope {
             meters,

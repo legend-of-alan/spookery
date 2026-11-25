@@ -14,12 +14,12 @@ const METERS_SCHEMA: &str = "meters";
 
 /// A meters file, whose meters `carrier` carries.
 pub(super) fn load(
-    rel: &str,
+    file_path: &str,
     text: &str,
     carrier: Option<entity::Id>,
 ) -> Result<BTreeMap<String, meter::Descriptor>, Vec<Diagnostic>> {
-    let doc: MetersDoc = parse_tagged(rel, text, METERS_SCHEMA, false)?;
-    let source = FileText { file: rel, text };
+    let doc: MetersDoc = parse_tagged(file_path, text, METERS_SCHEMA, false)?;
+    let source = FileText { file_path, text };
     meter_descs(&source, doc.meters, carrier)
 }
 

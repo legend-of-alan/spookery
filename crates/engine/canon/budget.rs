@@ -62,9 +62,9 @@ impl Default for Budget {
     }
 }
 
-pub(crate) fn load(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    let doc: BudgetDoc = parse_tagged(rel, text, BUDGET_SCHEMA, false)?;
-    let source = FileText { file: rel, text };
+pub(crate) fn load(file_path: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
+    let doc: BudgetDoc = parse_tagged(file_path, text, BUDGET_SCHEMA, false)?;
+    let source = FileText { file_path, text };
     let mut diags = Vec::new();
     let mut budget = Budget::default();
     macro_rules! set_numbers {

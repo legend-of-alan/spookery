@@ -6,17 +6,20 @@ use crate::diagnostic::{locate_nth, Code, Diagnostic};
 use crate::rules::rule::LineColumn;
 use crate::Reason;
 
-/// One pack file as the loader sees it: its pack-relative name and its YAML text, which
+/// One pack file as the loader sees it: its pack-relative path and its YAML text, which
 /// starts on the file's first line.
 pub(super) struct FileText<'a> {
-    pub file: &'a str,
+    pub file_path: &'a str,
     pub text: &'a str,
 }
 
 impl<'a> FileText<'a> {
     /// A file or directory whose text the caller does not hold, such as a lint's.
-    pub(super) fn named(file: &'a str) -> Self {
-        Self { file, text: "" }
+    pub(super) fn named(file_path: &'a str) -> Self {
+        Self {
+            file_path,
+            text: "",
+        }
     }
 
     /// The refusal at `path` when `id` is empty.
@@ -148,7 +151,7 @@ impl Problem<'_> {
     fn into_diagnostic(self) -> Diagnostic {
         let source = self.source;
         let code = Code::Error(Reason::Schema);
-        let mut diag = Diagnostic::new(source.file, code, &self.message, self.hint);
+        let mut diag = Diagnostic::new(source.file_path, code, &self.message, self.hint);
         if !self.path.is_empty() {
             diag = diag.at_path(self.path);
         }

@@ -21,7 +21,7 @@ pub(super) fn load(
 ) -> Result<BTreeMap<String, modifier::Descriptor>, Vec<Diagnostic>> {
     let doc: ModifiersDoc = parse_tagged(MODIFIERS_FILE, text, MODIFIERS_SCHEMA, false)?;
     let source = FileText {
-        file: MODIFIERS_FILE,
+        file_path: MODIFIERS_FILE,
         text,
     };
     let mut diags = Diags::default();

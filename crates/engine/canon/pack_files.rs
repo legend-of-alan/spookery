@@ -11,7 +11,7 @@ use crate::Reason;
 /// A Markdown file split at its frontmatter fence. `text` is the whole file, and `yaml` is
 /// the frontmatter from the opening fence, so its line numbers are the file's.
 pub(super) struct Page {
-    pub file: String,
+    pub file_path: String,
     pub text: String,
     pub yaml: String,
     pub body: String,
@@ -26,23 +26,23 @@ pub(super) fn collect_markdown_files(root: &Path, dir: &str) -> Vec<Result<Page,
     if collect_files(&root.join(dir), root, &mut files).is_err() {
         pages.push(Err(vec![unreadable_dir(dir)]));
     }
-    for (file, bytes) in files {
-        if !file.ends_with(".md") {
+    for (file_path, bytes) in files {
+        if !file_path.ends_with(".md") {
             continue;
         }
         let Ok(text) = String::from_utf8(bytes) else {
             pages.push(Err(vec![schema_error(
-                &file,
+                &file_path,
                 "this file is not UTF-8 text",
                 "save it as UTF-8",
             )
             .at_path("schema")]));
             continue;
         };
-        let split = split_frontmatter(&file, &text)
+        let split = split_frontmatter(&file_path, &text)
             .map(|(yaml, body)| (yaml.to_string(), body.to_string()));
         pages.push(split.map(|(yaml, body)| Page {
-            file,
+            file_path,
             text,
             yaml,
             body,
@@ -61,20 +61,20 @@ pub(super) fn unreadable_dir(dir: &str) -> Diagnostic {
     )
 }
 
-pub(super) fn utf8_text(root: &Path, rel: &str) -> Result<String, Vec<Diagnostic>> {
-    let path = root.join(rel);
+pub(super) fn utf8_text(root: &Path, file_path: &str) -> Result<String, Vec<Diagnostic>> {
+    let path = root.join(file_path);
     if !path.is_file() {
         return Err(vec![error(
-            rel,
+            file_path,
             Reason::NotInSpec,
-            &format!("{rel} is missing"),
-            &format!("add {rel}"),
+            &format!("{file_path} is missing"),
+            &format!("add {file_path}"),
         )
         .at_path("schema")]);
     }
     fs::read_to_string(&path).map_err(|_| {
         vec![error(
-            rel,
+            file_path,
             Reason::Schema,
             "this file could not be read as UTF-8 text",
             "save it as UTF-8",
@@ -102,21 +102,21 @@ pub(super) fn collect_files(
             collect_files(&path, root, out)?;
             continue;
         }
-        let rel = path.strip_prefix(root).map_err(|_| Reason::Schema)?;
-        let rel = rel
+        let relative = path.strip_prefix(root).map_err(|_| Reason::Schema)?;
+        let file_path = relative
             .components()
             .map(|component| component.as_os_str().to_string_lossy())
             .collect::<Vec<_>>()
             .join("/");
         let bytes = fs::read(&path).map_err(|_| Reason::Schema)?;
-        out.push((rel, bytes));
+        out.push((file_path, bytes));
     }
     Ok(())
 }
 
 /// The frontmatter, opening fence included and closing fence left out, and the body after it.
 pub(super) fn split_frontmatter<'a>(
-    file: &str,
+    file_path: &str,
     text: &'a str,
 ) -> Result<(&'a str, &'a str), Vec<Diagnostic>> {
     let rest = match text
@@ -126,7 +126,7 @@ pub(super) fn split_frontmatter<'a>(
         Some(rest) => rest,
         None => {
             return Err(vec![schema_error(
-                file,
+                file_path,
                 "this file has no YAML frontmatter",
                 "start with a --- line and close the header with ---",
             )
@@ -144,7 +144,7 @@ pub(super) fn split_frontmatter<'a>(
         return Ok((&text[..text.len() - 4], ""));
     }
     Err(vec![schema_error(
-        file,
+        file_path,
         "this file has no closing frontmatter fence",
         "close the header with a --- line",
     )

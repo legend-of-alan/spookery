@@ -36,23 +36,30 @@ pub(super) fn load_stories(
     }
     let mut rules = Vec::new();
     let mut stories = BTreeMap::new();
-    for (file, bytes) in files {
-        if !file.ends_with(".yaml") {
+    for (file_path, bytes) in files {
+        if !file_path.ends_with(".yaml") {
             continue;
         }
         let Ok(text) = std::str::from_utf8(&bytes) else {
             diags.push(schema_error(
-                &file,
+                &file_path,
                 "this file is not UTF-8 text",
                 "save it as UTF-8",
             ));
             continue;
         };
-        let Some(story) = diags.keep(parse_tagged::<StoryDoc>(&file, text, STORY_SCHEMA, true))
-        else {
+        let Some(story) = diags.keep(parse_tagged::<StoryDoc>(
+            &file_path,
+            text,
+            STORY_SCHEMA,
+            true,
+        )) else {
             continue;
         };
-        let source = FileText { file: &file, text };
+        let source = FileText {
+            file_path: &file_path,
+            text,
+        };
         let empty = ("id is empty", "set id to a short story id");
         let twice = ("story", "is already defined", "keep one story with this id");
         let taken = stories.contains_key(story.id.as_str());
@@ -72,7 +79,8 @@ pub(super) fn load_stories(
         }
         let name = story.name.unwrap_or_else(|| story.id.clone());
         stories.insert(id, StoryDef { name });
-        let story_rules = rule_list::rules_from_yaml(&file, story.rules, &Owner::Story(story.id));
+        let story_rules =
+            rule_list::rules_from_yaml(&file_path, story.rules, &Owner::Story(story.id));
         rules.extend(diags.keep(story_rules).unwrap_or_default());
     }
     (rules, stories)
