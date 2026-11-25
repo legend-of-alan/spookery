@@ -505,6 +505,7 @@ enum StubHostStop {
     Accept,
     Handshake,
     Hello,
+    Claim,
 }
 
 #[given(regex = r"^a stub host that (.+)$")]
@@ -513,6 +514,7 @@ fn a_stub_host(world: &mut World, behavior: String) {
         "accepts the connection and says nothing" => StubHostStop::Accept,
         "finishes the handshake and sends no hello" => StubHostStop::Handshake,
         "sends the hello and only chatter after the claim" => StubHostStop::Hello,
+        "answers the claim and then says nothing" => StubHostStop::Claim,
         other => panic!("unknown stub host {other}"),
     };
     let listener =
@@ -528,7 +530,7 @@ fn a_stub_host(world: &mut World, behavior: String) {
 /// opens one connection for the picker and, once a PC is chosen, one to claim it.
 fn serve_stub_host(listener: &net::TcpListener, stop: StubHostStop) {
     let connections_to_serve = match stop {
-        StubHostStop::Hello => 2,
+        StubHostStop::Hello | StubHostStop::Claim => 2,
         _ => 1,
     };
     for stream in listener.incoming().take(connections_to_serve) {
@@ -540,7 +542,7 @@ fn serve_stub_host(listener: &net::TcpListener, stop: StubHostStop) {
         let Ok(mut socket) = tungstenite::accept(stream) else {
             continue;
         };
-        if let StubHostStop::Hello = stop {
+        if let StubHostStop::Hello | StubHostStop::Claim = stop {
             let hello = ServerBody::Hello {
                 version: VERSION,
                 commands: vec!["claim".into(), "release".into(), "wait".into()],
@@ -550,7 +552,29 @@ fn serve_stub_host(listener: &net::TcpListener, stop: StubHostStop) {
             };
             let _ = socket.send(Message::text(wrap_in_server_message(None, hello).to_text()));
         }
-        read_then_chatter(&mut socket);
+        match stop {
+            StubHostStop::Claim => answer_claim_then_stay_silent(&mut socket),
+            _ => read_then_chatter(&mut socket),
+        }
+    }
+}
+
+/// Reads until play closes `socket`, answering the first message, the claim, with a view and
+/// nothing after it, so play's release gets no reply.
+fn answer_claim_then_stay_silent(socket: &mut tungstenite::WebSocket<net::TcpStream>) {
+    let mut claim_answered = false;
+    loop {
+        match socket.read() {
+            Ok(Message::Text(_)) if !claim_answered => {
+                claim_answered = true;
+                let view = r#"{"body":{"kind":"view","viewer":"rowan","place":"docks_shop","visible_actors":[],"notes":[],"items":[],"habits":[]}}"#;
+                if socket.send(Message::text(view)).is_err() {
+                    return;
+                }
+            }
+            Ok(_) => {}
+            Err(_) => return,
+        }
     }
 }
 

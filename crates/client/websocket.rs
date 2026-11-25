@@ -14,7 +14,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use crate::protocol::{ClientMessage, ServerBody, ServerMessage};
 use crate::Error;
 
-/// How long opening a connection may take, and how long claiming a PC over it may take.
+/// How long opening a connection, or claiming or releasing a PC over it, may take.
 pub(crate) const CONNECTION_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// One open seat connection: `/player` or `/gm` on the game port.
@@ -66,18 +66,22 @@ impl Connection {
             .map_err(|err| Error::Io(std::io::Error::other(err)))
     }
 
-    /// Send `release` and wait for its reply, so the seat is free once this returns. A host
-    /// that is already gone holds nothing to give back.
+    /// Send `release` and wait for its reply within `CONNECTION_TIMEOUT`, so the seat is free
+    /// once this returns. A host that is already gone holds nothing to give back.
     pub async fn release(&mut self) -> Result<(), Error> {
         let Ok(id) = self.send("release", serde_json::json!({})).await else {
             return Ok(());
         };
-        while let Some(Ok(message)) = self.recv().await {
-            if message.reply_to.as_deref() == Some(id.as_str()) {
-                break;
+        let releasing = async {
+            while let Some(Ok(message)) = self.recv().await {
+                if message.reply_to.as_deref() == Some(id.as_str()) {
+                    break;
+                }
             }
-        }
-        Ok(())
+        };
+        tokio::time::timeout(CONNECTION_TIMEOUT, releasing)
+            .await
+            .map_err(|_| Error::Message("Releasing the character timed out.".into()))
     }
 
     /// The next message, or the text of one that could not be read as `Error::Unreadable`.
