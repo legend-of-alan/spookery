@@ -6,7 +6,7 @@ mod trigger;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::canon::map::MAP_FILE;
-use crate::canon::{Canon, ItemDef, PathDef, PlaceDef, OPEN};
+use crate::canon::{item, place, Canon, PathDef, OPEN};
 use crate::diagnostic::{schema_error, warning, Diagnostic};
 use crate::ecs::component::modifier;
 use crate::ecs::id::PlaceId;
@@ -19,8 +19,8 @@ pub(super) use entity_scope::{check_carriers, check_meter_reads, EntityScope};
 /// Paths whose ends are not places, and items a path names but the pack does not.
 pub(super) fn check_paths(
     paths: &[PathDef],
-    places: &BTreeMap<PlaceId, PlaceDef>,
-    items: &BTreeMap<String, ItemDef>,
+    places: &BTreeMap<PlaceId, place::Def>,
+    items: &BTreeMap<String, item::Def>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for (row, path) in paths.iter().enumerate() {
@@ -49,7 +49,7 @@ pub(super) fn check_paths(
 
 pub(super) fn check_rule_items(
     rules: &rule::Table,
-    items: &BTreeMap<String, ItemDef>,
+    items: &BTreeMap<String, item::Def>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {

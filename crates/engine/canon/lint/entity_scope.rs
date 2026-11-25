@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use crate::canon::map::MAP_FILE;
 use crate::canon::refusal::{FileText, Locator, Problem};
-use crate::canon::{self, CastDef, PlaceDef, StoryDef, OPEN};
+use crate::canon::{self, cast, place, story, OPEN};
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::{ActorId, PlaceId, StoryId};
@@ -89,10 +89,10 @@ fn fixed_self_id(rule: &Rule) -> Option<&str> {
 pub(in crate::canon) struct EntityScope<'c> {
     pub meters: &'c BTreeMap<String, meter::Descriptor>,
     pub world_meters: &'c BTreeMap<String, meter::Descriptor>,
-    pub cast: &'c BTreeMap<ActorId, CastDef>,
-    pub places: &'c BTreeMap<PlaceId, PlaceDef>,
+    pub cast: &'c BTreeMap<ActorId, cast::Def>,
+    pub places: &'c BTreeMap<PlaceId, place::Def>,
     pub paths: &'c canon::Paths,
-    pub stories: &'c BTreeMap<StoryId, StoryDef>,
+    pub stories: &'c BTreeMap<StoryId, story::Def>,
 }
 
 impl EntityScope<'_> {

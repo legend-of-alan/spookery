@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 
-use crate::canon::{unknown_item, ItemDef};
+use crate::canon::{item, unknown_item};
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::ecs::component::meter::{self, Meter};
 use crate::ecs::component::modifier::{self, Modifier};
@@ -273,7 +273,7 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
         } else if !canon
             .items
             .get(wielded)
-            .is_some_and(|item: &ItemDef| item.tags.iter().any(|tag| tag == "weapon"))
+            .is_some_and(|item: &item::Def| item.tags.iter().any(|tag| tag == "weapon"))
         {
             diags.push(
                 schema_error(

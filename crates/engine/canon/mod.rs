@@ -3,9 +3,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use serde::Deserialize;
-
-use crate::canon;
 use crate::diagnostic::Diagnostic;
 use crate::ecs::component::meter;
 use crate::ecs::component::modifier;
@@ -18,7 +15,7 @@ pub(crate) use spookery_protocol::{ControlType, MenuRow, PackSummary};
 
 mod budget;
 mod cast;
-mod item;
+pub(crate) mod item;
 mod lint;
 mod map;
 mod meters;
@@ -28,7 +25,7 @@ mod pack_files;
 mod place;
 mod refusal;
 mod rule_list;
-mod story;
+pub(crate) mod story;
 mod verbs;
 
 pub(crate) use budget::Budget;
@@ -50,12 +47,12 @@ pub struct Canon {
     pub title: String,
     pub system: String,
     pub start_place: String,
-    pub places: BTreeMap<PlaceId, PlaceDef>,
+    pub places: BTreeMap<PlaceId, place::Def>,
     /// Every line under `paths:` in `world/map.yaml`, in file order, and the index of each
     /// place's exits.
     pub paths: Paths,
-    pub cast: BTreeMap<ActorId, CastDef>,
-    pub stories: BTreeMap<StoryId, StoryDef>,
+    pub cast: BTreeMap<ActorId, cast::Def>,
+    pub stories: BTreeMap<StoryId, story::Def>,
     pub rules: rule::Table,
     /// The meters `rules/meters.yaml` gives every actor, and those one cast, place or story
     /// file gives its entity. An id is listed once.
@@ -64,48 +61,12 @@ pub struct Canon {
     pub world_meters: BTreeMap<String, meter::Descriptor>,
     /// The modifiers `rules/modifiers.yaml` defines. Each one modifies an actor meter.
     pub modifiers: BTreeMap<String, modifier::Descriptor>,
-    pub items: BTreeMap<String, ItemDef>,
+    pub items: BTreeMap<String, item::Def>,
     pub budget: Budget,
     /// Rounds between journal checkpoints. `save.yaml` is rewritten then.
     pub checkpoint_every: u64,
     /// `gm_notes` in `pack.yaml`: tone and flavor for the GM, empty when the pack has none.
     pub gm_notes: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct ItemDef {
-    /// The name a player reads, the id when the pack gives none.
-    pub name: String,
-    pub tags: Vec<String>,
-    pub body: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct PlaceDef {
-    /// The name a player reads, the id when the pack gives none.
-    pub name: String,
-    pub body: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct StoryDef {
-    /// The name a player reads, the id when the pack gives none.
-    pub name: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct CastDef {
-    pub control_type: canon::ControlType,
-    /// The name a player reads, the id when the pack gives none.
-    pub name: String,
-    pub body: String,
-    pub idle: Option<IdleProfile>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct IdleProfile {
-    pub eligible: bool,
 }
 
 impl Canon {
@@ -177,7 +138,7 @@ impl Canon {
         self.paths.exits(from_place_id)
     }
 
-    pub fn idle_profile(&self, actor_id: &ActorId) -> Option<&IdleProfile> {
+    pub fn idle_profile(&self, actor_id: &ActorId) -> Option<&cast::IdleProfile> {
         self.cast.get(actor_id).and_then(|cast| cast.idle.as_ref())
     }
 
@@ -368,13 +329,10 @@ mod tests {
             .menu
             .iter()
             .any(|row| row.id == "restock_lamp_oil" && row.kind == "habit"));
-        assert_eq!(
-            summary.control_types.get("mira"),
-            Some(&canon::ControlType::Npc)
-        );
+        assert_eq!(summary.control_types.get("mira"), Some(&ControlType::Npc));
         assert_eq!(
             summary.control_types.get("rowan"),
-            Some(&canon::ControlType::PcTemplate)
+            Some(&ControlType::PcTemplate)
         );
         let rendered = format!("{:?}{:?}", summary.menu, summary.control_types);
         assert!(!rendered.contains("CAST-BODY-SENTINEL"));

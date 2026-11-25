@@ -7,17 +7,24 @@ use serde::Deserialize;
 use crate::canon::pack_files::Page;
 use crate::canon::refusal::{Diags, FileText, Locator};
 use crate::canon::rule_list::{self, parse::RuleYaml};
-use crate::canon::ItemDef;
 use crate::diagnostic::load_tagged;
 use crate::rules::rule::{Owner, Rule};
 
 const SCHEMA: &str = "item";
 
+#[derive(Clone, Debug)]
+pub struct Def {
+    /// The name a player reads, the id when the pack gives none.
+    pub name: String,
+    pub tags: Vec<String>,
+    pub body: String,
+}
+
 /// One item page into `items`, and its rules. The item is kept even when its rules do not
 /// compile, so a later item with the same id is still refused.
 pub(super) fn add(
     page: Page,
-    items: &mut BTreeMap<String, ItemDef>,
+    items: &mut BTreeMap<String, Def>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
     let item: ItemDoc = diags.keep(load_tagged(&page.file, &page.yaml, SCHEMA, true))?;
@@ -35,7 +42,7 @@ pub(super) fn add(
     let rules = rule_list::compile(&page.file, item.rules, &Owner::Item(item.id.clone()));
     items.insert(
         item.id.clone(),
-        ItemDef {
+        Def {
             name: item.name.unwrap_or(item.id),
             tags: item.tags,
             body: page.body.trim().to_string(),

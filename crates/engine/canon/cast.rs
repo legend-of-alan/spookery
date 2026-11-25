@@ -4,11 +4,11 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::canon;
 use crate::canon::meters::{self, meter_descs, MeterYaml};
 use crate::canon::pack_files::Page;
 use crate::canon::refusal::{Diags, FileText, Locator, Problem};
 use crate::canon::rule_list::{self, parse::RuleYaml};
-use crate::canon::{self, CastDef, IdleProfile};
 use crate::diagnostic::{load_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::ActorId;
@@ -17,10 +17,25 @@ use crate::rules::rule::{Owner, Rule};
 
 const SCHEMA: &str = "cast";
 
+#[derive(Clone, Debug)]
+pub struct Def {
+    pub control_type: canon::ControlType,
+    /// The name a player reads, the id when the pack gives none.
+    pub name: String,
+    pub body: String,
+    pub idle: Option<IdleProfile>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IdleProfile {
+    pub eligible: bool,
+}
+
 /// One cast page into `cast`, its own meters into `meters` when those loaded, and its rules.
 pub(super) fn add(
     page: Page,
-    cast: &mut BTreeMap<ActorId, CastDef>,
+    cast: &mut BTreeMap<ActorId, Def>,
     meters: Option<&mut BTreeMap<String, meter::Descriptor>>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
@@ -51,7 +66,7 @@ pub(super) fn add(
     }
     cast.insert(
         id.clone(),
-        CastDef {
+        Def {
             control_type,
             name: file.name.unwrap_or(file.id),
             body: page.body,

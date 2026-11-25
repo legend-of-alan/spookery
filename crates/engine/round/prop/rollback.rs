@@ -15,7 +15,7 @@
 
 use std::sync::Arc;
 
-use crate::canon::StoryDef;
+use crate::canon::story;
 use crate::ecs::change::{self, Change, ChangeValue};
 use crate::ecs::component::meter::{self, Meter};
 use crate::ecs::component::modifier;
@@ -75,7 +75,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     canon.budget.max_state_keys_mutated = 1000;
     let key = canon.items.get_mut("brass_key").expect("the brass key");
     key.tags.push("weapon".to_string());
-    let tale = StoryDef {
+    let tale = story::Def {
         name: "tale".to_string(),
     };
     canon.stories.insert("tale".into(), tale);

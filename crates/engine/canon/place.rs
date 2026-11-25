@@ -8,7 +8,6 @@ use crate::canon::meters::{meter_descs, MeterYaml};
 use crate::canon::pack_files::Page;
 use crate::canon::refusal::{Diags, FileText, Locator};
 use crate::canon::rule_list::{self, parse::RuleYaml};
-use crate::canon::PlaceDef;
 use crate::diagnostic::{load_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::PlaceId;
@@ -17,6 +16,13 @@ use crate::rules::rule::{Owner, Rule};
 
 const SCHEMA: &str = "place";
 
+#[derive(Clone, Debug)]
+pub struct Def {
+    /// The name a player reads, the id when the pack gives none.
+    pub name: String,
+    pub body: String,
+}
+
 /// The meters one place file declares, by that file, for `load_canon` to add once the meters
 /// every actor carries have loaded.
 pub(super) type Meters = Vec<(String, BTreeMap<String, meter::Descriptor>)>;
@@ -24,7 +30,7 @@ pub(super) type Meters = Vec<(String, BTreeMap<String, meter::Descriptor>)>;
 /// One place page into `places` and its meters into `meters`, and its rules.
 pub(super) fn add(
     page: Page,
-    places: &mut BTreeMap<PlaceId, PlaceDef>,
+    places: &mut BTreeMap<PlaceId, Def>,
     meters: &mut Meters,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
@@ -48,7 +54,7 @@ pub(super) fn add(
     }
     places.insert(
         id,
-        PlaceDef {
+        Def {
             name: file.name.unwrap_or_else(|| file.id.clone()),
             body: page.body,
         },

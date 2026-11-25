@@ -10,7 +10,6 @@ use crate::canon::meters::{self, meter_descs, MeterYaml};
 use crate::canon::pack_files::{collect_files, unreadable_dir};
 use crate::canon::refusal::{Diags, FileText, Locator};
 use crate::canon::rule_list::{self, parse::RuleYaml};
-use crate::canon::StoryDef;
 use crate::diagnostic::{load_tagged, schema_error};
 use crate::ecs::component::meter;
 use crate::ecs::id::StoryId;
@@ -18,6 +17,12 @@ use crate::entity;
 use crate::rules::rule::{Owner, Rule};
 
 const SCHEMA: &str = "story";
+
+#[derive(Clone, Debug)]
+pub struct Def {
+    /// The name a player reads, the id when the pack gives none.
+    pub name: String,
+}
 
 /// Every `story/*.yaml` file in directory order: its rules compiled, and its meters added to
 /// `meters` when those loaded. A file with an empty id, or an id an earlier file has, is refused
@@ -27,7 +32,7 @@ pub(super) fn load_stories(
     mut meters: Option<&mut BTreeMap<String, meter::Descriptor>>,
     world_meters: Option<&BTreeMap<String, meter::Descriptor>>,
     diags: &mut Diags,
-) -> (Vec<Rule>, BTreeMap<StoryId, StoryDef>) {
+) -> (Vec<Rule>, BTreeMap<StoryId, Def>) {
     let dir = root.join("story");
     let mut files = Vec::new();
     if dir.is_dir() && collect_files(&dir, root, &mut files).is_err() {
@@ -69,7 +74,7 @@ pub(super) fn load_stories(
             meters::add_own(meters, own, world_meters, &source, diags);
         }
         let name = story.name.unwrap_or_else(|| story.id.clone());
-        stories.insert(id, StoryDef { name });
+        stories.insert(id, Def { name });
         let compiled = rule_list::compile(&file, story.rules, &Owner::Story(story.id));
         rules.extend(diags.keep(compiled).unwrap_or_default());
     }
