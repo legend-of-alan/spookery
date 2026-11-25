@@ -144,7 +144,7 @@ jobs:
         run: cargo test --workspace --locked
 
   compatibility-replay:
-    # Replays crates/protocol/sessions/v3.jsonl, a session recorded against wire version 3,
+    # Replays crates/protocol/sessions/v4.jsonl, a session recorded against wire version 4,
     # against this build. Compatibility in docs/seat-protocol.md says what may change.
     runs-on: ubuntu-latest
     steps:

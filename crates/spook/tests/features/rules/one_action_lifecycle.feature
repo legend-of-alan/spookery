@@ -14,18 +14,29 @@ Feature: One action lifecycle
   Scenario: A walker is on the stairs and in neither room
     Given the stairs take 10 ticks and Rowan holds the brass key
     When Rowan plays "travel stairs"
-    Then Rowan is at exit:docks_shop.stairs
+    Then Rowan is at path:stairs
     And Wren's look does not show Rowan
     And Rowan's look shows "on the stairs until tick 1090"
     And spook verify passes on this pack
     When rounds pass until tick 1090
     Then Rowan is at mira_rooms
 
-  Scenario: A walker on an unnamed exit to the street reads the street's name
-    Given the shop's exit to the street takes 10 ticks
+  Scenario Outline: A walker on an unnamed two-way path reads the name of the end they head for, whether the walk ends in the round it starts or later
+    Given the two-way path between the shop and the street takes <ticks> ticks
     When Rowan plays "travel docks_street"
-    Then Rowan is at exit:docks_shop.docks_street
-    And Rowan's look shows "on the Docks Street until tick 1090"
+    Then Rowan is at <where out>
+    And Rowan's look shows "<busy line out>"
+    And Rowan's look and every place change Rowan saw last round name "Docks Street"
+    When rounds pass until tick <turn back tick>
+    And Rowan plays "travel docks_shop"
+    Then Rowan is at <where back>
+    And Rowan's look shows "<busy line back>"
+    And Rowan's look and every place change Rowan saw last round name "Docks Shop"
+
+    Examples:
+      | ticks | where out                    | busy line out                       | turn back tick | where back                   | busy line back                    |
+      | 10    | path:docks_shop.docks_street | on the Docks Street until tick 1090 | 1090           | path:docks_shop.docks_street | on the Docks Shop until tick 1100 |
+      | 2     | docks_street                 |                                     | 1085           | docks_shop                   |                                   |
 
   Scenario: A timed teleport lands like travel
     Given the rule "blink" teleports Rowan to mira_rooms and takes 10 ticks

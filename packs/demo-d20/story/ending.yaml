@@ -10,7 +10,7 @@ rules:
     if:
       - at:
           subject: self
-          place: exit:yard.gate
+          place: path:gate
     do:
       - flag:
           of: world
@@ -131,10 +131,10 @@ rules:
           key: finished
           value: true
       - flag:
-          of: exit:yard.gate
+          of: path:gate
           key: open
           value: false
       - flag:
-          of: exit:yard.cart
+          of: path:cart
           key: open
           value: false

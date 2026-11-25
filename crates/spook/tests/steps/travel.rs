@@ -24,6 +24,21 @@ fn add_toll(pack: &Path) {
     fs::write(path, next).unwrap();
 }
 
+#[given(
+    expr = "a docks table with a seated player and a second path to the street, alley, named back door"
+)]
+async fn a_second_path_to_the_street(world: &mut World) {
+    let pack = copy_pack("docks", "alley");
+    support::append(
+        &pack.join("world/map.yaml"),
+        "  - path: docks_shop -> docks_street\n    id: alley\n    name: back door\n",
+    );
+    edit_save(&pack, |_| {});
+    host::listen(world, &pack).await;
+    host::seat_rowan(world, &pack).await;
+    world.pack = Some(pack);
+}
+
 #[given(expr = "docks_street has no exit to mira_rooms")]
 async fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
     let pack = copy_pack("docks", "no-exit");
@@ -73,7 +88,7 @@ async fn stairs_need_a_key(world: &mut World, place: String, walk: String) {
         edit_save(&pack, |now| {
             let rowan = &"rowan".into();
             (now.actors_mut().get_mut::<component::Place>(rowan))
-                .set(&place)
+                .set(place.as_str())
                 .unwrap();
         });
     }
@@ -234,7 +249,7 @@ async fn both_busy_without_a_gm(world: &mut World) {
     add_toll(&pack);
     edit_save(&pack, |now| {
         now.world_time = EVENING;
-        set_busy(now, "rowan", EVENING + 10, "docks_shop.stairs");
+        set_busy(now, "rowan", EVENING + 10, "docks_shop", "stairs");
     });
     fs::write(
         pack.join("cast/pc-nell.md"),
@@ -243,7 +258,13 @@ async fn both_busy_without_a_gm(world: &mut World) {
     .unwrap();
     edit_save(&pack, |now| {
         add_nell(now, "docks_shop");
-        set_busy(now, "nell", EVENING + 5, "docks_shop.docks_street");
+        set_busy(
+            now,
+            "nell",
+            EVENING + 5,
+            "docks_shop",
+            "docks_shop.docks_street",
+        );
     });
     host::listen(world, &pack).await;
     host::seat_rowan(world, &pack).await;
@@ -285,7 +306,7 @@ async fn a_long_journey_and_the_cap(world: &mut World) {
     let pack = copy_pack("docks", "cap");
     edit_save(&pack, |now| {
         now.world_time = EVENING;
-        set_busy(now, "rowan", EVENING + 200 * 5, "docks_shop.stairs");
+        set_busy(now, "rowan", EVENING + 200 * 5, "docks_shop", "stairs");
     });
     host::listen(world, &pack).await;
     host::seat_rowan(world, &pack).await;
@@ -384,7 +405,8 @@ async fn harbormouse_reaches_the_lane_and_hears_the_ending(world: &mut World) {
     let pack = host::pack(world).to_path_buf();
     let session = spookery_engine::Session::peek(&pack).unwrap();
     let map = session.map(&ActorId::from("harbormouse")).unwrap();
-    let lane = (map.iter().flat_map(|place| &place.exits)).find(|exit| exit.exit_id == "mill_lane");
+    let lane = (map.iter().flat_map(|place| &place.exits))
+        .find(|exit| exit.path_id == "gate_yard.mill_lane");
     let lane_ticks = lane.unwrap().ticks;
     assert!(lane_ticks > 0);
     let now = world_of(&pack);

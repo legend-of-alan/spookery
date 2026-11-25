@@ -58,17 +58,20 @@ fn the_stairs_take(world: &mut World, ticks: u64) {
     let pack = world.pack.clone().unwrap();
     super::common::replace_in_file(
         &pack.join("world/map.yaml"),
-        "    id: stairs\n    cost:\n      ticks: 2\n",
-        &format!("    id: stairs\n    cost:\n      ticks: {ticks}\n"),
+        "    name: stairs\n    cost:\n      ticks: 2\n",
+        &format!("    name: stairs\n    cost:\n      ticks: {ticks}\n"),
     );
     edit_save(&pack, give_key);
 }
 
-#[given(expr = "the shop's exit to the street takes {int} ticks")]
-fn the_street_exit_takes(world: &mut World, ticks: u64) {
+#[given(expr = "the two-way path between the shop and the street takes {int} ticks")]
+fn the_shop_street_path_takes(world: &mut World, ticks: u64) {
     let pack = world.pack.clone().unwrap();
-    let cost = format!("    cost:\n      ticks: {ticks}\n");
-    crate::support::split_path(&pack, ["docks_shop", "docks_street"], [&cost, ""]);
+    super::common::replace_in_file(
+        &pack.join("world/map.yaml"),
+        "  - path: docks_shop <-> docks_street\n",
+        &format!("  - path: docks_shop <-> docks_street\n    cost:\n      ticks: {ticks}\n"),
+    );
     stamp_pack_rev(&pack);
 }
 
@@ -138,12 +141,12 @@ fn travel_is_cancellable(world: &mut World) {
     let path = pack.join("rules/verbs.yaml");
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replace(
-        "      target: exit
+        "      target: path
     do:
       - location:
           via: target
 ",
-        "      target: exit
+        "      target: path
     cancellable: true
     do:
       - location:
@@ -182,7 +185,9 @@ fn finished(world: &mut World, verb: String) {
 fn rowan_plays(world: &mut World, line: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
     queue(&mut opened, &line);
-    play(&mut opened);
+    let output = play(&mut opened);
+    let rowan_seen = output.seen.into_iter().find(|seen| seen.viewer == *"rowan");
+    world.rowan_last_round_changes = rowan_seen.map(|seen| seen.changes).unwrap_or_default();
 }
 
 #[when(expr = "Rowan plays {string} and {string} in the same round")]
@@ -233,6 +238,21 @@ fn wrens_look_does_not_show_rowan(world: &mut World) {
     );
 }
 
+#[then(expr = "Rowan's look and every place change Rowan saw last round name {string}")]
+fn rowans_look_and_last_round_place_changes_name(world: &mut World, name: String) {
+    let opened = open(world.pack.as_ref().unwrap());
+    let view = opened.perceive(&seated(), "rowan").unwrap();
+    assert_eq!(view.place_name, name);
+    let changes = world.rowan_last_round_changes.iter();
+    let place_changes: Vec<_> = (changes.into_iter())
+        .filter(|change| change.component_id == "place")
+        .collect();
+    assert!(!place_changes.is_empty(), "Rowan saw no place change");
+    for place_change in place_changes {
+        assert_eq!(place_change.entry_name, name, "{place_change:?}");
+    }
+}
+
 #[then(expr = "Rowan's look shows {string}")]
 fn rowans_look_shows(world: &mut World, line: String) {
     let opened = open(world.pack.as_ref().unwrap());
@@ -247,7 +267,7 @@ fn the_street_exit_shows(world: &mut World, rowan_ticks: u64, wren_ticks: u64) {
     let opened = open(world.pack.as_ref().unwrap());
     let street_ticks = |viewer_id| {
         let view = opened.perceive(&seated(), viewer_id).unwrap();
-        let street = (view.exits.iter()).find(|exit| exit.exit_id == "docks_street");
+        let street = (view.exits.iter()).find(|exit| exit.path_id == "docks_shop.docks_street");
         street.unwrap().ticks
     };
     assert_eq!(street_ticks("rowan"), rowan_ticks);

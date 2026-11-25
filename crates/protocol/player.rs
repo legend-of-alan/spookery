@@ -50,12 +50,14 @@ impl View {
     }
 }
 
-/// Part of a `View`, sent from the host to a player client. `name` is what a player reads for
-/// the exit, such as `stairs` or `Docks Street`. `place_id` and `place_name` are where it goes.
+/// Part of a `View`, sent from the host to a player client. `path_id` is the path it walks, as
+/// a move's `path` target, a `path_flag` change and a walker's `path:<id>` name it. `name` is
+/// what a player reads for the exit, such as `stairs` or `Docks Street`. `place_id` and
+/// `place_name` are where it goes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ExitView {
-    pub exit_id: String,
+    pub path_id: String,
     pub name: String,
     pub place_id: String,
     pub place_name: String,
@@ -155,7 +157,7 @@ impl ChangeValue {
 }
 
 /// One command of a `help` reply. `id` is the command, as a player types it. `target` is what
-/// it takes: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the player can name
+/// it takes: `none`, `actor`, `place`, `path` or `item`. `names` lists what the player can name
 /// for it now, by the names they read. `owner` is the id of the cast member or item whose verb
 /// this is, reached by naming them, and then `names` holds its name alone.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

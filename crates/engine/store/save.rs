@@ -98,14 +98,16 @@ fn held_meters(world: &ecs::World) -> impl Iterator<Item = (entity::Id, &str, &M
     actors.chain(places).chain(stories).chain(globals)
 }
 
-/// Every flag key the save lists, on any actor, place, story or the world.
+/// Every flag key the save lists, on any actor, place, path, story or the world.
 pub(crate) fn find_held_flags(world: &ecs::World) -> BTreeSet<&str> {
     let actors = world.actors().query::<&component::Flag>();
     let places = world.places().query::<&component::Flag>();
+    let paths = world.paths().query::<&component::Flag>();
     let stories = world.stories().query::<&component::Flag>();
     let globals = world.globals().query::<&component::Flag>();
     let keys = (actors.iter().flat_map(|held| held.iter()))
         .chain(places.iter().flat_map(|held| held.iter()))
+        .chain(paths.iter().flat_map(|held| held.iter()))
         .chain(stories.iter().flat_map(|held| held.iter()))
         .chain(globals.iter().flat_map(|held| held.iter()));
     keys.map(|(key, ())| key).collect()
@@ -156,7 +158,7 @@ pub(crate) fn migrate(mut world: ecs::World, record: &MigrateRecord) -> Result<e
 
 /// Check the save against the pack without changing it. Refuse every component on an actor with no
 /// control type, every actor the cast lacks, every actor without a place, every actor in a place
-/// or on an exit the pack lacks, every meter, item and wielded slot the pack does not define,
+/// or on a path the pack lacks, every meter, item and wielded slot the pack does not define,
 /// every meter outside its rules, every modifier the pack no longer gives that meter, and every
 /// empty id or zero count.
 pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
@@ -185,13 +187,10 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
             diags.push(diag.at_path(format!("actors.place.{id}")));
         }
     }
-    for (id, place) in actors.query::<(ActorId, &component::Place)>().iter() {
-        let known = match crate::ecs::exit_parts(place) {
-            Some(_) => crate::rules::travel::exit_stood_on(canon, place).is_some(),
-            None => canon.places.contains_key(place.as_str()),
-        };
-        if !known {
-            let problem = format!("actor '{id}' is at '{place}', which the pack does not define");
+    for (id, location) in actors.query::<(ActorId, &component::Place)>().iter() {
+        if !location.is_known(canon) {
+            let problem =
+                format!("actor '{id}' is at '{location}', which the pack does not define");
             let diag = schema_error(FILE, &problem, "move the actor to a place");
             diags.push(diag.at_path(format!("actors.place.{id}")));
         }
@@ -314,6 +313,7 @@ fn meter_error(carrier: &entity::Id, key: &str, problem: &str, hint: &str) -> Di
     let (who, path) = match carrier {
         entity::Id::Actor(id) => (format!("actor '{id}'"), format!("actors.meters.{id}")),
         entity::Id::Place(id) => (carrier.to_string(), format!("places.meters.{id}")),
+        entity::Id::Path(id) => (carrier.to_string(), format!("paths.{id}")),
         entity::Id::Story(id) => (carrier.to_string(), format!("stories.meters.{id}")),
         entity::Id::Global => ("the world".to_string(), "world.meters".to_string()),
     };

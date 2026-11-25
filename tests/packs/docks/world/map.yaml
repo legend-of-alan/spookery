@@ -3,6 +3,7 @@ paths:
   - path: docks_shop <-> docks_street
   - path: docks_shop <-> mira_rooms
     id: stairs
+    name: stairs
     cost:
       ticks: 2
     if:

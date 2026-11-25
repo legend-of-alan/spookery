@@ -4,6 +4,7 @@
 mod actors;
 pub mod component;
 mod globals;
+mod paths;
 mod places;
 pub(in crate::ecs) mod query;
 mod stories;
@@ -15,21 +16,22 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub use actors::Actors;
 pub(crate) use globals::Globals;
+pub(crate) use paths::Paths;
 pub(crate) use places::Places;
 pub use query::{Query, QueryData, QueryFilter, With, Without};
 pub(crate) use stories::Stories;
 
 use crate::canon::Canon;
-use crate::ecs::id::{self, ActorId, PlaceId, StoryId};
+use crate::ecs::id::{self, ActorId, PathId, PlaceId, StoryId};
 use crate::ecs::Save;
 
-/// A collection of entities: the actors, the places, the stories, or the one world. Its id type
-/// is its own, so an id of another collection does not compile.
+/// A collection of entities: the actors, the places, the paths, the stories, or the one world.
+/// Its id type is its own, so an id of another collection does not compile.
 pub trait Collection {
     type Id: Ord + Clone + Debug + id::AsIdRef;
 
     /// Whether `id` is one of this collection's entities. The save lists the actors; the pack's
-    /// `canon` defines the places and the stories; the world always is.
+    /// `canon` defines the places, the paths and the stories; the world always is.
     fn contains(&self, canon: &Canon, id: &Self::Id) -> bool;
 
     /// Every one of this collection's entities, in id order, as `contains` lists them.
@@ -101,6 +103,7 @@ macro_rules! in_collection {
         match $id {
             $crate::ecs::entity::Id::Actor($typed) => { let $entities = $($save)+.actors; $body },
             $crate::ecs::entity::Id::Place($typed) => { let $entities = $($save)+.places; $body },
+            $crate::ecs::entity::Id::Path($typed) => { let $entities = $($save)+.paths; $body },
             $crate::ecs::entity::Id::Story($typed) => { let $entities = $($save)+.stories; $body },
             $crate::ecs::entity::Id::Global => {
                 let ($entities, $typed) = ($($save)+.globals, &$crate::ecs::id::GlobalId);
@@ -127,23 +130,26 @@ impl Collection for Save {
 }
 
 /// Who holds a meter, a flag or an item count, as a rule's `of` names it and the journal
-/// writes it: `world`, `{actor: id}`, `{place: id}` or `{story: id}`.
+/// writes it: `world`, `{actor: id}`, `{place: id}`, `{path: id}` or `{story: id}`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Id {
     Actor(ActorId),
     Place(PlaceId),
+    Path(PathId),
     Story(StoryId),
     #[serde(rename = "world")]
     Global,
 }
 
-/// The entity as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`.
+/// The entity as a rule's `of` names it: an actor id, `place:<id>`, `path:<id>`, `story:<id>`
+/// or `world`.
 impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Id::Actor(id) => write!(f, "{id}"),
             Id::Place(id) => write!(f, "place:{id}"),
+            Id::Path(id) => write!(f, "path:{id}"),
             Id::Story(id) => write!(f, "story:{id}"),
             Id::Global => write!(f, "world"),
         }
@@ -156,6 +162,7 @@ impl fmt::Display for Id {
 pub enum IdRef<'a> {
     Actor(&'a ActorId),
     Place(&'a PlaceId),
+    Path(&'a PathId),
     Story(&'a StoryId),
     Global,
 }
@@ -171,6 +178,7 @@ impl Id {
         match self {
             Id::Actor(id) => IdRef::Actor(id),
             Id::Place(id) => IdRef::Place(id),
+            Id::Path(id) => IdRef::Path(id),
             Id::Story(id) => IdRef::Story(id),
             Id::Global => IdRef::Global,
         }

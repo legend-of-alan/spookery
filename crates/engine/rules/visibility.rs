@@ -6,11 +6,14 @@ use spookery_protocol::ChangeView;
 
 use crate::canon::Canon;
 use crate::ecs::change::{Change, ChangeValue};
-use crate::ecs::component::{Act, Component, Item, Meter, Modifier, Note, Place, WieldedItem};
-use crate::ecs::id::{ActorId, GlobalId};
+use crate::ecs::component::{
+    Act, ActorLocation, Component, Item, Meter, Modifier, Note, Place, WieldedItem,
+};
+use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component};
 use crate::entity;
 use crate::rules::effect::{Effect, EffectKind};
+use crate::rules::grammar;
 
 /// Who is asking.
 pub(crate) enum Recipient {
@@ -84,13 +87,15 @@ fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
     let entity_name = match &key.entity_id {
         entity::Id::Actor(id) => canon.name(id.as_str()).map(str::to_string),
         entity::Id::Place(id) => crate::rules::lines::find_place_name(canon, id.as_str()),
+        entity::Id::Path(_) => None,
         entity::Id::Story(id) => canon.name(id.as_str()).map(str::to_string),
         entity::Id::Global => None,
     };
     let entry_id = key.entry_id.clone().unwrap_or_default();
     let entry_name = match (key.component_id, &change.after) {
-        (Place::ID, Some(ChangeValue::Text(place))) => {
-            crate::rules::lines::find_place_name(canon, place)
+        (Place::ID, Some(ChangeValue::Text(after_id))) => {
+            let before_id = change.before.as_ref().and_then(ChangeValue::as_text);
+            find_place_change_name(canon, before_id, after_id)
         }
         (Item::ID, _) => canon.name(&entry_id).map(str::to_string),
         (Meter::ID, _) => {
@@ -107,6 +112,23 @@ fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
         before: change.before.clone(),
         after: change.after.clone(),
     })
+}
+
+/// The name a player reads for a `place` change's `after_id`: the place's name, or for
+/// `path:<id>` the name of the exit that path leaves `before_id` by.
+fn find_place_change_name(
+    canon: &Canon,
+    before_id: Option<&str>,
+    after_id: &str,
+) -> Option<String> {
+    if let Some(name) = crate::rules::lines::find_place_name(canon, after_id) {
+        return Some(name);
+    }
+    let Ok(grammar::Object::Path(path_id)) = grammar::Object::parse(after_id) else {
+        return None;
+    };
+    let exit = canon.paths.get(&path_id)?.exit_from(before_id?)?;
+    Some(exit.name(canon).to_string())
 }
 
 fn narrations(effects: &[Effect], viewer: Option<&ActorId>) -> Vec<String> {
@@ -164,22 +186,30 @@ fn is_shown(canon: &Canon, id: &entity::Id, key: &str) -> bool {
         .is_some_and(|desc| !desc.hidden)
 }
 
-/// Where `viewer_id` stands. The place is borrowed for as long as both the save and the id are.
+/// The place `viewer_id` stands in, `None` while they walk. The place is borrowed for as long as
+/// both the save and the id are.
 fn place_of<'a>(world: &'a ecs::World, viewer_id: &'a ActorId) -> Option<&'a str> {
-    world.actors().get::<component::Place>(viewer_id).get()
+    let place = world.actors().get::<component::Place>(viewer_id).place_id();
+    place.map(PlaceId::as_str)
 }
 
+/// Where `actor_id` stands. The location is borrowed for as long as both the save and the id
+/// are.
+fn location_of<'a>(world: &'a ecs::World, actor_id: &'a ActorId) -> Option<&'a ActorLocation> {
+    world.actors().get::<component::Place>(actor_id).get()
+}
+
+/// The viewer stands where `actor_id` does: in one place, or on one path either way.
 fn same_place(world: &ecs::World, viewer_id: &ActorId, actor_id: &ActorId) -> bool {
-    let actor_place_id = world.actors().get::<component::Place>(actor_id).get();
-    match (place_of(world, viewer_id), actor_place_id) {
-        (Some(left), Some(right)) => left == right,
+    match (location_of(world, viewer_id), location_of(world, actor_id)) {
+        (Some(viewer), Some(actor)) => viewer.is_with(actor),
         _ => false,
     }
 }
 
 fn is_at(world: &ecs::World, viewer_id: &ActorId, change_side: Option<&ChangeValue>) -> bool {
-    match (place_of(world, viewer_id), change_side) {
-        (Some(place), Some(ChangeValue::Text(text))) => place == text,
+    match (location_of(world, viewer_id), change_side) {
+        (Some(location), Some(ChangeValue::Text(location_text))) => location.is_at(location_text),
         _ => false,
     }
 }

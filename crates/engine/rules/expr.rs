@@ -1,9 +1,6 @@
 //! Dice and arithmetic inside a rule number.
 
 use crate::ecs::component;
-use crate::ecs::id::ActorId;
-use crate::entity;
-use crate::intent::Target;
 use crate::rules::context::Context;
 use crate::rules::grammar;
 use crate::rules::rule::LineColumn;
@@ -236,64 +233,8 @@ fn negate_body(body: &str) -> String {
 }
 
 fn read_meter(context: &Context, of: &grammar::Object, key: &str) -> Result<i64, Reason> {
-    let id = resolve_entity(context, of)?;
+    let id = of.entity_id(context)?;
     (context.world.entities().get::<component::Meter>(&id)).value(key)
-}
-
-/// `id: target` is the intent's target token. Any other id is itself.
-pub(crate) fn resolve_item_id(context: &Context, id: &str) -> Result<String, Reason> {
-    if id == "target" {
-        return context
-            .intent
-            .target
-            .token()
-            .map(str::to_string)
-            .ok_or(Reason::Schema);
-    }
-    Ok(id.to_string())
-}
-
-/// Who holds the meter, flag or item a rule names: `here` and `place:` are a place, `story:`
-/// is a story, `world` is the world, and anyone else is an actor. An exit holds none of them:
-/// whether it is open is an `exit_open`, and its `open` flag is read by `cond::holds`.
-pub(crate) fn resolve_entity(
-    context: &Context,
-    of: &grammar::Object,
-) -> Result<entity::Id, Reason> {
-    match of {
-        grammar::Object::Global => Ok(entity::Id::Global),
-        grammar::Object::Story(id) => Ok(entity::Id::Story(id.clone())),
-        grammar::Object::Exit(_) => Err(Reason::UnknownId),
-        grammar::Object::Place(id) => Ok(entity::Id::Place(id.clone())),
-        grammar::Object::Here => Ok(entity::Id::Place(resolve_here(context)?.into())),
-        grammar::Object::Actor(actor) => {
-            Ok(entity::Id::Actor(resolve_actor(context, actor)?.clone()))
-        }
-    }
-}
-
-/// The actor `actor` names: the one acting, the move's target, or an actor by id. A target
-/// that is a place, an exit or an item names no actor, so it is `UNKNOWN_ID`.
-pub(crate) fn resolve_actor<'a>(
-    context: &Context<'_, 'a>,
-    actor: &'a grammar::Actor,
-) -> Result<&'a ActorId, Reason> {
-    match actor {
-        grammar::Actor::Self_ => context.intent.actor_id.as_ref().ok_or(Reason::Schema),
-        grammar::Actor::Target => match &context.intent.target {
-            Target::Actor(id) => Ok(id),
-            Target::Empty => Err(Reason::Schema),
-            Target::Place(_) | Target::Exit(_) | Target::Item(_) => Err(Reason::UnknownId),
-        },
-        grammar::Actor::Id(id) => Ok(id),
-    }
-}
-
-/// Where the acting actor stands: a place id, or an exit's address while they walk.
-pub(crate) fn resolve_here<'a>(context: &Context<'_, 'a>) -> Result<&'a str, Reason> {
-    let actor_id = context.intent.actor_id.as_ref().ok_or(Reason::Schema)?;
-    let place = context.world.actors().get::<component::Place>(actor_id);
-    place.get().ok_or(Reason::UnknownId)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -643,8 +584,8 @@ impl<'a> Parser<'a> {
             return Err(self.error());
         }
         let of = match grammar::Object::parse(owner)? {
-            grammar::Object::Exit(_) => {
-                return Err(format!("'{owner}' is an exit, which has no meters"))
+            grammar::Object::Path(_) => {
+                return Err(format!("'{owner}' is a path, which has no meters"))
             }
             of => of,
         };

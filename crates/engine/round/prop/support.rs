@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
 use crate::ecs::component;
-use crate::ecs::id::{ActorId, PlaceId};
+use crate::ecs::id::ActorId;
 use crate::ecs::Presence;
 use crate::intent::Target;
 use crate::rules::travel::visible_exits;
@@ -166,7 +166,9 @@ fn target_for(
             if exits.is_empty() {
                 return None;
             }
-            Some(Target::Exit(exits[token % exits.len()].exit_id.clone()))
+            Some(Target::Path(
+                exits[token % exits.len()].path_id.as_str().into(),
+            ))
         }
         "take" | "drop" | "use" | "wield" => {
             let items = item_tokens(session, actor);
@@ -182,11 +184,10 @@ fn target_for(
 fn item_tokens(session: &session::Session, actor: &ActorId) -> Vec<String> {
     let mut ids: Vec<String> = session.canon().items.keys().cloned().collect();
     let world = session.world();
-    if let Some(place) = world.actors().get::<component::Place>(actor).get() {
+    if let Some(place) = world.actors().get::<component::Place>(actor).place_id() {
         let held = world.actors().get::<component::Item>(actor);
         ids.extend(held.iter().map(|(id, _)| id.to_string()));
-        let place = PlaceId::from(place);
-        let lying = world.places().get::<component::Item>(&place);
+        let lying = world.places().get::<component::Item>(place);
         ids.extend(lying.iter().map(|(id, _)| id.to_string()));
     }
     ids.sort();

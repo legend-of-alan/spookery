@@ -104,7 +104,7 @@ fn start(
         .start
         .cost
         .iter()
-        .chain(exit.map(|exit| &exit.path.cost));
+        .chain(exit.map(|exit| &exit.path_def.cost));
     let mut started = costs.try_for_each(|cost| cost::pay(canon, world, presence, intent, cost));
     if rule.start.counts_as_act {
         started = started.and_then(|()| count_act(world, presence, intent));
@@ -150,7 +150,7 @@ fn cancel(
     }
 }
 
-/// Leave `rule` pending until tick `until`. A walk first puts the actor on its exit.
+/// Leave `rule` pending until tick `until`. A walk first puts the actor on its path.
 #[allow(clippy::too_many_arguments)]
 fn pend(
     canon: &Canon,
@@ -167,8 +167,8 @@ fn pend(
         let from = world.actors().get::<component::Place>(actor_id).get();
         let kind = EffectKind::Location {
             actor_id: actor_id.clone(),
-            from: from.ok_or(Reason::UnknownId)?.to_string(),
-            to: exit.exit_id().to_string(),
+            from: from.ok_or(Reason::UnknownId)?.clone(),
+            to: exit.walker_location(),
             arrived_at: None,
         };
         let effect = Effect::new(intent.actor_id.as_ref(), &intent.id, kind);

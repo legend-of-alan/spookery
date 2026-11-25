@@ -179,16 +179,6 @@ async fn the_gm_can_still_say(world: &mut World) {
     assert!(text.contains("\"seq\":"), "the GM lost the seat\n{text}");
 }
 
-#[then(expr = "the player is refused with {string}")]
-fn the_player_is_refused_with(world: &mut World, code: String) {
-    let needle = format!("\"code\":\"{code}\"");
-    assert!(
-        world.player_added.contains(&needle),
-        "{}",
-        world.player_added
-    );
-}
-
 #[then(expr = "the player can wait")]
 async fn the_player_can_wait(world: &mut World) {
     host::player_send(world, "wait", r#""kind":"round""#).await;

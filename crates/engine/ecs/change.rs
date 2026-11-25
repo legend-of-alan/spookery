@@ -29,6 +29,7 @@ impl fmt::Display for Key {
         match &self.entity_id {
             entity::Id::Actor(id) => write!(f, "actor_{component} {id}")?,
             entity::Id::Place(id) => write!(f, "place_{component} {id}")?,
+            entity::Id::Path(id) => write!(f, "path_{component} {id}")?,
             entity::Id::Story(id) => write!(f, "story_{component} {id}")?,
             entity::Id::Global => write!(f, "world_{component}")?,
         }
@@ -52,6 +53,7 @@ impl Key {
             entity_id: match entity_id {
                 entity::IdRef::Actor(id) => entity::Id::Actor(id.clone()),
                 entity::IdRef::Place(id) => entity::Id::Place(id.clone()),
+                entity::IdRef::Path(id) => entity::Id::Path(id.clone()),
                 entity::IdRef::Story(id) => entity::Id::Story(id.clone()),
                 entity::IdRef::Global => entity::Id::Global,
             },
