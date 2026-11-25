@@ -4,17 +4,18 @@ use crate::rules::expr::{BinOp, Expr, Func, Keep};
 use crate::rules::grammar;
 
 impl Expr {
-    /// Parse one expression. A literal zero divisor and `0dN` fail here.
+    /// Parse one expression. A literal zero divisor, a dice group with no dice or faces, more than
+    /// `MAX_DICE` dice and a literal past `i64::MAX` fail here.
     pub(crate) fn parse(src: &str) -> Result<Expr, String> {
         let mut parser = Parser { src, pos: 0 };
         parser.skip_whitespace();
         if parser.is_at_end() {
-            return Err(parser.error());
+            return Err(parser.not_a_number());
         }
         let expr = parser.expr()?;
         parser.skip_whitespace();
         if !parser.is_at_end() {
-            return Err(parser.error());
+            return Err(parser.not_a_number());
         }
         if divides_by_zero(&expr) {
             return Err(format!("expression '{src}' divides by zero"));
@@ -41,12 +42,12 @@ fn divides_by_zero(expr: &Expr) -> bool {
 /// Most dice one group may roll. A larger count is almost always a typo.
 const MAX_DICE: u32 = 1000;
 
-struct Parser<'a> {
-    src: &'a str,
+struct Parser<'src> {
+    src: &'src str,
     pos: usize,
 }
 
-impl<'a> Parser<'a> {
+impl Parser<'_> {
     fn expr(&mut self) -> Result<Expr, String> {
         let mut left = self.term()?;
         loop {
@@ -109,7 +110,7 @@ impl<'a> Parser<'a> {
         if self.peek().is_ascii_alphabetic() || self.peek() == '_' {
             return self.call_or_read();
         }
-        Err(self.error())
+        Err(self.not_a_number())
     }
 
     fn number_or_dice(&mut self) -> Result<Expr, String> {
@@ -133,7 +134,7 @@ impl<'a> Parser<'a> {
             });
         }
         if n > i64::MAX as u64 {
-            return Err(self.error());
+            return Err(self.not_a_number());
         }
         Ok(Expr::Num(n as i64))
     }
@@ -146,7 +147,7 @@ impl<'a> Parser<'a> {
             self.pos += 3;
             Ok(Some(Keep::Low))
         } else if self.peek() == 'k' {
-            Err(self.error())
+            Err(self.not_a_number())
         } else {
             Ok(None)
         }
@@ -161,7 +162,7 @@ impl<'a> Parser<'a> {
             let left = self.expr()?;
             self.skip_whitespace();
             if !self.eat(',') {
-                return Err(self.error());
+                return Err(self.not_a_number());
             }
             let right = self.expr()?;
             self.eat_closing_parenthesis()?;
@@ -193,10 +194,10 @@ impl<'a> Parser<'a> {
             });
         }
         let Some((owner, key)) = owner_and_key.rsplit_once('.') else {
-            return Err(self.error());
+            return Err(self.not_a_number());
         };
         if !key.starts_with(|ch: char| ch.is_ascii_alphabetic() || ch == '_') || key.contains(':') {
-            return Err(self.error());
+            return Err(self.not_a_number());
         }
         let of = match grammar::Object::parse(owner)? {
             grammar::Object::Path(_) => {
@@ -214,21 +215,21 @@ impl<'a> Parser<'a> {
     fn digits(&mut self) -> Result<u64, String> {
         let start = self.pos;
         if !self.peek().is_ascii_digit() {
-            return Err(self.error());
+            return Err(self.not_a_number());
         }
         while self.peek().is_ascii_digit() {
             self.pos += 1;
         }
         self.src[start..self.pos]
             .parse::<u64>()
-            .map_err(|_| self.error())
+            .map_err(|_| self.not_a_number())
     }
 
     fn ident(&mut self) -> Result<String, String> {
         let start = self.pos;
         let ch = self.peek();
         if !(ch.is_ascii_alphabetic() || ch == '_') {
-            return Err(self.error());
+            return Err(self.not_a_number());
         }
         self.pos += 1;
         while self.peek().is_ascii_alphanumeric() || self.peek() == '_' {
@@ -250,7 +251,7 @@ impl<'a> Parser<'a> {
         if self.eat(')') {
             Ok(())
         } else {
-            Err(self.error())
+            Err(self.not_a_number())
         }
     }
 
@@ -275,7 +276,7 @@ impl<'a> Parser<'a> {
         self.pos >= self.src.len()
     }
 
-    fn error(&self) -> String {
+    fn not_a_number(&self) -> String {
         format!("expression '{}' is not a number", self.src)
     }
 }

@@ -46,12 +46,12 @@ impl Dice {
         }
     }
 
-    pub(crate) fn roller<'a>(
-        &'a mut self,
-        ledger: &'a mut Ledger,
-        rule: &'a str,
-        subject: Option<&'a ActorId>,
-    ) -> Roller<'a> {
+    pub(crate) fn roller<'r>(
+        &'r mut self,
+        ledger: &'r mut Ledger,
+        rule: &'r str,
+        subject: Option<&'r ActorId>,
+    ) -> Roller<'r> {
         Roller {
             dice: self,
             ledger,
@@ -64,11 +64,11 @@ impl Dice {
 }
 
 /// Expression dice for one rule and subject, all keyed by the rule id.
-pub(crate) struct Roller<'a> {
-    dice: &'a mut Dice,
-    ledger: &'a mut Ledger,
-    rule: &'a str,
-    subject: Option<&'a ActorId>,
+pub(crate) struct Roller<'r> {
+    dice: &'r mut Dice,
+    ledger: &'r mut Ledger,
+    rule: &'r str,
+    subject: Option<&'r ActorId>,
     key: Option<roll::Key>,
     drawn: usize,
 }

@@ -73,6 +73,15 @@ impl BinOp {
     }
 }
 
+impl Func {
+    pub(crate) fn eval(self, left: i64, right: i64) -> i64 {
+        match self {
+            Func::Min => left.min(right),
+            Func::Max => left.max(right),
+        }
+    }
+}
+
 fn floor_div(left: i64, right: i64) -> Result<i64, Reason> {
     if right == 0 {
         return Err(Reason::OutOfRange);
@@ -101,10 +110,7 @@ impl Expr {
             Expr::Call { func, left, right } => {
                 let left = left.constant()?;
                 let right = right.constant()?;
-                Some(match func {
-                    Func::Min => left.min(right),
-                    Func::Max => left.max(right),
-                })
+                Some(func.eval(left, right))
             }
         }
     }
@@ -147,8 +153,10 @@ pub(crate) fn stamp_spots(expr: &mut Expr, line: u32, column: u32) {
 
 fn stamp_at(expr: &mut Expr, spot: LineColumn) {
     match expr {
-        Expr::Meter { spot: own, .. } => {
-            own.get_or_insert(spot);
+        Expr::Meter {
+            spot: meter_spot, ..
+        } => {
+            meter_spot.get_or_insert(spot);
         }
         Expr::Neg(inner) => stamp_at(inner, spot),
         Expr::Binary { left, right, .. } | Expr::Call { left, right, .. } => {

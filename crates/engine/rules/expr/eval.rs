@@ -86,6 +86,8 @@ fn roll_with_label(
     Ok(shown)
 }
 
+/// A number's value and how its line shows it: `text` is the arithmetic with each part's value,
+/// and `dice_lines` holds one line per dice group that fell.
 struct ShownValue {
     value: i64,
     text: String,
@@ -139,7 +141,7 @@ fn roll_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Show
             let value = inner.value.checked_neg().ok_or(Reason::OutOfRange)?;
             Ok(ShownValue {
                 value,
-                text: negate_text(&inner.text),
+                text: show_neg(&inner.text),
                 dice_lines: inner.dice_lines,
                 faces: Vec::new(),
             })
@@ -160,19 +162,12 @@ fn roll_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Show
         Expr::Call { func, left, right } => {
             let left = roll_node(context, left, dice)?;
             let right = roll_node(context, right, dice)?;
-            let value = match func {
-                Func::Min => left.value.min(right.value),
-                Func::Max => left.value.max(right.value),
-            };
+            let value = func.eval(left.value, right.value);
             let mut dice_lines = left.dice_lines;
             dice_lines.extend(right.dice_lines);
-            let function = match func {
-                Func::Min => "min",
-                Func::Max => "max",
-            };
             Ok(ShownValue {
                 value,
-                text: format!("{function}({}, {})", left.text, right.text),
+                text: format!("{}({}, {})", show_func(*func), left.text, right.text),
                 dice_lines,
                 faces: Vec::new(),
             })
@@ -200,6 +195,13 @@ fn show_dice(count: u32, sides: u32, keep: Option<Keep>) -> String {
     }
 }
 
+fn show_func(func: Func) -> &'static str {
+    match func {
+        Func::Min => "min",
+        Func::Max => "max",
+    }
+}
+
 fn show_op(op: BinOp) -> &'static str {
     match op {
         BinOp::Add => "+",
@@ -209,7 +211,7 @@ fn show_op(op: BinOp) -> &'static str {
     }
 }
 
-fn negate_text(text: &str) -> String {
+fn show_neg(text: &str) -> String {
     let plain = text.chars().all(|ch| ch.is_ascii_digit());
     if plain {
         format!("-{text}")
