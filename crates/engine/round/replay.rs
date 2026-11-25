@@ -67,7 +67,7 @@ pub struct Divergence {
     pub kind: DivergenceKind,
     pub round_index: Option<u64>,
     pub detail: String,
-    pub replayed: Option<Vec<u8>>,
+    pub replayed_bytes: Option<Vec<u8>>,
     /// The first `save.yaml` line that differs from the replayed bytes.
     pub save_line: Option<(u32, String)>,
 }
@@ -84,14 +84,14 @@ impl Divergence {
             kind,
             round_index,
             detail: detail.into(),
-            replayed: None,
+            replayed_bytes: None,
             save_line: None,
         }
     }
 
-    pub(crate) fn replayed(self, bytes: Vec<u8>) -> Self {
+    pub(crate) fn with_replayed_bytes(self, bytes: Vec<u8>) -> Self {
         Self {
-            replayed: Some(bytes),
+            replayed_bytes: Some(bytes),
             ..self
         }
     }
@@ -379,7 +379,7 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
     if blake2s_tagged(&report.now_yaml) != mark.state_hash {
         return Err(
             checkpoint_diverged(mark.state_rev, mark.round_index, "state hash differed")
-                .replayed(report.now_yaml)
+                .with_replayed_bytes(report.now_yaml)
                 .into(),
         );
     }
@@ -424,7 +424,7 @@ fn check_sequence(
     marks.sort_by_key(|mark| mark.0);
     let missing = |expected| {
         Divergence::new(DivergenceKind::Missing, expected, None, "no journal record")
-            .replayed(base_bytes.to_vec())
+            .with_replayed_bytes(base_bytes.to_vec())
     };
     let mut expected = 1u64;
     for (rev, before, index) in marks {
@@ -439,7 +439,7 @@ fn check_sequence(
                 entry.round_index(),
                 "state_rev differed",
             )
-            .replayed(base_bytes.to_vec())
+            .with_replayed_bytes(base_bytes.to_vec())
             .into());
         }
         if engine_base && rev == base_rev {
@@ -461,7 +461,7 @@ fn check_base_migrate(entry: &Record, base_bytes: &[u8]) -> Result<(), Error> {
             entry.round_index(),
             "base mark is not a migrate",
         )
-        .replayed(base_bytes.to_vec())
+        .with_replayed_bytes(base_bytes.to_vec())
         .into());
     };
     let migrate_diverged = |detail| {
@@ -471,7 +471,7 @@ fn check_base_migrate(entry: &Record, base_bytes: &[u8]) -> Result<(), Error> {
             None,
             detail,
         )
-        .replayed(base_bytes.to_vec())
+        .with_replayed_bytes(base_bytes.to_vec())
     };
     if record.state_hash != blake2s_tagged(base_bytes) {
         return Err(migrate_diverged("state_hash differed").into());
@@ -498,7 +498,7 @@ pub(crate) fn apply_record(
                     record.round_index,
                     "state hash differed",
                 )
-                .replayed(written)
+                .with_replayed_bytes(written)
                 .into());
             }
             Ok(())
@@ -525,13 +525,13 @@ fn apply_recorded_round(
     )
     .map(|output| output.effects)
     .map_err(|code| Divergence {
-        replayed: emit_save_bytes(session).ok(),
+        replayed_bytes: emit_save_bytes(session).ok(),
         ..round_diverged(record, code.as_str())
     })?;
     let effect_diff = first_effect_diff(&record.effects, &replayed);
     if session.world().state_rev != record.state_rev_after {
         return Err(Divergence {
-            replayed: emit_save_bytes(session).ok(),
+            replayed_bytes: emit_save_bytes(session).ok(),
             ..round_diverged(record, "state_rev differed")
         }
         .into());
@@ -539,7 +539,9 @@ fn apply_recorded_round(
     let written = emit_save_bytes(session)?;
     if blake2s_tagged(&written) != record.state_hash {
         let detail = effect_diff.unwrap_or_else(|| "state_hash differed".to_string());
-        return Err(round_diverged(record, detail).replayed(written).into());
+        return Err(round_diverged(record, detail)
+            .with_replayed_bytes(written)
+            .into());
     }
     if let Some(detail) = effect_diff {
         return Err(round_diverged(record, detail).into());
@@ -587,7 +589,9 @@ fn apply_migrate(session: &mut session::Session<()>, record: &MigrateRecord) -> 
         let path = journal::checkpoint_path(session.root(), record.state_rev_after);
         let bytes = fs::read(path).map_err(|_| diverged("missing snapshot"))?;
         if blake2s_tagged(&bytes) != record.state_hash {
-            return Err(diverged("state_hash differed").replayed(bytes).into());
+            return Err(diverged("state_hash differed")
+                .with_replayed_bytes(bytes)
+                .into());
         }
         let canon = Arc::clone(session.world().canon());
         session.replace_world(ecs::World::new(load_save_bytes(&bytes)?, canon));
@@ -596,7 +600,9 @@ fn apply_migrate(session: &mut session::Session<()>, record: &MigrateRecord) -> 
     let next = save::migrate(session.world().clone(), record).map_err(Error::Reason)?;
     let bytes = save::emit(&next).map_err(Error::Reason)?.into_bytes();
     if blake2s_tagged(&bytes) != record.state_hash {
-        return Err(diverged("state_hash differed").replayed(bytes).into());
+        return Err(diverged("state_hash differed")
+            .with_replayed_bytes(bytes)
+            .into());
     }
     session.replace_world(next);
     Ok(())

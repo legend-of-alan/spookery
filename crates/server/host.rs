@@ -274,32 +274,37 @@ impl Host {
         };
         let presence = self.seats.presence();
         let body = match command.as_str() {
-            "release" if read::<NoArgs>(&args).is_some() => return self.release_claim(conn, id),
-            "say" => match read::<SayArgs>(&args).filter(|args| args.npc_id.is_none()) {
+            "release" if try_parse_args::<NoArgs>(&args).is_some() => {
+                return self.release_claim(conn, id)
+            }
+            "say" => match try_parse_args::<SayArgs>(&args).filter(|say| say.npc_id.is_none()) {
                 Some(SayArgs {
                     to: Some(to), text, ..
                 }) => return self.say_as_player(conn, id, &actor_id, &to, &text),
                 _ => ServerBody::Refused(Reason::Schema.into()),
             },
-            "look" if read::<NoArgs>(&args).is_some() => {
+            "look" if try_parse_args::<NoArgs>(&args).is_some() => {
                 match self.session.perceive(&presence, actor_id.as_str()) {
                     Ok(view) => message_body::build_view(&view),
                     Err(code) => ServerBody::Refused(code.into()),
                 }
             }
-            "help" if read::<NoArgs>(&args).is_some() => {
+            "help" if try_parse_args::<NoArgs>(&args).is_some() => {
                 match self.session.help(&presence, &actor_id) {
                     Ok(commands) => ServerBody::Help { commands },
                     Err(code) => ServerBody::Refused(code.into()),
                 }
             }
-            "map" if read::<NoArgs>(&args).is_some() => match self.session.map(&actor_id) {
+            "map" if try_parse_args::<NoArgs>(&args).is_some() => match self.session.map(&actor_id)
+            {
                 Ok(places) => ServerBody::Map { places },
                 Err(code) => ServerBody::Refused(code.into()),
             },
             "release" | "look" | "help" | "map" => ServerBody::Refused(Reason::Schema.into()),
-            _ => match read::<MoveArgs>(&args) {
-                Some(args) => return self.play_move(conn, id, &actor_id, &command, args.target),
+            _ => match try_parse_args::<MoveArgs>(&args) {
+                Some(move_args) => {
+                    return self.play_move(conn, id, &actor_id, &command, move_args.target)
+                }
                 None => ServerBody::Refused(Reason::Schema.into()),
             },
         };
@@ -307,11 +312,12 @@ impl Host {
     }
 
     /// A claim takes a free PC, or by its token takes back one this player held. The reply
-    /// is `claimed`, then a refresh.
+    /// is `claimed`, then a resume and a view.
     fn claim(&mut self, conn: ConnId, id: Option<String>, args: &Map<String, Value>) {
-        let args = read::<ClaimArgs>(args).filter(|_| self.seats.claim_of(conn).is_none());
-        let fresh = matches!(args, Some(ClaimArgs::Actor { .. }));
-        let taken = match args {
+        let claim_args =
+            try_parse_args::<ClaimArgs>(args).filter(|_| self.seats.claim_of(conn).is_none());
+        let fresh = matches!(claim_args, Some(ClaimArgs::Actor { .. }));
+        let taken = match claim_args {
             Some(ClaimArgs::Actor { actor_id }) => self.claim_free_pc(&actor_id),
             Some(ClaimArgs::Token { token, last_seq }) => self.claim_by_token(&token, last_seq),
             None => Err(Reason::Schema),
@@ -320,7 +326,8 @@ impl Host {
             Ok(taken) => taken,
             Err(code) => return self.reply(conn, id, ServerBody::Refused(code.into())),
         };
-        let [resume, view] = match refresh(&self.session, &self.seats.presence(), &actor_id) {
+        let [resume, view] = match resume_and_view(&self.session, &self.seats.presence(), &actor_id)
+        {
             Ok(bodies) => bodies,
             Err(code) => {
                 if fresh {
@@ -491,7 +498,7 @@ impl Host {
     }
 
     /// The one order after rounds: a `round` to every seat, then each player's checks,
-    /// refresh and lines, then the digest, then the idle timer restarts.
+    /// resume, view and lines, then the digest, then the idle timer restarts.
     fn after_rounds(&mut self, outputs: &[spookery_engine::round::Output]) {
         if outputs.is_empty() {
             return;
@@ -522,8 +529,8 @@ impl Host {
                 .iter()
                 .flat_map(|output| message_body::build_checks(&output.reports, &actor_id))
                 .collect();
-            match refresh(&self.session, &presence, &actor_id) {
-                Ok(refreshed) => bodies.extend(refreshed),
+            match resume_and_view(&self.session, &presence, &actor_id) {
+                Ok([resume, view]) => bodies.extend([resume, view]),
                 Err(code) => bodies.push(ServerBody::Refused(code.into())),
             }
             for output in outputs {
@@ -696,7 +703,7 @@ fn stamp_message(seq: u64, reply_to: Option<String>, body: ServerBody) -> Server
 }
 
 /// A command's arguments, or `None` when they do not fit its type.
-fn read<T: serde::de::DeserializeOwned>(args: &Map<String, Value>) -> Option<T> {
+fn try_parse_args<T: serde::de::DeserializeOwned>(args: &Map<String, Value>) -> Option<T> {
     parse_args(Some(args)).ok()
 }
 
@@ -710,7 +717,7 @@ fn narrate_lines_for(lines: &[RecipientLine], viewer: &ActorId) -> Vec<String> {
     out
 }
 
-fn refresh(
+fn resume_and_view(
     session: &spookery_engine::Session,
     presence: &Presence,
     actor_id: &ActorId,

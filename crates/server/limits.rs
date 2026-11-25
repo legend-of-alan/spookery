@@ -5,14 +5,14 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 /// The longest client message the host reads. A longer one is `LINE_TOO_LONG`.
-pub(super) const CLIENT_MESSAGE_CAP: usize = 8 * 1024;
+pub(super) const CLIENT_MESSAGE_CAP_BYTES: usize = 8 * 1024;
 
 /// The longest WebSocket message the game port takes in at all. A longer one drops the
 /// connection.
-pub(super) const MESSAGE_CAP: usize = 64 * 1024;
+pub(super) const MESSAGE_CAP_BYTES: usize = 64 * 1024;
 
 /// HTTP POST body cap for the GM seat.
-pub(super) const GM_BODY_CAP: usize = 1024 * 1024;
+pub(super) const GM_BODY_CAP_BYTES: usize = 1024 * 1024;
 
 /// Client messages accepted per second after the burst is spent.
 pub(super) const RATE_PER_SEC: u64 = 5;
@@ -33,7 +33,7 @@ pub(super) const MISSED_MESSAGE_CAP: usize = 256;
 pub(super) const OUTBOUND_BYTE_CAP: usize = 64 * 1024;
 
 /// Send buffer a game port socket asks for. The OS may grant more.
-pub(super) const REQUESTED_SEND_BUFFER: usize = 8 * 1024;
+pub(super) const REQUESTED_SEND_BUFFER_BYTES: usize = 8 * 1024;
 
 /// Keepalive probes on a game port socket: the first after 30 idle seconds, then
 /// three more one second apart. A silent socket holds its seat for about 33 seconds.

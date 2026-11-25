@@ -18,7 +18,7 @@ const MIB: usize = 1024 * 1024;
 const SAY_TEXT_BYTES: usize = 4 * 1024;
 
 /// A message past 8 KiB is `LINE_TOO_LONG`.
-const MESSAGE_CAP: usize = 8 * 1024;
+const CLIENT_MESSAGE_CAP_BYTES: usize = 8 * 1024;
 /// A connection that sends nothing for 10 seconds closes.
 const FIRST_MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
 /// A connection may burst to 10 messages. A seated player's claim spent one.
@@ -37,7 +37,7 @@ const WINDOW: usize = 8 * 1024;
 async fn the_player_sends_a_message_over_the_cap(world: &mut World) {
     let player = host::player_client(world, "rowan");
     let mark = player.seat.mark();
-    let long = json!({ "id": "long", "body": { "kind": "wait" }, "pad": "a".repeat(MESSAGE_CAP) });
+    let long = json!({ "id": "long", "body": { "kind": "wait" }, "pad": "a".repeat(CLIENT_MESSAGE_CAP_BYTES) });
     player.seat.send_raw(Message::text(long.to_string()));
     world.player_added = host::wait_player_from(world, mark, "\"code\":\"LINE_TOO_LONG\"").await;
 }
