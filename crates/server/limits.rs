@@ -30,7 +30,7 @@ pub(super) const MISSED_MESSAGE_CAP: usize = 256;
 /// Bytes queued toward one socket before that socket is dropped.
 /// A 256-frame queue of long speech fills the tape before a large TCP
 /// window fills, so the byte cap is what drops a stopped reader there.
-pub(super) const OUTBOUND_BYTE_CAP: usize = 64 * 1024;
+pub(super) const OUTBOUND_CAP_BYTES: usize = 64 * 1024;
 
 /// Send buffer a game port socket asks for. The OS may grant more.
 pub(super) const REQUESTED_SEND_BUFFER_BYTES: usize = 8 * 1024;

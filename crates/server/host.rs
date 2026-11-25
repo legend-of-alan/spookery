@@ -277,7 +277,9 @@ impl Host {
             "release" if try_parse_args::<NoArgs>(&args).is_some() => {
                 return self.release_claim(conn, id)
             }
-            "say" => match try_parse_args::<SayArgs>(&args).filter(|say| say.npc_id.is_none()) {
+            "say" => match try_parse_args::<SayArgs>(&args)
+                .filter(|say_args| say_args.npc_id.is_none())
+            {
                 Some(SayArgs {
                     to: Some(to), text, ..
                 }) => return self.say_as_player(conn, id, &actor_id, &to, &text),
@@ -326,16 +328,16 @@ impl Host {
             Ok(taken) => taken,
             Err(code) => return self.reply(conn, id, ServerBody::Refused(code.into())),
         };
-        let [resume, view] = match resume_and_view(&self.session, &self.seats.presence(), &actor_id)
-        {
-            Ok(bodies) => bodies,
-            Err(code) => {
-                if fresh {
-                    self.seats.claims.retain(|claim| claim.token != token);
+        let [resume, view] =
+            match build_resume_and_view(&self.session, &self.seats.presence(), &actor_id) {
+                Ok(bodies) => bodies,
+                Err(code) => {
+                    if fresh {
+                        self.seats.claims.retain(|claim| claim.token != token);
+                    }
+                    return self.reply(conn, id, ServerBody::Refused(code.into()));
                 }
-                return self.reply(conn, id, ServerBody::Refused(code.into()));
-            }
-        };
+            };
         self.reply(conn, id, claim_reply);
         tracing::info!(conn_id = %conn, actor_id = %actor_id, by_token = !fresh, "PC claimed");
         if let Some(claim) = self.seats.claim_of_actor_mut(&actor_id) {
@@ -529,7 +531,7 @@ impl Host {
                 .iter()
                 .flat_map(|output| message_body::build_checks(&output.reports, &actor_id))
                 .collect();
-            match resume_and_view(&self.session, &presence, &actor_id) {
+            match build_resume_and_view(&self.session, &presence, &actor_id) {
                 Ok([resume, view]) => bodies.extend([resume, view]),
                 Err(code) => bodies.push(ServerBody::Refused(code.into())),
             }
@@ -717,7 +719,7 @@ fn narrate_lines_for(lines: &[RecipientLine], viewer: &ActorId) -> Vec<String> {
     out
 }
 
-fn resume_and_view(
+fn build_resume_and_view(
     session: &spookery_engine::Session,
     presence: &Presence,
     actor_id: &ActorId,
