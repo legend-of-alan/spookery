@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use crate::ecs::id::{ActorId, PlaceId};
 use crate::rules::context::Context;
-use crate::rules::expr::{self, Expr};
+use crate::rules::expr::{eval, Expr};
 use crate::rules::grammar;
 use crate::rules::roll::{classify, Roll};
 use crate::Reason;
@@ -337,12 +337,12 @@ impl Check {
     pub(crate) fn roll(
         &self,
         context: &Context,
-        dice: &mut dyn expr::Dice,
+        dice: &mut dyn eval::Dice,
     ) -> Result<Roll, Reason> {
-        let total = expr::eval_with_dice(context, &self.total, dice)?;
-        let success_at = expr::eval_with_dice(context, &self.success_at, dice)?;
+        let total = eval::roll_number(context, &self.total, dice)?;
+        let success_at = eval::roll_number(context, &self.success_at, dice)?;
         let partial_at = (self.partial_at.as_ref())
-            .map(|expr| expr::eval_with_dice(context, expr, dice))
+            .map(|expr| eval::roll_number(context, expr, dice))
             .transpose()?;
         Ok(Roll {
             total,
