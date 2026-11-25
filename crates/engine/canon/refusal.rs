@@ -172,6 +172,7 @@ impl Problem<'_> {
 /// spot it recorded.
 #[derive(Debug)]
 pub(super) struct UnplacedRefusal {
+    // repeats module: the type is the refusal a step makes before its file is known
     pub message: String,
     pub spot: Option<LineColumn>,
 }
