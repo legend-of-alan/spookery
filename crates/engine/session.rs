@@ -44,7 +44,7 @@ impl Session {
             world,
             queue,
             lock: (),
-        } = crate::round::replay::open_at_tip(root, &lock)?;
+        } = crate::round::open::at_tip(root, &lock)?;
         tracing::info!(
             pack_rev = world.pack_rev.as_str(),
             state_rev = world.state_rev,
@@ -538,14 +538,14 @@ impl Session<()> {
     /// ```
     pub fn peek(root: &Path) -> Result<Session<()>, Reason> {
         let _read = crate::store::lock::take_read(root)?;
-        crate::round::replay::peek_at_tip(root)
+        Ok(crate::round::open::peek_at_tip(root)?)
     }
 
     /// The host text at the journal tip: effect rows from the journal, then the meter rows.
     /// One read guard covers the session and the journal read, so both come from one save.
     pub fn peek_digest(root: &Path) -> Result<String, Reason> {
         let _read = crate::store::lock::take_read(root)?;
-        crate::round::replay::peek_at_tip(root)?.read_digest()
+        crate::round::open::peek_at_tip(root)?.read_digest()
     }
 
     /// Open the pack. A save that later journal records continue is a checkpoint,

@@ -5,14 +5,12 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::canon::load_canon;
-use crate::diagnostic::first_reason;
+use crate::diagnostic::{first_reason, Diagnostic};
 use crate::ecs::{self, Presence, Save};
 use crate::hash::blake2s_tagged;
 use crate::rules::effect::Effect;
 use crate::session;
-use crate::store::durability::write_atomic;
 use crate::store::journal;
-use crate::store::lock::{self, lock_pack, PackGuard};
 use crate::store::records::{emit_effect, MigrateRecord, Record, RoundRecord};
 use crate::store::require_rules_rev;
 use crate::store::save;
@@ -125,6 +123,27 @@ impl From<Divergence> for Error {
     }
 }
 
+impl From<Reason> for Error {
+    fn from(reason: Reason) -> Self {
+        Self::Reason(reason)
+    }
+}
+
+impl From<Vec<Diagnostic>> for Error {
+    fn from(diagnostics: Vec<Diagnostic>) -> Self {
+        Self::Reason(first_reason(&diagnostics))
+    }
+}
+
+impl From<Error> for Reason {
+    fn from(error: Error) -> Self {
+        match error {
+            Error::Reason(reason) => reason,
+            Error::Diverged(_) => Reason::JournalDiverged,
+        }
+    }
+}
+
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -175,11 +194,11 @@ pub fn apply_journal(
     }
     let base_path = journal::base_path(pack);
     let base_bytes = if let Some(from) = from {
-        journal::read_save(&journal::save_path(from)).map_err(Error::Reason)?
+        journal::read_save(&journal::save_path(from))?
     } else if base_path.exists() {
-        journal::read_save(&base_path).map_err(Error::Reason)?
+        journal::read_save(&base_path)?
     } else {
-        let now_yaml = journal::read_save(&journal::save_path(pack)).map_err(Error::Reason)?;
+        let now_yaml = journal::read_save(&journal::save_path(pack))?;
         if records.is_empty() {
             return Ok(Report {
                 state_rev: state_rev_of(&now_yaml)?,
@@ -228,164 +247,14 @@ pub fn apply_journal(
     })
 }
 
-/// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
-/// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
-/// The caller holds the pack lock, so a crash is repaired and the checkpoint settled.
-pub(crate) fn open_at_tip(path: &Path, lock: &PackGuard) -> Result<session::Session<()>, Reason> {
-    choose_seed(path, lock)?;
-    rebuild_save(path, lock).map_err(Error::into_reason)?;
-    let session = peek_at_tip(path)?;
-    crate::store::commit::settle_checkpoint(&session, &lock::take_write(session.root(), lock)?)?;
-    Ok(session)
-}
-
-/// Write a fresh dice seed into `save.yaml` when it has none and the journal is still empty,
-/// so the first round, and replay from the base save, roll from it. A seed already there stays.
-fn choose_seed(path: &Path, lock: &PackGuard) -> Result<(), Reason> {
-    if journal::read_head(path)
-        .map_err(|fault| fault.reason)?
-        .is_some()
-        || journal::find_live_bundle(path).is_some()
-    {
-        return Ok(());
-    }
-    let save_path = journal::save_path(path);
-    let mut save = load_save_bytes(&journal::read_save(&save_path)?).map_err(Error::into_reason)?;
-    if !save.seed.is_empty() {
-        return Ok(());
-    }
-    save.seed = uuid::Uuid::new_v4().simple().to_string();
-    let _write = lock::take_write(path, lock)?;
-    write_atomic(&save_path, save::emit(&save)?.as_bytes())
-}
-
-/// The journal tip in memory. Writes nothing.
-pub(crate) fn peek_at_tip(path: &Path) -> Result<session::Session<()>, Reason> {
-    let mut session = session::Session::open(path)?;
-    if apply_tail(&mut session)? {
-        save::check(session.world()).map_err(|diags| first_reason(&diags))?;
-    }
-    Ok(session)
-}
-
-/// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
-pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
-    let lock = lock_pack(path)?;
-    choose_seed(path, &lock)?;
-    let (save, edited) = load_migrate_tip(path, &lock)?;
-    let canon = load_canon(path).map_err(|diags| first_reason(&diags))?;
-    let world = ecs::World::new(save, Arc::new(canon));
-    crate::store::commit::seal_migrate(path, world, edited, &lock)?;
-    Ok(())
-}
-
-/// The state to migrate, and whether it is a hand edit of the checkpoint head. A hand edit
-/// with live rounds past it is refused, because the tip does not hold it.
-fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(Save, bool), Reason> {
-    let bytes = journal::read_save(&journal::save_path(path))?;
-    let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
-    let file_state = save::parse(text).map_err(|diags| first_reason(&diags))?;
-    let edited =
-        journal::edits_head(path, file_state.state_rev, &bytes).map_err(|fault| fault.reason)?;
-    let ahead = journal::read_live_records(path)
-        .map_err(|fault| fault.reason)?
-        .iter()
-        .any(|entry| {
-            !matches!(entry, Record::Checkpoint(_))
-                && entry.state_rev_after() > file_state.state_rev
-        });
-    match (ahead, edited) {
-        (true, true) => Err(Reason::HandEdit),
-        (true, false) => Ok((Save::clone(load_tip_unchecked(path, lock)?.world()), false)),
-        (false, _) => Ok((file_state, edited)),
-    }
-}
-
-/// The journal tip in memory and unchecked. Migrate checks it after adding its meters.
-/// The caller holds the pack lock.
-fn load_tip_unchecked(path: &Path, lock: &PackGuard) -> Result<session::Session<()>, Reason> {
-    rebuild_save(path, lock).map_err(Error::into_reason)?;
-    let save = journal::read_save(&journal::save_path(path))?;
-    let mut session = open_at(path, &save).map_err(Error::into_reason)?;
-    apply_tail(&mut session)?;
-    crate::store::commit::settle_checkpoint(&session, &lock::take_write(session.root(), lock)?)?;
-    Ok(session)
-}
-
 /// A replay world at `base` with the pack's canon.
 pub(crate) fn open_at(pack: &Path, base: &[u8]) -> Result<session::Session<()>, Error> {
     let save = load_save_bytes(base)?;
-    let canon = load_canon(pack).map_err(|diags| Error::Reason(first_reason(&diags)))?;
+    let canon = load_canon(pack)?;
     Ok(session::Session::from_parts(
         pack,
         ecs::World::new(save, Arc::new(canon)),
     ))
-}
-
-/// Replay the live records past the save. `true` when any record was replayed.
-fn apply_tail(session: &mut session::Session<()>) -> Result<bool, Reason> {
-    let entries = journal::read_live_records(session.root())
-        .map_err(|fault| Error::from(fault).into_reason())?;
-    let base_rev = session.world().state_rev;
-    let mut replayed = false;
-    for entry in &entries {
-        if entry.state_rev_after() <= base_rev {
-            continue;
-        }
-        apply_record(session, entry).map_err(Error::into_reason)?;
-        replayed = true;
-    }
-    Ok(replayed)
-}
-
-impl Error {
-    fn into_reason(self) -> Reason {
-        match self {
-            Error::Reason(reason) => reason,
-            Error::Diverged(_) => Reason::JournalDiverged,
-        }
-    }
-}
-
-fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
-    let Some(mark) = journal::read_head(path)? else {
-        return Ok(());
-    };
-    let save_path = journal::save_path(path);
-    match journal::read_save(&save_path) {
-        Ok(bytes) => {
-            if blake2s_tagged(&bytes) == mark.state_hash {
-                return Ok(());
-            }
-            if let Ok(text) = std::str::from_utf8(&bytes) {
-                if let Ok(save) = save::parse(text) {
-                    if save.state_rev == mark.state_rev
-                        || save::emit(&save)
-                            .map(|emitted| emitted.into_bytes())
-                            .ok()
-                            .as_deref()
-                            != Some(bytes.as_slice())
-                    {
-                        return Ok(());
-                    }
-                }
-            }
-        }
-        Err(Reason::NotInSpec) => {}
-        Err(reason) => return Err(Error::Reason(reason)),
-    }
-    let records = journal::read_records(path)?;
-    let report = apply_journal(path, &records, None, Some(mark.state_rev))?;
-    if blake2s_tagged(&report.now_yaml) != mark.state_hash {
-        return Err(
-            checkpoint_diverged(mark.state_rev, mark.round_index, "state hash differed")
-                .with_replayed_bytes(report.now_yaml)
-                .into(),
-        );
-    }
-    let _write = lock::take_write(path, lock).map_err(Error::Reason)?;
-    write_atomic(&save_path, &report.now_yaml).map_err(Error::Reason)?;
-    Ok(())
 }
 
 impl From<crate::store::journal::Error> for Error {
@@ -510,7 +379,7 @@ fn apply_recorded_round(
     session: &mut session::Session<()>,
     record: &RoundRecord,
 ) -> Result<(), Error> {
-    require_rules_rev(record.rules_rev).map_err(Error::Reason)?;
+    require_rules_rev(record.rules_rev)?;
     if session.world().round_index + 1 != record.round_index {
         return Err(round_diverged(record, "round_index differed").into());
     }
@@ -597,8 +466,8 @@ fn apply_migrate(session: &mut session::Session<()>, record: &MigrateRecord) -> 
         session.replace_world(ecs::World::new(load_save_bytes(&bytes)?, canon));
         return Ok(());
     }
-    let next = save::migrate(session.world().clone(), record).map_err(Error::Reason)?;
-    let bytes = save::emit(&next).map_err(Error::Reason)?.into_bytes();
+    let next = save::migrate(session.world().clone(), record)?;
+    let bytes = save::emit(&next)?.into_bytes();
     if blake2s_tagged(&bytes) != record.state_hash {
         return Err(diverged("state_hash differed")
             .with_replayed_bytes(bytes)
@@ -609,8 +478,8 @@ fn apply_migrate(session: &mut session::Session<()>, record: &MigrateRecord) -> 
 }
 
 pub(crate) fn load_save_bytes(bytes: &[u8]) -> Result<Save, Error> {
-    let text = std::str::from_utf8(bytes).map_err(|_| Error::Reason(Reason::Schema))?;
-    save::parse(text).map_err(|diag| Error::Reason(first_reason(&diag)))
+    let text = std::str::from_utf8(bytes).map_err(|_| Reason::Schema)?;
+    Ok(save::parse(text)?)
 }
 
 pub(crate) fn state_rev_of(bytes: &[u8]) -> Result<u64, Error> {
@@ -618,9 +487,7 @@ pub(crate) fn state_rev_of(bytes: &[u8]) -> Result<u64, Error> {
 }
 
 pub(crate) fn emit_save_bytes<Lock>(session: &session::Session<Lock>) -> Result<Vec<u8>, Error> {
-    save::emit(session.world())
-        .map(|text| text.into_bytes())
-        .map_err(Error::Reason)
+    Ok(save::emit(session.world())?.into_bytes())
 }
 
 #[cfg(test)]
