@@ -70,10 +70,14 @@ pub(crate) fn is_known_location(canon: &Canon, location: &ActorLocation) -> bool
 
 /// The exit a walker stands on: their path, walked toward where they head. `None` in a place.
 pub(crate) fn exit_stood_on<'c>(canon: &'c Canon, location: &ActorLocation) -> Option<Exit<'c>> {
-    let ActorLocation::Path { path, to } = location else {
+    let ActorLocation::Path {
+        path_id,
+        to_place_id,
+    } = location
+    else {
         return None;
     };
-    canon.paths.get(path)?.exit_to(to.as_str())
+    canon.paths.get(path_id)?.exit_to(to_place_id.as_str())
 }
 
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.

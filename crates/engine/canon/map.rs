@@ -228,8 +228,8 @@ impl<'c> Exit<'c> {
     /// Where someone walking this exit stands: on its path, heading where it leads.
     pub(crate) fn walker_location(&self) -> ActorLocation {
         ActorLocation::Path {
-            path: self.path_def.id.clone(),
-            to: self.to_place_id.clone(),
+            path_id: self.path_def.id.clone(),
+            to_place_id: self.to_place_id.clone(),
         }
     }
 
