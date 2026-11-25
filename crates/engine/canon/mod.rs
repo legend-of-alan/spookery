@@ -39,7 +39,7 @@ pub(crate) use map::Paths;
 use map::MAP_FILE;
 use modifiers::MODIFIERS_FILE;
 use pack::load_pack_yaml;
-use rule_list::load_verbs;
+use rule_list::verbs_from_text;
 use source::{collect_files, collect_markdown_files, read_text, Diags, FileText, Locator};
 use story::load_stories;
 
@@ -363,7 +363,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let [verbs, budget] = ["rules/verbs.yaml", "rules/budget.yaml"]
         .map(|rel| diags.keep(read_text(root, rel)).map(|text| (rel, text)));
     if let Some((rel, text)) = &verbs {
-        loaded.extend(diags.keep(load_verbs(rel, text)).unwrap_or_default());
+        loaded.extend(diags.keep(verbs_from_text(rel, text)).unwrap_or_default());
     }
     let (story_rules, stories) =
         load_stories(root, meters.as_mut(), world_meters.as_ref(), &mut diags);

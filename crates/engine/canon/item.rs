@@ -9,8 +9,8 @@ use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, ITEM_SCH
 use crate::canon::ItemDef;
 use crate::rules::rule::{Owner, Rule};
 
-/// One item page into `items`, and its rules. The item is kept even when its rules do not
-/// compile, so a later item with the same id is still refused.
+/// One item page into `items`, and its rules. The item is kept even when its rules cannot
+/// be built, so a later item with the same id is still refused.
 pub(super) fn add(
     page: Page,
     items: &mut BTreeMap<String, ItemDef>,
@@ -28,7 +28,7 @@ pub(super) fn add(
         diags.push(diag);
         return None;
     }
-    let rules = rule_list::compile(&page.file, item.rules, &Owner::Item(item.id.clone()));
+    let rules = rule_list::rules_from_yaml(&page.file, item.rules, &Owner::Item(item.id.clone()));
     items.insert(
         item.id.clone(),
         ItemDef {

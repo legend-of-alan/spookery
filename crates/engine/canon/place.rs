@@ -50,7 +50,7 @@ pub(super) fn add(
             body: page.body,
         },
     );
-    diags.keep(rule_list::compile(
+    diags.keep(rule_list::rules_from_yaml(
         &page.file,
         file.rules,
         &Owner::Place(file.id),

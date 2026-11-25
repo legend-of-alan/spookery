@@ -55,7 +55,7 @@ pub(super) fn add(
             idle: file.idle,
         },
     );
-    diags.keep(rule_list::compile(
+    diags.keep(rule_list::rules_from_yaml(
         &page.file,
         file.rules,
         &Owner::Cast(id.into()),

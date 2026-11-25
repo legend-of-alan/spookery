@@ -33,7 +33,7 @@ pub(in crate::canon) struct RuleYaml {
     /// Whether the actor may cancel the action while it is under way.
     #[serde(default)]
     pub cancellable: bool,
-    /// `let:`: each id and its number. A map keeps no order, so `rule_of` sorts the
+    /// `let:`: each id and its number. A map keeps no order, so `rule_from_yaml` sorts the
     /// numbers by where they are written; an id written twice is the YAML's duplicate key.
     #[serde(rename = "let", default)]
     pub lets: std::collections::BTreeMap<String, Spanned<ExprYaml>>,

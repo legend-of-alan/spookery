@@ -1,4 +1,4 @@
-//! Compiles a rule list's typed YAML into rules.
+//! Builds rules from a rule list's typed YAML and refuses what a rule may not say.
 
 use serde_saphyr::Spanned;
 use spookery_protocol::{is_built_in, Seat};
@@ -12,12 +12,12 @@ use crate::rules::rule::{
     Phase, Rule, TargetKind, When,
 };
 
-use super::parse::{
+use super::yaml_types::{
     ChangeYaml, CondYaml, CostYaml, Counts, EffectYaml, ExprYaml, IfYaml, RuleYaml, VerbsDoc,
     WhenYaml,
 };
 
-pub(in crate::canon) fn compile(
+pub(in crate::canon) fn rules_from_yaml(
     file: &str,
     entries: Vec<RuleYaml>,
     owner: &Owner,
@@ -27,7 +27,7 @@ pub(in crate::canon) fn compile(
     let mut rules: Vec<Rule> = Vec::new();
     let mut verb_ids = Vec::new();
     for (index, entry) in entries.into_iter().enumerate() {
-        let Some(rule) = diags.keep(rule_of(file, index, entry, owner)) else {
+        let Some(rule) = diags.keep(rule_from_yaml(file, index, entry, owner)) else {
             continue;
         };
         if let When::Verb { verb_id, .. } = &rule.when {
@@ -49,7 +49,7 @@ pub(in crate::canon) fn compile(
     diags.into_result(rules)
 }
 
-fn rule_of(
+fn rule_from_yaml(
     file: &str,
     index: usize,
     entry: RuleYaml,
@@ -66,7 +66,7 @@ fn rule_of(
         let hint = "set id to a short rule id; say is speech";
         diags.push(refuse_at_id("a rule id is empty or is say".into(), hint));
     }
-    let when = match when_of(&entry.when.value) {
+    let when = match when_from_yaml(&entry.when.value) {
         Ok(when) => Some(when),
         Err(problem) => {
             let at = Locator::Spot(spot_of(&entry.when));
@@ -75,14 +75,14 @@ fn rule_of(
             None
         }
     };
-    let if_ = match entry.if_.as_ref().map(if_of).transpose() {
+    let if_ = match entry.if_.as_ref().map(if_from_yaml).transpose() {
         Ok(list) => list.unwrap_or_default(),
         Err(fault) => {
             diags.push(source.refuse_fault("", fault));
             Vec::new()
         }
     };
-    let cost = match entry.cost.as_ref().map(cost_of).transpose() {
+    let cost = match entry.cost.as_ref().map(cost_from_yaml).transpose() {
         Ok(cost) => cost,
         Err(fault) => {
             diags.push(source.refuse_fault("", fault));
@@ -93,7 +93,7 @@ fn rule_of(
         .finish
         .as_ref()
         .and_then(|finish| finish.cost.as_ref());
-    let finish_cost = match finish_cost_yaml.map(cost_of).transpose() {
+    let finish_cost = match finish_cost_yaml.map(cost_from_yaml).transpose() {
         Ok(Some(_)) if finish_cost_yaml.is_some_and(|cost| cost.ticks.is_some()) => {
             diags.push(schema_error(
                 file,
@@ -111,7 +111,7 @@ fn rule_of(
     let mut lets: Vec<_> = entry.lets.iter().collect();
     lets.sort_by_key(|(_, number)| (number.referenced.line(), number.referenced.column()));
     let lets = (lets.into_iter())
-        .map(|(id, number)| let_of(id, number))
+        .map(|(id, number)| let_from_yaml(id, number))
         .collect::<Result<Vec<_>, Fault>>();
     let lets = match lets {
         Ok(lets) => lets,
@@ -121,7 +121,7 @@ fn rule_of(
         }
     };
     let check = match (entry.check.as_ref())
-        .map(|yaml| check_of(&yaml.total, &yaml.success_at, yaml.partial_at.as_ref()))
+        .map(|yaml| check_from_yaml(&yaml.total, &yaml.success_at, yaml.partial_at.as_ref()))
         .transpose()
     {
         Ok(check) => check,
@@ -130,10 +130,10 @@ fn rule_of(
             None
         }
     };
-    let do_ = effects_of(file, &entry.do_)?;
-    let success = effects_of(file, &entry.success)?;
-    let partial = effects_of(file, &entry.partial)?;
-    let miss = effects_of(file, &entry.miss)?;
+    let do_ = effects_from_yaml(file, &entry.do_)?;
+    let success = effects_from_yaml(file, &entry.success)?;
+    let partial = effects_from_yaml(file, &entry.partial)?;
+    let miss = effects_from_yaml(file, &entry.miss)?;
     if let Some(when) = &when {
         let timed = cost.is_some()
             || entry.start.is_some()
@@ -162,7 +162,7 @@ fn rule_of(
             ));
         }
         let effect_lists = [&do_[..], &success, &partial, &miss];
-        if let Some((problem, hint)) = find_rule_band_problem(check.as_ref(), effect_lists) {
+        if let Some((problem, hint)) = find_check_band_problem(check.as_ref(), effect_lists) {
             let message = format!("rule '{local_id}' {problem}");
             diags.push(refuse_at_id(message, hint));
         }
@@ -260,7 +260,7 @@ fn find_let_read_problem(rule: &Rule) -> Option<(String, String)> {
     None
 }
 
-fn when_of(yaml: &WhenYaml) -> Result<When, String> {
+fn when_from_yaml(yaml: &WhenYaml) -> Result<When, String> {
     match yaml {
         WhenYaml::Word(word) if word == "habit" => Ok(When::Habit),
         WhenYaml::Word(word) => Err(format!("when '{word}' is not habit")),
@@ -287,13 +287,13 @@ fn when_of(yaml: &WhenYaml) -> Result<When, String> {
                     target,
                 })
             }
-            (None, Some(change)) => change_of(change),
+            (None, Some(change)) => change_from_yaml(change),
             _ => Err("when needs one of verb or change".to_string()),
         },
     }
 }
 
-fn change_of(yaml: &ChangeYaml) -> Result<When, String> {
+fn change_from_yaml(yaml: &ChangeYaml) -> Result<When, String> {
     let subject = match yaml.subject.as_deref() {
         None | Some("any") => grammar::Subject::Any,
         Some("pc") => grammar::Subject::Pc,
@@ -317,7 +317,7 @@ fn change_of(yaml: &ChangeYaml) -> Result<When, String> {
             .crosses
             .as_deref()
             .ok_or_else(|| "a meter change needs crosses".to_string())?;
-        let (op, bound) = cross_of(crosses)?;
+        let (op, bound) = cross_from_yaml(crosses)?;
         return Ok(When::Change(ChangeWatch::Meter {
             key: key.clone(),
             op,
@@ -347,33 +347,33 @@ fn change_of(yaml: &ChangeYaml) -> Result<When, String> {
     Err("a change needs arrive, leave, meter, flag, or item".to_string())
 }
 
-fn if_of(yaml: &IfYaml) -> Result<Vec<Cond>, Fault> {
+fn if_from_yaml(yaml: &IfYaml) -> Result<Vec<Cond>, Fault> {
     match yaml {
-        IfYaml::List(list) => list.iter().map(cond_of).collect(),
-        IfYaml::One(one) => Ok(vec![cond_of(one)?]),
+        IfYaml::List(list) => list.iter().map(cond_from_yaml).collect(),
+        IfYaml::One(one) => Ok(vec![cond_from_yaml(one)?]),
     }
 }
 
-pub(in crate::canon) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
+pub(in crate::canon) fn cond_from_yaml(yaml: &CondYaml) -> Result<Cond, Fault> {
     Ok(match yaml {
         CondYaml::HasItem(item) => Cond::HasItem {
-            subject: actor_of(&item.subject)?,
+            subject: actor_from_yaml(&item.subject)?,
             id: item.id.clone(),
             count: (item.count.as_ref()).map_or(Ok(Expr::Num(1)), refuse_dice)?,
         },
         CondYaml::Meter(meter) => Cond::Meter {
-            of: object_of(&meter.of)?,
+            of: object_from_yaml(&meter.of)?,
             key: meter.id.clone(),
-            op: op_of(&meter.op)?,
+            op: op_from_yaml(&meter.op)?,
             value: refuse_dice(&meter.value)?,
         },
         CondYaml::Flag(flag) => Cond::Flag {
-            of: object_of(&flag.of)?,
+            of: object_from_yaml(&flag.of)?,
             key: flag.key.clone(),
             is: flag.is_,
         },
         CondYaml::At(at) => Cond::At {
-            subject: actor_of(&at.subject)?,
+            subject: actor_from_yaml(&at.subject)?,
             place: at.place.clone(),
         },
         CondYaml::Cycle(cycle) => {
@@ -389,49 +389,49 @@ pub(in crate::canon) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
             }
         }
         CondYaml::Players(players) => Cond::Players {
-            op: op_of(&players.op)?,
+            op: op_from_yaml(&players.op)?,
             value: refuse_dice(&players.value)?,
         },
         CondYaml::NoteExists(id) => Cond::NoteExists(id.clone()),
         CondYaml::Wielding(wielding) => Cond::Wielding {
-            subject: actor_of(&wielding.subject)?,
+            subject: actor_from_yaml(&wielding.subject)?,
             id: wielding.id.clone(),
         },
-        CondYaml::All(all) => Cond::All(all.iter().map(cond_of).collect::<Result<_, _>>()?),
-        CondYaml::Any(any) => Cond::Any(any.iter().map(cond_of).collect::<Result<_, _>>()?),
-        CondYaml::Not(not) => Cond::Not(Box::new(cond_of(not)?)),
+        CondYaml::All(all) => Cond::All(all.iter().map(cond_from_yaml).collect::<Result<_, _>>()?),
+        CondYaml::Any(any) => Cond::Any(any.iter().map(cond_from_yaml).collect::<Result<_, _>>()?),
+        CondYaml::Not(not) => Cond::Not(Box::new(cond_from_yaml(not)?)),
     })
 }
 
-pub(in crate::canon) fn cost_of(yaml: &CostYaml) -> Result<Cost, Fault> {
+pub(in crate::canon) fn cost_from_yaml(yaml: &CostYaml) -> Result<Cost, Fault> {
     Ok(Cost {
         ticks: (yaml.ticks.as_ref()).map_or(Ok(Expr::Num(0)), refuse_dice)?,
-        meters: counts_of(&yaml.meters)?,
-        items: counts_of(&yaml.items)?,
+        meters: counts_from_yaml(&yaml.meters)?,
+        items: counts_from_yaml(&yaml.items)?,
     })
 }
 
-fn counts_of(yaml: &Counts) -> Result<Vec<(String, Expr)>, Fault> {
+fn counts_from_yaml(yaml: &Counts) -> Result<Vec<(String, Expr)>, Fault> {
     (yaml.iter())
         .map(|(key, n)| Ok((key.clone(), refuse_dice(n)?)))
         .collect()
 }
 
-fn check_of(
+fn check_from_yaml(
     total: &Spanned<ExprYaml>,
     success_at: &Spanned<ExprYaml>,
     partial_at: Option<&Spanned<ExprYaml>>,
 ) -> Result<rule::Check, Fault> {
     Ok(rule::Check {
-        total: expr_of(total)?,
-        success_at: expr_of(success_at)?,
-        partial_at: partial_at.map(expr_of).transpose()?,
+        total: expr_from_yaml(total)?,
+        success_at: expr_from_yaml(success_at)?,
+        partial_at: partial_at.map(expr_from_yaml).transpose()?,
     })
 }
 
 /// A number in a condition or a cost, refused on its line when it rolls dice.
 fn refuse_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
-    let expr = expr_of(yaml)?;
+    let expr = expr_from_yaml(yaml)?;
     if expr.needs_dice() {
         return Err(Fault {
             message: "a condition or a cost cannot roll dice".into(),
@@ -442,7 +442,7 @@ fn refuse_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
 }
 
 /// One `let:` id and its number. An id no number could read back is refused on its line.
-fn let_of(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), Fault> {
+fn let_from_yaml(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), Fault> {
     if !expr::is_let_id(id) {
         return Err(Fault {
             message: format!(
@@ -452,10 +452,10 @@ fn let_of(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), Fault>
             spot: spot_of(number),
         });
     }
-    Ok((id.to_string(), expr_of(number)?))
+    Ok((id.to_string(), expr_from_yaml(number)?))
 }
 
-fn expr_of(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
+fn expr_from_yaml(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
     let spot = spot_of(yaml);
     match &yaml.value {
         ExprYaml::Literal(n) => Ok(Expr::Num(*n)),
@@ -469,10 +469,13 @@ fn expr_of(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
     }
 }
 
-fn effects_of(file: &str, list: &[EffectYaml]) -> Result<Vec<EffectTemplate>, Vec<Diagnostic>> {
+fn effects_from_yaml(
+    file: &str,
+    list: &[EffectYaml],
+) -> Result<Vec<EffectTemplate>, Vec<Diagnostic>> {
     let mut out = Vec::new();
     for effect in list {
-        match effect_of(effect) {
+        match effect_from_yaml(effect) {
             Ok(effect) => out.push(effect),
             Err(fault) => {
                 return Err(vec![FileText::named(file).refuse_fault("", fault)]);
@@ -482,36 +485,36 @@ fn effects_of(file: &str, list: &[EffectYaml]) -> Result<Vec<EffectTemplate>, Ve
     Ok(out)
 }
 
-fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
+fn effect_from_yaml(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     Ok(match yaml {
         EffectYaml::Meter(meter) if meter.add.is_some() == meter.set.is_some() => {
             return Err("a meter effect needs add or set, not both".into());
         }
         EffectYaml::Meter(meter) => EffectTemplate::Meter {
-            of: object_of(&meter.of)?,
+            of: object_from_yaml(&meter.of)?,
             key: meter.key.clone(),
-            add: meter.add.as_ref().map(expr_of).transpose()?,
-            set: meter.set.as_ref().map(expr_of).transpose()?,
+            add: meter.add.as_ref().map(expr_from_yaml).transpose()?,
+            set: meter.set.as_ref().map(expr_from_yaml).transpose()?,
         },
         EffectYaml::Flag(flag) if flag.key == "busy" => {
             return Err("flag key busy is not a flag".into());
         }
         EffectYaml::Flag(flag) => EffectTemplate::Flag {
-            of: object_of(&flag.of)?,
+            of: object_from_yaml(&flag.of)?,
             key: flag.key.clone(),
             value: flag.value,
         },
         EffectYaml::Modifier(modifier) => {
-            let ticks = expr_of(&modifier.ticks)?;
+            let ticks = expr_from_yaml(&modifier.ticks)?;
             if ticks.constant().is_some_and(|ticks| ticks < 1) {
                 return Err(
                     "a modifier effect has ticks below 1, so set ticks to 1 or more".into(),
                 );
             }
             EffectTemplate::Modifier {
-                to: actor_of(&modifier.to)?,
+                to: actor_from_yaml(&modifier.to)?,
                 id: modifier.id.clone(),
-                add: expr_of(&modifier.add)?,
+                add: expr_from_yaml(&modifier.add)?,
                 ticks,
             }
         }
@@ -545,31 +548,34 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             text: narrate.text.clone(),
         },
         EffectYaml::Memory(memory) => EffectTemplate::Memory {
-            to: actor_of(&memory.to)?,
+            to: actor_from_yaml(&memory.to)?,
             text: memory.text.clone(),
         },
         EffectYaml::Item(item) => EffectTemplate::Item {
-            of: object_of(&item.of)?,
+            of: object_from_yaml(&item.of)?,
             id: item.id.clone(),
-            add: expr_of(&item.add)?,
-            max: item.max.as_ref().map(expr_of).transpose()?,
+            add: expr_from_yaml(&item.add)?,
+            max: item.max.as_ref().map(expr_from_yaml).transpose()?,
         },
         EffectYaml::Wield(wield) => EffectTemplate::Wield {
-            subject: actor_of(&wield.subject)?,
+            subject: actor_from_yaml(&wield.subject)?,
             id: wield.id.clone(),
         },
         EffectYaml::Unwield(unwield) => EffectTemplate::Unwield {
-            subject: actor_of(&unwield.subject)?,
+            subject: actor_from_yaml(&unwield.subject)?,
         },
         EffectYaml::Check(nested) => {
-            let list_of =
-                |list: &[EffectYaml]| list.iter().map(effect_of).collect::<Result<Vec<_>, _>>();
+            let list_of = |list: &[EffectYaml]| {
+                list.iter()
+                    .map(effect_from_yaml)
+                    .collect::<Result<Vec<_>, _>>()
+            };
             EffectTemplate::Check {
                 by: match &nested.by {
-                    Some(by) => actor_of(by)?,
+                    Some(by) => actor_from_yaml(by)?,
                     None => grammar::Actor::Self_,
                 },
-                check: check_of(
+                check: check_from_yaml(
                     &nested.total,
                     &nested.success_at,
                     nested.partial_at.as_ref(),
@@ -584,7 +590,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
 
 /// The first partial band problem of the rule's own `check`, then of each check nested in its
 /// `do`, `success`, `partial` and `miss` lists, as the words after the rule's id and the hint.
-fn find_rule_band_problem(
+fn find_check_band_problem(
     own_check: Option<&rule::Check>,
     effect_lists: [&[EffectTemplate]; 4],
 ) -> Option<(&'static str, &'static str)> {
@@ -631,7 +637,7 @@ fn find_partial_band_problem(
         ))
 }
 
-fn object_of(yaml: &Spanned<String>) -> Result<grammar::Object, Fault> {
+fn object_from_yaml(yaml: &Spanned<String>) -> Result<grammar::Object, Fault> {
     grammar::Object::parse(&yaml.value).map_err(|message| Fault {
         message,
         spot: spot_of(yaml),
@@ -639,18 +645,18 @@ fn object_of(yaml: &Spanned<String>) -> Result<grammar::Object, Fault> {
 }
 
 /// The actor a slot that needs one names, refused on the word's line when it is another owner.
-fn actor_of(yaml: &Spanned<String>) -> Result<grammar::Actor, Fault> {
+fn actor_from_yaml(yaml: &Spanned<String>) -> Result<grammar::Actor, Fault> {
     grammar::Actor::parse(&yaml.value).map_err(|message| Fault {
         message,
         spot: spot_of(yaml),
     })
 }
 
-fn op_of(word: &str) -> Result<Op, String> {
+fn op_from_yaml(word: &str) -> Result<Op, String> {
     Op::parse(word).ok_or_else(|| format!("op '{word}' is not <, <=, ==, >=, or >"))
 }
 
-fn cross_of(text: &str) -> Result<(Op, i64), String> {
+fn cross_from_yaml(text: &str) -> Result<(Op, i64), String> {
     let text = text.trim();
     let split = text.find(|ch| !matches!(ch, '<' | '=' | '>'));
     let (op, bound) = text.split_at(split.unwrap_or(text.len()));
@@ -659,7 +665,10 @@ fn cross_of(text: &str) -> Result<(Op, i64), String> {
         .ok_or_else(|| format!("crosses '{text}' needs an operator and a number"))
 }
 
-pub(in crate::canon) fn load_verbs(rel: &str, text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
+pub(in crate::canon) fn verbs_from_text(
+    rel: &str,
+    text: &str,
+) -> Result<Vec<Rule>, Vec<Diagnostic>> {
     let doc: VerbsDoc = load_tagged(rel, text, VERBS_SCHEMA)?;
-    compile(rel, doc.rules, &Owner::Verb)
+    rules_from_yaml(rel, doc.rules, &Owner::Verb)
 }

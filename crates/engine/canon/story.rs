@@ -18,7 +18,7 @@ use crate::ecs::id::StoryId;
 use crate::entity;
 use crate::rules::rule::{Owner, Rule};
 
-/// Every `story/*.yaml` file in directory order: its rules compiled, and its meters added to
+/// Every `story/*.yaml` file in directory order: its rules built from YAML, and its meters added to
 /// `meters` when those loaded. A file with an empty id, or an id an earlier file has, is refused
 /// and skipped. A pack without `story/` has none.
 pub(super) fn load_stories(
@@ -69,8 +69,8 @@ pub(super) fn load_stories(
         }
         let name = story.name.unwrap_or_else(|| story.id.clone());
         stories.insert(id, StoryDef { name });
-        let compiled = rule_list::compile(&file, story.rules, &Owner::Story(story.id));
-        rules.extend(diags.keep(compiled).unwrap_or_default());
+        let story_rules = rule_list::rules_from_yaml(&file, story.rules, &Owner::Story(story.id));
+        rules.extend(diags.keep(story_rules).unwrap_or_default());
     }
     (rules, stories)
 }
