@@ -191,6 +191,7 @@ pub fn render_view(view: &protocol::View) -> String {
         meters,
         world_meters,
         exits,
+        nearby: _,
         habits: _,
     } = view;
     let mut sections = Vec::new();

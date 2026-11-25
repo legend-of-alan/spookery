@@ -41,6 +41,10 @@ pub struct View {
     pub habits: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exits: Vec<ExitView>,
+    /// The places `exits` go to that the viewer's `map` knows, each with the exits the viewer saw
+    /// there.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub nearby: Vec<PlaceView>,
 }
 
 impl View {

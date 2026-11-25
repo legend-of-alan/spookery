@@ -108,6 +108,7 @@ pub(super) fn build_view(view: &engine::View) -> ServerBody {
         world_meters: view.world_meters.clone(),
         habits: view.habits.clone(),
         exits: view.exits.clone(),
+        nearby: view.nearby.clone(),
     }))
 }
 

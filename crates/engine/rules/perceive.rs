@@ -9,7 +9,7 @@ use crate::entity;
 use crate::rules::habits::list_whose_if_holds;
 use crate::session;
 use crate::Reason;
-use spookery_protocol::{ExitView, NoteView};
+use spookery_protocol::{ExitView, NoteView, PlaceView};
 pub(crate) use spookery_protocol::{ItemStack, MeterView};
 
 /// What one viewer is shown. Returned from the engine to the host table, which renders it as
@@ -34,6 +34,9 @@ pub struct View {
     pub world_meters: Vec<MeterView>,
     pub habits: Vec<String>,
     pub exits: Vec<ExitView>,
+    /// The places `exits` go to that the viewer's `map` knows, each with the exits the viewer saw
+    /// there.
+    pub nearby: Vec<PlaceView>,
     /// What keeps the viewer busy and until when, or empty when they are free.
     pub busy: String,
 }
@@ -103,6 +106,8 @@ pub(crate) fn build_view(
         list_whose_if_holds(canon, world, presence, viewer_id)
     };
     let exits = crate::rules::travel::visible_exits(canon, world, viewer_id);
+    let mut nearby = crate::rules::lines::map(canon, world, viewer_id)?;
+    nearby.retain(|place| exits.iter().any(|exit| exit.place_id == place.place_id));
     let actor_names = visible_actors
         .iter()
         .map(|id| canon.name(id.as_str()).map(str::to_string))
@@ -127,6 +132,7 @@ pub(crate) fn build_view(
         world_meters,
         habits,
         exits,
+        nearby,
         busy,
     })
 }

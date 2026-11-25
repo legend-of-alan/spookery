@@ -6,13 +6,11 @@ use crate::protocol::{self, ServerBody, ServerMessage};
 use crate::text;
 use crate::Error;
 
-#[cfg(test)]
-pub(crate) mod test_surface;
 mod window;
 use window::Window;
 
 /// Where play shows each message and reads each line the player sends, and the last `seq` it
-/// received, so a reconnect asks for what came after.
+/// showed, so a reconnect asks for what came after.
 pub struct Terminal {
     surface: Surface,
     last_seq: u64,
@@ -22,8 +20,6 @@ pub struct Terminal {
 enum Surface {
     Plain(Plain),
     Window(Box<Window>),
-    #[cfg(test)]
-    Test(test_surface::TestSurface),
 }
 
 impl Terminal {
@@ -60,11 +56,6 @@ impl Terminal {
                 Ok(())
             }
             Surface::Window(window) => window.show(message, view),
-            #[cfg(test)]
-            Surface::Test(surface) => {
-                surface.send(test_surface::SurfaceCall::Show(message.clone()));
-                Ok(())
-            }
         }
     }
 
@@ -78,39 +69,6 @@ impl Terminal {
         match &mut self.surface {
             Surface::Plain(plain) => Ok(plain.stdin_lines.recv().await),
             Surface::Window(window) => window.next_line(view, commands).await,
-            #[cfg(test)]
-            Surface::Test(surface) => Ok(surface.next_line().await),
-        }
-    }
-
-    /// Records the `seq` of the reply to play's own `map` and fills the window's place panel
-    /// from it, keeping it out of the transcript. A refusal of that `map` shows nowhere.
-    pub(crate) fn fill_place_panel(
-        &mut self,
-        message: &ServerMessage,
-        view: Option<&protocol::View>,
-    ) -> Result<(), Error> {
-        self.last_seq = self.last_seq.max(message.seq.unwrap_or(0));
-        match (&mut self.surface, &message.body) {
-            (Surface::Window(window), ServerBody::Map { places }) => {
-                window.fill_place_panel(places, view)
-            }
-            #[cfg(test)]
-            (Surface::Test(surface), _) => {
-                surface.send(test_surface::SurfaceCall::FillPlacePanel(message.clone()));
-                Ok(())
-            }
-            _ => Ok(()),
-        }
-    }
-
-    /// Whether the surface has a place panel, which lists the places past the exits.
-    pub(crate) fn has_place_panel(&self) -> bool {
-        match self.surface {
-            Surface::Plain(_) => false,
-            Surface::Window(_) => true,
-            #[cfg(test)]
-            Surface::Test(_) => true,
         }
     }
 

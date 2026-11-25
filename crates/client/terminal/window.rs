@@ -21,7 +21,6 @@ use crate::text;
 use crate::Error;
 use input_line::InputLine;
 use layout::ScreenAreas;
-use place_panel::PlacePanel;
 use tab_box::{Tab, TabBox};
 use transcript::Transcript;
 
@@ -141,15 +140,6 @@ impl Window {
         self.draw(view)
     }
 
-    pub(crate) fn fill_place_panel(
-        &mut self,
-        places: &[protocol::PlaceView],
-        view: Option<&protocol::View>,
-    ) -> Result<(), Error> {
-        self.screen.place_panel.keep_map_places(places);
-        self.draw(view)
-    }
-
     /// Handles keys until the player sends a line: a PC id at the PC picker, else a typed line,
     /// or `help` for F1. `None` when they quit with Ctrl+C.
     pub(crate) async fn next_line(
@@ -208,7 +198,6 @@ struct Screen {
     world_time_ticks: u64,
     renderer: text::Renderer,
     transcript: Transcript,
-    place_panel: PlacePanel,
     tab_box: TabBox,
     /// The last `help` reply as text, shown in a popup until Esc.
     help_text: Option<String>,
@@ -251,7 +240,6 @@ impl Screen {
             world_time_ticks: 0,
             renderer: text::Renderer::new(),
             transcript: Transcript::default(),
-            place_panel: PlacePanel::default(),
             tab_box: TabBox::new(),
             help_text: None,
             last_place_id: String::new(),
@@ -334,10 +322,7 @@ impl Screen {
                 self.push_text(&content, ASH);
             }
             ServerBody::Help { commands } => self.help_text = Some(text::render_help(commands)),
-            ServerBody::Map { places } => {
-                self.place_panel.keep_map_places(places);
-                self.push_text(&text::render_map(places), PARCHMENT);
-            }
+            ServerBody::Map { places } => self.push_text(&text::render_map(places), PARCHMENT),
             ServerBody::Claimed { .. } | ServerBody::Resume { .. } | ServerBody::Lines { .. } => {
                 let content = self.renderer.render_without_separator(body);
                 self.push_text(&content, PARCHMENT);
@@ -445,7 +430,7 @@ impl Screen {
         self.transcript
             .draw(frame, areas.transcript_rect, areas.is_wide, palette);
         let is_tab_box_hidden = areas.tab_box_rect.is_none();
-        (self.place_panel).draw(
+        place_panel::draw(
             frame,
             areas.place_panel_rect,
             view,
@@ -730,12 +715,14 @@ mod tests {
     /// this build.
     const HELP_REPLY: &str = r#"{"seq":9,"reply_to":"c3","body":{"kind":"help","commands":[{"id":"look","target":"none"},{"id":"strike","target":"actor","names":["Aldric"]},{"id":"travel","target":"path","names":["Docks Street","stairs"]}]}}"#;
 
-    fn fill_place_panel_from_map_reply(screen: &mut Screen) {
+    /// Sets `view.nearby` to the places of `MAP_REPLY`, as the host sends them once Rowan has
+    /// seen them.
+    fn set_nearby_from_map_reply(view: &mut protocol::View) {
         let reply: ServerMessage = serde_json::from_str(MAP_REPLY).unwrap();
         let ServerBody::Map { places } = reply.body else {
             panic!("MAP_REPLY is not a map");
         };
-        screen.place_panel.keep_map_places(&places);
+        view.nearby = places;
     }
 
     /// Rowan's recorded session up to `release`, and Rowan's last view there as this build sends
@@ -816,10 +803,11 @@ mod tests {
     }
 
     #[test]
-    fn nearby_lists_the_map_places_and_a_typed_map_shows_in_the_transcript() {
+    fn the_place_panel_lists_the_nearby_places_of_the_view_and_a_typed_map_shows_in_the_transcript()
+    {
         let mut screen = Screen::new(true);
-        let (view, commands) = seat_rowan_carrying_oil(&mut screen);
-        fill_place_panel_from_map_reply(&mut screen);
+        let (mut view, commands) = seat_rowan_carrying_oil(&mut screen);
+        set_nearby_from_map_reply(&mut view);
         assert_region("nearby", &mut screen, &view, |areas| {
             Some(areas.place_panel_rect)
         });
@@ -837,8 +825,8 @@ mod tests {
     #[test]
     fn a_wide_terminal_shows_the_story_the_place_and_the_tab_box_side_by_side() {
         let mut screen = Screen::new(true);
-        let (view, _) = seat_rowan_carrying_oil(&mut screen);
-        fill_place_panel_from_map_reply(&mut screen);
+        let (mut view, _) = seat_rowan_carrying_oil(&mut screen);
+        set_nearby_from_map_reply(&mut view);
         assert_screen_at("wide", &mut screen, Some(&view), 140, 40);
     }
 
