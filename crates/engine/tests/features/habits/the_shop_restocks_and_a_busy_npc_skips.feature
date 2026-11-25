@@ -25,6 +25,11 @@ Feature: Habits keep the shop's items and leave the door note
     Then Mira's travel is picked ahead of both waits
     And Mira has visited the Docks Shop
 
+  Scenario: A queued wait aimed at a present player is picked ahead of an earlier wait
+    Given the docks pack allows 1 intent per round
+    When Harbormouse waits and then Wren waits to Rowan while Rowan is present
+    Then Wren's wait is picked ahead of Harbormouse's
+
   Scenario: A busy Mira does not restock
     When Mira is busy and a round runs
 
