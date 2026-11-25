@@ -6,7 +6,7 @@ One word per concept, and the synonyms banned for it. Names should be obvious fr
 
 - One word per action, wherever it happens. Commit covers a round, a record, a save and a wire write. One word never covers two different actions.
 - Reuse a word the code has before coining one. Add a row here only when a concept has two names in use.
-- Never seat or table, and no mail words (mailbox, inbox, outbox, envelope, deliver). Recipient and ledger are fine.
+- Avoid metaphors.
 - Question words (why, what, when, where, who, how, which) are allowed in the pack and in the serde types that parse it at the edge, which is only crates/engine/canon/rule_list/parse.rs. Past the edge they are banned. Rust `where` clauses are fine.
 - Names that belong to std, rmcp, ratatui, serde or tokio keep their spelling.
 
