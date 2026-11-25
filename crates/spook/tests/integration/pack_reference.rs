@@ -26,14 +26,22 @@ const VERB_KEYS: &[&str] = &[
     "target: none",
     "target: actor",
     "target: place",
-    "target: exit",
+    "target: path",
     "target: item",
     "via:",
     "partial_at:",
     "ticks:",
 ];
 
-const PATH_KEYS: &[&str] = &["<->", "->", "id:", "revealed_by:", "locked_text:", "ticks:"];
+const PATH_KEYS: &[&str] = &[
+    "<->",
+    "->",
+    "id:",
+    "name:",
+    "revealed_by:",
+    "locked_text:",
+    "ticks:",
+];
 
 const CONDITION_KEYS: &[&str] = &[
     "when: habit",

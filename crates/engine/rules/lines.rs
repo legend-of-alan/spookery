@@ -8,8 +8,8 @@ use crate::ecs::{self, component, Presence};
 use crate::intent::Target;
 use crate::rules::cond;
 use crate::rules::gate::{list_ids, verb_for, NamedId};
-use crate::rules::rule::{Owner, TargetKind, When};
-use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
+use crate::rules::rule::{Owner, TargetKind};
+use crate::rules::travel::{exit_view, exits_at};
 use crate::Reason;
 
 /// `help`: the built-in player commands but `claim`, then each pack verb `verb_for` reaches
@@ -61,10 +61,7 @@ pub(crate) fn help(
             ) {
                 continue;
             }
-            let kind = match &rule.when {
-                When::Verb { target, .. } => *target,
-                _ => TargetKind::None,
-            };
+            let kind = rule.when.target_kind();
             let target_ids = match owner {
                 Some(owner) => vec![owner.clone()],
                 None => list_target_ids(canon, world, actor_id, kind, &ids),
@@ -94,14 +91,14 @@ fn list_target_ids(
 ) -> Vec<String> {
     let picked: Vec<String> = match kind {
         TargetKind::None => Vec::new(),
-        TargetKind::Exit => world
+        TargetKind::Path => world
             .actors()
             .get::<component::Place>(actor_id)
-            .get()
-            .map(|place| exits_at(canon, world, actor_id, place))
+            .place_id()
+            .map(|place| exits_at(canon, world, actor_id, place.as_str()))
             .unwrap_or_default()
             .into_iter()
-            .map(|exit| exit.exit_id)
+            .map(|exit| exit.path_id)
             .collect(),
         TargetKind::Actor => ids
             .iter()
@@ -140,12 +137,17 @@ pub(crate) fn map(
     if !world.actors().contains(actor_id) {
         return Err(Reason::UnknownId);
     }
-    let places = (world.actors().get::<component::Visit>(actor_id).iter()).map(|(id, seen)| {
+    let visits = world.actors().get::<component::Visit>(actor_id);
+    let places = visits.iter().map(|(place_id, seen_path_ids)| {
         Ok(PlaceView {
-            place_id: id.to_string(),
-            name: find_place_name(canon, id).ok_or(Reason::UnknownId)?,
-            exits: (canon.exits(id))
-                .filter(|exit| seen.iter().any(|seen| seen == exit.id))
+            place_id: place_id.to_string(),
+            name: find_place_name(canon, place_id).ok_or(Reason::UnknownId)?,
+            exits: (canon.exits(place_id))
+                .filter(|exit| {
+                    seen_path_ids
+                        .iter()
+                        .any(|path_id| exit.path_def.id == **path_id)
+                })
                 .map(|exit| exit_view(canon, world, actor_id, exit))
                 .collect(),
         })
@@ -159,12 +161,12 @@ pub(crate) fn map(
 pub(crate) fn busy_line(canon: &Canon, world: &ecs::World, actor_id: &ActorId) -> Option<String> {
     let act = world.actors().get::<component::Act>(actor_id);
     let act_state = act.get();
-    let place = world.actors().get::<component::Place>(actor_id).get()?;
+    let location = world.actors().get::<component::Place>(actor_id).get()?;
     if !act.is_busy(world.world_time) {
         return None;
     }
     let until = act_state.busy_until?;
-    let doing = match (&act_state.pending, exit_stood_on(canon, place)) {
+    let doing = match (&act_state.pending, location.find_walked_exit(canon)) {
         (Some(_), Some(exit)) => format!("on the {}", exit.name(canon)),
         (Some(pending), None) => gerund(&pending.verb),
         (None, _) => "recovering".to_string(),
@@ -185,7 +187,7 @@ fn gerund(verb: &str) -> String {
 
 /// Place prose for this actor's current place.
 pub(crate) fn place_prose(canon: &Canon, world: &ecs::World, actor_id: &ActorId) -> String {
-    let place = world.actors().get::<component::Place>(actor_id).get();
+    let place = world.actors().get::<component::Place>(actor_id).place_id();
     let Some(place) = place.and_then(|place| canon.places.get(place)) else {
         return String::new();
     };
@@ -198,11 +200,7 @@ pub(crate) fn place_prose(canon: &Canon, world: &ecs::World, actor_id: &ActorId)
         .join("\n")
 }
 
-/// The name a player reads for where `id` stands: the place's name, or the exit's for a walker
-/// on one. `None` when the pack has no such place or exit.
+/// The name a player reads for the place `id`, or `None` when the pack has no such place.
 pub(crate) fn find_place_name(canon: &Canon, id: &str) -> Option<String> {
-    match exit_stood_on(canon, id) {
-        Some(exit) => Some(exit.name(canon).to_string()),
-        None => canon.places.get(id).map(|place| place.name.clone()),
-    }
+    canon.places.get(id).map(|place| place.name.clone())
 }

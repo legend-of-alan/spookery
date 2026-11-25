@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// The wire version the hello announces.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 /// One message on a seat's stream. `id` is chosen by the client and comes back as
 /// `reply_to` on the reply. `seq` is set by the server, from one counter per host, on
@@ -383,7 +383,7 @@ mod tests {
         };
         assert_eq!(
             hello.to_text(),
-            r#"{"body":{"kind":"hello","version":3,"commands":["claim"],"open":["rowan"],"taken":["wren"]}}"#
+            r#"{"body":{"kind":"hello","version":4,"commands":["claim"],"open":["rowan"],"taken":["wren"]}}"#
         );
         let released = ServerMessage {
             body: ServerBody::Released,

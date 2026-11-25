@@ -2,6 +2,7 @@ schema: map
 paths:
   - path: yard -> lane
     id: gate
+    name: gate
     cost:
       ticks: 15
     if:
@@ -11,6 +12,7 @@ paths:
     locked_text: Briar keeps the gate shut.
   - path: yard -> lane
     id: cart
+    name: cart
     cost:
       ticks: 15
     if:

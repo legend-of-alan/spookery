@@ -49,21 +49,21 @@ fn stairs_open(pack: &Path) -> bool {
     let saved = spookery_engine::Session::peek(pack).unwrap();
     saved
         .world()
-        .places()
-        .get::<component::OpenExit>(&"docks_shop".into())
-        .contains("stairs")
+        .paths()
+        .get::<component::Flag>(&"stairs".into())
+        .contains("open")
 }
 
 /// The docks pack with Mira on the street holding brass_key and keeping no habits, a `bolt`
-/// verb in the shop that locks the stair door again, and a change rule that marks the world
+/// verb in the shop that locks the exit it targets again, and a change rule that marks the world
 /// `creaked` when a door opens.
 #[given(expr = "the stair door in the shop needs brass_key")]
 fn the_stair_door_needs_the_key(world: &mut World) {
     let pack = support::copy_pack("docks", "door");
     let bolt = "  - id: bolt
-    when: { verb: bolt }
+    when: { verb: bolt, target: path }
     do:
-      - flag: { of: \"exit:docks_shop.stairs\", key: open, value: false }
+      - flag: { of: target, key: open, value: false }
   - id: creak
     when: { change: { flag: open, becomes: true } }
     do:
@@ -91,10 +91,28 @@ fn the_stair_door_needs_the_key(world: &mut World) {
     world.pack = Some(pack);
 }
 
+#[given(expr = "the stair door in the shop needs brass_key, and Mira holds it in her rooms")]
+fn the_key_holder_is_in_miras_rooms(world: &mut World) {
+    the_stair_door_needs_the_key(world);
+    support::edit_save(world.pack(), |ecs_world| {
+        (ecs_world
+            .actors_mut()
+            .get_mut::<component::Place>(&"mira".into()))
+        .set("mira_rooms")
+        .unwrap();
+    });
+    assert!(!stairs_open(world.pack()));
+}
+
+#[when(expr = "Aldric waits a round")]
+fn aldric_waits_a_round(world: &mut World) {
+    plays(world, "aldric", "wait", None);
+}
+
 #[when(expr = "Mira arrives at the shop holding brass_key")]
 fn mira_arrives_with_the_key(world: &mut World) {
     assert!(!stairs_open(world.pack()));
-    plays(world, "mira", "travel", Some("docks_shop"));
+    plays(world, "mira", "travel", Some("docks_shop.docks_street"));
     assert_eq!(saved_place_of(world.pack(), "mira"), "docks_shop");
 }
 
@@ -102,7 +120,7 @@ fn mira_arrives_with_the_key(world: &mut World) {
 fn mira_opened_the_door(world: &mut World) {
     the_stair_door_needs_the_key(world);
     mira_arrives_with_the_key(world);
-    plays(world, "mira", "travel", Some("docks_street"));
+    plays(world, "mira", "travel", Some("docks_shop.docks_street"));
     assert_eq!(saved_place_of(world.pack(), "mira"), "docks_street");
     assert!(stairs_open(world.pack()));
 }
@@ -138,6 +156,15 @@ fn mira_takes_the_stairs(world: &mut World) {
     assert_eq!(saved_place_of(world.pack(), "mira"), "mira_rooms");
 }
 
+#[then(expr = "the stair door is open from Mira's rooms too")]
+fn the_door_is_open_from_the_rooms(world: &mut World) {
+    let saved = spookery_engine::Session::peek(world.pack()).unwrap();
+    let view = saved.perceive(&Presence::default(), "mira").unwrap();
+    assert_eq!(view.place, "mira_rooms");
+    let stairs = view.exits.iter().find(|exit| exit.path_id == "stairs");
+    assert!(!stairs.unwrap().locked, "{:?}", view.exits);
+}
+
 #[when(expr = "Aldric, who has no key, takes the stairs")]
 fn aldric_takes_the_stairs(world: &mut World) {
     let saved = spookery_engine::Session::peek(world.pack()).unwrap();
@@ -153,9 +180,11 @@ fn aldric_reaches_the_rooms(world: &mut World) {
     assert_eq!(saved_place_of(world.pack(), "aldric"), "mira_rooms");
 }
 
-#[when(expr = "a rule runs a flag effect on exit:docks_shop.stairs setting open to false")]
+#[when(
+    expr = "Aldric bolts the stairs, whose flag effect on its target sets open on path:stairs to false"
+)]
 fn a_rule_locks_the_door(world: &mut World) {
-    plays(world, "aldric", "bolt", None);
+    plays(world, "aldric", "bolt", Some("stairs"));
     assert!(!stairs_open(world.pack()));
 }
 
@@ -185,7 +214,7 @@ fn the_door_refuses_aldric(world: &mut World) {
 fn it_opens_again_with_the_key(world: &mut World) {
     plays(world, "aldric", "wait", None);
     assert!(!stairs_open(world.pack()), "a round with no key opened it");
-    plays(world, "mira", "travel", Some("docks_shop"));
+    plays(world, "mira", "travel", Some("docks_shop.docks_street"));
     assert!(stairs_open(world.pack()));
 }
 

@@ -64,19 +64,15 @@ pub(crate) fn build_view(
     presence: &Presence,
     viewer_id: &ActorId,
 ) -> Result<View, Reason> {
-    let place_id = PlaceId::from(
-        world
-            .actors()
-            .get::<component::Place>(viewer_id)
-            .get()
-            .ok_or(Reason::UnknownId)?,
-    );
-    let mut visible_actors: Vec<ActorId> = world.actors_at(place_id.as_str());
+    let location = world.actors().get::<component::Place>(viewer_id).get();
+    let location = location.ok_or(Reason::UnknownId)?;
+    let (location_text, place_id) = (location.to_string(), location.place_id());
+    let mut visible_actors: Vec<ActorId> = world.actors_at(&location_text);
     visible_actors.sort();
 
     let mut notes = Vec::new();
     for (note_id, note) in world.globals().get::<Note>(&GlobalId).iter() {
-        if !note.is_read_by(viewer_id, Some(place_id.as_str())) {
+        if !note.is_read_by(viewer_id, place_id.map(PlaceId::as_str)) {
             continue;
         }
         notes.push(NoteView {
@@ -89,7 +85,10 @@ pub(crate) fn build_view(
 
     let place_store = world.places();
     let actor_store = world.actors();
-    let items = build_item_stacks(canon, place_store.get::<component::Item>(&place_id).iter())?;
+    let items = match place_id {
+        Some(id) => build_item_stacks(canon, place_store.get::<component::Item>(id).iter())?,
+        None => Vec::new(),
+    };
     let items_carried =
         build_item_stacks(canon, actor_store.get::<component::Item>(viewer_id).iter())?;
     let wielded_item_id =
@@ -109,14 +108,13 @@ pub(crate) fn build_view(
         .map(|id| canon.name(id.as_str()).map(str::to_string))
         .collect::<Option<_>>()
         .ok_or(Reason::UnknownId)?;
-    let place_name =
-        crate::rules::lines::find_place_name(canon, place_id.as_str()).ok_or(Reason::UnknownId)?;
+    let place_name = location.find_name(canon).ok_or(Reason::UnknownId)?;
     let place_prose = crate::rules::lines::place_prose(canon, world, viewer_id);
     let busy = crate::rules::lines::busy_line(canon, world, viewer_id).unwrap_or_default();
 
     Ok(View {
         viewer_id: viewer_id.clone(),
-        place: place_id.into(),
+        place: location_text,
         place_name,
         place_prose,
         visible_actors,

@@ -98,7 +98,7 @@ pub(crate) fn verb_for<'a>(
             return Some(rule);
         }
     }
-    if let Some(place) = world.actors().get::<component::Place>(actor_id).get() {
+    if let Some(place) = world.actors().get::<component::Place>(actor_id).place_id() {
         if let Some(rule) = owner_verb(canon, &Owner::Place(place.to_string()), verb_id) {
             return Some(rule);
         }
@@ -160,7 +160,7 @@ pub(crate) fn admit(
         let shaped = match target {
             TargetKind::None => matches!(intent.target, Target::Empty),
             TargetKind::Place => matches!(intent.target, Target::Place(_)),
-            TargetKind::Exit => matches!(intent.target, Target::Exit(_)),
+            TargetKind::Path => matches!(intent.target, Target::Path(_)),
             TargetKind::Actor => matches!(intent.target, Target::Actor(_)),
             TargetKind::Item => matches!(intent.target, Target::Item(_)),
         };
@@ -194,7 +194,7 @@ pub(crate) fn admit_cancel(context: &Context) -> Result<(), Refusal> {
         .and_then(|act| act.pending.as_ref());
     let walking = actor_id
         .and_then(|id| actors.get::<component::Place>(id).get())
-        .is_some_and(|place| crate::ecs::exit_parts(place).is_some());
+        .is_some_and(component::ActorLocation::is_walking);
     let rule = pending.and_then(|pending| context.canon.rules.get(&pending.rule));
     if walking || !rule.is_some_and(|rule| rule.cancellable) {
         return Err(Refusal::new(intent, Reason::Ineligible));
@@ -263,7 +263,7 @@ pub(crate) fn list_ids(
     ids.extend(others.map(|(id, name)| NamedId::new(id.as_str(), name)));
     ids.extend(view.items.into_iter().map(name_item));
     ids.extend(view.exits.into_iter().map(|exit| NamedId {
-        id: exit.exit_id,
+        id: exit.path_id,
         name: exit.name,
         aliases: vec![exit.place_id, exit.place_name],
     }));

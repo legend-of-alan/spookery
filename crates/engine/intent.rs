@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ecs;
-use crate::ecs::id::{ActorId, PlaceId};
+use crate::ecs::id::{ActorId, PathId, PlaceId};
 use crate::rules::rule::TargetKind;
 use crate::Reason;
 
@@ -21,7 +21,7 @@ pub enum Target {
     #[default]
     Empty,
     Place(PlaceId),
-    Exit(String),
+    Path(PathId),
     Actor(ActorId),
     Item(String),
 }
@@ -32,7 +32,7 @@ impl Target {
         match kind {
             TargetKind::None => Target::Empty,
             TargetKind::Place => Target::Place(token.into()),
-            TargetKind::Exit => Target::Exit(token),
+            TargetKind::Path => Target::Path(token.into()),
             TargetKind::Actor => Target::Actor(token.into()),
             TargetKind::Item => Target::Item(token),
         }
@@ -47,7 +47,8 @@ impl Target {
         match self {
             Target::Place(id) => Some(id.as_str()),
             Target::Actor(id) => Some(id.as_str()),
-            Target::Exit(id) | Target::Item(id) => Some(id),
+            Target::Path(id) => Some(id.as_str()),
+            Target::Item(id) => Some(id),
             Target::Empty => None,
         }
     }
@@ -192,7 +193,7 @@ struct TargetWire {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     place: Option<PlaceId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    exit: Option<String>,
+    path: Option<PathId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     actor: Option<ActorId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -205,7 +206,7 @@ impl From<Target> for TargetWire {
         match target {
             Target::Empty => {}
             Target::Place(id) => wire.place = Some(id),
-            Target::Exit(id) => wire.exit = Some(id),
+            Target::Path(id) => wire.path = Some(id),
             Target::Actor(id) => wire.actor = Some(id),
             Target::Item(id) => wire.item = Some(id),
         }
@@ -220,7 +221,7 @@ impl TryFrom<TargetWire> for Target {
     fn try_from(wire: TargetWire) -> Result<Self, Self::Error> {
         let mut set = [
             wire.place.map(Target::Place),
-            wire.exit.map(Target::Exit),
+            wire.path.map(Target::Path),
             wire.actor.map(Target::Actor),
             wire.item.map(Target::Item),
         ]

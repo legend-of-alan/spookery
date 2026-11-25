@@ -19,8 +19,8 @@ use crate::canon::StoryDef;
 use crate::ecs::change::{self, Change, ChangeValue};
 use crate::ecs::component::meter::{self, Meter};
 use crate::ecs::component::modifier;
-use crate::ecs::component::{self, Component};
-use crate::ecs::id::{ActorId, ExitId};
+use crate::ecs::component::{self, ActorLocation, Component};
+use crate::ecs::id::ActorId;
 use crate::ecs::{self, Presence, Save, WindowCount};
 use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target};
@@ -42,7 +42,6 @@ enum Step {
     Meter(entity::Id, &'static str, i64),
     Fatigue(i64),
     Expire,
-    ExitOpen(bool),
     Flag(entity::Id, &'static str, bool),
     Walk(&'static str),
     Wield(&'static str),
@@ -281,13 +280,6 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
             add: *add,
             ticks: 3,
         },
-        Step::ExitOpen(open) => EffectKind::ExitOpen {
-            exit: ExitId {
-                place: "docks_shop".into(),
-                exit: "stairs".to_string(),
-            },
-            open: *open,
-        },
         Step::Flag(carrier, key, value) => EffectKind::Flag {
             entity: carrier.clone(),
             key: key.to_string(),
@@ -295,10 +287,10 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
         },
         Step::Walk(to) => EffectKind::Location {
             from: (world.actors().get::<component::Place>(&mira).get())
-                .map(String::from)
-                .unwrap_or_default(),
+                .cloned()
+                .unwrap_or_else(|| ActorLocation::Place("".into())),
             actor_id: mira,
-            to: to.to_string(),
+            to: ActorLocation::Place((*to).into()),
             arrived_at: None,
         },
         Step::Wield(id) => EffectKind::Wield {
@@ -359,6 +351,7 @@ fn pick_step() -> impl Strategy<Value = Step> {
         (entity::Id::Place("docks_street".into()), "busy"),
         (entity::Id::Story("tale".into()), "told"),
         (entity::Id::Global, "rung"),
+        (entity::Id::Path("docks_shop.stairs".into()), "open"),
     ];
     prop_oneof![
         3 => Just(Step::Savepoint),
@@ -370,7 +363,6 @@ fn pick_step() -> impl Strategy<Value = Step> {
             .prop_map(|((carrier, key), delta)| Step::Meter(carrier, key, delta)),
         1 => (-2i64..=2).prop_map(Step::Fatigue),
         1 => Just(Step::Expire),
-        1 => any::<bool>().prop_map(Step::ExitOpen),
         2 => (select(flags), any::<bool>())
             .prop_map(|((carrier, key), value)| Step::Flag(carrier, key, value)),
         1 => select(vec!["docks_shop", "docks_street", "mira_rooms"]).prop_map(Step::Walk),

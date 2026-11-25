@@ -144,6 +144,7 @@ impl ecs::World {
         let save = &mut self.save;
         (save.actors.history_mut().into_iter())
             .chain(save.places.history_mut())
+            .chain(save.paths.history_mut())
             .chain(save.stories.history_mut())
             .chain(save.globals.history_mut())
     }

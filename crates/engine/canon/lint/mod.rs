@@ -25,13 +25,16 @@ pub(super) fn check_paths(
     let mut diags = Vec::new();
     for (row, path) in paths.iter().enumerate() {
         let arrow = if path.bidirectional { "<->" } else { "->" };
-        let line = format!("{} {arrow} {}", path.ends[0], path.ends[1]);
+        let line = format!(
+            "{} {arrow} {}",
+            path.end_place_ids[0], path.end_place_ids[1]
+        );
         let mut refuse = |field: &str, problem: String, hint: &str| {
             let at = format!("paths[{row}]{field}");
             diags.push(schema_error(MAP_FILE, &problem, hint).at_path(at));
         };
-        for end in path.ends.iter().filter(|end| !places.contains_key(*end)) {
-            let problem = format!("path '{line}' names '{end}', which is not a place");
+        for end_place_id in (path.end_place_ids.iter()).filter(|id| !places.contains_key(*id)) {
+            let problem = format!("path '{line}' names '{end_place_id}', which is not a place");
             refuse(".path", problem, "name a place from world/places");
         }
         for id in path.mentions().item_ids {
@@ -130,8 +133,8 @@ fn conditions(canon: &Canon) -> impl Iterator<Item = (&str, String, &[Cond])> {
 
 /// Flag conditions, on a rule or a path, a change rule's flag watch and a path's `revealed_by`,
 /// that name a key no rule sets and `held` does not list, so its value never moves: most likely
-/// a misspelt key. An exit's `open` gets no warning here: `check_carriers` checks it in a
-/// condition, and the round sets it on exits, not through rules.
+/// a misspelt key. `open` gets no warning here: the round sets it on paths, not through rules,
+/// and `check_carriers` checks it in a condition.
 fn check_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let is_ever_set = |key| held.contains(key) || find_flag_holders(canon, key).next().is_some();
@@ -141,10 +144,10 @@ fn check_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
     for (file, at, conds) in conditions(canon) {
         for cond in conds {
             cond.visit(|cond| {
-                let Cond::Flag { of, key, .. } = cond else {
+                let Cond::Flag { key, .. } = cond else {
                     return;
                 };
-                if matches!(of, grammar::Object::Exit(_)) || is_ever_set(key.as_str()) {
+                if key == OPEN || is_ever_set(key.as_str()) {
                     return;
                 }
                 diags.push(warning(file, &unset_problem(key), hint).at_path(at.clone()));
@@ -235,11 +238,12 @@ fn check_cycle_conditions(canon: &Canon) -> Vec<Diagnostic> {
 fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
     let mut seen = BTreeSet::new();
     let mut queue = vec![canon.start_place.clone()];
-    while let Some(place) = queue.pop() {
-        if !seen.insert(place.clone()) {
+    while let Some(place_id) = queue.pop() {
+        if !seen.insert(place_id.clone()) {
             continue;
         }
-        queue.extend(canon.exits(&place).map(|exit| exit.to.to_string()));
+        let exits = canon.exits(&place_id);
+        queue.extend(exits.map(|exit| exit.to_place_id().to_string()));
     }
     let mut diags = Vec::new();
     for id in canon.places.keys() {

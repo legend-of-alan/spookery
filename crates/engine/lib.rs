@@ -23,7 +23,7 @@ pub use ecs::component;
 pub use ecs::component::meter::Meter;
 pub use ecs::component::modifier::Modifier;
 pub use ecs::component::Note;
-pub use ecs::id::{ActorId, ExitId, GlobalId, PlaceId, StoryId};
+pub use ecs::id::{ActorId, GlobalId, PathId, PlaceId, StoryId};
 pub use ecs::{Presence, Reader, Save, Writer};
 pub use intent::{Intent, IntentArgs, Source, Target};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick};
@@ -59,7 +59,10 @@ pub mod testing {
     /// Where `actor` stands, read through `Reader::get`. Panics when they stand nowhere.
     pub fn place_of(world: &crate::ecs::World, actor: &str) -> String {
         let actors = world.actors();
-        let place = actors.get::<Place>(&actor.into()).get().map(String::from);
+        let place = actors
+            .get::<Place>(&actor.into())
+            .get()
+            .map(ToString::to_string);
         place.unwrap_or_else(|| panic!("{actor} stands nowhere"))
     }
 

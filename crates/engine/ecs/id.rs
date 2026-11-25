@@ -1,4 +1,4 @@
-//! The id of an actor, of a place, of a story and of the world, and the address of an exit.
+//! The id of an actor, of a place, of a story, of a path and of the world.
 
 use std::borrow::Borrow;
 use std::fmt;
@@ -75,6 +75,12 @@ string_id! {
     StoryId
 }
 
+string_id! {
+    /// A path's id: the first place its `world/map.yaml` line names, a dot, and the word a player
+    /// types there, such as `docks_shop.stairs`.
+    PathId
+}
+
 /// The world's id. There is one world, so its id says nothing more.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GlobalId; // repeats module: re-exported at the crate root
@@ -108,18 +114,8 @@ impl AsIdRef for GlobalId {
     }
 }
 
-/// One exit, by its place and its exit id. An address, not an entity: it holds nothing but
-/// whether the exit is open.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct ExitId {
-    // repeats module: re-exported at the crate root
-    pub place: PlaceId,
-    pub exit: String,
-}
-
-/// Where a walker on this exit stands: `exit:<place>.<exit>`.
-impl fmt::Display for ExitId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "exit:{}.{}", self.place, self.exit)
+impl AsIdRef for PathId {
+    fn as_id_ref(&self) -> entity::IdRef<'_> {
+        entity::IdRef::Path(self)
     }
 }

@@ -40,7 +40,7 @@ fn mira_plays(pack: &Path, verb: &str, target: Option<&str>) {
         .unwrap_or_else(|err| panic!("play: {err}"));
 }
 
-/// The exit ids Mira's map lists for the Docks Shop.
+/// The path ids of the exits Mira's map lists for the Docks Shop.
 fn shop_exits_mira_knows(pack: &Path) -> Vec<String> {
     let saved = spookery_engine::Session::peek(pack).unwrap();
     let places = saved.map(&"mira".into()).unwrap();
@@ -48,7 +48,7 @@ fn shop_exits_mira_knows(pack: &Path) -> Vec<String> {
         .iter()
         .find(|place| place.name == "Docks Shop")
         .unwrap_or_else(|| panic!("no shop on the map: {places:?}"));
-    shop.exits.iter().map(|exit| exit.exit_id.clone()).collect()
+    shop.exits.iter().map(|exit| exit.path_id.clone()).collect()
 }
 
 /// The trapdoor under the shop's rug, and a `dig` verb on the shop and the street that sets
@@ -92,7 +92,7 @@ fn the_shop_has_a_trapdoor(world: &mut World) {
 #[given(expr = "Mira has visited the shop and left for the street")]
 fn mira_has_visited_the_shop_and_left(world: &mut World) {
     mira_plays(world.pack(), "wait", None);
-    mira_plays(world.pack(), "travel", Some("docks_street"));
+    mira_plays(world.pack(), "travel", Some("docks_shop.docks_street"));
     let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     assert_eq!(support::place_of(saved.world(), "mira"), "docks_street");
 }
@@ -122,7 +122,7 @@ fn mira_finds_the_trapdoor(world: &mut World) {
 
 #[when(expr = "Mira walks back to the shop")]
 fn mira_walks_back(world: &mut World) {
-    mira_plays(world.pack(), "travel", Some("docks_shop"));
+    mira_plays(world.pack(), "travel", Some("docks_shop.docks_street"));
     let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     assert_eq!(support::place_of(saved.world(), "mira"), "docks_shop");
 }
@@ -130,13 +130,13 @@ fn mira_walks_back(world: &mut World) {
 #[then(expr = "Mira's map shows the shop without the trapdoor")]
 fn the_map_has_no_trapdoor(world: &mut World) {
     let exits = shop_exits_mira_knows(world.pack());
-    assert_eq!(exits, ["docks_street", "stairs"]);
+    assert_eq!(exits, ["docks_shop.docks_street", "stairs"]);
 }
 
 #[then(expr = "Mira's map shows the shop with the trapdoor")]
 fn the_map_has_the_trapdoor(world: &mut World) {
     let exits = shop_exits_mira_knows(world.pack());
-    assert_eq!(exits, ["docks_street", "stairs", "trapdoor"]);
+    assert_eq!(exits, ["docks_shop.docks_street", "stairs", "trapdoor"]);
 }
 
 #[then(expr = "Mira's map shows the shop with the trapdoor after that round")]

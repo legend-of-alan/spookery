@@ -16,7 +16,7 @@ use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
-use crate::rules::rule::{Rule, TargetKind, When};
+use crate::rules::rule::{Rule, TargetKind};
 use crate::store::journal;
 use crate::store::records::Record;
 use crate::store::tape::{append_record, read_scrollback, TapeRecord};
@@ -171,12 +171,14 @@ impl Session {
     ) -> Result<TapeRecord, Reason> {
         let text = check_speech_text(text)?.to_string();
         let actors = self.world.actors();
-        let here = speaker.and_then(|speaker| actors.get::<component::Place>(speaker).get());
+        let here = speaker.and_then(|speaker| actors.get::<component::Place>(speaker).place_id());
         let to = match audience {
             Some(Audience::Actor(actor)) if !actors.contains(&ActorId::from(actor.as_str())) => {
                 return Err(Reason::Schema);
             }
-            Some(Audience::Place(place)) if speaker.is_some() && here != Some(place.as_str()) => {
+            Some(Audience::Place(place))
+                if speaker.is_some() && here.is_none_or(|here| here != place.as_str()) =>
+            {
                 return Err(Reason::Schema);
             }
             Some(Audience::Place(place))
@@ -614,11 +616,7 @@ fn speech_recipients(
 /// the token as the kind the verb takes. A token where none fits, or none where one is
 /// needed, is `SCHEMA`.
 fn target_for(rule: &Rule, token: Option<&str>) -> Result<Target, Reason> {
-    let kind = match &rule.when {
-        When::Verb { target, .. } => *target,
-        When::Habit | When::Change(_) => TargetKind::None,
-    };
-    match (kind, token) {
+    match (rule.when.target_kind(), token) {
         (TargetKind::None, None) => Ok(Target::Empty),
         (TargetKind::None, Some(_)) | (_, None) => Err(Reason::Schema),
         (kind, Some(id)) => Ok(Target::new(kind, id)),

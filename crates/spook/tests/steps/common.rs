@@ -30,11 +30,10 @@ pub(crate) fn give_key(now: &mut ecs::World) {
         .get_mut::<component::Item>(&"rowan".into())
         .shift("brass_key", 1, None)
         .unwrap();
-    let stairs = spookery_engine::ExitId {
-        place: "docks_shop".into(),
-        exit: "stairs".to_string(),
-    };
-    now.places_mut().set_exit_open(&stairs, true).unwrap();
+    let mut paths = now.paths_mut();
+    (paths.get_mut::<component::Flag>(&"stairs".into()))
+        .set("open", true)
+        .unwrap();
 }
 
 /// A trapdoor from the shop to a cellar, shown only to whoever carries `found_trapdoor`.
@@ -212,9 +211,14 @@ fn break_pack(pack: &Path, fault: &str) {
             "  - path: docks_shop <-> docks_street\n",
             "  - path: docks_shop <-> nowhere\n",
         ),
-        "duplicate exit" => crate::support::append(
+        "two paths with one id" => crate::support::append(
             &pack.join("world/map.yaml"),
             "  - path: docks_shop -> docks_street\n",
+        ),
+        "a dotted path id" => replace_in_file(
+            &pack.join("world/map.yaml"),
+            "    id: stairs\n",
+            "    id: shop.stairs\n",
         ),
         "exits in a place file" => crate::support::insert_before_fence(
             &pack.join("world/places/docks_shop.md"),
@@ -312,6 +316,22 @@ fn break_pack(pack: &Path, fault: &str) {
             &pack.join("rules/verbs.yaml"),
             "      verb: drop\n      target: item\n    do:\n",
             "      verb: drop\n      target: item\n    do:\n      - meter: { of: target, key: hp, add: -1 }\n",
+        ),
+        "a meter on a travel move's target" => replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "          via: target
+",
+            "          via: target
+      - meter: { of: target, key: hp, add: -1 }
+",
+        ),
+        "a travel move's target flag besides open" => replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "          via: target
+",
+            "          via: target
+      - flag: { of: target, key: worn, value: true }
+",
         ),
         "id: target with no target" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
@@ -413,7 +433,7 @@ fn break_pack(pack: &Path, fault: &str) {
         "a walker on a missing exit" => replace_in_file(
             &pack.join("state/save.yaml"),
             "    rowan: docks_shop\n",
-            "    rowan: exit:docks_shop.ladder\n",
+            "    rowan: { path: docks_shop.ladder, to: mira_rooms }\n",
         ),
         "a verb named cancel" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
@@ -531,28 +551,35 @@ pub(crate) fn capture_play_stdout(world: &mut World) -> String {
     text
 }
 
-/// Put `actor` on the exit `<place>.<exit>`, walking it until tick `until`.
-pub(crate) fn set_busy(now: &mut ecs::World, actor: &str, until: u64, exit: &str) {
-    let (mut actors, actor) = (now.actors_mut(), actor.into());
+/// Put `actor_id` on path `path_id`, walking it from `from_place_id` until tick `until_ticks`.
+pub(crate) fn set_busy(
+    now: &mut ecs::World,
+    actor_id: &str,
+    until_ticks: u64,
+    from_place_id: &str,
+    path_id: &str,
+) {
+    let canon = now.canon().clone();
+    let path_def = canon.paths.get(&path_id.into());
+    let exit = path_def.and_then(|path_def| path_def.exit_from(from_place_id));
+    let exit = exit.unwrap_or_else(|| panic!("path {path_id} does not leave {from_place_id}"));
+    let (mut actors, actor_id) = (now.actors_mut(), actor_id.into());
     actors
-        .get_mut::<component::Place>(&actor)
-        .set(&format!("exit:{exit}"))
+        .get_mut::<component::Place>(&actor_id)
+        .set(exit.walker_location())
         .unwrap();
     actors
-        .get_mut::<component::Act>(&actor)
-        .set_busy(until, Some(walk(exit)))
+        .get_mut::<component::Act>(&actor_id)
+        .set_busy(until_ticks, Some(walk_action(path_id)))
         .unwrap();
 }
 
-/// A walk through the exit `<place>.<exit>` by the travel verb.
-pub(crate) fn walk(exit: &str) -> spookery_engine::testing::PendingAction {
-    let (_, exit_id) = exit
-        .split_once('.')
-        .unwrap_or_else(|| panic!("no exit in {exit}"));
+/// A walk along path `path_id` by the travel verb.
+pub(crate) fn walk_action(path_id: &str) -> spookery_engine::testing::PendingAction {
     spookery_engine::testing::PendingAction {
         verb: "travel".to_string(),
         source: spookery_engine::Source::Player,
-        target: spookery_engine::Target::Exit(exit_id.to_string()),
+        target: spookery_engine::Target::Path(path_id.into()),
         rule: "verb:travel".to_string(),
     }
 }
@@ -747,6 +774,17 @@ async fn the_player_waits(world: &mut World) {
     let (mark, added) = host::player_send(world, "wait", "\"kind\":").await;
     world.mark = mark;
     world.player_added = added;
+}
+
+/// The player's line was refused with `refusal`: its code, or `CODE: detail` for a refusal
+/// that carries a detail.
+#[then(expr = "the player is refused with {string}")]
+fn the_player_is_refused_with(world: &mut World, refusal: String) {
+    let wire = match refusal.split_once(": ") {
+        Some((code, detail)) => format!("\"code\":\"{code}\",\"detail\":\"{detail}\""),
+        None => format!("\"code\":\"{refusal}\""),
+    };
+    assert!(world.player_added.contains(&wire), "{}", world.player_added);
 }
 
 #[when(expr = "the player travels to {string}")]

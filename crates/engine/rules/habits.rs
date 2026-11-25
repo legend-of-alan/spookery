@@ -70,10 +70,10 @@ fn is_eligible(canon: &Canon, world: &ecs::World, presence: &Presence, npc_id: &
     }
     let act = world.actors().get::<component::Act>(npc_id);
     let act_state = act.get();
-    let Some(place) = world.actors().get::<component::Place>(npc_id).get() else {
+    let Some(place) = world.actors().get::<component::Place>(npc_id).place_id() else {
         return false;
     };
-    if act.is_busy(world.world_time) || is_player_at(world, presence, place) {
+    if act.is_busy(world.world_time) || is_player_at(world, presence, place.as_str()) {
         return false;
     }
     if act_state.last_act_round == world.round_index {

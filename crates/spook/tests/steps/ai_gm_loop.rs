@@ -52,8 +52,12 @@ async fn start_docks_table_with_mira(world: &mut World, notes: Option<&str>) {
     let ecs_world = world_of(&pack);
     for npc in ["mira", "aldric"] {
         let npc = npc.into();
-        let place = ecs_world.actors().get::<component::Place>(&npc).get();
-        assert_eq!(place, Some("docks_shop"), "{npc}");
+        let place = ecs_world.actors().get::<component::Place>(&npc).place_id();
+        assert_eq!(
+            place.map(|place| place.as_str()),
+            Some("docks_shop"),
+            "{npc}"
+        );
     }
     host::listen(world, &pack).await;
     host::seat_rowan(world, &pack).await;

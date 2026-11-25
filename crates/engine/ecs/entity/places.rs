@@ -5,9 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
 use crate::ecs::component::{self, Meter};
-use crate::ecs::id::{ExitId, PlaceId};
-use crate::ecs::{entity, nested_map, undo, Reader, Writer};
-use crate::Reason;
+use crate::ecs::id::PlaceId;
+use crate::ecs::{entity, nested_map, undo};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -19,9 +18,6 @@ pub struct Places {
     meters: undo::Store<component::Map<PlaceId, Meter>>,
     #[serde(with = "nested_map::lists")]
     flags: undo::Store<component::Map<PlaceId, component::Flag>>,
-    /// The id of each open exit, by its place.
-    #[serde(with = "nested_map::lists")]
-    open_exits: undo::Store<component::Map<PlaceId, component::OpenExit>>,
 }
 
 impl entity::Collection for Places {
@@ -39,31 +35,15 @@ impl entity::Collection for Places {
 entity::has!(Places, component::Item, items);
 entity::has!(Places, Meter, meters);
 entity::has!(Places, component::Flag, flags);
-entity::has!(Places, component::OpenExit, open_exits);
 
 impl Places {
     /// Every store, as the history a rollback undoes and an accept clears.
-    pub(in crate::ecs) fn history_mut(&mut self) -> [&mut dyn undo::History; 4] {
+    pub(in crate::ecs) fn history_mut(&mut self) -> [&mut dyn undo::History; 3] {
         let Places {
             items,
             meters,
             flags,
-            open_exits,
         } = self;
-        [items, meters, flags, open_exits]
-    }
-}
-
-impl Reader<'_, Places> {
-    /// Whether `exit` is open.
-    pub fn is_exit_open(self, exit: &ExitId) -> bool {
-        (self.get::<component::OpenExit>(&exit.place)).contains(&exit.exit)
-    }
-}
-
-impl Writer<'_, Places> {
-    /// Open `exit`, or shut it.
-    pub fn set_exit_open(&mut self, exit: &ExitId, open: bool) -> Result<(), Reason> {
-        (self.get_mut::<component::OpenExit>(&exit.place)).set(&exit.exit, open)
+        [items, meters, flags]
     }
 }

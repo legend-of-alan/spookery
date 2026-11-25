@@ -302,10 +302,10 @@ fn a_rule_leaves_a_note_in_the_attic(world: &mut World) {
     set_present(&mut seated, &["rowan"]);
     world.seated.push((pack.clone(), seated));
     add_verb_doing(&pack, "scrawl", effect);
-    let ladder = "  - path: docks_shop -> attic\n    id: ladder\n";
-    crate::support::append(&pack.join("world/map.yaml"), ladder);
+    let hatch = "  - path: docks_shop -> attic\n    id: hatch\n";
+    crate::support::append(&pack.join("world/map.yaml"), hatch);
     migrate_and_play(world, vec![intent("scrawl", "mira", "scrawl", None)]);
-    let climb = intent("climb", "rowan", "travel", Some("ladder"));
+    let climb = intent("climb", "rowan", "travel", Some("hatch"));
     migrate_and_play(world, vec![climb]);
 }
 

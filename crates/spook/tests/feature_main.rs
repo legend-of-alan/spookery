@@ -59,6 +59,8 @@ pub struct World {
     pub start_ticks: u64,
     /// The world times of the rounds a scenario's player heard.
     pub round_ticks: Vec<u64>,
+    /// What `Rowan plays` showed Rowan.
+    pub rowan_last_round_changes: Vec<spookery_protocol::ChangeView>,
 }
 
 impl std::fmt::Debug for World {

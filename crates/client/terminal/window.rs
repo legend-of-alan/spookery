@@ -605,7 +605,7 @@ mod tests {
     use super::{KeyRequest, Screen, ScreenAreas};
     use crate::protocol::{self, ServerBody, ServerMessage};
 
-    const RECORDING: &str = include_str!("../../protocol/sessions/v3.jsonl");
+    const RECORDING: &str = include_str!("../../protocol/sessions/v4.jsonl");
 
     fn press(screen: &mut Screen, code: KeyCode, commands: &[String]) -> Option<KeyRequest> {
         screen.on_key(KeyEvent::from(code), commands)
@@ -736,11 +736,11 @@ mod tests {
     }
 
     /// Docks Street from Rowan's `map` reply in that session, after a walk there and back.
-    const MAP_REPLY: &str = r#"{"seq":26,"body":{"kind":"map","places":[{"place_id":"docks_street","name":"Docks Street","exits":[{"exit_id":"docks_shop","name":"Docks Shop","place_id":"docks_shop","place_name":"Docks Shop","ticks":0,"locked":false},{"exit_id":"gate_yard","name":"Gate Yard","place_id":"gate_yard","place_name":"Gate Yard","ticks":0,"locked":false}]}]}}"#;
+    const MAP_REPLY: &str = r#"{"seq":26,"body":{"kind":"map","places":[{"place_id":"docks_street","name":"Docks Street","exits":[{"path_id":"docks_shop.docks_street","name":"Docks Shop","place_id":"docks_shop","place_name":"Docks Shop","ticks":0,"locked":false},{"path_id":"docks_street.gate_yard","name":"Gate Yard","place_id":"gate_yard","place_name":"Gate Yard","ticks":0,"locked":false}]}]}}"#;
 
     /// Three commands from Rowan's `help` reply in the Docks Shop, from a docks session against
     /// this build.
-    const HELP_REPLY: &str = r#"{"seq":9,"reply_to":"c3","body":{"kind":"help","commands":[{"id":"look","target":"none"},{"id":"strike","target":"actor","names":["Aldric"]},{"id":"travel","target":"exit","names":["Docks Street","stairs"]}]}}"#;
+    const HELP_REPLY: &str = r#"{"seq":9,"reply_to":"c3","body":{"kind":"help","commands":[{"id":"look","target":"none"},{"id":"strike","target":"actor","names":["Aldric"]},{"id":"travel","target":"path","names":["Docks Street","stairs"]}]}}"#;
 
     /// `MAP_REPLY` as the reply to `request_id`.
     fn map_reply(request_id: &str) -> ServerMessage {

@@ -92,9 +92,10 @@ impl Rule {
         let mut mentions = Mentions::of_lines(&self.if_, self.costs(), self.exprs());
         self.visit_templates(|effect| {
             match effect {
-                EffectTemplate::Meter { of, .. }
-                | EffectTemplate::Flag { of, .. }
-                | EffectTemplate::Item { of, .. } => mentions.add_owner("of:", of),
+                EffectTemplate::Meter { of, .. } | EffectTemplate::Item { of, .. } => {
+                    mentions.add_owner("of:", of);
+                }
+                EffectTemplate::Flag { of, .. } => mentions.add_flag_owner("of:", of),
                 EffectTemplate::Modifier { to, .. } | EffectTemplate::Memory { to, .. } => {
                     mentions.add_actor("to:", to);
                 }
@@ -103,9 +104,9 @@ impl Rule {
                 }
                 EffectTemplate::Check { by, .. } => mentions.add_actor("by:", by),
                 EffectTemplate::Location { to, .. } => match to {
-                    LocationTo::Target => mentions.add_target("location to:", TargetKind::Place),
+                    LocationTo::Target => mentions.add_target("location to:", &[TargetKind::Place]),
                     LocationTo::Via(via) if via == "target" => {
-                        mentions.add_target("location via:", TargetKind::Exit);
+                        mentions.add_target("location via:", &[TargetKind::Path]);
                     }
                     LocationTo::Via(_) | LocationTo::Place(_) => {}
                 },
@@ -129,8 +130,8 @@ pub(crate) struct Mentions<'l> {
     /// The item ids other than `target`, each once.
     pub(crate) item_ids: BTreeSet<&'l str>,
     /// Each key that says `target`, as written and in the order written, with what the move
-    /// must target for it to name something.
-    target_keys: Vec<(&'static str, TargetKind)>,
+    /// may target for it to name something. A refusal suggests the first.
+    target_keys: Vec<(&'static str, &'static [TargetKind])>,
 }
 
 impl<'l> Mentions<'l> {
@@ -149,7 +150,8 @@ impl<'l> Mentions<'l> {
                     mentions.add_item_id("id:", id);
                 }
                 Cond::At { subject, .. } => mentions.add_actor("subject:", subject),
-                Cond::Meter { of, .. } | Cond::Flag { of, .. } => mentions.add_owner("of:", of),
+                Cond::Meter { of, .. } => mentions.add_owner("of:", of),
+                Cond::Flag { of, .. } => mentions.add_flag_owner("of:", of),
                 _ => {}
             });
         }
@@ -171,22 +173,32 @@ impl<'l> Mentions<'l> {
         }
     }
 
+    /// As `add_owner`, but `target` may also be an exit: a flag on its path.
+    fn add_flag_owner(&mut self, key: &'static str, of: &grammar::Object) {
+        match of {
+            grammar::Object::Actor(grammar::Actor::Target) => {
+                self.add_target(key, &[TargetKind::Actor, TargetKind::Path]);
+            }
+            of => self.add_owner(key, of),
+        }
+    }
+
     fn add_actor(&mut self, key: &'static str, actor: &grammar::Actor) {
         match actor {
-            grammar::Actor::Target => self.add_target(key, TargetKind::Actor),
+            grammar::Actor::Target => self.add_target(key, &[TargetKind::Actor]),
             actor => self.owners.push(grammar::Object::Actor(actor.clone())),
         }
     }
 
     fn add_item_id(&mut self, key: &'static str, id: &'l str) {
         match id {
-            "target" => self.add_target(key, TargetKind::Item),
+            "target" => self.add_target(key, &[TargetKind::Item]),
             id => _ = self.item_ids.insert(id),
         }
     }
 
-    fn add_target(&mut self, key: &'static str, needs: TargetKind) {
-        self.target_keys.push((key, needs));
+    fn add_target(&mut self, key: &'static str, allowed: &'static [TargetKind]) {
+        self.target_keys.push((key, allowed));
     }
 
     /// The first of the target keys where a move that targets `targets` does not allow
@@ -196,9 +208,9 @@ impl<'l> Mentions<'l> {
         self,
         targets: TargetKind,
     ) -> Option<(&'static str, TargetKind)> {
-        self.target_keys
-            .into_iter()
-            .find(|&(_, needs)| needs != targets)
+        let misplaced =
+            (self.target_keys.into_iter()).find(|(_, allowed)| !allowed.contains(&targets));
+        misplaced.map(|(key, allowed)| (key, allowed[0]))
     }
 }
 
@@ -247,12 +259,22 @@ pub(crate) enum When {
     Change(ChangeWatch),
 }
 
+impl When {
+    /// What the rule's move targets. A habit and a change rule target nothing.
+    pub(crate) fn target_kind(&self) -> TargetKind {
+        match self {
+            When::Verb { target, .. } => *target,
+            When::Habit | When::Change(_) => TargetKind::None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TargetKind {
     None,
     Actor,
     Place,
-    Exit,
+    Path,
     Item,
 }
 
@@ -262,7 +284,7 @@ impl TargetKind {
             TargetKind::None => "none",
             TargetKind::Actor => "actor",
             TargetKind::Place => "place",
-            TargetKind::Exit => "exit",
+            TargetKind::Path => "path",
             TargetKind::Item => "item",
         }
     }
