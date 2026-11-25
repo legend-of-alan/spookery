@@ -3,13 +3,13 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use super::Session;
 use crate::canon::load_canon;
 use crate::ecs;
 use crate::hash::blake2s_tagged;
 use crate::round::replay::{
     apply_journal, apply_record, checkpoint_diverged, load_save_bytes, open_at, Error,
 };
-use crate::session;
 use crate::store::durability::write_atomic;
 use crate::store::journal;
 use crate::store::lock::{self, lock_pack, PackGuard};
@@ -20,10 +20,10 @@ use crate::Reason;
 /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
 /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
 /// The caller holds the pack lock, so a crash is repaired and the checkpoint settled.
-pub(crate) fn load_tip(pack: &Path, guard: &PackGuard) -> Result<session::Session<()>, Reason> {
+pub(crate) fn load_tip(pack: &Path, guard: &PackGuard) -> Result<Session<()>, Reason> {
     choose_seed(pack, guard)?;
     rebuild_save(pack, guard)?;
-    let session = peek_at_tip(pack)?;
+    let session = peek_tip(pack)?;
     crate::store::commit::settle_checkpoint(&session, &lock::take_write(session.root(), guard)?)?;
     Ok(session)
 }
@@ -35,18 +35,19 @@ fn choose_seed(pack: &Path, guard: &PackGuard) -> Result<(), Error> {
         return Ok(());
     }
     let save_path = journal::save_path(pack);
-    let mut save = load_save_bytes(&journal::read_save(&save_path)?)?;
-    if !save.seed.is_empty() {
+    let mut file_save = load_save_bytes(&journal::read_save(&save_path)?)?;
+    if !file_save.seed.is_empty() {
         return Ok(());
     }
-    save.seed = uuid::Uuid::new_v4().simple().to_string();
+    file_save.seed = uuid::Uuid::new_v4().simple().to_string();
     let _write = lock::take_write(pack, guard)?;
-    Ok(write_atomic(&save_path, save::emit(&save)?.as_bytes())?)
+    let text = save::emit(&file_save)?;
+    Ok(write_atomic(&save_path, text.as_bytes())?)
 }
 
 /// The journal tip in memory. Writes nothing.
-pub(crate) fn peek_at_tip(pack: &Path) -> Result<session::Session<()>, Error> {
-    let mut session = session::Session::open(pack)?;
+pub(crate) fn peek_tip(pack: &Path) -> Result<Session<()>, Error> {
+    let mut session = Session::open(pack)?;
     if apply_tail(&mut session)? {
         save::check(session.world())?;
     }
@@ -82,17 +83,17 @@ fn load_migrate_tip(pack: &Path, guard: &PackGuard) -> Result<(ecs::World, bool)
 }
 
 /// The journal tip in memory and unchecked. Migrate checks it after adding its meters.
-fn load_tip_unchecked(pack: &Path, guard: &PackGuard) -> Result<session::Session<()>, Error> {
+fn load_tip_unchecked(pack: &Path, guard: &PackGuard) -> Result<Session<()>, Error> {
     rebuild_save(pack, guard)?;
-    let save = journal::read_save(&journal::save_path(pack))?;
-    let mut session = open_at(pack, &save)?;
+    let bytes = journal::read_save(&journal::save_path(pack))?;
+    let mut session = open_at(pack, &bytes)?;
     apply_tail(&mut session)?;
     crate::store::commit::settle_checkpoint(&session, &lock::take_write(session.root(), guard)?)?;
     Ok(session)
 }
 
 /// Replay the live records past the save. `true` when any record was replayed.
-fn apply_tail(session: &mut session::Session<()>) -> Result<bool, Error> {
+fn apply_tail(session: &mut Session<()>) -> Result<bool, Error> {
     let records = journal::read_live_records(session.root())?;
     let base_rev = session.world().state_rev;
     let mut replayed = false;
@@ -117,9 +118,9 @@ fn rebuild_save(pack: &Path, guard: &PackGuard) -> Result<(), Error> {
                 return Ok(());
             }
             if let Ok(text) = std::str::from_utf8(&bytes) {
-                if let Ok(save) = save::parse(text) {
-                    if save.state_rev == head.state_rev
-                        || save::emit(&save)
+                if let Ok(file_save) = save::parse(text) {
+                    if file_save.state_rev == head.state_rev
+                        || save::emit(&file_save)
                             .map(|emitted| emitted.into_bytes())
                             .ok()
                             .as_deref()
