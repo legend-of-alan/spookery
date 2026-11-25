@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::canon::meters::{self, meter_descs, MeterYaml};
 use crate::canon::pack_files::Page;
-use crate::canon::refusal::{Diags, FileText, Locator, Problem};
+use crate::canon::refusal::{Diags, FileText, Locator};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::{self, CastDef, IdleProfile};
 use crate::diagnostic::{parse_tagged, Diagnostic};
@@ -72,31 +72,26 @@ fn load(file: &str, yaml: &str) -> Result<CastDoc, Vec<Diagnostic>> {
     let empty = ("id is empty", "set id to a short cast id");
     diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));
     if parsed.id == "world" {
-        diags.push(
-            Problem {
-                source: &source,
-                path: "id",
-                at: Locator::Key("id:"),
-                message: "id world is reserved".into(),
-                hint: "rename this cast member",
-            }
-            .into_diagnostic(),
-        );
+        let message = "id world is reserved".into();
+        diags.push(source.refuse_at(
+            "id",
+            Locator::Key("id:"),
+            message,
+            "rename this cast member",
+        ));
     }
     if parsed.control_type != "npc" && parsed.control_type != "pc_template" {
-        diags.push(
-            Problem {
-                source: &source,
-                path: "control_type",
-                at: Locator::Key("control_type:"),
-                message: format!(
-                    "control_type is '{}', which is not npc or pc_template",
-                    parsed.control_type
-                ),
-                hint: "set control_type to npc or pc_template",
-            }
-            .into_diagnostic(),
+        let message = format!(
+            "control_type is '{}', which is not npc or pc_template",
+            parsed.control_type
         );
+        let at = Locator::Key("control_type:");
+        diags.push(source.refuse_at(
+            "control_type",
+            at,
+            message,
+            "set control_type to npc or pc_template",
+        ));
     }
     diags.into_result(parsed)
 }

@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::canon::map::MAP_FILE;
-use crate::canon::refusal::{FileText, Locator, Problem};
+use crate::canon::refusal::{FileText, Locator};
 use crate::canon::{CastDef, Exit, Paths, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::component::meter;
@@ -197,16 +197,7 @@ impl EntityScope<'_> {
                     continue;
                 };
                 let at = Locator::Spot(*spot);
-                let refuse = |problem, hint| {
-                    Problem {
-                        source,
-                        path,
-                        at,
-                        message: problem,
-                        hint,
-                    }
-                    .into_diagnostic()
-                };
+                let refuse = |problem, hint| source.refuse_at(path, at, problem, hint);
                 if let Some(why) = self.why_meter_not_carried(fixed_self_id, of, key) {
                     diags.push(refuse(
                         format!("expression reads meter '{key}', but {why}"),

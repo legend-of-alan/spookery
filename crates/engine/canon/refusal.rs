@@ -136,16 +136,16 @@ pub(super) enum Locator<'a> {
 }
 
 /// One problem in one pack file. `path` is `""` when there is none.
-pub(super) struct Problem<'a> {
-    pub source: &'a FileText<'a>,
-    pub path: &'a str,
-    pub at: Locator<'a>,
-    pub message: String,
-    pub hint: &'a str,
+struct Problem<'a> {
+    source: &'a FileText<'a>,
+    path: &'a str,
+    at: Locator<'a>,
+    message: String,
+    hint: &'a str,
 }
 
 impl Problem<'_> {
-    pub(super) fn into_diagnostic(self) -> Diagnostic {
+    fn into_diagnostic(self) -> Diagnostic {
         let source = self.source;
         let code = Code::Error(Reason::Schema);
         let mut diag = Diagnostic::new(source.file, code, &self.message, self.hint);

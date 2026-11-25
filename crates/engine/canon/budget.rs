@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::refusal::{FileText, Locator, Problem};
+use crate::canon::refusal::{FileText, Locator};
 use crate::diagnostic::{parse_tagged, Diagnostic};
 
 const BUDGET_SCHEMA: &str = "budget";
@@ -89,16 +89,12 @@ pub(crate) fn load(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
             Ok(ticks) if ticks > 0 => {
                 budget.cycles.insert(id, ticks);
             }
-            _ => diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("cycles.{id}"),
-                    at: Locator::Key(&format!("{id}:")),
-                    message: format!("cycle {id} is {length}, which is not a positive length"),
-                    hint: "give the cycle a length of one tick or more",
-                }
-                .into_diagnostic(),
-            ),
+            _ => {
+                let at = Locator::Key(&format!("{id}:"));
+                let message = format!("cycle {id} is {length}, which is not a positive length");
+                let hint = "give the cycle a length of one tick or more";
+                diags.push(source.refuse_at(&format!("cycles.{id}"), at, message, hint));
+            }
         }
     }
     budget.idle_rounds = parse_idle(&source, doc.idle, &mut diags);
@@ -139,16 +135,7 @@ fn set_number(
         0 => "use a number that is zero or greater",
         _ => "use a number greater than zero",
     };
-    diags.push(
-        Problem {
-            source,
-            path: key,
-            at: Locator::Key(&format!("{key}:")),
-            message: problem,
-            hint,
-        }
-        .into_diagnostic(),
-    );
+    diags.push(source.refuse_at(key, Locator::Key(&format!("{key}:")), problem, hint));
 }
 
 fn parse_idle(source: &FileText, value: Option<String>, diags: &mut Vec<Diagnostic>) -> bool {
@@ -156,16 +143,13 @@ fn parse_idle(source: &FileText, value: Option<String>, diags: &mut Vec<Diagnost
         None | Some("on") => true,
         Some("off") => false,
         Some(other) => {
-            diags.push(
-                Problem {
-                    source,
-                    path: "idle",
-                    at: Locator::Key("idle:"),
-                    message: format!("idle is '{other}', which is not on or off"),
-                    hint: "write idle: on or idle: off",
-                }
-                .into_diagnostic(),
-            );
+            let message = format!("idle is '{other}', which is not on or off");
+            diags.push(source.refuse_at(
+                "idle",
+                Locator::Key("idle:"),
+                message,
+                "write idle: on or idle: off",
+            ));
             true
         }
     }
