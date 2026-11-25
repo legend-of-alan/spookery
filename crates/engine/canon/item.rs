@@ -4,9 +4,11 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::canon::pack_files::Page;
+use crate::canon::refusal::{Diags, FileText, Locator};
 use crate::canon::rule_list::{self, parse::RuleYaml};
-use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page};
 use crate::canon::ItemDef;
+use crate::diagnostic::load_tagged;
 use crate::rules::rule::{Owner, Rule};
 
 const SCHEMA: &str = "item";

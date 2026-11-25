@@ -7,10 +7,11 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::canon::meters::{self, meter_descs, MeterYaml};
+use crate::canon::pack_files::{collect_files, unreadable_dir};
+use crate::canon::refusal::{Diags, FileText, Locator};
 use crate::canon::rule_list::{self, parse::RuleYaml};
-use crate::canon::source::{collect_files, load_tagged, unreadable_dir, Diags, FileText, Locator};
 use crate::canon::StoryDef;
-use crate::diagnostic::schema_error;
+use crate::diagnostic::{load_tagged, schema_error};
 use crate::ecs::component::meter;
 use crate::ecs::id::StoryId;
 use crate::entity;

@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_tagged, FileText, Locator, Problem};
-use crate::diagnostic::Diagnostic;
+use crate::canon::refusal::{FileText, Locator, Problem};
+use crate::diagnostic::{load_tagged, Diagnostic};
 
 const SCHEMA: &str = "budget";
 

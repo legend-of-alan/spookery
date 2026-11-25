@@ -2,8 +2,8 @@
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_tagged, FileText, Locator};
-use crate::diagnostic::{schema_error, Diagnostic};
+use crate::canon::refusal::{FileText, Locator};
+use crate::diagnostic::{load_tagged, schema_error, Diagnostic};
 
 const SCHEMA: &str = "pack";
 

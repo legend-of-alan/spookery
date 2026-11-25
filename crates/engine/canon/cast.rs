@@ -5,10 +5,11 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::canon::meters::{self, meter_descs, MeterYaml};
+use crate::canon::pack_files::Page;
+use crate::canon::refusal::{Diags, FileText, Locator, Problem};
 use crate::canon::rule_list::{self, parse::RuleYaml};
-use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem};
 use crate::canon::{self, CastDef, IdleProfile};
-use crate::diagnostic::Diagnostic;
+use crate::diagnostic::{load_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::ActorId;
 use crate::entity;

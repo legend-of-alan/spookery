@@ -3,7 +3,7 @@
 use serde_saphyr::Spanned;
 use spookery_protocol::{is_built_in, Seat};
 
-use crate::canon::source::{spot_of, Diags, Fault, FileText, Locator, Problem};
+use crate::canon::refusal::{spot_of, Diags, Fault, FileText, Locator, Problem};
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::rules::expr::{self, stamp_spots, Expr};
 use crate::rules::grammar;

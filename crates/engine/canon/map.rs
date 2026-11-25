@@ -5,10 +5,10 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::canon::refusal::{Diags, FileText};
 use crate::canon::rule_list;
-use crate::canon::source::{load_tagged, Diags, FileText};
 use crate::canon::Canon;
-use crate::diagnostic::{schema_error, Diagnostic};
+use crate::diagnostic::{load_tagged, schema_error, Diagnostic};
 use crate::ecs::component::ActorLocation;
 use crate::ecs::id::{PathId, PlaceId};
 use crate::rules::expr::Expr;

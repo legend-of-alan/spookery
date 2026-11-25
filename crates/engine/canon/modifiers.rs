@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_tagged, Diags, FileText};
-use crate::diagnostic::Diagnostic;
+use crate::canon::refusal::{Diags, FileText};
+use crate::diagnostic::{load_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::component::modifier;
 

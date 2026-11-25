@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::canon::map::MAP_FILE;
-use crate::canon::source::{FileText, Locator, Problem};
+use crate::canon::refusal::{FileText, Locator, Problem};
 use crate::canon::{self, CastDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::component::meter;
