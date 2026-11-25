@@ -50,7 +50,7 @@ fn stairs_open(pack: &Path) -> bool {
     saved
         .world()
         .paths()
-        .get::<component::Flag>(&"docks_shop.stairs".into())
+        .get::<component::Flag>(&"stairs".into())
         .contains("open")
 }
 
@@ -61,7 +61,7 @@ fn stairs_open(pack: &Path) -> bool {
 fn the_stair_door_needs_the_key(world: &mut World) {
     let pack = support::copy_pack("docks", "door");
     let bolt = "  - id: bolt
-    when: { verb: bolt, target: exit }
+    when: { verb: bolt, target: path }
     do:
       - flag: { of: target, key: open, value: false }
   - id: creak
@@ -94,7 +94,7 @@ fn the_stair_door_needs_the_key(world: &mut World) {
 #[when(expr = "Mira arrives at the shop holding brass_key")]
 fn mira_arrives_with_the_key(world: &mut World) {
     assert!(!stairs_open(world.pack()));
-    plays(world, "mira", "travel", Some("docks_shop"));
+    plays(world, "mira", "travel", Some("docks_shop.docks_street"));
     assert_eq!(saved_place_of(world.pack(), "mira"), "docks_shop");
 }
 
@@ -102,7 +102,7 @@ fn mira_arrives_with_the_key(world: &mut World) {
 fn mira_opened_the_door(world: &mut World) {
     the_stair_door_needs_the_key(world);
     mira_arrives_with_the_key(world);
-    plays(world, "mira", "travel", Some("docks_street"));
+    plays(world, "mira", "travel", Some("docks_shop.docks_street"));
     assert_eq!(saved_place_of(world.pack(), "mira"), "docks_street");
     assert!(stairs_open(world.pack()));
 }
@@ -143,7 +143,7 @@ fn the_door_is_open_from_the_rooms(world: &mut World) {
     let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     let view = saved.perceive(&Presence::default(), "mira").unwrap();
     assert_eq!(view.place, "mira_rooms");
-    let stairs = view.exits.iter().find(|exit| exit.exit_id == "stairs");
+    let stairs = view.exits.iter().find(|exit| exit.path_id == "stairs");
     assert!(!stairs.unwrap().locked, "{:?}", view.exits);
 }
 
@@ -163,7 +163,7 @@ fn aldric_reaches_the_rooms(world: &mut World) {
 }
 
 #[when(
-    expr = "Aldric bolts the stairs, whose flag effect on its target sets open on path:docks_shop.stairs to false"
+    expr = "Aldric bolts the stairs, whose flag effect on its target sets open on path:stairs to false"
 )]
 fn a_rule_locks_the_door(world: &mut World) {
     plays(world, "aldric", "bolt", Some("stairs"));
@@ -196,7 +196,7 @@ fn the_door_refuses_aldric(world: &mut World) {
 fn it_opens_again_with_the_key(world: &mut World) {
     plays(world, "aldric", "wait", None);
     assert!(!stairs_open(world.pack()), "a round with no key opened it");
-    plays(world, "mira", "travel", Some("docks_shop"));
+    plays(world, "mira", "travel", Some("docks_shop.docks_street"));
     assert!(stairs_open(world.pack()));
 }
 

@@ -130,7 +130,7 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 ### Moves
 
-A move is a pack verb, its target in `target`. The target is an id or a name the player sees, ignoring case and outer spaces, and an exit also answers to the place it goes to, by id or name. A name that two things in sight share is refused `AMBIGUOUS_NAME` before it is queued, and `detail` is that name and every id that has it, `Briar: bram, briar`. With a GM seated, the move waits for `commit`. The reply is `queued`, and the GM gets the same `queued` under the same `seq`. `intent` is the queue id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
+A move is a pack verb, its target in `target`. The target is an id or a name the player sees, ignoring case and outer spaces. An exit answers to its path's id and name, and to the place it goes to, by id or name. A name that two things in sight share is refused `AMBIGUOUS_NAME` before it is queued, and `detail` is that name and every id that has it, `Briar: bram, briar`. With a GM seated, the move waits for `commit`. The reply is `queued`, and the GM gets the same `queued` under the same `seq`. `intent` is the queue id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
 
 <!-- example: player-exert -->
 ```json
@@ -151,7 +151,7 @@ A move the host can judge at once is refused before it is queued. Here Rowan sen
 {"seq":22,"reply_to":"c5","body":{"kind":"refused","code":"NO_EXIT","detail":"The stair door is locked."}}
 ```
 
-`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with data the client prints. `help` lists the player commands but `claim`, then each pack verb this PC can use here and now. Each command has its `id`, as the player types it, and a `target`: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the PC can name for it now, by the names the player reads: the exits from here, the actors or items it may name, or the places it visited. A cast member's or item's verb carries that `owner` id, and its name as its one name, so it reads as `ask Briar`, and it shows only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. The exits and the busy line are in the `view`, not in `help`.
+`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with data the client prints. `help` lists the player commands but `claim`, then each pack verb this PC can use here and now. Each command has its `id`, as the player types it, and a `target`: `none`, `actor`, `place`, `path` or `item`. `names` lists what the PC can name for it now, by the names the player reads: the exits from here, the actors or items it may name, or the places it visited. A cast member's or item's verb carries that `owner` id, and its name as its one name, so it reads as `ask Briar`, and it shows only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. The exits and the busy line are in the `view`, not in `help`.
 
 <!-- example: player-help -->
 ```json
@@ -166,7 +166,7 @@ A move the host can judge at once is refused before it is queued. Here Rowan sen
   {"id":"exert","target":"none"},
   {"id":"strike","target":"actor","names":["Aldric"]},
   {"id":"take","target":"item","names":["Lamp oil"]},
-  {"id":"travel","target":"exit","names":["Docks Street","stairs"]},
+  {"id":"travel","target":"path","names":["Docks Street","stairs"]},
   {"id":"unwield","target":"none"},
   {"id":"wait","target":"none"},
   {"id":"wield","target":"item","names":["Lamp oil"]}
@@ -177,7 +177,7 @@ A move the host can judge at once is refused before it is queued. Here Rowan sen
 
 <!-- example: player-map -->
 ```json
-{"seq":32,"reply_to":"c4","body":{"kind":"map","places":[{"place_id":"docks_shop","name":"Docks Shop","exits":[{"exit_id":"docks_street","path_id":"docks_shop.docks_street","name":"Docks Street","place_id":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"exit_id":"stairs","path_id":"docks_shop.stairs","name":"stairs","place_id":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}]}}
+{"seq":32,"reply_to":"c4","body":{"kind":"map","places":[{"place_id":"docks_shop","name":"Docks Shop","exits":[{"path_id":"docks_shop.docks_street","name":"Docks Street","place_id":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"path_id":"stairs","name":"stairs","place_id":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}]}}
 ```
 
 ### status
@@ -200,7 +200,7 @@ The host's state for a GM. `world_time` is the game clock in ticks. `pack_rev` i
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:d7fca765ec8f29cb42fdd4bed0cfb83a7a6f2d868072e1504505d6084be2ef4a",
+    "pack_rev": "blake2s:4f30897b2d27a398b2e40b0674d083d13daed20a3f3ecd648f2adfcf141959fc",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {
@@ -223,7 +223,7 @@ The host's state for a GM. `world_time` is the game clock in ticks. `pack_rev` i
         {
           "id": "travel",
           "kind": "verb",
-          "target": "exit"
+          "target": "path"
         },
         {
           "id": "exert",
@@ -362,7 +362,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 ### view and resume
 
-`viewer` is the bare actor id. `place_name`, `actor_names` and each item's `name` are the pack's names, and `body` is the place prose. Each exit has its `exit_id`, the `path_id` of the path it walks, the `name` a player reads for it, and where it goes as `place_id` and `place_name`. A walker's `place` is `path:<path_id>`, and their `place_name` is the path's. `notes` are the notes left to the viewer and those lying in their place. Each note has its `id`, the actor ids it addresses as `to_ids`, an optional `place_id`, and `text`. `items` lie in the viewer's place. `items_carried` are the items the viewer holds, and `wielded_item_id` is the one of them they wield. Each is left out when there is none. `meters` are the viewer's own, without hidden ones, and each has the pack's `name` when its row gives one. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`, except `cancel` (see [Moves](#moves)). `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
+`viewer` is the bare actor id. `place_name`, `actor_names` and each item's `name` are the pack's names, and `body` is the place prose. Each exit has the `path_id` of the path it walks, the `name` a player reads for it, and where it goes as `place_id` and `place_name`. A walker's `place` is `path:<path_id>`, and their `place_name` is the path's. `notes` are the notes left to the viewer and those lying in their place. Each note has its `id`, the actor ids it addresses as `to_ids`, an optional `place_id`, and `text`. `items` lie in the viewer's place. `items_carried` are the items the viewer holds, and `wielded_item_id` is the one of them they wield. Each is left out when there is none. `meters` are the viewer's own, without hidden ones, and each has the pack's `name` when its row gives one. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`, except `cancel` (see [Moves](#moves)). `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
 
 <!-- example: player-resume -->
 ```json
@@ -426,7 +426,6 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
     "habits": [],
     "exits": [
       {
-        "exit_id": "docks_street",
         "path_id": "docks_shop.docks_street",
         "name": "Docks Street",
         "place_id": "docks_street",
@@ -435,8 +434,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
         "locked": false
       },
       {
-        "exit_id": "stairs",
-        "path_id": "docks_shop.stairs",
+        "path_id": "stairs",
         "name": "stairs",
         "place_id": "mira_rooms",
         "place_name": "Mira's Rooms",
@@ -654,6 +652,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 renamed two `claimed` fields on purpose, so each says what it holds: `missed` became `missed_messages` and `gap` became `is_missed_truncated`. The alpha pre-releases send and read the old names. A client and a host from either side of the rename still play, but a reconnect shows no missed messages, since each side ignores a field it does not know. The recording has neither field.
 - Version 2 renamed the GM `queue` field and the actor id on `status.queued[]` before any release, on purpose, so they match the other actor ids: `actor_id` became `actor`. There is no alias for the old key. The recording took the new name with it. The version stayed 2 because no build had shipped.
 - Version 3 broke version 2 once, on purpose, when known facts left the engine: a place's public facts moved into its prose, and what someone has found out became a flag, which never reaches a player. `known_facts` and `unknown_mentions` left `view`, `fact_ids` left a note, `max_body_chars` left the GM's `perceive`, the changed key `actor_known_facts` went, and `ILLEGAL_KNOWLEDGE` left the refusal codes. The session recorded against version 2 was replaced by one recorded against version 3.
-- Version 4 broke version 3 once, on purpose, when a path became an entity: a door's open state is the path's `open` flag, one for both ends of a two-way path. The changed key `place_exit_open <place> <exit>` became `path_flag <path> open`, a walker's place in `view` and in a `place` change became `path:<path>` instead of `exit:<place>.<exit>`, and an exit in `view` and `map` gained `path_id`, the path it walks. The session recorded against version 3 was replaced by one recorded against version 4.
+- Version 4 broke version 3 once, on purpose, when a path became an entity: a door's open state is the path's `open` flag, one for both ends of a two-way path. The changed key `place_exit_open <place> <exit>` became `path_flag <path> open`, a walker's place in `view` and in a `place` change became `path:<path>` instead of `exit:<place>.<exit>`, and an exit in `view` and `map` gained `path_id`, the path it walks, and lost `exit_id`. A verb that takes an exit reports `"target":"path"` in `help` and `status`, and a journal intent names its exit under the target key `path`, not `exit`. The session recorded against version 3 was replaced by one recorded against version 4.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each host mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

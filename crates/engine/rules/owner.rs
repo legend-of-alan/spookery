@@ -36,7 +36,7 @@ pub(crate) fn resolve_entity(
         grammar::Object::Place(id) => Ok(entity::Id::Place(id.clone())),
         grammar::Object::Here => Ok(entity::Id::Place(resolve_here(context)?.into())),
         grammar::Object::Actor(grammar::Actor::Target)
-            if matches!(context.intent.target, Target::Exit(_)) =>
+            if matches!(context.intent.target, Target::Path(_)) =>
         {
             let exit = crate::rules::travel::exit_via(context, "target")?;
             let path_def = exit.ok_or(Reason::NoExit)?.path_def;
@@ -59,7 +59,7 @@ pub(crate) fn resolve_actor<'a>(
         grammar::Actor::Target => match &context.intent.target {
             Target::Actor(id) => Ok(id),
             Target::Empty => Err(Reason::Schema),
-            Target::Place(_) | Target::Exit(_) | Target::Item(_) => Err(Reason::UnknownId),
+            Target::Place(_) | Target::Path(_) | Target::Item(_) => Err(Reason::UnknownId),
         },
         grammar::Actor::Id(id) => Ok(id),
     }

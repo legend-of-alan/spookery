@@ -14,7 +14,7 @@ Feature: One action lifecycle
   Scenario: A walker is on the stairs and in neither room
     Given the stairs take 10 ticks and Rowan holds the brass key
     When Rowan plays "travel stairs"
-    Then Rowan is at path:docks_shop.stairs
+    Then Rowan is at path:stairs
     And Wren's look does not show Rowan
     And Rowan's look shows "on the stairs until tick 1090"
     And spook verify passes on this pack

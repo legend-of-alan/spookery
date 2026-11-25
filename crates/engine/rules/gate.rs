@@ -160,7 +160,7 @@ pub(crate) fn admit(
         let shaped = match target {
             TargetKind::None => matches!(intent.target, Target::Empty),
             TargetKind::Place => matches!(intent.target, Target::Place(_)),
-            TargetKind::Exit => matches!(intent.target, Target::Exit(_)),
+            TargetKind::Path => matches!(intent.target, Target::Path(_)),
             TargetKind::Actor => matches!(intent.target, Target::Actor(_)),
             TargetKind::Item => matches!(intent.target, Target::Item(_)),
         };
@@ -263,7 +263,7 @@ pub(crate) fn list_ids(
     ids.extend(others.map(|(id, name)| NamedId::new(id.as_str(), name)));
     ids.extend(view.items.into_iter().map(name_item));
     ids.extend(view.exits.into_iter().map(|exit| NamedId {
-        id: exit.exit_id,
+        id: exit.path_id,
         name: exit.name,
         aliases: vec![exit.place_id, exit.place_name],
     }));

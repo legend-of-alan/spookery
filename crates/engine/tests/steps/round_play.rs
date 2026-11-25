@@ -547,7 +547,7 @@ fn neither_flag_is_set(world: &mut World) {
 fn the_stair_door_stands_open(world: &mut World) {
     support::edit_save(world.pack(), |now| {
         let mut paths = now.paths_mut();
-        (paths.get_mut::<component::Flag>(&"docks_shop.stairs".into()))
+        (paths.get_mut::<component::Flag>(&"stairs".into()))
             .set("open", true)
             .unwrap();
     });
@@ -667,7 +667,12 @@ fn rowan_walks(
     pack: &Path,
     then: Vec<spookery_protocol::QueueArgs>,
 ) -> (spookery_engine::ecs::World, Output) {
-    let mut intents = vec![intent("walk", "rowan", "travel", Some("docks_street"))];
+    let mut intents = vec![intent(
+        "walk",
+        "rowan",
+        "travel",
+        Some("docks_shop.docks_street"),
+    )];
     intents.extend(then);
     let (world, output) = play_queued(pack, &["rowan"], intents);
     assert_eq!(place_of(&world, "rowan"), "docks_street");

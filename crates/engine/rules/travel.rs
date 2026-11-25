@@ -1,7 +1,7 @@
 //! Exits, admission, and the journeys that follow them.
 
 use crate::canon::{Canon, Exit, PathDef, OPEN};
-use crate::ecs::id::{ActorId, GlobalId, PlaceId};
+use crate::ecs::id::{ActorId, GlobalId, PathId, PlaceId};
 use crate::ecs::{self, component, entity, PendingAction, Presence};
 use crate::intent::{Intent, Source, Target};
 use crate::round::Ledger;
@@ -37,21 +37,21 @@ pub(crate) fn exit_of<'c>(
 }
 
 /// The exit `via` names from the actor's place, or `NO_EXIT`. `via: target` is the intent's
-/// exit target, and `None` when the target is not an exit; any other word is an exit id.
+/// path target, and `None` when the target is not a path; any other word is a path id.
 /// A walker on an exit is still on it when the walk finishes, so it is that exit.
 pub(crate) fn exit_via<'c>(
     context: &Context<'c, '_>,
     via: &str,
 ) -> Result<Option<Exit<'c>>, Reason> {
-    let exit_id = match (via, &context.intent.target) {
-        ("target", Target::Exit(exit_id)) => exit_id.as_str(),
+    let path_id = match (via, &context.intent.target) {
+        ("target", Target::Path(path_id)) => path_id.clone(),
         ("target", _) => return Ok(None),
-        (exit_id, _) => exit_id,
+        (path_id, _) => PathId::from(path_id),
     };
     let actors = context.world.actors();
     let location =
         (context.intent.actor_id.as_ref()).and_then(|id| actors.get::<component::Place>(id).get());
-    let exit = location.and_then(|location| location.find_exit(context.canon, exit_id));
+    let exit = location.and_then(|location| location.find_exit(context.canon, &path_id));
     exit.map(Some).ok_or(Reason::NoExit)
 }
 
@@ -118,7 +118,7 @@ pub(crate) fn open_conditional_paths(
     let mut opens = Vec::new();
     for path in canon.paths.iter().filter(|path| is_locked(world, path)) {
         let exits = (path.end_place_ids.iter()).filter_map(|id| path.exit_from(id.as_str()));
-        let mut sides = exits.map(|exit| (exit.from_place_id, Target::Exit(exit.id().to_string())));
+        let mut sides = exits.map(|exit| (exit.from_place_id, Target::Path(path.id.clone())));
         let opening_side = sides.find(|(from_place_id, target)| {
             (world.actors_at(from_place_id.as_str()).iter()).any(|actor_id| {
                 let target = target.clone();
@@ -180,12 +180,11 @@ pub(crate) fn exit_view(
         Some(actor_id.clone()),
         Source::Player,
         "travel",
-        Target::Exit(exit.id().to_string()),
+        Target::Path(exit.path_def.id.clone()),
     );
     let presence = Presence::default();
     let context = Context::new(canon, world, &presence, &travel_intent);
     ExitView {
-        exit_id: exit.id().to_string(),
         path_id: exit.path_def.id.to_string(),
         name: exit.name(canon).to_string(),
         place_id: exit.to_place_id().to_string(),
@@ -204,8 +203,8 @@ pub(crate) fn note_exits(canon: &Canon, world: &mut ecs::World) -> Result<(), Re
         .filter(|(_, place)| canon.places.contains_key(*place))
         .map(|(id, place)| {
             let exits = visible_exits(canon, world, id);
-            let exit_ids = exits.into_iter().map(|exit| exit.exit_id).collect();
-            (id.clone(), place.clone(), exit_ids)
+            let path_ids = exits.into_iter().map(|exit| exit.path_id).collect();
+            (id.clone(), place.clone(), path_ids)
         })
         .collect();
     let mut actors = world.actors_mut();

@@ -36,7 +36,7 @@ async fn listen_with_wren(world: &mut World, travelling: bool) {
     if travelling {
         edit_save(&pack, |now| {
             let until = now.world_time + 30;
-            set_busy(now, "wren", until, "docks_shop.stairs");
+            set_busy(now, "wren", until, "docks_shop", "stairs");
         });
     }
     host::listen(world, &pack).await;
@@ -50,8 +50,14 @@ async fn a_docks_table_with_two_players_and_no_gm(world: &mut World) {
     let pack = copy_pack("docks", "round-output-busy");
     edit_save(&pack, |now| {
         let until = now.world_time + 10;
-        set_busy(now, "rowan", until, "docks_shop.docks_street");
-        set_busy(now, "wren", until, "docks_street.docks_shop");
+        set_busy(now, "rowan", until, "docks_shop", "docks_shop.docks_street");
+        set_busy(
+            now,
+            "wren",
+            until,
+            "docks_street",
+            "docks_shop.docks_street",
+        );
     });
     host::listen(world, &pack).await;
     host::seat_actor(world, &pack, "rowan").await;
@@ -74,7 +80,7 @@ async fn the_gm_queues_a_move(world: &mut World, move_id: String, actor: String)
 
 #[when(expr = "the GM queues a 10-tick travel for {string}")]
 async fn the_gm_queues_a_ten_tick_travel(world: &mut World, actor: String) {
-    queue_move(world, &actor, "travel", Some("docks_street")).await;
+    queue_move(world, &actor, "travel", Some("docks_shop.docks_street")).await;
 }
 
 #[when(expr = "{string} sends a move")]

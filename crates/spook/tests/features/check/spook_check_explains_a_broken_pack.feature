@@ -36,7 +36,8 @@ Feature: spook check explains a broken pack
       | an empty tags key                   | world/items/latch.md       | SCHEMA            | or write [] for none                                     |
       | an empty modifiers key              | state/save.yaml            | SCHEMA            | or write {} for none                                     |
       | exit to an unknown place            | world/map.yaml             | SCHEMA            | not a place                                              |
-      | duplicate exit                      | world/map.yaml             | SCHEMA            | listed twice                                             |
+      | two paths with one id               | world/map.yaml             | SCHEMA            | path id 'docks_shop.docks_street' is used twice          |
+      | a dotted path id                    | world/map.yaml             | SCHEMA            | path id 'shop.stairs' is not one word                    |
       | exits in a place file               | world/places/docks_shop.md | SCHEMA            | unknown field 'exits'                                    |
       | a path with no arrow                | world/map.yaml             | SCHEMA            | -> or <->                                                |
       | missing map                         | world/map.yaml             | NOT_IN_SPEC       | missing                                                  |
@@ -55,7 +56,7 @@ Feature: spook check explains a broken pack
       | world as an actor                   | world/places/gate_yard.md  | SCHEMA            | 'world' is not an actor                                  |
       | target on a move with none          | rules/verbs.yaml           | SCHEMA            | in of:, but its target is none                           |
       | owner target on an item move        | rules/verbs.yaml           | SCHEMA            | in of:, but its target is item                           |
-      | a meter on a travel move's target   | rules/verbs.yaml           | SCHEMA            | in of:, but its target is exit                           |
+      | a meter on a travel move's target   | rules/verbs.yaml           | SCHEMA            | in of:, but its target is path                           |
       | a travel move's target flag besides open | rules/verbs.yaml      | SCHEMA            | a path carries only the flag 'open'                      |
       | id: target with no target           | rules/verbs.yaml           | SCHEMA            | in id:, but its target is none                           |
       | a save by target with none          | rules/verbs.yaml           | SCHEMA            | in by:, but its target is none                           |

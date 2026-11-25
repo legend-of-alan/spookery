@@ -309,7 +309,7 @@ fn when_of(yaml: &WhenYaml) -> Result<When, String> {
                     None | Some("none") => TargetKind::None,
                     Some("actor") => TargetKind::Actor,
                     Some("place") => TargetKind::Place,
-                    Some("exit") => TargetKind::Exit,
+                    Some("path") => TargetKind::Path,
                     Some("item") => TargetKind::Item,
                     Some(other) => return Err(format!("target '{other}' is not a target kind")),
                 };

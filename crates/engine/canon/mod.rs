@@ -175,11 +175,6 @@ impl Canon {
         self.paths.exits(from_place_id)
     }
 
-    /// The exit at `from_place_id` that a player names `id`.
-    pub(crate) fn find_exit(&self, from_place_id: &str, id: &str) -> Option<Exit<'_>> {
-        self.paths.find_exit(from_place_id, id)
-    }
-
     pub fn idle_profile(&self, actor_id: &ActorId) -> Option<&IdleProfile> {
         self.cast.get(actor_id).and_then(|cast| cast.idle.as_ref())
     }
@@ -366,7 +361,7 @@ mod tests {
         assert!(summary
             .menu
             .iter()
-            .any(|row| row.id == "travel" && row.kind == "verb" && row.target == "exit"));
+            .any(|row| row.id == "travel" && row.kind == "verb" && row.target == "path"));
         assert!(summary
             .menu
             .iter()

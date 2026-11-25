@@ -184,11 +184,11 @@ fn touches_seated_player(
         Target::Actor(id) => present.contains(id),
         Target::Item(id) => present.iter().any(|actor| *actor == **id),
         Target::Place(place) => is_player_at(world, presence, place.as_str()),
-        Target::Exit(exit_id) => intent
+        Target::Path(path_id) => intent
             .actor_id
             .as_ref()
-            .and_then(|id| world.actors().get::<component::Place>(id).place_id())
-            .and_then(|place| canon.find_exit(place.as_str(), exit_id))
+            .and_then(|id| world.actors().get::<component::Place>(id).get())
+            .and_then(|location| location.find_exit(canon, path_id))
             .is_some_and(|exit| is_player_at(world, presence, exit.to_place_id().as_str())),
         _ => false,
     };

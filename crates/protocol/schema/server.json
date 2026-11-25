@@ -836,12 +836,9 @@
       ]
     },
     "ExitView": {
-      "description": "Part of a `View`, sent from the host to a player client. `name` is what a player reads for\nthe exit, such as `stairs` or `Docks Street`. `path_id` is the path it walks, as a\n`path_flag` change and a walker's `path:<id>` name it. `place_id` and `place_name` are where\nit goes.",
+      "description": "Part of a `View`, sent from the host to a player client. `path_id` is the path it walks, as\na move's `path` target, a `path_flag` change and a walker's `path:<id>` name it. `name` is\nwhat a player reads for the exit, such as `stairs` or `Docks Street`. `place_id` and\n`place_name` are where it goes.",
       "type": "object",
       "properties": {
-        "exit_id": {
-          "type": "string"
-        },
         "path_id": {
           "type": "string"
         },
@@ -864,7 +861,6 @@
         }
       },
       "required": [
-        "exit_id",
         "path_id",
         "name",
         "place_id",
@@ -1037,7 +1033,7 @@
       ]
     },
     "CommandView": {
-      "description": "One command of a `help` reply. `id` is the command, as a player types it. `target` is what\nit takes: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the player can name\nfor it now, by the names they read. `owner` is the id of the cast member or item whose verb\nthis is, reached by naming them, and then `names` holds its name alone.",
+      "description": "One command of a `help` reply. `id` is the command, as a player types it. `target` is what\nit takes: `none`, `actor`, `place`, `path` or `item`. `names` lists what the player can name\nfor it now, by the names they read. `owner` is the id of the cast member or item whose verb\nthis is, reached by naming them, and then `names` holds its name alone.",
       "type": "object",
       "properties": {
         "id": {

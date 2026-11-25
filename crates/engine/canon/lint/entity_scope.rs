@@ -55,17 +55,17 @@ pub(in crate::canon) fn check_carriers(
             _ => {}
         });
         let fixed = fixed_self_id(rule);
-        let rule_targets_exit = matches!(
+        let rule_targets_path = matches!(
             rule.when,
             When::Verb {
-                target: TargetKind::Exit,
+                target: TargetKind::Path,
                 ..
             }
         );
         for (kind, of, key) in named {
             let why = match kind {
                 "meter" => scope.why_meter_not_carried(fixed, of, key),
-                _ => scope.why_path_lacks_flag(of, key, rule_targets_exit),
+                _ => scope.why_path_lacks_flag(of, key, rule_targets_path),
             };
             let Some(why) = why else {
                 continue;
@@ -129,14 +129,14 @@ impl EntityScope<'_> {
         &self,
         of: &grammar::Object,
         key: &str,
-        rule_targets_exit: bool,
+        rule_targets_path: bool,
     ) -> Option<String> {
         let path = match of {
             grammar::Object::Path(id) => match self.paths.get(id) {
                 Some(path) => Some(path),
                 None => return Some(format!("path:{id} is not a path")),
             },
-            grammar::Object::Actor(grammar::Actor::Target) if rule_targets_exit => None,
+            grammar::Object::Actor(grammar::Actor::Target) if rule_targets_path => None,
             _ => return None,
         };
         if key != OPEN {

@@ -31,7 +31,7 @@ pub(crate) fn give_key(now: &mut ecs::World) {
         .shift("brass_key", 1, None)
         .unwrap();
     let mut paths = now.paths_mut();
-    (paths.get_mut::<component::Flag>(&"docks_shop.stairs".into()))
+    (paths.get_mut::<component::Flag>(&"stairs".into()))
         .set("open", true)
         .unwrap();
 }
@@ -211,9 +211,14 @@ fn break_pack(pack: &Path, fault: &str) {
             "  - path: docks_shop <-> docks_street\n",
             "  - path: docks_shop <-> nowhere\n",
         ),
-        "duplicate exit" => crate::support::append(
+        "two paths with one id" => crate::support::append(
             &pack.join("world/map.yaml"),
             "  - path: docks_shop -> docks_street\n",
+        ),
+        "a dotted path id" => replace_in_file(
+            &pack.join("world/map.yaml"),
+            "    id: stairs\n",
+            "    id: shop.stairs\n",
         ),
         "exits in a place file" => crate::support::insert_before_fence(
             &pack.join("world/places/docks_shop.md"),
@@ -546,12 +551,15 @@ pub(crate) fn capture_play_stdout(world: &mut World) -> String {
     text
 }
 
-/// Put `actor` on the exit `<place>.<exit>`, walking it until tick `until`.
-pub(crate) fn set_busy(now: &mut ecs::World, actor: &str, until: u64, exit: &str) {
-    let (from, exit_id) = exit
-        .split_once('.')
-        .unwrap_or_else(|| panic!("no exit in {exit}"));
-    let walker = spookery_engine::testing::walker_location(now, from, exit_id);
+/// Put `actor` on path `path_id`, walking it from `from_place_id` until tick `until`.
+pub(crate) fn set_busy(
+    now: &mut ecs::World,
+    actor: &str,
+    until: u64,
+    from_place_id: &str,
+    path_id: &str,
+) {
+    let walker = spookery_engine::testing::walker_location(now, from_place_id, path_id);
     let (mut actors, actor) = (now.actors_mut(), actor.into());
     actors
         .get_mut::<component::Place>(&actor)
@@ -559,19 +567,16 @@ pub(crate) fn set_busy(now: &mut ecs::World, actor: &str, until: u64, exit: &str
         .unwrap();
     actors
         .get_mut::<component::Act>(&actor)
-        .set_busy(until, Some(walk(exit)))
+        .set_busy(until, Some(walk(path_id)))
         .unwrap();
 }
 
-/// A walk through the exit `<place>.<exit>` by the travel verb.
-pub(crate) fn walk(exit: &str) -> spookery_engine::testing::PendingAction {
-    let (_, exit_id) = exit
-        .split_once('.')
-        .unwrap_or_else(|| panic!("no exit in {exit}"));
+/// A walk along path `path_id` by the travel verb.
+pub(crate) fn walk(path_id: &str) -> spookery_engine::testing::PendingAction {
     spookery_engine::testing::PendingAction {
         verb: "travel".to_string(),
         source: spookery_engine::Source::Player,
-        target: spookery_engine::Target::Exit(exit_id.to_string()),
+        target: spookery_engine::Target::Path(path_id.into()),
         rule: "verb:travel".to_string(),
     }
 }

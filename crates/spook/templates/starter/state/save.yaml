@@ -1,6 +1,6 @@
 schema: save
 world_id: starter
-pack_rev: blake2s:ab018a57c4eb4b17162b9028834b42c51427329cca6f505e5b77b8b83671d162
+pack_rev: blake2s:b3f666d7a21b00666fc53d46fc448954a24f9deec606a9d6ebe53687609ac9a5
 rules_rev: 33
 state_rev: 0
 round_index: 0
@@ -16,7 +16,7 @@ actors:
   visited:
     ada:
       yard:
-        - lane
+        - yard.lane
   items: {}
   meters: {}
   modifiers: {}

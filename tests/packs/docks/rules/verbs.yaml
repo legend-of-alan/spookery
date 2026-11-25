@@ -8,7 +8,7 @@ rules:
   - id: travel
     when:
       verb: travel
-      target: exit
+      target: path
     do:
       - location:
           via: target

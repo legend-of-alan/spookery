@@ -94,14 +94,14 @@ fn list_target_ids(
 ) -> Vec<String> {
     let picked: Vec<String> = match kind {
         TargetKind::None => Vec::new(),
-        TargetKind::Exit => world
+        TargetKind::Path => world
             .actors()
             .get::<component::Place>(actor_id)
             .place_id()
             .map(|place| exits_at(canon, world, actor_id, place.as_str()))
             .unwrap_or_default()
             .into_iter()
-            .map(|exit| exit.exit_id)
+            .map(|exit| exit.path_id)
             .collect(),
         TargetKind::Actor => ids
             .iter()
@@ -145,7 +145,7 @@ pub(crate) fn map(
             place_id: id.to_string(),
             name: find_place_name(canon, id).ok_or(Reason::UnknownId)?,
             exits: (canon.exits(id))
-                .filter(|exit| seen.iter().any(|seen| seen == exit.id()))
+                .filter(|exit| seen.iter().any(|seen| exit.path_def.id == **seen))
                 .map(|exit| exit_view(canon, world, actor_id, exit))
                 .collect(),
         })

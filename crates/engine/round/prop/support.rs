@@ -166,7 +166,9 @@ fn target_for(
             if exits.is_empty() {
                 return None;
             }
-            Some(Target::Exit(exits[token % exits.len()].exit_id.clone()))
+            Some(Target::Path(
+                exits[token % exits.len()].path_id.as_str().into(),
+            ))
         }
         "take" | "drop" | "use" | "wield" => {
             let items = item_tokens(session, actor);

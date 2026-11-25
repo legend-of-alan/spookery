@@ -286,7 +286,12 @@ The ground gives.
     let (_now, rolls) = play(
         world,
         &pack,
-        vec![intent("nell-bog", "nell", "travel", Some("bog"))],
+        vec![intent(
+            "nell-bog",
+            "nell",
+            "travel",
+            Some("docks_street.bog"),
+        )],
     );
     let faces = rolls.iter().any(|report| match report {
         spookery_engine::MoveReport::Rolled { actor_id, .. }
@@ -402,7 +407,7 @@ fn the_viewer_sees_the_trapdoor(world: &mut World, viewer: String, can_or_cannot
         .perceive(&Presence::default(), &viewer)
         .unwrap()
         .exits;
-    let sees = exits.iter().any(|exit| exit.exit_id == "trapdoor");
+    let sees = exits.iter().any(|exit| exit.path_id == "trapdoor");
     let should_see = can_or_cannot == "can";
     assert_eq!(
         sees, should_see,
@@ -621,7 +626,12 @@ fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent("nell-shop", "nell", "travel", Some("docks_shop"))],
+        vec![intent(
+            "nell-shop",
+            "nell",
+            "travel",
+            Some("docks_shop.docks_street"),
+        )],
     );
 }
 

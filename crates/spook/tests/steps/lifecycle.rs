@@ -58,8 +58,8 @@ fn the_stairs_take(world: &mut World, ticks: u64) {
     let pack = world.pack.clone().unwrap();
     super::common::replace_in_file(
         &pack.join("world/map.yaml"),
-        "    id: stairs\n    cost:\n      ticks: 2\n",
-        &format!("    id: stairs\n    cost:\n      ticks: {ticks}\n"),
+        "    name: stairs\n    cost:\n      ticks: 2\n",
+        &format!("    name: stairs\n    cost:\n      ticks: {ticks}\n"),
     );
     edit_save(&pack, give_key);
 }
@@ -141,12 +141,12 @@ fn travel_is_cancellable(world: &mut World) {
     let path = pack.join("rules/verbs.yaml");
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replace(
-        "      target: exit
+        "      target: path
     do:
       - location:
           via: target
 ",
-        "      target: exit
+        "      target: path
     cancellable: true
     do:
       - location:
@@ -266,7 +266,7 @@ fn the_brass_key_lies_in_miras_rooms(world: &mut World) {
 #[then(expr = "the stair door is open")]
 fn the_stair_door_is_open(world: &mut World) {
     let now = world_of(world.pack.as_ref().unwrap());
-    let stairs_id = "docks_shop.stairs".into();
+    let stairs_id = "stairs".into();
     assert!(now
         .paths()
         .get::<component::Flag>(&stairs_id)
@@ -287,7 +287,7 @@ fn the_street_exit_shows(world: &mut World, rowan_ticks: u64, wren_ticks: u64) {
     let opened = open(world.pack.as_ref().unwrap());
     let street_ticks = |viewer_id| {
         let view = opened.perceive(&seated(), viewer_id).unwrap();
-        let street = (view.exits.iter()).find(|exit| exit.exit_id == "docks_street");
+        let street = (view.exits.iter()).find(|exit| exit.path_id == "docks_shop.docks_street");
         street.unwrap().ticks
     };
     assert_eq!(street_ticks("rowan"), rowan_ticks);

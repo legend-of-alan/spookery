@@ -20,14 +20,14 @@ Feature: A player knows where they are and what they can do
   Scenario: help shows a cast verb only while that cast member is here
     Given Aldric has an ask verb and the CLI holds rowan in the shop
     When I type "help"
-    Then I see the lines "look", "ask Aldric" and "travel <exit>: Docks Street, stairs"
+    Then I see the lines "look", "ask Aldric" and "travel <path>: Docks Street, stairs"
     And help shows "ask Aldric" and not "ask <actor>: Aldric"
-    And help shows "travel <exit>: Docks Street, stairs" and not "Exits:"
+    And help shows "travel <path>: Docks Street, stairs" and not "Exits:"
     And play does not show the line "claim"
     And no round was played
     When I type "travel docks_street"
     And I type "help"
-    Then help shows "travel <exit>: Docks Shop, Gate Yard" and not "ask Aldric"
+    Then help shows "travel <path>: Docks Shop, Gate Yard" and not "ask Aldric"
 
   Scenario: help hides a verb whose if fails
     Given the shop has a pray verb if rowan holds lamp_oil, and the CLI holds rowan
@@ -94,7 +94,7 @@ Feature: A player knows where they are and what they can do
     And play does not show "mill_lane"
     When play types "help"
     Then play shows "ask Briar"
-    And play shows "travel <exit>: Mill Lane, Loft, Wheel Shed, Docks Street"
+    And play shows "travel <path>: Mill Lane, Loft, Wheel Shed, Docks Street"
     When play types "travel Mill Lane"
     Then play's error shows "The lane is shut."
     And no round was played

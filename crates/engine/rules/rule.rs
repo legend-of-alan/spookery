@@ -106,7 +106,7 @@ impl Rule {
                 EffectTemplate::Location { to, .. } => match to {
                     LocationTo::Target => mentions.add_target("location to:", &[TargetKind::Place]),
                     LocationTo::Via(via) if via == "target" => {
-                        mentions.add_target("location via:", &[TargetKind::Exit]);
+                        mentions.add_target("location via:", &[TargetKind::Path]);
                     }
                     LocationTo::Via(_) | LocationTo::Place(_) => {}
                 },
@@ -177,7 +177,7 @@ impl<'l> Mentions<'l> {
     fn add_flag_owner(&mut self, key: &'static str, of: &grammar::Object) {
         match of {
             grammar::Object::Actor(grammar::Actor::Target) => {
-                self.add_target(key, &[TargetKind::Actor, TargetKind::Exit]);
+                self.add_target(key, &[TargetKind::Actor, TargetKind::Path]);
             }
             of => self.add_owner(key, of),
         }
@@ -264,7 +264,7 @@ pub enum TargetKind {
     None,
     Actor,
     Place,
-    Exit,
+    Path,
     Item,
 }
 
@@ -274,7 +274,7 @@ impl TargetKind {
             TargetKind::None => "none",
             TargetKind::Actor => "actor",
             TargetKind::Place => "place",
-            TargetKind::Exit => "exit",
+            TargetKind::Path => "path",
             TargetKind::Item => "item",
         }
     }

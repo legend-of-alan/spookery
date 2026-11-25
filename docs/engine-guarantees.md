@@ -254,6 +254,9 @@ locked exit change nothing. A locked exit shows its locked text. A path with an 
 an end it leaves from meets that `if`. Then its `open` flag is set and the GM
 sees the `path_flag` change, and the path stays open for every actor at either
 end until a rule sets `open` to false. A hidden exit the traveller does not know stays off the view and `help`.
+An exit reads as its path's name, or else as the name of the place it goes to. A
+player names it by its path's id or name, or by that place's id or name, and a
+word two exits answer to is refused `AMBIGUOUS_NAME` with both path ids.
 A walk that takes ticks puts the traveller on the path at once, in neither
 room, and keeps them busy until they arrive at the end they head for. A move
 before then is refused. Walkers on one path are in the same place whichever way

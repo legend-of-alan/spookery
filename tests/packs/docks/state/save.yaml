@@ -1,6 +1,6 @@
 schema: save
 world_id: docks-001
-pack_rev: blake2s:d7fca765ec8f29cb42fdd4bed0cfb83a7a6f2d868072e1504505d6084be2ef4a
+pack_rev: blake2s:4f30897b2d27a398b2e40b0674d083d13daed20a3f3ecd648f2adfcf141959fc
 rules_rev: 33
 state_rev: 0
 round_index: 0
@@ -26,18 +26,18 @@ actors:
   visited:
     harbormouse:
       gate_yard:
-        - mill_lane
-        - loft
-        - wheel_shed
-        - docks_street
+        - gate_yard.mill_lane
+        - gate_yard.loft
+        - gate_yard.wheel_shed
+        - docks_street.gate_yard
     rowan:
       docks_shop:
-        - docks_street
+        - docks_shop.docks_street
         - stairs
     wren:
       docks_street:
-        - docks_shop
-        - gate_yard
+        - docks_shop.docks_street
+        - docks_street.gate_yard
   items:
     harbormouse:
       tonic: 1

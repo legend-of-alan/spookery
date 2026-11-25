@@ -14,7 +14,7 @@ expression: shown
 │› exert  ╭ Help ────────────────────────────────────────────────────╮         │
 │Your acti│look                                                      │─────────╯
 │◆ Your ro│strike <actor>: Aldric                                    │n ───────╮
-│› take la│travel <exit>: Docks Street, stairs                       │ ━━──────│
+│› take la│travel <path>: Docks Street, stairs                       │ ━━──────│
 │Your acti╰ Esc closes ──────────────────────────────────────────────╯ ━━━━────│
 │You picked up the Lamp oil.                 ││Might: 1/45             ────────│
 │› travel stairs                             ││Rest: 3/5               ━━━━────│
