@@ -47,8 +47,9 @@ fn path_from_yaml(row: usize, line: &PathYaml) -> Result<PathDef, Vec<Diagnostic
         return Err(refuse(".id", "a path id is empty", hint));
     }
     let cost = match &line.cost {
-        Some(yaml) => rule_list::cost_from_yaml(yaml)
-            .map_err(|fault| vec![source.refuse_fault(&format!("paths[{row}].cost"), fault)])?,
+        Some(yaml) => rule_list::cost_from_yaml(yaml).map_err(|unplaced| {
+            vec![source.refuse_unplaced(&format!("paths[{row}].cost"), unplaced)]
+        })?,
         None => Cost {
             ticks: Expr::Num(0),
             meters: Vec::new(),
@@ -58,10 +59,11 @@ fn path_from_yaml(row: usize, line: &PathYaml) -> Result<PathDef, Vec<Diagnostic
     let mut diags = Diags::default();
     let if_ = (line.if_.iter())
         .filter_map(|cond| {
-            let refuse_cond_fault =
-                |fault| diags.push(source.refuse_fault(&format!("paths[{row}].if"), fault));
+            let refuse_unplaced_cond = |unplaced| {
+                diags.push(source.refuse_unplaced(&format!("paths[{row}].if"), unplaced))
+            };
             rule_list::cond_from_yaml(cond)
-                .map_err(refuse_cond_fault)
+                .map_err(refuse_unplaced_cond)
                 .ok()
         })
         .collect();

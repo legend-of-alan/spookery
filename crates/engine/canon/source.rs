@@ -97,9 +97,9 @@ impl<'a> FileText<'a> {
         found
     }
 
-    /// A converter's `fault` at the spot it recorded, refused as a schema error.
-    pub(super) fn refuse_fault(&self, path: &str, fault: Fault) -> Diagnostic {
-        self.refuse_at(path, Locator::Spot(fault.spot), fault.message, "")
+    /// An `unplaced` refusal placed on its file at the spot it recorded, as a schema error.
+    pub(super) fn refuse_unplaced(&self, path: &str, unplaced: UnplacedRefusal) -> Diagnostic {
+        self.refuse_at(path, Locator::Spot(unplaced.spot), unplaced.message, "")
     }
 
     /// The schema error `message` at `path`, with `hint`, placed where `at` points.
@@ -179,14 +179,15 @@ impl Problem<'_> {
     }
 }
 
-/// A message from a converter that does not know its file yet.
+/// A refusal from a `*_from_yaml` step that does not know its file yet: a message and the
+/// spot it recorded.
 #[derive(Debug)]
-pub(super) struct Fault {
+pub(super) struct UnplacedRefusal {
     pub message: String,
     pub spot: Option<LineColumn>,
 }
 
-impl From<String> for Fault {
+impl From<String> for UnplacedRefusal {
     fn from(message: String) -> Self {
         Self {
             message,
@@ -195,7 +196,7 @@ impl From<String> for Fault {
     }
 }
 
-impl From<&str> for Fault {
+impl From<&str> for UnplacedRefusal {
     fn from(message: &str) -> Self {
         Self::from(message.to_string())
     }

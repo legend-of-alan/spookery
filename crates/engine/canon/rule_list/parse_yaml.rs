@@ -3,7 +3,9 @@
 use serde_saphyr::Spanned;
 use spookery_protocol::{is_built_in, Seat};
 
-use crate::canon::source::{load_tagged, spot_of, Diags, Fault, FileText, Locator, VERBS_SCHEMA};
+use crate::canon::source::{
+    load_tagged, spot_of, Diags, FileText, Locator, UnplacedRefusal, VERBS_SCHEMA,
+};
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::rules::expr::{self, stamp_spots, Expr};
 use crate::rules::grammar;
@@ -77,15 +79,15 @@ fn rule_from_yaml(
     };
     let if_ = match entry.if_.as_ref().map(if_from_yaml).transpose() {
         Ok(list) => list.unwrap_or_default(),
-        Err(fault) => {
-            diags.push(source.refuse_fault("", fault));
+        Err(unplaced) => {
+            diags.push(source.refuse_unplaced("", unplaced));
             Vec::new()
         }
     };
     let cost = match entry.cost.as_ref().map(cost_from_yaml).transpose() {
         Ok(cost) => cost,
-        Err(fault) => {
-            diags.push(source.refuse_fault("", fault));
+        Err(unplaced) => {
+            diags.push(source.refuse_unplaced("", unplaced));
             None
         }
     };
@@ -103,8 +105,8 @@ fn rule_from_yaml(
             None
         }
         Ok(cost) => cost,
-        Err(fault) => {
-            diags.push(source.refuse_fault("", fault));
+        Err(unplaced) => {
+            diags.push(source.refuse_unplaced("", unplaced));
             None
         }
     };
@@ -112,11 +114,11 @@ fn rule_from_yaml(
     lets.sort_by_key(|(_, number)| (number.referenced.line(), number.referenced.column()));
     let lets = (lets.into_iter())
         .map(|(id, number)| let_from_yaml(id, number))
-        .collect::<Result<Vec<_>, Fault>>();
+        .collect::<Result<Vec<_>, UnplacedRefusal>>();
     let lets = match lets {
         Ok(lets) => lets,
-        Err(fault) => {
-            diags.push(source.refuse_fault("", fault));
+        Err(unplaced) => {
+            diags.push(source.refuse_unplaced("", unplaced));
             Vec::new()
         }
     };
@@ -125,8 +127,8 @@ fn rule_from_yaml(
         .transpose()
     {
         Ok(check) => check,
-        Err(fault) => {
-            diags.push(source.refuse_fault("", fault));
+        Err(unplaced) => {
+            diags.push(source.refuse_unplaced("", unplaced));
             None
         }
     };
@@ -347,14 +349,14 @@ fn change_from_yaml(yaml: &ChangeYaml) -> Result<When, String> {
     Err("a change needs arrive, leave, meter, flag, or item".to_string())
 }
 
-fn if_from_yaml(yaml: &IfYaml) -> Result<Vec<Cond>, Fault> {
+fn if_from_yaml(yaml: &IfYaml) -> Result<Vec<Cond>, UnplacedRefusal> {
     match yaml {
         IfYaml::List(list) => list.iter().map(cond_from_yaml).collect(),
         IfYaml::One(one) => Ok(vec![cond_from_yaml(one)?]),
     }
 }
 
-pub(in crate::canon) fn cond_from_yaml(yaml: &CondYaml) -> Result<Cond, Fault> {
+pub(in crate::canon) fn cond_from_yaml(yaml: &CondYaml) -> Result<Cond, UnplacedRefusal> {
     Ok(match yaml {
         CondYaml::HasItem(item) => Cond::HasItem {
             subject: actor_from_yaml(&item.subject)?,
@@ -403,7 +405,7 @@ pub(in crate::canon) fn cond_from_yaml(yaml: &CondYaml) -> Result<Cond, Fault> {
     })
 }
 
-pub(in crate::canon) fn cost_from_yaml(yaml: &CostYaml) -> Result<Cost, Fault> {
+pub(in crate::canon) fn cost_from_yaml(yaml: &CostYaml) -> Result<Cost, UnplacedRefusal> {
     Ok(Cost {
         ticks: (yaml.ticks.as_ref()).map_or(Ok(Expr::Num(0)), refuse_dice)?,
         meters: counts_from_yaml(&yaml.meters)?,
@@ -411,7 +413,7 @@ pub(in crate::canon) fn cost_from_yaml(yaml: &CostYaml) -> Result<Cost, Fault> {
     })
 }
 
-fn counts_from_yaml(yaml: &Counts) -> Result<Vec<(String, Expr)>, Fault> {
+fn counts_from_yaml(yaml: &Counts) -> Result<Vec<(String, Expr)>, UnplacedRefusal> {
     (yaml.iter())
         .map(|(key, n)| Ok((key.clone(), refuse_dice(n)?)))
         .collect()
@@ -421,7 +423,7 @@ fn check_from_yaml(
     total: &Spanned<ExprYaml>,
     success_at: &Spanned<ExprYaml>,
     partial_at: Option<&Spanned<ExprYaml>>,
-) -> Result<rule::Check, Fault> {
+) -> Result<rule::Check, UnplacedRefusal> {
     Ok(rule::Check {
         total: expr_from_yaml(total)?,
         success_at: expr_from_yaml(success_at)?,
@@ -430,10 +432,10 @@ fn check_from_yaml(
 }
 
 /// A number in a condition or a cost, refused on its line when it rolls dice.
-fn refuse_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
+fn refuse_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, UnplacedRefusal> {
     let expr = expr_from_yaml(yaml)?;
     if expr.needs_dice() {
-        return Err(Fault {
+        return Err(UnplacedRefusal {
             message: "a condition or a cost cannot roll dice".into(),
             spot: spot_of(yaml),
         });
@@ -442,9 +444,9 @@ fn refuse_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
 }
 
 /// One `let:` id and its number. An id no number could read back is refused on its line.
-fn let_from_yaml(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), Fault> {
+fn let_from_yaml(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), UnplacedRefusal> {
     if !expr::is_let_id(id) {
-        return Err(Fault {
+        return Err(UnplacedRefusal {
             message: format!(
                 "let: id '{id}' is not a word a number can read; use letters, digits and _, \
                  not starting with a digit, and not an owner word or min, max, high or low"
@@ -455,12 +457,13 @@ fn let_from_yaml(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr),
     Ok((id.to_string(), expr_from_yaml(number)?))
 }
 
-fn expr_from_yaml(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
+fn expr_from_yaml(yaml: &Spanned<ExprYaml>) -> Result<Expr, UnplacedRefusal> {
     let spot = spot_of(yaml);
     match &yaml.value {
         ExprYaml::Literal(n) => Ok(Expr::Num(*n)),
         ExprYaml::Text(text) => {
-            let mut expr = Expr::parse(text).map_err(|message| Fault { message, spot })?;
+            let mut expr =
+                Expr::parse(text).map_err(|message| UnplacedRefusal { message, spot })?;
             if let Some(LineColumn { line, column }) = spot {
                 stamp_spots(&mut expr, line, column);
             }
@@ -477,15 +480,15 @@ fn effects_from_yaml(
     for effect in list {
         match effect_from_yaml(effect) {
             Ok(effect) => out.push(effect),
-            Err(fault) => {
-                return Err(vec![FileText::named(file).refuse_fault("", fault)]);
+            Err(unplaced) => {
+                return Err(vec![FileText::named(file).refuse_unplaced("", unplaced)]);
             }
         }
     }
     Ok(out)
 }
 
-fn effect_from_yaml(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
+fn effect_from_yaml(yaml: &EffectYaml) -> Result<EffectTemplate, UnplacedRefusal> {
     Ok(match yaml {
         EffectYaml::Meter(meter) if meter.add.is_some() == meter.set.is_some() => {
             return Err("a meter effect needs add or set, not both".into());
@@ -637,16 +640,16 @@ fn find_partial_band_problem(
         ))
 }
 
-fn object_from_yaml(yaml: &Spanned<String>) -> Result<grammar::Object, Fault> {
-    grammar::Object::parse(&yaml.value).map_err(|message| Fault {
+fn object_from_yaml(yaml: &Spanned<String>) -> Result<grammar::Object, UnplacedRefusal> {
+    grammar::Object::parse(&yaml.value).map_err(|message| UnplacedRefusal {
         message,
         spot: spot_of(yaml),
     })
 }
 
 /// The actor a slot that needs one names, refused on the word's line when it is another owner.
-fn actor_from_yaml(yaml: &Spanned<String>) -> Result<grammar::Actor, Fault> {
-    grammar::Actor::parse(&yaml.value).map_err(|message| Fault {
+fn actor_from_yaml(yaml: &Spanned<String>) -> Result<grammar::Actor, UnplacedRefusal> {
+    grammar::Actor::parse(&yaml.value).map_err(|message| UnplacedRefusal {
         message,
         spot: spot_of(yaml),
     })
