@@ -2,7 +2,7 @@
 
 use crate::ecs::component;
 use crate::ecs::component::meter;
-use crate::ecs::component::Location;
+use crate::ecs::component::ActorLocation;
 use crate::entity;
 use crate::intent::Target;
 use crate::round::dice::Roller;
@@ -141,7 +141,7 @@ fn push_effects(
             let place_id = match to {
                 LocationTo::Via(via) => {
                     let exit = crate::rules::travel::exit_via(context, via)?;
-                    exit.ok_or(Reason::Schema)?.to.clone()
+                    exit.ok_or(Reason::Schema)?.to_place_id.clone()
                 }
                 LocationTo::Place(id) if *teleport => id.as_str().into(),
                 LocationTo::Target if *teleport => match &intent.target {
@@ -150,7 +150,7 @@ fn push_effects(
                 },
                 LocationTo::Place(_) | LocationTo::Target => return Err(Reason::NotInSpec),
             };
-            effects.push(location_effect(context, Location::Place(place_id))?);
+            effects.push(location_effect(context, ActorLocation::Place(place_id))?);
         }
         EffectTemplate::Meter { of, key, add, set } => {
             let entity = owner::resolve_entity(context, of)?;
@@ -293,7 +293,7 @@ fn meter_offset(
     ))
 }
 
-fn location_effect(context: &Context, to: Location) -> Result<Effect, Reason> {
+fn location_effect(context: &Context, to: ActorLocation) -> Result<Effect, Reason> {
     let intent = context.intent;
     let actor_id = owner::resolve_actor(context, &grammar::Actor::Self_)?.clone();
     let from = context

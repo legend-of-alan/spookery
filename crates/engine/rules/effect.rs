@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 use crate::canon::Canon;
 use crate::ecs::component::meter;
 use crate::ecs::component::modifier::{self, Modifier};
-use crate::ecs::component::Location;
+use crate::ecs::component::ActorLocation;
 use crate::ecs::component::Note;
 use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component, MemoryLine, Presence};
@@ -61,8 +61,8 @@ pub enum EffectKind {
     },
     Location {
         actor_id: ActorId,
-        from: Location,
-        to: Location,
+        from: ActorLocation,
+        to: ActorLocation,
         /// Exact tick of a timed arrival. Instant moves leave this empty.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         arrived_at: Option<u64>,
@@ -222,7 +222,7 @@ impl Effect {
                     entity::Id::Path(id) => canon.paths.get(id),
                     _ => None,
                 };
-                if key.is_empty() || path.is_some_and(|path| !path.carries_flag(&key)) {
+                if key.is_empty() || path.is_some_and(|path| !path.has_flag(&key)) {
                     return Err(Reason::UnknownId);
                 }
                 (world.entities_mut().get_mut::<component::Flag>(&entity)).set(&key, value)
@@ -315,8 +315,8 @@ fn move_actor(
     presence: &Presence,
     intent: &Intent,
     actor_id: &ActorId,
-    from: &Location,
-    to: &Location,
+    from: &ActorLocation,
+    to: &ActorLocation,
 ) -> Result<(), Reason> {
     if intent.actor_id.as_ref() != Some(actor_id) {
         return Err(Reason::ActorMismatch);

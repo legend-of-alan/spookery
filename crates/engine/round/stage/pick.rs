@@ -106,7 +106,7 @@ fn stamp_target(canon: &Canon, world: &ecs::World, presence: &Presence, intent: 
     for effect in &effects {
         if !keeps_empty && intent.target == Target::Empty {
             if let EffectKind::Location {
-                to: component::Location::Place(to),
+                to: component::ActorLocation::Place(to),
                 ..
             } = &effect.kind
             {
@@ -189,7 +189,7 @@ fn touches_seated_player(
             .as_ref()
             .and_then(|id| world.actors().get::<component::Place>(id).place_id())
             .and_then(|place| canon.find_exit(place.as_str(), exit_id))
-            .is_some_and(|exit| is_player_at(world, presence, exit.to.as_str())),
+            .is_some_and(|exit| is_player_at(world, presence, exit.to_place_id.as_str())),
         _ => false,
     };
     let message_hit = intent

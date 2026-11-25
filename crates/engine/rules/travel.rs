@@ -1,7 +1,7 @@
 //! Exits, admission, and the journeys that follow them.
 
 use crate::canon::{Canon, Exit, PathDef, OPEN};
-use crate::ecs::component::Location;
+use crate::ecs::component::ActorLocation;
 use crate::ecs::id::{ActorId, GlobalId, PlaceId};
 use crate::ecs::{self, component, entity, PendingAction, Presence};
 use crate::intent::{Intent, Source, Target};
@@ -53,7 +53,7 @@ pub(crate) fn exit_via<'c>(
     let location =
         (context.intent.actor_id.as_ref()).and_then(|id| actors.get::<component::Place>(id).get());
     let exit = match location {
-        Some(Location::Place(from)) => context.canon.find_exit(from.as_str(), exit_id),
+        Some(ActorLocation::Place(from)) => context.canon.find_exit(from.as_str(), exit_id),
         Some(walk) => exit_stood_on(context.canon, walk),
         None => None,
     };
@@ -61,16 +61,16 @@ pub(crate) fn exit_via<'c>(
 }
 
 /// Whether the pack defines `location`: its place, or its path walked toward where they head.
-pub(crate) fn is_known_location(canon: &Canon, location: &Location) -> bool {
+pub(crate) fn is_known_location(canon: &Canon, location: &ActorLocation) -> bool {
     match location {
-        Location::Place(id) => canon.places.contains_key(id),
+        ActorLocation::Place(id) => canon.places.contains_key(id),
         walk => exit_stood_on(canon, walk).is_some(),
     }
 }
 
 /// The exit a walker stands on: their path, walked toward where they head. `None` in a place.
-pub(crate) fn exit_stood_on<'c>(canon: &'c Canon, location: &Location) -> Option<Exit<'c>> {
-    let Location::Path { path, to } = location else {
+pub(crate) fn exit_stood_on<'c>(canon: &'c Canon, location: &ActorLocation) -> Option<Exit<'c>> {
+    let ActorLocation::Path { path, to } = location else {
         return None;
     };
     canon.paths.get(path)?.exit_to(to.as_str())
@@ -89,11 +89,11 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal>
     if !is_revealed(world, actor_id, exit) {
         return Err(gate::Refusal::new(intent, Reason::NoExit));
     }
-    if is_locked(world, exit.path) {
-        let text = if exit.path.locked_text.is_empty() {
+    if is_locked(world, exit.path_def) {
+        let text = if exit.path_def.locked_text.is_empty() {
             "The way is locked.".to_string()
         } else {
-            exit.path.locked_text.clone()
+            exit.path_def.locked_text.clone()
         };
         return Err(gate::Refusal {
             id: intent.id.clone(),
@@ -101,11 +101,11 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal>
             detail: Some(text),
         });
     }
-    cost::afford(context, &exit.path.cost)
+    cost::afford(context, &exit.path_def.cost)
 }
 
 fn is_revealed(world: &ecs::World, actor_id: &ActorId, exit: Exit<'_>) -> bool {
-    let Some(key) = &exit.path.revealed_by else {
+    let Some(key) = &exit.path_def.revealed_by else {
         return true;
     };
     world
@@ -138,10 +138,10 @@ pub(crate) fn open_conditional_paths(
 ) {
     let mut opens = Vec::new();
     for path in canon.paths.iter().filter(|path| is_locked(world, path)) {
-        let exits = (path.ends.iter()).filter_map(|end| path.exit_from(end.as_str()));
-        let mut sides = exits.map(|exit| (exit.from, Target::Exit(exit.id.to_string())));
-        let opening_side = sides.find(|(from, target)| {
-            (world.actors_at(from.as_str()).iter()).any(|actor_id| {
+        let exits = (path.end_place_ids.iter()).filter_map(|id| path.exit_from(id.as_str()));
+        let mut sides = exits.map(|exit| (exit.from_place_id, Target::Exit(exit.id.to_string())));
+        let opening_side = sides.find(|(from_place_id, target)| {
+            (world.actors_at(from_place_id.as_str()).iter()).any(|actor_id| {
                 let target = target.clone();
                 cond::if_holds(
                     canon, world, presence, actor_id, "travel", target, &path.if_,
@@ -207,12 +207,12 @@ pub(crate) fn exit_view(
     let context = Context::new(canon, world, &presence, &travel_intent);
     ExitView {
         exit_id: exit.id.to_string(),
-        path_id: exit.path.id.to_string(),
+        path_id: exit.path_def.id.to_string(),
         name: exit.name(canon).to_string(),
-        place_id: exit.to.to_string(),
-        place_name: find_place_name(canon, exit.to.as_str()).unwrap_or_default(),
-        ticks: cost::read_ticks(&context, &exit.path.cost).unwrap_or(0),
-        locked: is_locked(world, exit.path),
+        place_id: exit.to_place_id.to_string(),
+        place_name: find_place_name(canon, exit.to_place_id.as_str()).unwrap_or_default(),
+        ticks: cost::read_ticks(&context, &exit.path_def.cost).unwrap_or(0),
+        locked: is_locked(world, exit.path_def),
     }
 }
 
@@ -254,7 +254,7 @@ pub(crate) fn span(context: &Context, rule: &Rule) -> Result<u64, Reason> {
     let start = rule.start.cost.as_ref();
     let mut ticks = start.map_or(Ok(0), |cost| cost::read_ticks(context, cost))?;
     if let Ok(Some(exit)) = exit_of(context, rule) {
-        ticks = ticks.saturating_add(cost::read_ticks(context, &exit.path.cost)?);
+        ticks = ticks.saturating_add(cost::read_ticks(context, &exit.path_def.cost)?);
     }
     Ok(ticks)
 }

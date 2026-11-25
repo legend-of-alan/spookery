@@ -104,7 +104,7 @@ fn start(
         .start
         .cost
         .iter()
-        .chain(exit.map(|exit| &exit.path.cost));
+        .chain(exit.map(|exit| &exit.path_def.cost));
     let mut started = costs.try_for_each(|cost| cost::pay(canon, world, presence, intent, cost));
     if rule.start.counts_as_act {
         started = started.and_then(|()| count_act(world, presence, intent));

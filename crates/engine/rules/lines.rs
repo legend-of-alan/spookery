@@ -3,7 +3,7 @@
 use spookery_protocol::{CommandView, PlaceView, Seat, COMMANDS};
 
 use crate::canon::Canon;
-use crate::ecs::component::Location;
+use crate::ecs::component::ActorLocation;
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, Presence};
 use crate::intent::Target;
@@ -206,9 +206,9 @@ pub(crate) fn find_place_name(canon: &Canon, id: &str) -> Option<String> {
 
 /// The name a player reads for where someone stands: their place's, or for a walker the name of
 /// the exit they walk, which follows the way they head. `None` when the pack has neither.
-pub(crate) fn find_location_name(canon: &Canon, location: &Location) -> Option<String> {
+pub(crate) fn find_location_name(canon: &Canon, location: &ActorLocation) -> Option<String> {
     match location {
-        Location::Place(id) => find_place_name(canon, id.as_str()),
+        ActorLocation::Place(id) => find_place_name(canon, id.as_str()),
         walk => exit_stood_on(canon, walk).map(|exit| exit.name(canon).to_string()),
     }
 }

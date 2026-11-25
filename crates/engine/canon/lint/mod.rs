@@ -25,13 +25,16 @@ pub(super) fn check_paths(
     let mut diags = Vec::new();
     for (row, path) in paths.iter().enumerate() {
         let arrow = if path.bidirectional { "<->" } else { "->" };
-        let line = format!("{} {arrow} {}", path.ends[0], path.ends[1]);
+        let line = format!(
+            "{} {arrow} {}",
+            path.end_place_ids[0], path.end_place_ids[1]
+        );
         let mut refuse = |field: &str, problem: String, hint: &str| {
             let at = format!("paths[{row}]{field}");
             diags.push(schema_error(MAP_FILE, &problem, hint).at_path(at));
         };
-        for end in path.ends.iter().filter(|end| !places.contains_key(*end)) {
-            let problem = format!("path '{line}' names '{end}', which is not a place");
+        for end_place_id in (path.end_place_ids.iter()).filter(|id| !places.contains_key(*id)) {
+            let problem = format!("path '{line}' names '{end_place_id}', which is not a place");
             refuse(".path", problem, "name a place from world/places");
         }
         for id in path.mentions().item_ids {
@@ -239,7 +242,7 @@ fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
         if !seen.insert(place.clone()) {
             continue;
         }
-        queue.extend(canon.exits(&place).map(|exit| exit.to.to_string()));
+        queue.extend(canon.exits(&place).map(|exit| exit.to_place_id.to_string()));
     }
     let mut diags = Vec::new();
     for id in canon.places.keys() {

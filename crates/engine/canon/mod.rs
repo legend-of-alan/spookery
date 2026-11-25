@@ -170,14 +170,14 @@ impl Canon {
         }
     }
 
-    /// The exits of `place`, in the file order of their paths.
-    pub(crate) fn exits(&self, place: &str) -> impl Iterator<Item = Exit<'_>> {
-        self.paths.exits(place)
+    /// The exits of `from_place_id`, in the file order of their paths.
+    pub(crate) fn exits(&self, from_place_id: &str) -> impl Iterator<Item = Exit<'_>> {
+        self.paths.exits(from_place_id)
     }
 
-    /// The exit at `place` that a player names `id`.
-    pub(crate) fn find_exit(&self, place: &str, id: &str) -> Option<Exit<'_>> {
-        self.paths.find_exit(place, id)
+    /// The exit at `from_place_id` that a player names `id`.
+    pub(crate) fn find_exit(&self, from_place_id: &str, id: &str) -> Option<Exit<'_>> {
+        self.paths.find_exit(from_place_id, id)
     }
 
     pub fn idle_profile(&self, actor_id: &ActorId) -> Option<&IdleProfile> {
@@ -242,7 +242,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         loaded.extend(rules.unwrap_or_default());
     }
     let path_lines = diags.keep(read_text(root, MAP_FILE).and_then(|text| map::load(&text)));
-    let paths = (path_lines.as_ref()).and_then(|lines| diags.keep(Paths::index(lines.clone())));
+    let paths = (path_lines.as_ref()).and_then(|lines| diags.keep(Paths::new(lines.clone())));
     let world_meters = if root.join("world/meters.yaml").is_file() {
         let rel = "world/meters.yaml";
         diags.keep(

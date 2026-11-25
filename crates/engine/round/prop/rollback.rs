@@ -19,7 +19,7 @@ use crate::canon::StoryDef;
 use crate::ecs::change::{self, Change, ChangeValue};
 use crate::ecs::component::meter::{self, Meter};
 use crate::ecs::component::modifier;
-use crate::ecs::component::{self, Component, Location};
+use crate::ecs::component::{self, ActorLocation, Component};
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, Presence, Save, WindowCount};
 use crate::entity;
@@ -288,9 +288,9 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
         Step::Walk(to) => EffectKind::Location {
             from: (world.actors().get::<component::Place>(&mira).get())
                 .cloned()
-                .unwrap_or_else(|| Location::Place("".into())),
+                .unwrap_or_else(|| ActorLocation::Place("".into())),
             actor_id: mira,
-            to: Location::Place((*to).into()),
+            to: ActorLocation::Place((*to).into()),
             arrived_at: None,
         },
         Step::Wield(id) => EffectKind::Wield {

@@ -194,7 +194,7 @@ pub(crate) fn admit_cancel(context: &Context) -> Result<(), Refusal> {
         .and_then(|act| act.pending.as_ref());
     let walking = actor_id
         .and_then(|id| actors.get::<component::Place>(id).get())
-        .is_some_and(|location| matches!(location, component::Location::Path { .. }));
+        .is_some_and(|location| matches!(location, component::ActorLocation::Path { .. }));
     let rule = pending.and_then(|pending| context.canon.rules.get(&pending.rule));
     if walking || !rule.is_some_and(|rule| rule.cancellable) {
         return Err(Refusal::new(intent, Reason::Ineligible));

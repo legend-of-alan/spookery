@@ -39,8 +39,8 @@ pub(crate) fn resolve_entity(
             if matches!(context.intent.target, Target::Exit(_)) =>
         {
             let exit = crate::rules::travel::exit_via(context, "target")?;
-            let path = exit.ok_or(Reason::NoExit)?.path;
-            Ok(entity::Id::Path(path.id.clone()))
+            let path_def = exit.ok_or(Reason::NoExit)?.path_def;
+            Ok(entity::Id::Path(path_def.id.clone()))
         }
         grammar::Object::Actor(actor) => {
             Ok(entity::Id::Actor(resolve_actor(context, actor)?.clone()))

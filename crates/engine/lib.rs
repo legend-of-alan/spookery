@@ -41,7 +41,7 @@ pub mod testing {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use crate::ecs::component::{Location, Place};
+    use crate::ecs::component::{ActorLocation, Place};
     use crate::store::lock::WriteGuard;
 
     pub use crate::canon::Canon;
@@ -66,11 +66,15 @@ pub mod testing {
         place.unwrap_or_else(|| panic!("{actor} stands nowhere"))
     }
 
-    /// Where someone walking the exit `exit_id` from `from` stands. Panics when `from` has no
-    /// such exit.
-    pub fn walker_location(world: &crate::ecs::World, from: &str, exit_id: &str) -> Location {
-        let exit = world.canon().find_exit(from, exit_id);
-        let exit = exit.unwrap_or_else(|| panic!("{from} has no exit {exit_id}"));
+    /// Where someone walking the exit `exit_id` from `from_place_id` stands. Panics when
+    /// `from_place_id` has no such exit.
+    pub fn walker_location(
+        world: &crate::ecs::World,
+        from_place_id: &str,
+        exit_id: &str,
+    ) -> ActorLocation {
+        let exit = world.canon().find_exit(from_place_id, exit_id);
+        let exit = exit.unwrap_or_else(|| panic!("{from_place_id} has no exit {exit_id}"));
         exit.walker_location()
     }
 

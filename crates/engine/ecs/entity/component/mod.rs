@@ -2,6 +2,7 @@
 //! `Reader::get` borrows one entity's share of its store, and `Writer::get_mut` writes it.
 
 pub(in crate::ecs) mod act;
+pub(in crate::ecs) mod actor_location;
 pub(in crate::ecs) mod control_type;
 pub(in crate::ecs) mod flag;
 pub(in crate::ecs) mod item;
@@ -18,13 +19,14 @@ use std::marker::PhantomData;
 
 pub(crate) use act::WindowCount;
 pub use act::{Act, PendingAction};
+pub use actor_location::ActorLocation;
 pub use control_type::ControlType;
 pub use flag::Flag;
 pub use item::Item;
 pub use meter::Meter;
 pub use modifier::Modifier;
 pub use note::Note;
-pub use place::{Location, Place};
+pub use place::Place;
 pub use visit::Visit;
 pub use wielded_item::WieldedItem;
 
