@@ -141,8 +141,7 @@ impl Window {
         self.draw(view)
     }
 
-    /// Fills the place panel from a `map` reply.
-    pub(crate) fn show_map(
+    pub(crate) fn fill_place_panel(
         &mut self,
         places: &[protocol::PlaceView],
         view: Option<&protocol::View>,
@@ -731,8 +730,7 @@ mod tests {
     /// this build.
     const HELP_REPLY: &str = r#"{"seq":9,"reply_to":"c3","body":{"kind":"help","commands":[{"id":"look","target":"none"},{"id":"strike","target":"actor","names":["Aldric"]},{"id":"travel","target":"path","names":["Docks Street","stairs"]}]}}"#;
 
-    /// Fills the place panel from `MAP_REPLY`.
-    fn keep_map_reply_places(screen: &mut Screen) {
+    fn fill_place_panel_from_map_reply(screen: &mut Screen) {
         let reply: ServerMessage = serde_json::from_str(MAP_REPLY).unwrap();
         let ServerBody::Map { places } = reply.body else {
             panic!("MAP_REPLY is not a map");
@@ -821,7 +819,7 @@ mod tests {
     fn nearby_lists_the_map_places_and_a_typed_map_shows_in_the_transcript() {
         let mut screen = Screen::new(true);
         let (view, commands) = seat_rowan_carrying_oil(&mut screen);
-        keep_map_reply_places(&mut screen);
+        fill_place_panel_from_map_reply(&mut screen);
         assert_region("nearby", &mut screen, &view, |areas| {
             Some(areas.place_panel_rect)
         });
@@ -840,7 +838,7 @@ mod tests {
     fn a_wide_terminal_shows_the_story_the_place_and_the_tab_box_side_by_side() {
         let mut screen = Screen::new(true);
         let (view, _) = seat_rowan_carrying_oil(&mut screen);
-        keep_map_reply_places(&mut screen);
+        fill_place_panel_from_map_reply(&mut screen);
         assert_screen_at("wide", &mut screen, Some(&view), 140, 40);
     }
 

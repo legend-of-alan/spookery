@@ -1,6 +1,8 @@
 //! The play terminal: plain lines or the game window.
 
 use tokio::sync::mpsc::UnboundedReceiver;
+#[cfg(test)]
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::protocol::{self, ServerBody, ServerMessage};
 use crate::text;
@@ -20,6 +22,24 @@ pub struct Terminal {
 enum Surface {
     Plain(Plain),
     Window(Box<Window>),
+    #[cfg(test)]
+    Test(TestSurface),
+}
+
+/// The surface play's tests drive: it has a place panel, takes each line from a channel and
+/// sends each call play makes on it, in order.
+#[cfg(test)]
+struct TestSurface {
+    lines: UnboundedReceiver<String>,
+    calls: UnboundedSender<SurfaceCall>,
+}
+
+/// A call play made on the test surface, with the message it passed.
+#[cfg(test)]
+#[derive(Debug)]
+pub(crate) enum SurfaceCall {
+    Show(ServerMessage),
+    FillPlacePanel(ServerMessage),
 }
 
 impl Terminal {
@@ -29,6 +49,18 @@ impl Terminal {
             surface: Surface::Window(Box::new(Window::open()?)),
             last_seq: 0,
         })
+    }
+
+    /// The test surface: sends each line `lines` gives, and each call play makes to `calls`.
+    #[cfg(test)]
+    pub(crate) fn test(
+        lines: UnboundedReceiver<String>,
+        calls: UnboundedSender<SurfaceCall>,
+    ) -> Self {
+        Self {
+            surface: Surface::Test(TestSurface { lines, calls }),
+            last_seq: 0,
+        }
     }
 
     /// Prints plain lines, as text or with `raw` as protocol frames.
@@ -56,6 +88,13 @@ impl Terminal {
                 Ok(())
             }
             Surface::Window(window) => window.show(message, view),
+            #[cfg(test)]
+            Surface::Test(test_surface) => {
+                (test_surface.calls)
+                    .send(SurfaceCall::Show(message.clone()))
+                    .expect("the test stopped reading the surface");
+                Ok(())
+            }
         }
     }
 
@@ -69,26 +108,42 @@ impl Terminal {
         match &mut self.surface {
             Surface::Plain(plain) => Ok(plain.stdin_lines.recv().await),
             Surface::Window(window) => window.next_line(view, commands).await,
+            #[cfg(test)]
+            Surface::Test(test_surface) => Ok(test_surface.lines.recv().await),
         }
     }
 
     /// Records the `seq` of the reply to play's own `map` and fills the window's place panel
     /// from it, keeping it out of the transcript. A refusal of that `map` shows nowhere.
-    pub(crate) fn show_map(
+    pub(crate) fn fill_place_panel(
         &mut self,
         message: &ServerMessage,
         view: Option<&protocol::View>,
     ) -> Result<(), Error> {
         self.last_seq = self.last_seq.max(message.seq.unwrap_or(0));
         match (&mut self.surface, &message.body) {
-            (Surface::Window(window), ServerBody::Map { places }) => window.show_map(places, view),
+            (Surface::Window(window), ServerBody::Map { places }) => {
+                window.fill_place_panel(places, view)
+            }
+            #[cfg(test)]
+            (Surface::Test(test_surface), _) => {
+                (test_surface.calls)
+                    .send(SurfaceCall::FillPlacePanel(message.clone()))
+                    .expect("the test stopped reading the surface");
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
 
     /// Whether the surface has a place panel, which lists the places past the exits.
     pub(crate) fn has_place_panel(&self) -> bool {
-        matches!(self.surface, Surface::Window(_))
+        match self.surface {
+            Surface::Plain(_) => false,
+            Surface::Window(_) => true,
+            #[cfg(test)]
+            Surface::Test(_) => true,
+        }
     }
 
     /// Whether refusals show as their bare code.
