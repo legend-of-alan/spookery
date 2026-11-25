@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::rule_list::{self, RuleYaml};
+use crate::canon::rule_list::{self, parse::RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, ITEM_SCHEMA};
 use crate::canon::ItemDef;
 use crate::rules::rule::{Owner, Rule};

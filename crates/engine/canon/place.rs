@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::canon::meters::{meter_descs, MeterYaml};
-use crate::canon::rule_list::{self, RuleYaml};
+use crate::canon::rule_list::{self, parse::RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, PLACE_SCHEMA};
 use crate::canon::PlaceDef;
 use crate::diagnostic::Diagnostic;

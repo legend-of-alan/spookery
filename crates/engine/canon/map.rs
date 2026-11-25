@@ -302,9 +302,9 @@ struct PathYaml {
     path: String,
     id: Option<String>,
     name: Option<String>,
-    cost: Option<rule_list::CostYaml>,
+    cost: Option<rule_list::parse::CostYaml>,
     #[serde(default, rename = "if")]
-    if_: Vec<rule_list::CondYaml>,
+    if_: Vec<rule_list::parse::CondYaml>,
     #[serde(default)]
     locked_text: String,
     revealed_by: Option<String>,

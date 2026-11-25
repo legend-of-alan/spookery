@@ -10,15 +10,6 @@ use crate::ecs::id::{ActorId, PlaceId};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct VerbsDoc {
-    #[serde(rename = "schema")]
-    pub _schema: String,
-    #[serde(default)]
-    pub rules: Vec<RuleYaml>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 pub(in crate::canon) struct RuleYaml {
     pub id: Spanned<String>,
     pub when: Spanned<WhenYaml>,

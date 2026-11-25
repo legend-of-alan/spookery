@@ -7,7 +7,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::canon::meters::{self, meter_descs, MeterYaml};
-use crate::canon::rule_list::{self, RuleYaml};
+use crate::canon::rule_list::{self, parse::RuleYaml};
 use crate::canon::source::{
     collect_files, load_tagged, unreadable_dir, Diags, FileText, Locator, STORY_SCHEMA,
 };
