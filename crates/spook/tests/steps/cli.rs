@@ -75,8 +75,12 @@ fn play_says(world: &mut World, text: String) {
 #[when(expr = "another play picks {word} on that table")]
 async fn another_play_picks_on_that_table(world: &mut World, pc: String) {
     let port = host::live_mut(world).game_port;
-    let addr = format!("127.0.0.1:{port}");
-    let mut play = spawn_play(&addr, &pc, &[]);
+    run_play_picking(world, &format!("127.0.0.1:{port}"), &pc).await;
+}
+
+/// Runs play on `addr`, picks `pc`, and keeps its exit code and output once it exits.
+pub(crate) async fn run_play_picking(world: &mut World, addr: &str, pc: &str) {
+    let mut play = spawn_play(addr, pc, &[]);
     let (status, stdout, stderr) = play.wait_with_output().await;
     world.code = status.code();
     world.stdout = stdout;

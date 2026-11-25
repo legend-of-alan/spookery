@@ -34,12 +34,10 @@ async fn thirteen_rounds_pass(world: &mut World) {
     let pack = host::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
     for round in 1..=13 {
-        let output = run_spook(&["round", arg]).await;
+        let (status, stdout, stderr) = run_spook(&["round", arg]).await;
         assert!(
-            output.status.success(),
-            "round {round}\nstdout:\n{}\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
+            status.success(),
+            "round {round}\nstdout:\n{stdout}\nstderr:\n{stderr}"
         );
     }
     world.before = host::read_files(&pack);

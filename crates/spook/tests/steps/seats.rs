@@ -1,11 +1,16 @@
+use spookery::protocol::{ServerBody, ServerMessage, VERSION};
 use spookery_engine::testing::{act_of, world_of};
 use spookery_engine::{component, GlobalId, Note};
 use std::fs;
+use std::io::ErrorKind;
+use std::net;
 
 use cucumber::{given, then, when};
+use tungstenite::Message;
 
 use crate::World;
 
+use super::cli::run_play_picking;
 use super::host;
 
 #[when(expr = "a second player connects")]
@@ -482,4 +487,107 @@ async fn hears_it_and_does_not(world: &mut World, seated: String, free: String) 
 #[then(expr = "status shows players {int} and actors_present {string}")]
 async fn status_shows(world: &mut World, players: u32, actor: String) {
     assert_eq!(host::read_presence(world).await, (players, vec![actor]));
+}
+
+#[when(expr = "play picks {word} on that stub host")]
+async fn play_picks_on_that_stub_host(world: &mut World, pc: String) {
+    let listener = world
+        .listeners
+        .last()
+        .unwrap_or_else(|| panic!("no stub host"));
+    let addr = listener.local_addr().unwrap_or_else(|err| panic!("{err}"));
+    run_play_picking(world, &addr.to_string(), &pc).await;
+}
+
+/// The step of opening and claiming after which a stub host stops answering play.
+#[derive(Clone, Copy)]
+enum StubHostStop {
+    Accept,
+    Handshake,
+    Hello,
+}
+
+#[given(regex = r"^a stub host that (.+)$")]
+fn a_stub_host(world: &mut World, behavior: String) {
+    let stop = match behavior.as_str() {
+        "accepts the connection and says nothing" => StubHostStop::Accept,
+        "finishes the handshake and sends no hello" => StubHostStop::Handshake,
+        "sends the hello and only chatter after the claim" => StubHostStop::Hello,
+        other => panic!("unknown stub host {other}"),
+    };
+    let listener =
+        net::TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
+    let listener_for_thread = listener
+        .try_clone()
+        .unwrap_or_else(|err| panic!("clone: {err}"));
+    world.listeners.push(listener);
+    std::thread::spawn(move || serve_stub_host(&listener_for_thread, stop));
+}
+
+/// Answers play's connections up to `stop` until play closes the last one it opens. Play
+/// opens one connection for the picker and, once a PC is chosen, one to claim it.
+fn serve_stub_host(listener: &net::TcpListener, stop: StubHostStop) {
+    let connections_to_serve = match stop {
+        StubHostStop::Hello => 2,
+        _ => 1,
+    };
+    for stream in listener.incoming().take(connections_to_serve) {
+        let mut stream = stream.unwrap_or_else(|err| panic!("accept: {err}"));
+        if let StubHostStop::Accept = stop {
+            let _ = std::io::copy(&mut stream, &mut std::io::sink());
+            continue;
+        }
+        let Ok(mut socket) = tungstenite::accept(stream) else {
+            continue;
+        };
+        if let StubHostStop::Hello = stop {
+            let hello = ServerBody::Hello {
+                version: VERSION,
+                commands: vec!["claim".into(), "release".into(), "wait".into()],
+                open: vec!["rowan".into()],
+                taken: Vec::new(),
+                pc_names: Default::default(),
+            };
+            let _ = socket.send(Message::text(wrap_in_server_message(None, hello).to_text()));
+        }
+        read_then_chatter(&mut socket);
+    }
+}
+
+/// Reads until play closes `socket`. Once play sends anything, such as a claim, sends a
+/// message that answers nothing each second, so a deadline that restarted on each message
+/// would never pass.
+fn read_then_chatter(socket: &mut tungstenite::WebSocket<net::TcpStream>) {
+    let mut seq = 0;
+    loop {
+        match socket.read() {
+            Ok(Message::Text(_)) => {
+                let chatter_interval = Some(std::time::Duration::from_secs(1));
+                let _ = socket.get_mut().set_read_timeout(chatter_interval);
+            }
+            Ok(_) => {}
+            Err(tungstenite::Error::Io(err))
+                if matches!(err.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) =>
+            {
+                seq += 1;
+                let presence = ServerBody::Presence {
+                    actors_present: Vec::new(),
+                };
+                let text = wrap_in_server_message(Some(seq), presence).to_text();
+                if socket.send(Message::text(text)).is_err() {
+                    return;
+                }
+            }
+            Err(_) => return,
+        }
+    }
+}
+
+fn wrap_in_server_message(seq: Option<u64>, body: ServerBody) -> ServerMessage {
+    ServerMessage {
+        id: None,
+        seq,
+        reply_to: None,
+        body,
+    }
 }

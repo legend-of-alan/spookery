@@ -94,10 +94,8 @@ fn keep(world: &mut World, played: PlayedRound) {
 }
 
 pub(crate) async fn run_check(world: &mut World) {
-    let output = support::run_spook(&["check", &support::pack_arg(pack(world))]).await;
-    world.code = output.status.code();
-    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let pack = support::pack_arg(pack(world));
+    host::run(world, &["check", &pack]).await;
 }
 
 pub(crate) fn assert_refused(world: &World, needles: &[&str]) {
