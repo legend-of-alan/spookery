@@ -2,6 +2,7 @@
 
 use std::io::ErrorKind;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
@@ -13,6 +14,9 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use crate::protocol::{ClientMessage, ServerBody, ServerMessage};
 use crate::Error;
 
+/// How long opening a connection may take, and how long claiming a PC over it may take.
+pub(crate) const CONNECTION_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// One open seat connection: `/player` or `/gm` on the game port.
 pub struct Connection {
     socket: WebSocketStream<MaybeTlsStream<TcpStream>>,
@@ -20,23 +24,28 @@ pub struct Connection {
 }
 
 impl Connection {
-    /// Dial `ws://<addr>/<seat>` and read the hello. A refused GM seat is
-    /// `Error::Refused`.
+    /// Dial `ws://<addr>/<seat>` and read the hello, within `CONNECTION_TIMEOUT`. A refused GM
+    /// seat is `Error::Refused`.
     pub async fn open(addr: SocketAddr, seat: &str) -> Result<(Self, ServerMessage), Error> {
-        let url = format!("ws://{addr}/{seat}");
-        let (socket, _) = tokio_tungstenite::connect_async(url)
+        let opening = async {
+            let url = format!("ws://{addr}/{seat}");
+            let (socket, _) = tokio_tungstenite::connect_async(url)
+                .await
+                .map_err(|err| Error::Io(std::io::Error::other(err)))?;
+            let mut connection = Self { socket, next_id: 1 };
+            match connection.recv().await {
+                Some(Ok(ServerMessage {
+                    body: ServerBody::Refused(refusal),
+                    ..
+                })) => Err(Error::Refused(refusal)),
+                Some(Ok(hello)) => Ok((connection, hello)),
+                Some(Err(err)) => Err(err),
+                None => Err(Error::Message("NOT_IN_SPEC".into())),
+            }
+        };
+        tokio::time::timeout(CONNECTION_TIMEOUT, opening)
             .await
-            .map_err(|err| Error::Io(std::io::Error::other(err)))?;
-        let mut connection = Self { socket, next_id: 1 };
-        match connection.recv().await {
-            Some(Ok(ServerMessage {
-                body: ServerBody::Refused(refusal),
-                ..
-            })) => Err(Error::Refused(refusal)),
-            Some(Ok(hello)) => Ok((connection, hello)),
-            Some(Err(err)) => Err(err),
-            None => Err(Error::Message("NOT_IN_SPEC".into())),
-        }
+            .unwrap_or_else(|_| Err(Error::Message("Opening the connection timed out.".into())))
     }
 
     /// Send `command` with `args`, a JSON object, under the next id. Returns that id.

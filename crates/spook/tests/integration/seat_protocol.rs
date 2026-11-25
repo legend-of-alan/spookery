@@ -78,13 +78,14 @@ async fn the_seat_page_matches_a_live_table() {
     if problems.is_empty() {
         return;
     }
-    let dump = std::env::temp_dir().join("seat-protocol-capture.md");
-    std::fs::write(&dump, render(&captured)).unwrap_or_else(|err| panic!("write capture: {err}"));
+    let capture_path = crate::support::fresh_dir("seat-protocol").join("seat-protocol-capture.md");
+    std::fs::write(&capture_path, render(&captured))
+        .unwrap_or_else(|err| panic!("write capture: {err}"));
     panic!(
         "docs/seat-protocol.md drifted ({}):\n{}\ncaptures: {}",
         problems.len(),
         problems.join("\n"),
-        dump.display()
+        capture_path.display()
     );
 }
 

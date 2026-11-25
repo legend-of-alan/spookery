@@ -617,11 +617,8 @@ async fn a_docks_table_with_a_seated_player(world: &mut World) {
 
 #[when(expr = "the operator runs spook check")]
 async fn the_operator_runs_spook_check(world: &mut World) {
-    let pack = host::pack(world);
-    let output = support::run_spook(&["check", &crate::support::pack_arg(pack)]).await;
-    world.code = output.status.code();
-    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let pack = crate::support::pack_arg(host::pack(world));
+    host::run(world, &["check", &pack]).await;
 }
 
 #[when(expr = "the operator runs spook check --json")]

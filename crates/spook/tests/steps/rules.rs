@@ -40,21 +40,16 @@ fn a_save_from_older_rules(world: &mut World) {
 async fn spook_run_or_spook_verify_opens_it(world: &mut World) {
     let pack = host::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
-    let run = crate::support::run_spook(&["run", arg, "--addr", "127.0.0.1:0"]).await;
-    let verify = crate::support::run_spook(&["verify", arg]).await;
-    let run_err = String::from_utf8_lossy(&run.stderr);
-    let verify_err = String::from_utf8_lossy(&verify.stderr);
-    world.code = if run.status.code() == Some(1) && verify.status.code() == Some(1) {
+    let (run_status, run_stdout, run_stderr) =
+        run_spook(&["run", arg, "--addr", "127.0.0.1:0"]).await;
+    let (verify_status, verify_stdout, verify_stderr) = run_spook(&["verify", arg]).await;
+    world.code = if run_status.code() == Some(1) && verify_status.code() == Some(1) {
         Some(1)
     } else {
         None
     };
-    world.stdout = format!(
-        "run:\n{}\nverify:\n{}",
-        String::from_utf8_lossy(&run.stdout),
-        String::from_utf8_lossy(&verify.stdout)
-    );
-    world.stderr = format!("run:\n{run_err}\nverify:\n{verify_err}");
+    world.stdout = format!("run:\n{run_stdout}\nverify:\n{verify_stdout}");
+    world.stderr = format!("run:\n{run_stderr}\nverify:\n{verify_stderr}");
 }
 
 #[then(expr = "it refuses with RULES_REV_MISMATCH and says to start a fresh save")]
@@ -941,10 +936,7 @@ async fn run(world: &mut World, args: &[&str]) {
     let mut full = Vec::with_capacity(args.len() + 1);
     full.extend_from_slice(args);
     full.push(pack.as_str());
-    let output = run_spook(&full).await;
-    world.code = output.status.code();
-    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    host::run(world, &full).await;
 }
 
 /// The world owns the pack lock, so the caller writes while holding it.

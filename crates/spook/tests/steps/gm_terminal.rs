@@ -120,10 +120,7 @@ fn the_gm_commits(world: &mut World) {
 #[when(expr = "another GM joins that seat")]
 async fn another_gm_joins(world: &mut World) {
     let addr = host::game_addr(world);
-    let output = support::run_spook(&["gm", "--addr", &addr]).await;
-    world.code = output.status.code();
-    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    host::run(world, &["gm", "--addr", &addr]).await;
 }
 
 #[when(expr = "the GM is killed")]
@@ -172,10 +169,7 @@ async fn the_gm_exits(world: &mut World) {
 
 #[when(expr = "the operator runs gm with nothing listening")]
 async fn gm_with_nothing_listening(world: &mut World) {
-    let output = support::run_spook(&["gm", "--addr", "127.0.0.1:1"]).await;
-    world.code = output.status.code();
-    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    host::run(world, &["gm", "--addr", "127.0.0.1:1"]).await;
 }
 
 #[then(expr = "the GM shows {string}")]
