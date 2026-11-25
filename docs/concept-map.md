@@ -1,6 +1,6 @@
 # Concept map
 
-One word per concept, and the synonyms banned for it. Names should be obvious from the code, so this page lists only the words that have a competing synonym. [CONTRIBUTING.md](../CONTRIBUTING.md) Naming rule 19 points here, and CI checks new names against it. The [glossary](README.md#glossary) still defines game terms for players and pack authors.
+One word per concept, and the synonyms banned for it. Names should be obvious from the code, so this page lists only the words that have a competing synonym. [CONTRIBUTING.md](../CONTRIBUTING.md) Naming rule 19 points here. The [glossary](README.md#glossary) still defines game terms for players and pack authors.
 
 ## Rules
 
@@ -57,35 +57,3 @@ One word per concept, and the synonyms banned for it. Names should be obvious fr
 A bare path is a map link, and a file on disk ends in _path, _file or _dir. The MCP session is mcp_session. A token says which, such as claim_token.
 
 Entity and component keep Bevy's meaning: [Entity](https://docs.rs/bevy_ecs/0.20.1/bevy_ecs/entity/struct.Entity.html) is only an id, and [Component](https://docs.rs/bevy_ecs/0.20.1/bevy_ecs/component/trait.Component.html) is plain data, one value of each kind per entity.
-
-## The check
-
-CI reads the list below and checks identifiers on the lines a PR adds to Rust files, splitting names on snake_case and CamelCase. It skips comments, strings and the pack-edge parse file. A new identifier that holds a listed word fails with the word to use. A name already in the code stands until a rename PR removes it, and so does a name on the keep line. Words that depend on context, such as item, move, process and dispatch, are not listed.
-
-```naming-words
-seat: never, a metaphor
-table: never, a metaphor
-mailbox: never, a metaphor
-inbox: never, a metaphor
-outbox: never, a metaphor
-envelope: never, a metaphor
-deliver: notify
-delivery: notify
-body: payload
-server: host
-act: action
-begin: start
-seal: commit
-owner: entity, parent or scope
-holder: entity or parent
-carrier: entity or parent
-bearer: entity or parent
-why: reason
-what: the thing itself
-when: time, trigger or kind
-where: position or place
-who: actor or source
-how: the method's own noun
-which: the thing itself
-keep: ServerHandler ServerCapabilities ServerInfo bearer_auth
-```

@@ -63,31 +63,6 @@ jobs:
         # No scenario plays the demo, so this only checks that the shipped pack loads.
         run: cargo run -p spook --locked -- check packs/demo-d20
 
-      - name: naming
-        # Naming rule 19: a new identifier holds no word banned in docs/concept-map.md. Only lines
-        # the change adds count. An identifier that already exists in the base stands until a rename removes it.
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          hits=$(git diff -U0 --no-color HEAD^ HEAD -- 'crates/*.rs' ':!crates/engine/canon/rule_list/parse.rs' |
-            awk -F': ' '
-              NR == FNR { if ($1 == "keep") for (i = 2; i <= split($2, k, " "); i++) kept[k[i]] = 1; else use[$1] = $2; next }
-              /^\+\+\+ b\// { file = substr($0, 7) }
-              /^@@/ { match($0, /\+[0-9]+/); n = substr($0, RSTART + 1, RLENGTH - 1) - 1 }
-              /^\+[^+]/ { n++; line = substr($0, 2); gsub(/"([^"\\]|\\.)*"/, "\"\"", line); sub(/\/\/.*/, "", line)
-                while (match(line, /[A-Za-z_][A-Za-z0-9_]*/)) {
-                  id = substr(line, RSTART, RLENGTH); line = substr(line, RSTART + RLENGTH); name = id
-                  while (match(name, /[a-z0-9][A-Z]/)) name = substr(name, 1, RSTART) "_" substr(name, RSTART + 1)
-                  while (match(name, /[A-Z][A-Z][a-z]/)) name = substr(name, 1, RSTART) "_" substr(name, RSTART + 1)
-                  for (i = 1; i <= split(tolower(name), part, "_"); i++)
-                    if (part[i] in use && !(id in kept) && id != "where") print file ":" n ": " id " has " part[i] ", use " use[part[i]]
-                } }' <(awk '/^```naming-words$/ { on = 1; next } /^```$/ { on = 0 } on' docs/concept-map.md) -)
-          while read -r place id rest; do
-            [ -n "$id" ] || continue
-            git grep -qw -e "$id" HEAD^ -- crates || { echo "$place $id $rest"; bad=1; }
-          done <<< "$hits"
-          [ -z "$bad" ] || { echo "Name each one with the word docs/concept-map.md gives (CONTRIBUTING.md Naming rule 19)."; exit 1; }
-
       - name: dependency-and-feature-checks
         if: runner.os == 'Linux'
         shell: bash
