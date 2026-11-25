@@ -44,7 +44,7 @@ impl Session {
             world,
             queue,
             lock: (),
-        } = crate::round::open::at_tip(root, &lock)?;
+        } = crate::round::open::load_tip(root, &lock)?;
         tracing::info!(
             pack_rev = world.pack_rev.as_str(),
             state_rev = world.state_rev,

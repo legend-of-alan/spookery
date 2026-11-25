@@ -20,7 +20,7 @@ use crate::Reason;
 /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
 /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
 /// The caller holds the pack lock, so a crash is repaired and the checkpoint settled.
-pub(crate) fn at_tip(pack: &Path, guard: &PackGuard) -> Result<session::Session<()>, Reason> {
+pub(crate) fn load_tip(pack: &Path, guard: &PackGuard) -> Result<session::Session<()>, Reason> {
     choose_seed(pack, guard)?;
     rebuild_save(pack, guard)?;
     let session = peek_at_tip(pack)?;
