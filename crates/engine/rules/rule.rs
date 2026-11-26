@@ -2,7 +2,7 @@
 
 use crate::ecs::id::{ActorId, PlaceId};
 use crate::rules::expr::Expr;
-use crate::rules::{cond, grammar, mentions, roll};
+use crate::rules::{cond, grammar, roll};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Rule {
@@ -69,40 +69,6 @@ impl Rule {
             _ => {}
         });
         exprs
-    }
-
-    /// The entities, item ids and `target`s the rule's lines name: its conditions', costs' and
-    /// numbers', then on its effects `of:`, `subject:`, `to:`, a nested check's `by:`, `id:`, and
-    /// `location to:` or `location via:` when it says `target`.
-    pub(crate) fn mentions(&self) -> mentions::Mentions<'_> {
-        let mut mentions = mentions::Mentions::of_lines(&self.if_, self.costs(), self.exprs());
-        self.visit_templates(|effect| {
-            match effect {
-                EffectTemplate::Meter { of, .. } | EffectTemplate::Item { of, .. } => {
-                    mentions.add_entity("of:", of);
-                }
-                EffectTemplate::Flag { of, .. } => mentions.add_flag_entity("of:", of),
-                EffectTemplate::Modifier { to, .. } | EffectTemplate::Memory { to, .. } => {
-                    mentions.add_actor("to:", to);
-                }
-                EffectTemplate::Wield { subject, .. } | EffectTemplate::Unwield { subject } => {
-                    mentions.add_actor("subject:", subject);
-                }
-                EffectTemplate::Check { by, .. } => mentions.add_actor("by:", by),
-                EffectTemplate::Move { to, .. } => match to {
-                    MoveTo::Target => mentions.add_target("location to:", &[TargetKind::Place]),
-                    MoveTo::Via(via) if via == "target" => {
-                        mentions.add_target("location via:", &[TargetKind::Path]);
-                    }
-                    MoveTo::Via(_) | MoveTo::Place(_) => {}
-                },
-                EffectTemplate::Note { .. } | EffectTemplate::Narrate { .. } => {}
-            }
-            if let EffectTemplate::Item { id, .. } | EffectTemplate::Wield { id, .. } = effect {
-                mentions.add_item_id("id:", id);
-            }
-        });
-        mentions
     }
 }
 

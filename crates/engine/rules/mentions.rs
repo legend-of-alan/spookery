@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
-use crate::rules::rule::{Cond, Cost, TargetKind};
+use crate::rules::rule::{Cond, Cost, EffectTemplate, MoveTo, Rule, TargetKind};
 
 /// What a rule's or exit's lines name, borrowed from those lines (`'l`) and sorted by kind. The
 /// word `target` stands for whatever the verb targets, so it is kept apart from the entities and
@@ -52,7 +52,7 @@ impl<'l> Mentions<'l> {
         mentions
     }
 
-    pub(super) fn add_entity(&mut self, key: &'static str, of: &grammar::Object) {
+    fn add_entity(&mut self, key: &'static str, of: &grammar::Object) {
         match of {
             grammar::Object::Actor(actor) => self.add_actor(key, actor),
             of => self.entities.push(of.clone()),
@@ -60,7 +60,7 @@ impl<'l> Mentions<'l> {
     }
 
     /// As `add_entity`, but `target` may also be an exit: a flag on its path.
-    pub(super) fn add_flag_entity(&mut self, key: &'static str, of: &grammar::Object) {
+    fn add_flag_entity(&mut self, key: &'static str, of: &grammar::Object) {
         match of {
             grammar::Object::Actor(grammar::Actor::Target) => {
                 self.add_target(key, &[TargetKind::Actor, TargetKind::Path]);
@@ -69,21 +69,21 @@ impl<'l> Mentions<'l> {
         }
     }
 
-    pub(super) fn add_actor(&mut self, key: &'static str, actor: &grammar::Actor) {
+    fn add_actor(&mut self, key: &'static str, actor: &grammar::Actor) {
         match actor {
             grammar::Actor::Target => self.add_target(key, &[TargetKind::Actor]),
             actor => self.entities.push(grammar::Object::Actor(actor.clone())),
         }
     }
 
-    pub(super) fn add_item_id(&mut self, key: &'static str, id: &'l str) {
+    fn add_item_id(&mut self, key: &'static str, id: &'l str) {
         match id {
             "target" => self.add_target(key, &[TargetKind::Item]),
             id => _ = self.item_ids.insert(id),
         }
     }
 
-    pub(super) fn add_target(&mut self, key: &'static str, allowed: &'static [TargetKind]) {
+    fn add_target(&mut self, key: &'static str, allowed: &'static [TargetKind]) {
         self.target_keys.push((key, allowed));
     }
 
@@ -97,5 +97,41 @@ impl<'l> Mentions<'l> {
         let misplaced =
             (self.target_keys.into_iter()).find(|(_, allowed)| !allowed.contains(&targets));
         misplaced.map(|(key, allowed)| (key, allowed[0]))
+    }
+}
+
+impl Rule {
+    /// The entities, item ids and `target`s the rule's lines name: its conditions', costs' and
+    /// numbers', then on its effects `of:`, `subject:`, `to:`, a nested check's `by:`, `id:`, and
+    /// `location to:` or `location via:` when it says `target`.
+    pub(crate) fn mentions(&self) -> Mentions<'_> {
+        let mut mentions = Mentions::of_lines(&self.if_, self.costs(), self.exprs());
+        self.visit_templates(|effect| {
+            match effect {
+                EffectTemplate::Meter { of, .. } | EffectTemplate::Item { of, .. } => {
+                    mentions.add_entity("of:", of);
+                }
+                EffectTemplate::Flag { of, .. } => mentions.add_flag_entity("of:", of),
+                EffectTemplate::Modifier { to, .. } | EffectTemplate::Memory { to, .. } => {
+                    mentions.add_actor("to:", to);
+                }
+                EffectTemplate::Wield { subject, .. } | EffectTemplate::Unwield { subject } => {
+                    mentions.add_actor("subject:", subject);
+                }
+                EffectTemplate::Check { by, .. } => mentions.add_actor("by:", by),
+                EffectTemplate::Move { to, .. } => match to {
+                    MoveTo::Target => mentions.add_target("location to:", &[TargetKind::Place]),
+                    MoveTo::Via(via) if via == "target" => {
+                        mentions.add_target("location via:", &[TargetKind::Path]);
+                    }
+                    MoveTo::Via(_) | MoveTo::Place(_) => {}
+                },
+                EffectTemplate::Note { .. } | EffectTemplate::Narrate { .. } => {}
+            }
+            if let EffectTemplate::Item { id, .. } | EffectTemplate::Wield { id, .. } = effect {
+                mentions.add_item_id("id:", id);
+            }
+        });
+        mentions
     }
 }

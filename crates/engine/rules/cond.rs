@@ -1,4 +1,4 @@
-//! Whether the conditions on a rule hold, and the comparison a condition makes.
+//! Whether the conditions on a rule hold, and the comparison a condition or a `crosses:` makes.
 
 use crate::canon::Canon;
 use crate::ecs::component::Note;
