@@ -304,8 +304,8 @@ impl Host {
             },
             "release" | "look" | "help" | "map" => ServerBody::Refused(Reason::Schema.into()),
             _ => match try_parse_args::<MoveArgs>(&args) {
-                Some(move_args) => {
-                    return self.play_move(conn, id, &actor_id, &command, move_args.target)
+                Some(verb_args) => {
+                    return self.play_verb(conn, id, &actor_id, &command, verb_args.target)
                 }
                 None => ServerBody::Refused(Reason::Schema.into()),
             },
@@ -416,7 +416,7 @@ impl Host {
     /// With a GM seated, a move waits for `commit`, and the GM hears it queued. Without
     /// one it commits its own round, and a busy PC's move plays the rounds its action still
     /// needs. Either way the reply follows what the move wrote.
-    fn play_move(
+    fn play_verb(
         &mut self,
         conn: ConnId,
         id: Option<String>,
@@ -430,12 +430,12 @@ impl Host {
         let reply =
             match self
                 .session
-                .queue_player_move(&presence, actor_id, verb, target.as_deref())
+                .queue_player_verb(&presence, actor_id, verb, target.as_deref())
             {
                 Ok((queued, target)) => ServerBody::Queued {
                     intent: queued.id,
                     actor_id: queued.actor_id,
-                    move_id: queued.move_id,
+                    verb_id: queued.verb_id,
                     target,
                 },
                 Err(refused) if gm.is_none() && refused.code == Reason::Busy => {

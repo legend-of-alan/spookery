@@ -81,7 +81,7 @@ pub struct QueueArgs {
     /// `SCHEMA`.
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(rename = "verb", skip_serializing_if = "Option::is_none")]
-    pub move_id: Option<String>,
+    pub verb_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
     #[serde(rename = "to", default, skip_serializing_if = "Option::is_none")]
@@ -120,7 +120,7 @@ pub struct QueuedVerb {
     #[serde(rename = "actor")]
     pub actor_id: String,
     #[serde(rename = "verb")]
-    pub move_id: String,
+    pub verb_id: String,
 }
 
 /// The body of the GM's `committed` reply, sent from the host to a GM client.
@@ -209,7 +209,7 @@ mod tests {
             serde_json::from_str(r#"{"actor":"a","verb":"m","target":"t","to":["b"]}"#).unwrap();
         let c: QueueArgs = parse_args(Some(&m)).unwrap();
         assert_eq!(c.actor_id.as_deref(), Some("a"));
-        assert_eq!(c.move_id.as_deref(), Some("m"));
+        assert_eq!(c.verb_id.as_deref(), Some("m"));
         assert_eq!(c.target.as_deref(), Some("t"));
         assert_eq!(c.message_to, Some(vec!["b".to_string()]));
         let nested =

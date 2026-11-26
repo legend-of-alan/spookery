@@ -1,4 +1,4 @@
-//! Random legal moves, played against a temporary pack.
+//! Random legal verbs, played against a temporary pack.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,7 +26,7 @@ const VERBS: [&str; 8] = [
 ];
 
 #[derive(Clone, Debug)]
-pub(crate) struct MovePlan {
+pub(crate) struct VerbPlan {
     pub pc: usize,
     pub verb: usize,
     pub token: usize,
@@ -34,7 +34,7 @@ pub(crate) struct MovePlan {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Plan {
-    pub moves: Vec<MovePlan>,
+    pub verbs: Vec<VerbPlan>,
 }
 
 pub(crate) struct TempPack(pub PathBuf);
@@ -56,20 +56,20 @@ pub(crate) fn runner_config() -> Config {
 
 pub(crate) fn arb_rounds() -> impl Strategy<Value = Vec<Plan>> {
     prop::collection::vec(
-        prop::collection::vec(pick_move(), 0..=3).prop_map(|moves| Plan { moves }),
+        prop::collection::vec(pick_verb(), 0..=3).prop_map(|verbs| Plan { verbs }),
         1..=5,
     )
 }
 
-fn pick_move() -> impl Strategy<Value = MovePlan> {
-    (0..3usize, 0..VERBS.len(), 0..8usize).prop_map(|(pc, verb, token)| MovePlan {
+fn pick_verb() -> impl Strategy<Value = VerbPlan> {
+    (0..3usize, 0..VERBS.len(), 0..8usize).prop_map(|(pc, verb, token)| VerbPlan {
         pc,
         verb,
         token,
     })
 }
 
-/// Queue the moves the gate accepts, then play the round. Habits are gathered with them.
+/// Queue the verbs the gate accepts, then play the round. Habits are gathered with them.
 pub(crate) fn play_rounds(pack: &Path, rounds: &[Plan]) -> Result<(), String> {
     add_exert_success(pack)?;
     let lock = crate::lock_pack(pack).map_err(|err| err.to_string())?;
@@ -79,14 +79,14 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[Plan]) -> Result<(), String> {
         .position(|verb| *verb == "exert")
         .expect("exert");
     for (index, round) in rounds.iter().enumerate() {
-        for plan in &round.moves {
-            queue_move(&mut session, plan);
+        for plan in &round.verbs {
+            queue_verb(&mut session, plan);
         }
         let pcs = pc_count(&session);
         for pc in 0..pcs {
-            queue_move(
+            queue_verb(
                 &mut session,
-                &MovePlan {
+                &VerbPlan {
                     pc,
                     verb: exert,
                     token: 0,
@@ -133,7 +133,7 @@ fn add_exert_success(pack: &Path) -> Result<(), String> {
     .map_err(|err| err.to_string())
 }
 
-fn queue_move(session: &mut session::Session, plan: &MovePlan) {
+fn queue_verb(session: &mut session::Session, plan: &VerbPlan) {
     let pcs: Vec<ActorId> = session
         .world()
         .actors()
@@ -150,7 +150,7 @@ fn queue_move(session: &mut session::Session, plan: &MovePlan) {
     let Some(target) = target_for(session, actor, verb, plan.token) else {
         return;
     };
-    let _ = session.queue_player_move(&Presence::default(), actor, verb, target.token());
+    let _ = session.queue_player_verb(&Presence::default(), actor, verb, target.token());
 }
 
 fn target_for(

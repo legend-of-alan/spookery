@@ -85,7 +85,7 @@ fn resolve<'c>(
 /// its note recipients, so priority sees what it touches. A verb
 /// with no target keeps it empty: a filled one would make the gate refuse `SCHEMA`.
 fn stamp_target(canon: &Canon, world: &ecs::World, presence: &Presence, intent: &mut Intent) {
-    let (verb, hint) = (&intent.move_id, gate::hint_of(&intent.target));
+    let (verb, hint) = (&intent.verb_id, gate::hint_of(&intent.target));
     let Some(actor_id) = &intent.actor_id else {
         return;
     };

@@ -66,8 +66,8 @@ async fn a_docks_table_with_a_gm_and_a_seat(world: &mut World, actor: String) {
 }
 
 #[when(expr = "the GM queues {string} for {string} and commits")]
-fn the_gm_queues_for_and_commits(world: &mut World, move_id: String, actor: String) {
-    write_gm(world, &format!("queue {actor} {move_id}"));
+fn the_gm_queues_for_and_commits(world: &mut World, verb_id: String, actor: String) {
+    write_gm(world, &format!("queue {actor} {verb_id}"));
     write_gm(world, "commit");
 }
 

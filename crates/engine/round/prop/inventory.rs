@@ -169,7 +169,7 @@ fn npc_intent() -> Intent {
         round_index: 0,
         actor_id: Some("mira".into()),
         source: Source::Engine,
-        move_id: "shift_item".to_string(),
+        verb_id: "shift_item".to_string(),
         target: Target::Empty,
         args: IntentArgs::default(),
         rationale_code: String::new(),

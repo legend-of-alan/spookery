@@ -1,4 +1,4 @@
-//! A docks round plays a PC's moves.
+//! A docks round plays a PC's verbs.
 
 use cucumber::{then, when};
 use spookery_engine::testing as support;
@@ -38,7 +38,7 @@ fn play(world: &mut World, actor: &str, line: &str) {
     let (verb, target) = split_line(line);
     let wall = opened.world().last_round_at.clone();
     opened
-        .queue_player_move(&seated, &actor.into(), verb, target)
+        .queue_player_verb(&seated, &actor.into(), verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.code.as_str()));
     let outputs = opened
         .commit_then_fast_forward(&seated, &wall)

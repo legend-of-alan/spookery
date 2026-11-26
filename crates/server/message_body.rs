@@ -163,7 +163,7 @@ pub(super) fn build_status(
                 Some(QueuedVerb {
                     id: intent.id.clone(),
                     actor_id: intent.actor_id.as_ref()?.to_string(),
-                    move_id: intent.move_id.clone(),
+                    verb_id: intent.verb_id.clone(),
                 })
             })
             .collect(),
