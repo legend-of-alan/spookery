@@ -5,7 +5,7 @@ use spookery_protocol::{is_built_in, Seat};
 
 use crate::canon::refusal::{file_location_of, CompileError, Diagnostics, FileText, Locator};
 use crate::diagnostic::{schema_error, Diagnostic};
-use crate::rules::expr::{self, stamp_spots, Expr};
+use crate::rules::expr::{self, stamp_file_locations, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
     self, ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner,
@@ -475,7 +475,7 @@ fn compile_expr(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileError> {
                 file_location,
             })?;
             if let Some(LineColumn { line, column }) = file_location {
-                stamp_spots(&mut expr, line, column);
+                stamp_file_locations(&mut expr, line, column);
             }
             Ok(expr)
         }

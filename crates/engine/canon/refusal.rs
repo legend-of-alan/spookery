@@ -89,6 +89,7 @@ impl<'a> FileText<'a> {
         self.refuse_at(key_path, at, error.message, "")
     }
 
+    /// A schema error at `key_path` (such as `rules[0].when`), on the line and column `at` finds.
     pub(super) fn refuse_at(
         &self,
         key_path: &str,
@@ -119,7 +120,7 @@ impl<'a> FileText<'a> {
 /// (such as `dice.count`), the message and the hint.
 pub(super) type EntryConstraint = (bool, &'static str, String, &'static str);
 
-/// How an empty id is refused: the message and the hint, worded per kind.
+/// How an empty id is refused: the message and the hint, worded per pack file.
 pub(super) type EmptyWords = (&'static str, &'static str);
 
 /// How a duplicate id is refused: the words before and after the quoted id, and the hint.

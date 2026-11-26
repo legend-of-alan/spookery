@@ -142,8 +142,8 @@ impl Expr {
     }
 }
 
-/// Fill meter spots that the parser left empty. A structured meter keeps its own spot.
-pub(crate) fn stamp_spots(expr: &mut Expr, line: u32, column: u32) {
+/// Fill each meter file location that the parser left empty. A structured meter keeps its own.
+pub(crate) fn stamp_file_locations(expr: &mut Expr, line: u32, column: u32) {
     if line == 0 {
         return;
     }

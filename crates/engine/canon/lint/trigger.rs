@@ -9,7 +9,7 @@ use crate::rules::rule::{ChangeWatch, EffectTemplate, LocationTo, NarrateTo, Rul
 use crate::Reason;
 
 /// Change rules that set each other's watched values.
-pub(super) fn find_trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
+pub(super) fn find_cycles(canon: &Canon) -> Vec<Diagnostic> {
     let rules: Vec<&Rule> = canon
         .rules
         .iter()
@@ -55,7 +55,7 @@ pub(super) fn find_trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// Narrate and note on a change rule that can reach a viewer who cannot see the change.
-pub(super) fn find_trigger_leaks(canon: &Canon) -> Vec<Diagnostic> {
+pub(super) fn find_leaks(canon: &Canon) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for rule in canon.rules.iter() {
         let When::Change(watch) = &rule.when else {

@@ -106,8 +106,8 @@ pub(crate) fn refuse_unknown_item(file: &str, id: &str, key_path: &str) -> Diagn
 pub(crate) fn run(canon: &Canon, held_flags: &BTreeSet<&str>) -> Vec<Diagnostic> {
     let mut diagnostics = find_unreachable_places(canon);
     diagnostics.extend(find_teleport_verbs(canon));
-    diagnostics.extend(trigger::find_trigger_cycles(canon));
-    diagnostics.extend(trigger::find_trigger_leaks(canon));
+    diagnostics.extend(trigger::find_cycles(canon));
+    diagnostics.extend(trigger::find_leaks(canon));
     diagnostics.extend(trigger::find_world_change_subjects(canon));
     diagnostics.extend(find_bad_cycle_conds(canon));
     diagnostics.extend(find_long_gm_notes(canon));

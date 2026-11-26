@@ -319,8 +319,8 @@ pub(crate) fn parse_tagged<T: serde::de::DeserializeOwned>(
     expected: &str,
     holds_rule_lines: bool,
 ) -> Result<T, Vec<Diagnostic>> {
-    if let Some(diag) = check_tag(text, expected, file) {
-        return Err(vec![diag]);
+    if let Some(diagnostic) = check_tag(text, expected, file) {
+        return Err(vec![diagnostic]);
     }
     parse_file(file, text, holds_rule_lines)
 }
