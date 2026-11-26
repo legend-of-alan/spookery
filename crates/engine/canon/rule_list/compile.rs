@@ -6,11 +6,11 @@ use spookery_protocol::{is_built_in, Seat};
 use crate::canon::refusal::{file_location_of, CompileError, Diagnostics, FileText, Locator};
 use crate::diagnostic::{schema_error, Diagnostic, FileLocation};
 use crate::rules::expr::{self, stamp_file_locations, Expr};
-use crate::rules::grammar;
 use crate::rules::rule::{
-    self, ActionCost, ChangeWatch, Cond, Cost, EffectTemplate, MoveTo, NarrateTo, Op, Rule,
-    RuleKind, Scope, TargetKind,
+    ActionCost, ChangeWatch, Cond, Cost, EffectTemplate, MoveTo, NarrateTo, Rule, RuleKind, Scope,
+    TargetKind,
 };
+use crate::rules::{cond, grammar, roll};
 
 use super::compile;
 use super::parse::{
@@ -438,8 +438,8 @@ fn check(
     total: &Spanned<ExprYaml>,
     success_at: &Spanned<ExprYaml>,
     partial_at: Option<&Spanned<ExprYaml>>,
-) -> Result<rule::Check, CompileError> {
-    Ok(rule::Check {
+) -> Result<roll::Check, CompileError> {
+    Ok(roll::Check {
         total: compile::expr(total)?,
         success_at: compile::expr(success_at)?,
         partial_at: partial_at.map(compile::expr).transpose()?,
@@ -612,7 +612,7 @@ fn effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
 /// after the rule's id and the hint: first `check`, the rule's own check with the `partial`
 /// list, then each check nested in the `do_`, `success`, `partial` and `miss` lists.
 fn find_rule_partial_band_message(
-    check: Option<&rule::Check>,
+    check: Option<&roll::Check>,
     do_: &[EffectTemplate],
     success: &[EffectTemplate],
     partial: &[EffectTemplate],
@@ -633,7 +633,7 @@ fn find_rule_partial_band_message(
 /// runs, as the words after the rule's id and the hint: a `partial_at` with no list, a list
 /// with no `partial_at`, or a constant `partial_at` at or above a constant `success_at`.
 fn find_partial_band_message(
-    check: &rule::Check,
+    check: &roll::Check,
     partial: &[EffectTemplate],
 ) -> Option<(&'static str, &'static str)> {
     let band = check.partial_at.as_ref();
@@ -675,15 +675,15 @@ fn parse_actor(yaml: &Spanned<String>) -> Result<grammar::Actor, CompileError> {
     })
 }
 
-fn parse_op(word: &str) -> Result<Op, String> {
-    Op::parse(word).ok_or_else(|| format!("op '{word}' is not <, <=, ==, >=, or >"))
+fn parse_op(word: &str) -> Result<cond::Op, String> {
+    cond::Op::parse(word).ok_or_else(|| format!("op '{word}' is not <, <=, ==, >=, or >"))
 }
 
-fn parse_crosses(text: &str) -> Result<(Op, i64), String> {
+fn parse_crosses(text: &str) -> Result<(cond::Op, i64), String> {
     let text = text.trim();
     let split = text.find(|ch| !matches!(ch, '<' | '=' | '>'));
     let (op, bound) = text.split_at(split.unwrap_or(text.len()));
-    Op::parse(op)
+    cond::Op::parse(op)
         .zip(bound.trim().parse::<i64>().ok())
         .ok_or_else(|| format!("crosses '{text}' needs an operator and a number"))
 }

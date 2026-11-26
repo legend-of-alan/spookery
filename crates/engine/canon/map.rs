@@ -12,7 +12,8 @@ use crate::diagnostic::{parse_tagged, schema_error, Diagnostic};
 use crate::ecs::component::ActorLocation;
 use crate::ecs::id::{PathId, PlaceId};
 use crate::rules::expr::Expr;
-use crate::rules::rule::{self, Cond, Cost, TargetKind};
+use crate::rules::mentions;
+use crate::rules::rule::{Cond, Cost, TargetKind};
 
 /// The one pack file that lists the paths.
 pub(super) const FILE: &str = "world/map.yaml";
@@ -169,8 +170,8 @@ impl PathDef {
     }
 
     /// The entities, item ids and `target`s the path's conds, cost and numbers name.
-    pub(super) fn mentions(&self) -> rule::Mentions<'_> {
-        rule::Mentions::of_lines(&self.if_, [&self.cost], self.exprs())
+    pub(super) fn mentions(&self) -> mentions::Mentions<'_> {
+        mentions::Mentions::of_lines(&self.if_, [&self.cost], self.exprs())
     }
 
     /// The path has an `if`, so the exit can stay locked until it opens.

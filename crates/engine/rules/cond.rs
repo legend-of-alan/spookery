@@ -1,4 +1,4 @@
-//! Whether the conditions on a rule hold.
+//! Whether the conditions on a rule hold, and the comparison a condition or a `crosses:` makes.
 
 use crate::canon::Canon;
 use crate::ecs::component::Note;
@@ -132,5 +132,37 @@ fn is_in_window(start: u64, end: u64, tick: u64) -> bool {
         tick >= start || tick < end
     } else {
         false
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Op {
+    Lt,
+    Le,
+    Eq,
+    Ge,
+    Gt,
+}
+
+impl Op {
+    pub(crate) fn parse(word: &str) -> Option<Self> {
+        match word {
+            "<" => Some(Op::Lt),
+            "<=" => Some(Op::Le),
+            "==" => Some(Op::Eq),
+            ">=" => Some(Op::Ge),
+            ">" => Some(Op::Gt),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn holds(self, left: i64, right: i64) -> bool {
+        match self {
+            Op::Lt => left < right,
+            Op::Le => left <= right,
+            Op::Eq => left == right,
+            Op::Ge => left >= right,
+            Op::Gt => left > right,
+        }
     }
 }
