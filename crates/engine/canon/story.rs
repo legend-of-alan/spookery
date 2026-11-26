@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::canon::meters::{self, MeterYaml};
 use crate::canon::pack_files::{collect_files, refuse_unreadable_dir};
-use crate::canon::refusal::{Diags, FileText, Locator};
+use crate::canon::refusal::{Diagnostics, FileText, Locator};
 use crate::canon::rule_list::{self, parse::RuleYaml};
 use crate::diagnostic::{parse_tagged, schema_error};
 use crate::ecs::component::meter;
@@ -29,9 +29,9 @@ pub struct Def {
 /// and skipped. A pack without `story/` has none.
 pub(super) fn load_dir(
     root: &Path,
-    mut meters: Option<&mut BTreeMap<String, meter::Descriptor>>,
-    world_meters: Option<&BTreeMap<String, meter::Descriptor>>,
-    diags: &mut Diags,
+    mut meters: Option<&mut BTreeMap<String, meter::Def>>,
+    world_meters: Option<&BTreeMap<String, meter::Def>>,
+    diags: &mut Diagnostics,
 ) -> (Vec<Rule>, BTreeMap<StoryId, Def>) {
     let dir = root.join("story");
     let mut files = Vec::new();
@@ -52,7 +52,7 @@ pub(super) fn load_dir(
             ));
             continue;
         };
-        let Some(story) = diags.keep(parse_tagged::<StoryDoc>(&file, text, SCHEMA, true)) else {
+        let Some(story) = diags.keep(parse_tagged::<Yaml>(&file, text, SCHEMA, true)) else {
             continue;
         };
         let source = FileText { file: &file, text };
@@ -83,8 +83,7 @@ pub(super) fn load_dir(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct StoryDoc {
-    // repeats module: every file shape in canon ends in Doc
+struct Yaml {
     #[serde(rename = "schema")]
     _schema: String,
     id: String,

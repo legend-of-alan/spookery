@@ -63,7 +63,7 @@ impl Default for Budget {
 }
 
 pub(crate) fn load(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    let doc: BudgetDoc = parse_tagged(rel, text, SCHEMA, false)?;
+    let doc: Yaml = parse_tagged(rel, text, SCHEMA, false)?;
     let source = FileText { file: rel, text };
     let mut diags = Vec::new();
     let mut budget = Budget::default();
@@ -173,8 +173,7 @@ fn parse_idle(source: &FileText, value: Option<String>, diags: &mut Vec<Diagnost
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct BudgetDoc {
-    // repeats module: every file shape in canon ends in Doc
+struct Yaml {
     #[serde(rename = "schema")]
     _schema: String,
     max_intents_applied: Option<i64>,

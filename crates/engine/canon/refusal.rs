@@ -53,7 +53,7 @@ impl<'a> FileText<'a> {
         row: usize,
         id: &str,
         taken: bool,
-        rules: impl IntoIterator<Item = RowRule>,
+        rules: impl IntoIterator<Item = EntryConstraint>,
     ) -> Vec<Diagnostic> {
         let list = format!("{noun}s:");
         let refuse = |field: &str, message: String, hint: &str| {
@@ -61,7 +61,7 @@ impl<'a> FileText<'a> {
                 "{}:",
                 field.rsplit_once('.').map_or(field, |(_, last)| last)
             );
-            let at = Locator::Row {
+            let at = Locator::Entry {
                 list: &list,
                 row,
                 key: &key,
@@ -83,9 +83,9 @@ impl<'a> FileText<'a> {
         found
     }
 
-    /// A converter's `fault` at the spot it recorded, refused as a schema error.
-    pub(super) fn refuse_error(&self, path: &str, fault: Fault) -> Diagnostic {
-        self.refuse_at(path, Locator::Spot(fault.spot), fault.message, "")
+    /// A `CompileError` at the spot it recorded, refused as a schema error.
+    pub(super) fn refuse_error(&self, path: &str, fault: CompileError) -> Diagnostic {
+        self.refuse_at(path, Locator::FileLocation(fault.spot), fault.message, "")
     }
 
     fn refuse_at(&self, path: &str, at: Locator, problem: String, hint: &str) -> Diagnostic {
@@ -100,9 +100,9 @@ impl<'a> FileText<'a> {
     }
 }
 
-/// One rule a list row must keep: whether the row breaks it, the field it is about
+/// One constraint a list entry must keep: whether the entry breaks it, the field it is about
 /// (such as `dice.count`), the message and the hint.
-pub(super) type RowRule = (bool, &'static str, String, &'static str);
+pub(super) type EntryConstraint = (bool, &'static str, String, &'static str);
 
 /// How an empty id is refused: the sentence and the hint, worded per kind.
 pub(super) type EmptyWords = (&'static str, &'static str);
@@ -119,13 +119,13 @@ pub(super) enum Locator<'a> {
     Key(&'a str),
     /// `key` inside the `row`th item of the top-level `list` (such as `meters:`), counted
     /// in the text. Each item starts at its `id:` key.
-    Row {
+    Entry {
         list: &'a str,
         row: usize,
         key: &'a str,
     },
     /// A line and column serde recorded, already counted from the file's first line.
-    Spot(Option<LineColumn>),
+    FileLocation(Option<LineColumn>),
 }
 
 /// One problem in one pack file. `path` is `""` when there is none.
@@ -146,26 +146,26 @@ impl Problem<'_> {
             diag = diag.at_path(self.path);
         }
         match self.at {
-            Locator::Nowhere | Locator::Spot(None) => diag,
+            Locator::Nowhere | Locator::FileLocation(None) => diag,
             Locator::Key(key) => diag.at_spot(locate_nth(source.text, key, 0)),
-            Locator::Row { list, row, key } => {
+            Locator::Entry { list, row, key } => {
                 diag.at_spot(locate_entry_field(source.text, list, row, key))
             }
-            Locator::Spot(Some(spot)) => {
+            Locator::FileLocation(Some(spot)) => {
                 diag.at_line(spot.line, Some(spot.column).filter(|column| *column > 0))
             }
         }
     }
 }
 
-/// A message from a converter that does not know its file yet.
+/// A message and its line from a `compile_*` step that does not know its file yet.
 #[derive(Debug)]
-pub(super) struct Fault {
+pub(super) struct CompileError {
     pub message: String,
     pub spot: Option<LineColumn>,
 }
 
-impl From<String> for Fault {
+impl From<String> for CompileError {
     fn from(message: String) -> Self {
         Self {
             message,
@@ -174,7 +174,7 @@ impl From<String> for Fault {
     }
 }
 
-impl From<&str> for Fault {
+impl From<&str> for CompileError {
     fn from(message: &str) -> Self {
         Self::from(message.to_string())
     }
@@ -182,9 +182,9 @@ impl From<&str> for Fault {
 
 /// Diagnostics in the order they were found.
 #[derive(Default)]
-pub(super) struct Diags(Vec<Diagnostic>);
+pub(super) struct Diagnostics(Vec<Diagnostic>);
 
-impl Diags {
+impl Diagnostics {
     /// The value, or `None` once the result's diagnostics are kept.
     pub(super) fn keep<T>(&mut self, result: Result<T, Vec<Diagnostic>>) -> Option<T> {
         result.map_err(|more| self.0.extend(more)).ok()
@@ -204,7 +204,7 @@ impl Diags {
     }
 }
 
-impl Extend<Diagnostic> for Diags {
+impl Extend<Diagnostic> for Diagnostics {
     fn extend<I: IntoIterator<Item = Diagnostic>>(&mut self, more: I) {
         self.0.extend(more);
     }

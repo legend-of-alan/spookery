@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::canon;
 use crate::canon::meters::{self, MeterYaml};
 use crate::canon::pack_files::Page;
-use crate::canon::refusal::{Diags, FileText, Locator, Problem};
+use crate::canon::refusal::{Diagnostics, FileText, Locator, Problem};
 use crate::canon::rule_list::{self, parse::RuleYaml};
 use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::ecs::component::meter;
@@ -36,8 +36,8 @@ pub struct IdleProfile {
 pub(super) fn add(
     page: Page,
     cast: &mut BTreeMap<ActorId, Def>,
-    meters: Option<&mut BTreeMap<String, meter::Descriptor>>,
-    diags: &mut Diags,
+    meters: Option<&mut BTreeMap<String, meter::Def>>,
+    diags: &mut Diagnostics,
 ) -> Option<Vec<Rule>> {
     let file = diags.keep(parse(&page.file, &page.yaml))?;
     let whole = FileText {
@@ -80,10 +80,10 @@ pub(super) fn add(
     ))
 }
 
-fn parse(file: &str, yaml: &str) -> Result<CastDoc, Vec<Diagnostic>> {
-    let parsed: CastDoc = parse_tagged(file, yaml, SCHEMA, true)?;
+fn parse(file: &str, yaml: &str) -> Result<Yaml, Vec<Diagnostic>> {
+    let parsed: Yaml = parse_tagged(file, yaml, SCHEMA, true)?;
     let source = FileText { file, text: yaml };
-    let mut diags = Diags::default();
+    let mut diags = Diagnostics::default();
     let empty = ("id is empty", "set id to a short cast id");
     diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));
     if parsed.id == "world" {
@@ -118,8 +118,7 @@ fn parse(file: &str, yaml: &str) -> Result<CastDoc, Vec<Diagnostic>> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct CastDoc {
-    // repeats module: every file shape in canon ends in Doc
+struct Yaml {
     #[serde(rename = "schema")]
     _schema: String,
     id: String,

@@ -1,12 +1,11 @@
 //! Cross-file validation of rules, paths, meters, items, and triggers.
 
-mod entity_scope;
+mod entity_defs;
 mod trigger;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::canon::map::MAP_FILE;
-use crate::canon::{item, place, Canon, PathDef, OPEN};
+use crate::canon::{item, map, place, Canon, PathDef, OPEN};
 use crate::diagnostic::{schema_error, warning, Diagnostic};
 use crate::ecs::component::modifier;
 use crate::ecs::id::PlaceId;
@@ -14,7 +13,7 @@ use crate::rules::cond;
 use crate::rules::grammar;
 use crate::rules::rule::{self, ChangeWatch, Cond, EffectTemplate, Owner, When};
 
-pub(super) use entity_scope::{find_missing_components, find_unknown_meter_reads, EntityScope};
+pub(super) use entity_defs::{find_missing_components, find_unknown_meter_reads, EntityDefs};
 
 /// Paths whose ends are not places, and items a path names but the pack does not.
 pub(super) fn find_unknown_path_ids(
@@ -31,7 +30,7 @@ pub(super) fn find_unknown_path_ids(
         );
         let mut refuse = |field: &str, problem: String, hint: &str| {
             let at = format!("paths[{row}]{field}");
-            diags.push(schema_error(MAP_FILE, &problem, hint).at_path(at));
+            diags.push(schema_error(map::FILE, &problem, hint).at_path(at));
         };
         for end_place_id in (path.end_place_ids.iter()).filter(|id| !places.contains_key(*id)) {
             let problem = format!("path '{line}' names '{end_place_id}', which is not a place");
@@ -70,7 +69,7 @@ pub(super) fn find_unknown_rule_items(
 /// Modifier effects naming a modifier `rules/modifiers.yaml` does not define.
 pub(super) fn find_unknown_modifiers(
     rules: &rule::Table,
-    modifiers: &BTreeMap<String, modifier::Descriptor>,
+    modifiers: &BTreeMap<String, modifier::Def>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
@@ -127,7 +126,7 @@ fn rule_and_path_conds(canon: &Canon) -> impl Iterator<Item = (&str, String, &[C
         )
     });
     let paths = (canon.paths.iter().enumerate())
-        .map(|(row, path)| (MAP_FILE, format!("paths[{row}].if"), &path.if_[..]));
+        .map(|(row, path)| (map::FILE, format!("paths[{row}].if"), &path.if_[..]));
     rules.chain(paths)
 }
 
@@ -168,7 +167,7 @@ fn find_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
             continue;
         };
         let at = format!("paths[{row}].revealed_by");
-        diags.push(warning(MAP_FILE, &unset_problem(key), hint).at_path(at));
+        diags.push(warning(map::FILE, &unset_problem(key), hint).at_path(at));
     }
     diags
 }

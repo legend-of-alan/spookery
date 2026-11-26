@@ -31,14 +31,12 @@ mod verbs;
 pub(crate) use budget::Budget;
 use lint::{
     find_missing_components, find_unknown_meter_reads, find_unknown_modifiers,
-    find_unknown_path_ids, find_unknown_rule_items, EntityScope,
+    find_unknown_path_ids, find_unknown_rule_items, EntityDefs,
 };
 pub(crate) use lint::{refuse_unknown_item, run};
-use map::MAP_FILE;
 pub(crate) use map::{Exit, PathDef, Paths, OPEN};
-use modifiers::MODIFIERS_FILE;
 use pack_files::{collect_files, collect_markdown_files, read_text};
-use refusal::{Diags, FileText, Locator};
+use refusal::{Diagnostics, FileText, Locator};
 
 #[derive(Clone, Debug)]
 pub struct Canon {
@@ -55,11 +53,11 @@ pub struct Canon {
     pub rules: rule::Table,
     /// The meters `rules/meters.yaml` gives every actor, and those one cast, place or story
     /// file gives its entity. An id is listed once.
-    pub meters: BTreeMap<String, meter::Descriptor>,
+    pub meters: BTreeMap<String, meter::Def>,
     /// The meters `world/meters.yaml` gives the world. An id here may also be an actor meter.
-    pub world_meters: BTreeMap<String, meter::Descriptor>,
+    pub world_meters: BTreeMap<String, meter::Def>,
     /// The modifiers `rules/modifiers.yaml` defines. Each one modifies an actor meter.
-    pub modifiers: BTreeMap<String, modifier::Descriptor>,
+    pub modifiers: BTreeMap<String, modifier::Def>,
     pub items: BTreeMap<String, item::Def>,
     pub budget: Budget,
     /// Rounds between journal checkpoints. `save.yaml` is rewritten then.
@@ -124,8 +122,8 @@ impl Canon {
         }
     }
 
-    /// The descriptor of meter `key` on `id`, when that entity carries it.
-    pub fn meter_def(&self, id: entity::IdRef<'_>, key: &str) -> Option<&meter::Descriptor> {
+    /// The `meter::Def` of meter `key` on `id`, when that entity carries it.
+    pub fn meter_def(&self, id: entity::IdRef<'_>, key: &str) -> Option<&meter::Def> {
         match id {
             entity::IdRef::Global => self.world_meters.get(key),
             _ => self.meters.get(key).filter(|desc| desc.is_on(id)),
@@ -178,7 +176,7 @@ pub fn pack_rev(root: &Path) -> Result<String, Reason> {
 /// the budget; lints across files; and `checkpoint_every`.
 pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     // repeats module: re-exported at the crate root
-    let mut diags = Diags::default();
+    let mut diags = Diagnostics::default();
     let mut places = BTreeMap::new();
     let mut cast = BTreeMap::new();
     let mut items = BTreeMap::new();
@@ -198,7 +196,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         };
         loaded.extend(rules.unwrap_or_default());
     }
-    let path_lines = diags.keep(read_text(root, MAP_FILE).and_then(|text| map::load(&text)));
+    let path_lines = diags.keep(read_text(root, map::FILE).and_then(|text| map::load(&text)));
     let paths = (path_lines.as_ref()).and_then(|lines| diags.keep(Paths::new(lines.clone())));
     let world_meters = if root.join("world/meters.yaml").is_file() {
         let rel = "world/meters.yaml";
@@ -231,8 +229,8 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         }
     }
     let modifiers = match &meters {
-        Some(meters) if root.join(MODIFIERS_FILE).is_file() => diags
-            .keep(read_text(root, MODIFIERS_FILE).and_then(|text| modifiers::load(&text, meters))),
+        Some(meters) if root.join(modifiers::FILE).is_file() => diags
+            .keep(read_text(root, modifiers::FILE).and_then(|text| modifiers::load(&text, meters))),
         _ => Some(BTreeMap::new()),
     };
     let [verbs, budget] = ["rules/verbs.yaml", "rules/budget.yaml"]
@@ -253,7 +251,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let rules = rule::Table::new(loaded);
     let budget = budget.and_then(|(rel, text)| diags.keep(budget::load(rel, &text)));
     if let (Some(meters), Some(world_meters), Some(paths)) = (&meters, &world_meters, &paths) {
-        let scope = EntityScope {
+        let scope = EntityDefs {
             meters,
             world_meters,
             cast: &cast,

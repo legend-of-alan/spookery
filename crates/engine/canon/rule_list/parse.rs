@@ -16,8 +16,8 @@ pub(in crate::canon) struct RuleYaml {
     #[serde(rename = "if")]
     pub if_: Option<IfYaml>,
     pub cost: Option<CostYaml>,
-    pub start: Option<StartYaml>,
-    pub finish: Option<FinishYaml>,
+    pub start: Option<ActionStartYaml>,
+    pub finish: Option<ActionFinishYaml>,
     /// Ticks the actor stays busy after the finish.
     #[serde(default)]
     pub cooldown: u64,
@@ -43,12 +43,12 @@ pub(in crate::canon) struct RuleYaml {
 #[serde(untagged)]
 pub(in crate::canon) enum WhenYaml {
     Word(String),
-    Map(Box<WhenMap>),
+    Map(Box<WhenMapYaml>),
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::canon) struct WhenMap {
+pub(in crate::canon) struct WhenMapYaml {
     pub verb: Option<String>,
     pub target: Option<String>,
     pub change: Option<ChangeYaml>,
@@ -191,25 +191,25 @@ pub(in crate::canon) struct PlayersYaml {
 pub(in crate::canon) struct CostYaml {
     pub ticks: Option<Spanned<ExprYaml>>,
     #[serde(default)]
-    pub meters: Counts,
+    pub meters: CountsYaml,
     #[serde(default)]
-    pub items: Counts,
+    pub items: CountsYaml,
 }
 
 /// Counts by key under a cost. A plain map, so each count keeps its line.
-pub(in crate::canon) type Counts = std::collections::BTreeMap<String, Spanned<ExprYaml>>;
+pub(in crate::canon) type CountsYaml = std::collections::BTreeMap<String, Spanned<ExprYaml>>;
 
 /// The start of an action. Its cost is the rule's `cost`.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::canon) struct StartYaml {
+pub(in crate::canon) struct ActionStartYaml {
     #[serde(default)]
     pub counts_as_act: Option<bool>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::canon) struct FinishYaml {
+pub(in crate::canon) struct ActionFinishYaml {
     pub cost: Option<CostYaml>,
     #[serde(default)]
     pub counts_as_act: bool,

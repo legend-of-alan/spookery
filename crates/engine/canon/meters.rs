@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::refusal::{Diags, DuplicateWords, FileText, Locator};
+use crate::canon::refusal::{Diagnostics, DuplicateWords, FileText, Locator};
 use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::entity;
@@ -17,8 +17,8 @@ pub(super) fn load(
     rel: &str,
     text: &str,
     carrier: Option<entity::Id>,
-) -> Result<BTreeMap<String, meter::Descriptor>, Vec<Diagnostic>> {
-    let doc: MetersDoc = parse_tagged(rel, text, SCHEMA, false)?;
+) -> Result<BTreeMap<String, meter::Def>, Vec<Diagnostic>> {
+    let doc: Yaml = parse_tagged(rel, text, SCHEMA, false)?;
     let source = FileText { file: rel, text };
     compile(&source, doc.meters, carrier)
 }
@@ -29,9 +29,9 @@ pub(super) fn compile(
     source: &FileText,
     rows: Vec<MeterYaml>,
     carrier: Option<entity::Id>,
-) -> Result<BTreeMap<String, meter::Descriptor>, Vec<Diagnostic>> {
+) -> Result<BTreeMap<String, meter::Def>, Vec<Diagnostic>> {
     let hidden_by_default = !matches!(carrier, None | Some(entity::Id::Actor(_)));
-    let mut diags = Diags::default();
+    let mut diags = Diagnostics::default();
     let mut meters = BTreeMap::new();
     for (row, entry) in rows.into_iter().enumerate() {
         let id = &entry.id;
@@ -62,7 +62,7 @@ pub(super) fn compile(
         }
         meters.insert(
             entry.id,
-            meter::Descriptor {
+            meter::Def {
                 name: entry.name.unwrap_or_default(),
                 min: entry.min,
                 base_cap: entry.base_cap,
@@ -79,11 +79,11 @@ pub(super) fn compile(
 /// Add the meters one cast, place or story file declares to `meters`. An id that
 /// `rules/meters.yaml`, another file or, when given, `world` has already is refused.
 pub(super) fn add_own(
-    meters: &mut BTreeMap<String, meter::Descriptor>,
-    own: BTreeMap<String, meter::Descriptor>,
-    world: Option<&BTreeMap<String, meter::Descriptor>>,
+    meters: &mut BTreeMap<String, meter::Def>,
+    own: BTreeMap<String, meter::Def>,
+    world: Option<&BTreeMap<String, meter::Def>>,
     source: &FileText,
-    diags: &mut Diags,
+    diags: &mut Diagnostics,
 ) {
     const KEEP_ONE: &str = "keep one meter with this id";
     for (key, desc) in own {
@@ -115,8 +115,7 @@ pub(super) fn add_own(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct MetersDoc {
-    // repeats module: every file shape in canon ends in Doc
+struct Yaml {
     #[serde(rename = "schema")]
     _schema: String,
     meters: Vec<MeterYaml>,

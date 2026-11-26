@@ -5,25 +5,22 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::refusal::{Diags, FileText};
+use crate::canon::refusal::{Diagnostics, FileText};
 use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::component::modifier;
 
-pub(super) const MODIFIERS_FILE: &str = "rules/modifiers.yaml";
+pub(super) const FILE: &str = "rules/modifiers.yaml";
 const SCHEMA: &str = "modifiers";
 
 /// The modifiers file. Each modifier names one of the actor `meters`.
 pub(super) fn load(
     text: &str,
-    meters: &BTreeMap<String, meter::Descriptor>,
-) -> Result<BTreeMap<String, modifier::Descriptor>, Vec<Diagnostic>> {
-    let doc: ModifiersDoc = parse_tagged(MODIFIERS_FILE, text, SCHEMA, false)?;
-    let source = FileText {
-        file: MODIFIERS_FILE,
-        text,
-    };
-    let mut diags = Diags::default();
+    meters: &BTreeMap<String, meter::Def>,
+) -> Result<BTreeMap<String, modifier::Def>, Vec<Diagnostic>> {
+    let doc: Yaml = parse_tagged(FILE, text, SCHEMA, false)?;
+    let source = FileText { file: FILE, text };
+    let mut diags = Diagnostics::default();
     let mut modifiers = BTreeMap::new();
     for (row, entry) in doc.modifiers.into_iter().enumerate() {
         let id = &entry.id;
@@ -47,7 +44,7 @@ pub(super) fn load(
         ];
         let found = source.refuse_entry("modifier", row, id, modifiers.contains_key(id), rules);
         if found.is_empty() {
-            let desc = modifier::Descriptor {
+            let desc = modifier::Def {
                 meter: entry.meter,
                 max_stacks,
                 hidden: entry.hidden,
@@ -62,8 +59,7 @@ pub(super) fn load(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ModifiersDoc {
-    // repeats module: every file shape in canon ends in Doc
+struct Yaml {
     #[serde(rename = "schema")]
     _schema: String,
     modifiers: Vec<ModifierYaml>,

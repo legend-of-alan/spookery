@@ -79,7 +79,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         name: "tale".to_string(),
     };
     canon.stories.insert("tale".into(), tale);
-    let fatigue = modifier::Descriptor {
+    let fatigue = modifier::Def {
         meter: "vigor".to_string(),
         max_stacks: 2,
         hidden: false,
@@ -91,7 +91,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         (entity::Id::Global, "tide"),
     ];
     for (carrier, key) in &carried {
-        let desc = meter::Descriptor {
+        let desc = meter::Def {
             name: String::new(),
             min: 0,
             base_cap: 10,
@@ -108,7 +108,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     let mut world = ecs::World::new(Save::clone(opened.world()), Arc::new(canon));
     for (carrier, key) in &carried {
         let desc = world.canon().meter_def(carrier.as_ref(), key);
-        let base = Meter::at_base(desc.expect("the meter's descriptor"));
+        let base = Meter::at_base(desc.expect("the meter's def"));
         let put = (world.entities_mut().get_mut::<Meter>(carrier)).set(key, Some(base));
         put.expect("the meter goes on");
     }

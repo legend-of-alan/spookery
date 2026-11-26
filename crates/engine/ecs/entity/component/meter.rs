@@ -10,7 +10,7 @@ use crate::ecs::{Reader, Save, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Descriptor {
+pub struct Def {
     /// What a player reads for the meter, or empty when the pack gives none.
     pub name: String,
     pub min: i64,
@@ -23,7 +23,7 @@ pub struct Descriptor {
     pub carrier: Option<entity::Id>,
 }
 
-impl Descriptor {
+impl Def {
     /// Whether `id` carries this meter.
     pub fn is_on(&self, id: entity::IdRef<'_>) -> bool {
         match &self.carrier {
@@ -47,7 +47,7 @@ pub struct Meter {
 
 impl Meter {
     /// The meter a carrier with no save row reads: `desc`'s base, with no offset.
-    pub fn at_base(desc: &Descriptor) -> Meter {
+    pub fn at_base(desc: &Def) -> Meter {
         Meter {
             base: desc.base,
             offset: 0,
@@ -64,12 +64,12 @@ pub enum Write {
 
 /// `base` is inside `[min, base_cap]`, and `base + offset` fits in `i64`.
 /// A sum outside `[min, max]` still returns true. `value` clamps that.
-pub(crate) fn is_storable(desc: &Descriptor, base: i64, offset: i64) -> bool {
+pub(crate) fn is_storable(desc: &Def, base: i64, offset: i64) -> bool {
     (desc.min..=desc.base_cap).contains(&base) && base.checked_add(offset).is_some()
 }
 
 /// `base + offset`, plus what the entity's modifiers add to this meter, clamped to the bounds.
-pub(crate) fn value(desc: &Descriptor, live: &Meter, modifiers: i64) -> Result<i64, Reason> {
+pub(crate) fn value(desc: &Def, live: &Meter, modifiers: i64) -> Result<i64, Reason> {
     let sum = live
         .base
         .checked_add(live.offset)
@@ -79,7 +79,7 @@ pub(crate) fn value(desc: &Descriptor, live: &Meter, modifiers: i64) -> Result<i
 }
 
 /// `held` with its offset moved by `delta` inside `desc`'s bounds.
-fn shift(held: Meter, desc: &Descriptor, delta: i64) -> Result<Meter, Reason> {
+fn shift(held: Meter, desc: &Def, delta: i64) -> Result<Meter, Reason> {
     let offset = held.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
     if !is_storable(desc, held.base, offset) {
         return Err(Reason::OutOfRange);
@@ -186,8 +186,8 @@ impl Mut<'_, Save, Meter> {
 mod tests {
     use super::*;
 
-    fn vigor() -> Descriptor {
-        Descriptor {
+    fn vigor() -> Def {
+        Def {
             name: String::new(),
             min: 0,
             base_cap: 100,

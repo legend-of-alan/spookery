@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::canon::meters::{self, MeterYaml};
 use crate::canon::pack_files::Page;
-use crate::canon::refusal::{Diags, FileText, Locator};
+use crate::canon::refusal::{Diagnostics, FileText, Locator};
 use crate::canon::rule_list::{self, parse::RuleYaml};
 use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::ecs::component::meter;
@@ -25,14 +25,14 @@ pub struct Def {
 
 /// The meters one place file declares, by that file, for `load_canon` to add once the meters
 /// every actor carries have loaded.
-pub(super) type Meters = Vec<(String, BTreeMap<String, meter::Descriptor>)>;
+pub(super) type MetersByFile = Vec<(String, BTreeMap<String, meter::Def>)>;
 
 /// One place page into `places` and its meters into `meters`, and its rules.
 pub(super) fn add(
     page: Page,
     places: &mut BTreeMap<PlaceId, Def>,
-    meters: &mut Meters,
-    diags: &mut Diags,
+    meters: &mut MetersByFile,
+    diags: &mut Diagnostics,
 ) -> Option<Vec<Rule>> {
     let file = diags.keep(parse(&page.file, &page.yaml))?;
     let whole = FileText {
@@ -66,10 +66,10 @@ pub(super) fn add(
     ))
 }
 
-fn parse(file: &str, yaml: &str) -> Result<PlaceDoc, Vec<Diagnostic>> {
-    let parsed: PlaceDoc = parse_tagged(file, yaml, SCHEMA, true)?;
+fn parse(file: &str, yaml: &str) -> Result<Yaml, Vec<Diagnostic>> {
+    let parsed: Yaml = parse_tagged(file, yaml, SCHEMA, true)?;
     let source = FileText { file, text: yaml };
-    let mut diags = Diags::default();
+    let mut diags = Diagnostics::default();
     let empty = ("id is empty", "set id to a short place id");
     diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));
     diags.into_result(parsed)
@@ -77,8 +77,7 @@ fn parse(file: &str, yaml: &str) -> Result<PlaceDoc, Vec<Diagnostic>> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PlaceDoc {
-    // repeats module: every file shape in canon ends in Doc
+struct Yaml {
     #[serde(rename = "schema")]
     _schema: String,
     id: String,

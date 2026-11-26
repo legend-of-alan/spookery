@@ -273,7 +273,7 @@ mod tests {
         use crate::ecs::component::modifier::{self, Modifier};
         let opened = docks();
         let mut canon = opened.canon().clone();
-        let fatigue = modifier::Descriptor {
+        let fatigue = modifier::Def {
             meter: "rest".to_string(),
             max_stacks: 1,
             hidden: false,

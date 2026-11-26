@@ -95,18 +95,18 @@ enum EffectWrite {
     Arrive(String),
 }
 
-/// Who a narrate or note reaches: the subject, the room, or anyone else it names.
+/// Who a narrate or note reaches: the subject, the place, or anyone else it names.
 enum Reach {
     Subject,
-    Room,
+    Place,
     Others,
 }
 
-/// Who may see a watched change. A meter or flag change on a watch counts as the room's,
-/// because a rule that narrates it is the pack choosing to tell the room. A world change has
-/// no room, so the pack tells whoever it names.
+/// Who may see a watched change. A meter or flag change on a watch counts as the place's,
+/// because a rule that narrates it is the pack choosing to tell the place. A world change has
+/// no place, so the pack tells whoever it names.
 enum Sight {
-    Room,
+    Place,
     World,
 }
 
@@ -171,7 +171,7 @@ fn sight_of(canon: &Canon, watch: &ChangeWatch) -> Sight {
     if watches_world(canon, watch) && !watches_actor_key(canon, watch) {
         Sight::World
     } else {
-        Sight::Room
+        Sight::Place
     }
 }
 
@@ -179,7 +179,7 @@ fn reach_of(effect: &EffectTemplate) -> Option<Reach> {
     match effect {
         EffectTemplate::Narrate { to, .. } => Some(match to {
             NarrateTo::Self_ => Reach::Subject,
-            NarrateTo::Here => Reach::Room,
+            NarrateTo::Here => Reach::Place,
             NarrateTo::Actors(_) | NarrateTo::Present => Reach::Others,
         }),
         EffectTemplate::Note { .. } => Some(Reach::Others),
@@ -189,7 +189,7 @@ fn reach_of(effect: &EffectTemplate) -> Option<Reach> {
 
 fn is_too_wide(sight: &Sight, reach: &Reach) -> bool {
     match sight {
-        Sight::Room => !matches!(reach, Reach::Subject | Reach::Room),
+        Sight::Place => !matches!(reach, Reach::Subject | Reach::Place),
         Sight::World => false,
     }
 }
@@ -222,7 +222,7 @@ fn watches_actor_key(canon: &Canon, watch: &ChangeWatch) -> bool {
         ChangeWatch::Meter { key, .. } => canon
             .meters
             .get(key)
-            .is_some_and(meter::Descriptor::is_actor_meter),
+            .is_some_and(meter::Def::is_actor_meter),
         ChangeWatch::Flag { key, .. } => {
             super::find_flag_objects(canon, key).any(|of| matches!(of, grammar::Object::Actor(_)))
         }

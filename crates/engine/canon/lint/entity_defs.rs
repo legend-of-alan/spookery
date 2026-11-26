@@ -2,9 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::canon::map::MAP_FILE;
 use crate::canon::refusal::{FileText, Locator, Problem};
-use crate::canon::{self, cast, place, story, OPEN};
+use crate::canon::{self, cast, map, place, story, OPEN};
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::{ActorId, PlaceId, StoryId};
@@ -14,7 +13,7 @@ use crate::rules::grammar;
 use crate::rules::rule::{self, Cond, EffectTemplate, Owner, Rule, TargetKind, When};
 
 pub(in crate::canon) fn find_unknown_meter_reads(
-    scope: &EntityScope,
+    scope: &EntityDefs,
     rules: &rule::Table,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -26,7 +25,7 @@ pub(in crate::canon) fn find_unknown_meter_reads(
     }
     for (row, path) in scope.paths.iter().enumerate() {
         let at = format!("paths[{row}]");
-        let source = FileText::without_text(MAP_FILE);
+        let source = FileText::without_text(map::FILE);
         scope.push_unknown_reads(&source, &at, None, &path.exprs(), &mut diags);
     }
     diags
@@ -36,7 +35,7 @@ pub(in crate::canon) fn find_unknown_meter_reads(
 /// and flag effects and conditions on a path that cannot carry the flag. Any other entity may
 /// carry any flag.
 pub(in crate::canon) fn find_missing_components(
-    scope: &EntityScope,
+    scope: &EntityDefs,
     rules: &rule::Table,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -86,16 +85,16 @@ fn fixed_self_id(rule: &Rule) -> Option<&str> {
 }
 
 /// The meters each entity carries, and the cast, places, exits and stories an `of` may name.
-pub(in crate::canon) struct EntityScope<'c> {
-    pub meters: &'c BTreeMap<String, meter::Descriptor>,
-    pub world_meters: &'c BTreeMap<String, meter::Descriptor>,
+pub(in crate::canon) struct EntityDefs<'c> {
+    pub meters: &'c BTreeMap<String, meter::Def>,
+    pub world_meters: &'c BTreeMap<String, meter::Def>,
     pub cast: &'c BTreeMap<ActorId, cast::Def>,
     pub places: &'c BTreeMap<PlaceId, place::Def>,
     pub paths: &'c canon::Paths,
     pub stories: &'c BTreeMap<StoryId, story::Def>,
 }
 
-impl EntityScope<'_> {
+impl EntityDefs<'_> {
     /// The one entity `of` names whatever the round: `world`, a place, a story, a cast id, or
     /// `self` on a cast member's own habit. `None` when only play time knows it.
     fn fixed_entity_id(
@@ -199,7 +198,7 @@ impl EntityScope<'_> {
                 let Expr::Meter { of, key, spot } = read else {
                     continue;
                 };
-                let at = Locator::Spot(*spot);
+                let at = Locator::FileLocation(*spot);
                 let refuse = |problem, hint| {
                     Problem {
                         source,

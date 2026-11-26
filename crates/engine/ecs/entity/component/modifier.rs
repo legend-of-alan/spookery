@@ -1,4 +1,4 @@
-//! Modifier descriptors from the pack, the stacks an actor holds of each, and an actor's meter as it
+//! Modifier `Def`s from the pack, the stacks an actor holds of each, and an actor's meter as it
 //! reads with them.
 
 use std::collections::BTreeMap;
@@ -14,7 +14,7 @@ use crate::ecs::{Reader, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Descriptor {
+pub struct Def {
     /// The actor meter it modifies.
     pub meter: String,
     /// The most stacks one actor holds, from any source. At least 1.
@@ -25,7 +25,7 @@ pub struct Descriptor {
 
 /// One modifier on one actor: the meter it was applied to, the tick it expires at, the
 /// longest `ticks` applied so far, and each application's magnitude. The meter is kept so migrate
-/// can tell when the descriptor now names another one.
+/// can tell when the `Def` now names another one.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Modifier {
@@ -53,7 +53,7 @@ fn stacks_value(live: &Modifier) -> ChangeValue {
 /// Below `max_stacks` it is one more stack. At the cap it replaces the first weakest
 /// stack when its absolute value is larger. Stacks past a `max_stacks` the pack lowered
 /// go first, weakest first.
-pub(crate) fn stack(desc: &Descriptor, live: &mut Modifier, add: i64, ticks: u64, now: u64) {
+pub(crate) fn stack(desc: &Def, live: &mut Modifier, add: i64, ticks: u64, now: u64) {
     live.max_ticks = live.max_ticks.max(ticks);
     let left = live.until.saturating_sub(now).saturating_add(ticks);
     live.until = now.saturating_add(left.min(live.max_ticks));
@@ -83,7 +83,7 @@ fn weakest(stacks: &[i64]) -> Option<usize> {
 }
 
 /// Whether `descs` still define modifier `id` on the meter `live` was applied to.
-pub(crate) fn is_defined(descs: &BTreeMap<String, Descriptor>, id: &str, live: &Modifier) -> bool {
+pub(crate) fn is_defined(descs: &BTreeMap<String, Def>, id: &str, live: &Modifier) -> bool {
     descs.get(id).is_some_and(|desc| desc.meter == live.meter)
 }
 
@@ -191,8 +191,8 @@ impl Writer<'_, entity::Actors> {
 mod tests {
     use super::*;
 
-    fn fatigue(max_stacks: usize) -> Descriptor {
-        Descriptor {
+    fn fatigue(max_stacks: usize) -> Def {
+        Def {
             meter: "vigor".to_string(),
             max_stacks,
             hidden: false,

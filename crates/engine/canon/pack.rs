@@ -7,15 +7,15 @@ use crate::diagnostic::{parse_tagged, schema_error, Diagnostic};
 
 const SCHEMA: &str = "pack";
 
-pub(super) fn load(text: &str) -> Result<PackDoc, Vec<Diagnostic>> {
-    let doc: PackDoc = parse_tagged("pack.yaml", text, SCHEMA, false)?;
+pub(super) fn load(text: &str) -> Result<Yaml, Vec<Diagnostic>> {
+    let doc: Yaml = parse_tagged("pack.yaml", text, SCHEMA, false)?;
     let empty = ("id is empty", "set id to a short pack id");
     let refused =
         FileText::without_text("pack.yaml").refuse_empty(&doc.id, "id", Locator::Nowhere, empty);
     refused.map_or(Ok(doc), |diag| Err(vec![diag]))
 }
 
-impl PackDoc {
+impl Yaml {
     /// Rounds between checkpoints: 100 when unset, refused when 0.
     pub(super) fn checkpoint_every(&self) -> Result<u64, Vec<Diagnostic>> {
         match self.checkpoint_every {
@@ -33,8 +33,7 @@ impl PackDoc {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct PackDoc {
-    // repeats module: every file shape in canon ends in Doc
+pub(super) struct Yaml {
     #[serde(rename = "schema")]
     _schema: String,
     pub(super) id: String,

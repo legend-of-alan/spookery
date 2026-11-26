@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::refusal::{Diags, FileText};
+use crate::canon::refusal::{Diagnostics, FileText};
 use crate::canon::rule_list;
 use crate::canon::Canon;
 use crate::diagnostic::{parse_tagged, schema_error, Diagnostic};
@@ -15,13 +15,13 @@ use crate::rules::expr::Expr;
 use crate::rules::rule::{self, Cond, Cost, TargetKind};
 
 /// The one pack file that lists the paths.
-pub(super) const MAP_FILE: &str = "world/map.yaml";
+pub(super) const FILE: &str = "world/map.yaml";
 const SCHEMA: &str = "map";
 
 /// Every line under `paths:`, in file order, or the refusals of the lines that do not compile.
 pub(super) fn load(text: &str) -> Result<Vec<PathDef>, Vec<Diagnostic>> {
-    let doc: MapDoc = parse_tagged(MAP_FILE, text, SCHEMA, true)?;
-    let mut diags = Diags::default();
+    let doc: Yaml = parse_tagged(FILE, text, SCHEMA, true)?;
+    let mut diags = Diagnostics::default();
     let paths = (doc.paths.iter().enumerate())
         .filter_map(|(row, line)| diags.keep(compile(row, line)))
         .collect();
@@ -30,9 +30,9 @@ pub(super) fn load(text: &str) -> Result<Vec<PathDef>, Vec<Diagnostic>> {
 
 /// The `row`th line under `paths:`: its ends, its id, its name, its cost and its `if`.
 fn compile(row: usize, line: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
-    let source = FileText::without_text(MAP_FILE);
+    let source = FileText::without_text(FILE);
     let refuse = |field: &str, problem: &str, hint: &str| {
-        vec![schema_error(MAP_FILE, problem, hint).at_path(format!("paths[{row}]{field}"))]
+        vec![schema_error(FILE, problem, hint).at_path(format!("paths[{row}]{field}"))]
     };
     let Some((end_place_ids, bidirectional)) = split_ends(&line.path) else {
         let problem = format!(
@@ -63,7 +63,7 @@ fn compile(row: usize, line: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
             items: Vec::new(),
         },
     };
-    let mut diags = Diags::default();
+    let mut diags = Diagnostics::default();
     let if_ = (line.if_.iter())
         .filter_map(|cond| {
             let fault = |fault| diags.push(source.refuse_error(&format!("paths[{row}].if"), fault));
@@ -233,7 +233,7 @@ impl Paths {
     pub(super) fn new(path_defs: Vec<PathDef>) -> Result<Self, Vec<Diagnostic>> {
         let mut exit_def_indexes_by_place_id: BTreeMap<PlaceId, Vec<usize>> = BTreeMap::new();
         let mut def_index_by_path_id = BTreeMap::new();
-        let mut diags = Diags::default();
+        let mut diags = Diagnostics::default();
         for (index, path_def) in path_defs.iter().enumerate() {
             if def_index_by_path_id
                 .insert(path_def.id.clone(), index)
@@ -244,7 +244,7 @@ impl Paths {
                 let problem = format!("path id '{}' is used twice", path_def.id);
                 let at = format!("paths[{index}]{field}");
                 let hint = "give one of these paths its own id";
-                diags.push(schema_error(MAP_FILE, &problem, hint).at_path(at));
+                diags.push(schema_error(FILE, &problem, hint).at_path(at));
             }
             let ends = path_def.end_place_ids.iter();
             for from_place_id in ends.take(if path_def.bidirectional { 2 } else { 1 }) {
@@ -290,8 +290,7 @@ impl Paths {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct MapDoc {
-    // repeats module: every file shape in canon ends in Doc
+struct Yaml {
     #[serde(rename = "schema")]
     _schema: String,
     paths: Vec<PathYaml>,

@@ -3,7 +3,9 @@
 use serde_saphyr::Spanned;
 use spookery_protocol::{is_built_in, Seat};
 
-use crate::canon::refusal::{file_location_of, Diags, Fault, FileText, Locator, Problem};
+use crate::canon::refusal::{
+    file_location_of, CompileError, Diagnostics, FileText, Locator, Problem,
+};
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::rules::expr::{self, stamp_spots, Expr};
 use crate::rules::grammar;
@@ -13,7 +15,7 @@ use crate::rules::rule::{
 };
 
 use parse::{
-    ChangeYaml, CondYaml, CostYaml, Counts, EffectYaml, ExprYaml, IfYaml, RuleYaml, WhenYaml,
+    ChangeYaml, CondYaml, CostYaml, CountsYaml, EffectYaml, ExprYaml, IfYaml, RuleYaml, WhenYaml,
 };
 
 pub(super) mod parse;
@@ -24,7 +26,7 @@ pub(in crate::canon) fn compile(
     owner: &Owner,
 ) -> Result<Vec<Rule>, Vec<Diagnostic>> {
     let source = FileText::without_text(file);
-    let mut diags = Diags::default();
+    let mut diags = Diagnostics::default();
     let mut rules: Vec<Rule> = Vec::new();
     let mut verb_ids = Vec::new();
     for (index, entry) in entries.into_iter().enumerate() {
@@ -64,7 +66,7 @@ fn compile_rule(
             Problem {
                 source: &source,
                 path: &format!("rules[{index}].id"),
-                at: Locator::Spot(file_location_of(&entry.id)),
+                at: Locator::FileLocation(file_location_of(&entry.id)),
                 message: "a rule id is empty or is say".into(),
                 hint: "set id to a short rule id; say is speech",
             }
@@ -78,7 +80,7 @@ fn compile_rule(
                 Problem {
                     source: &source,
                     path: &format!("rules[{index}].when"),
-                    at: Locator::Spot(file_location_of(&entry.when)),
+                    at: Locator::FileLocation(file_location_of(&entry.when)),
                     message: problem,
                     hint: "set when to habit, a verb, or a change",
                 }
@@ -124,7 +126,7 @@ fn compile_rule(
     lets.sort_by_key(|(_, number)| (number.referenced.line(), number.referenced.column()));
     let lets = (lets.into_iter())
         .map(|(id, number)| compile_let(id, number))
-        .collect::<Result<Vec<_>, Fault>>();
+        .collect::<Result<Vec<_>, CompileError>>();
     let lets = match lets {
         Ok(lets) => lets,
         Err(fault) => {
@@ -188,7 +190,7 @@ fn compile_rule(
                 Problem {
                     source: &source,
                     path: &format!("rules[{index}].id"),
-                    at: Locator::Spot(file_location_of(&entry.id)),
+                    at: Locator::FileLocation(file_location_of(&entry.id)),
                     message: format!("rule '{local_id}' {problem}"),
                     hint,
                 }
@@ -245,7 +247,7 @@ fn compile_rule(
         return Err(vec![Problem {
             source: &source,
             path: &format!("rules[{index}].id"),
-            at: Locator::Spot(file_location_of(&entry.id)),
+            at: Locator::FileLocation(file_location_of(&entry.id)),
             message: format!("rule '{}' {problem}", rule.local_id),
             hint: &hint,
         }
@@ -374,14 +376,14 @@ fn compile_change(yaml: &ChangeYaml) -> Result<When, String> {
     Err("a change needs arrive, leave, meter, flag, or item".to_string())
 }
 
-fn compile_conds(yaml: &IfYaml) -> Result<Vec<Cond>, Fault> {
+fn compile_conds(yaml: &IfYaml) -> Result<Vec<Cond>, CompileError> {
     match yaml {
         IfYaml::List(list) => list.iter().map(compile_cond).collect(),
         IfYaml::One(one) => Ok(vec![compile_cond(one)?]),
     }
 }
 
-pub(in crate::canon) fn compile_cond(yaml: &CondYaml) -> Result<Cond, Fault> {
+pub(in crate::canon) fn compile_cond(yaml: &CondYaml) -> Result<Cond, CompileError> {
     Ok(match yaml {
         CondYaml::HasItem(item) => Cond::HasItem {
             subject: parse_actor(&item.subject)?,
@@ -430,7 +432,7 @@ pub(in crate::canon) fn compile_cond(yaml: &CondYaml) -> Result<Cond, Fault> {
     })
 }
 
-pub(in crate::canon) fn compile_cost(yaml: &CostYaml) -> Result<Cost, Fault> {
+pub(in crate::canon) fn compile_cost(yaml: &CostYaml) -> Result<Cost, CompileError> {
     Ok(Cost {
         ticks: (yaml.ticks.as_ref()).map_or(Ok(Expr::Num(0)), compile_expr_without_dice)?,
         meters: compile_counts(&yaml.meters)?,
@@ -438,7 +440,7 @@ pub(in crate::canon) fn compile_cost(yaml: &CostYaml) -> Result<Cost, Fault> {
     })
 }
 
-fn compile_counts(yaml: &Counts) -> Result<Vec<(String, Expr)>, Fault> {
+fn compile_counts(yaml: &CountsYaml) -> Result<Vec<(String, Expr)>, CompileError> {
     (yaml.iter())
         .map(|(key, n)| Ok((key.clone(), compile_expr_without_dice(n)?)))
         .collect()
@@ -448,7 +450,7 @@ fn compile_check(
     total: &Spanned<ExprYaml>,
     success_at: &Spanned<ExprYaml>,
     partial_at: Option<&Spanned<ExprYaml>>,
-) -> Result<rule::Check, Fault> {
+) -> Result<rule::Check, CompileError> {
     Ok(rule::Check {
         total: compile_expr(total)?,
         success_at: compile_expr(success_at)?,
@@ -457,10 +459,10 @@ fn compile_check(
 }
 
 /// A number in a condition or a cost, refused on its line when it rolls dice.
-fn compile_expr_without_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
+fn compile_expr_without_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileError> {
     let expr = compile_expr(yaml)?;
     if expr.needs_dice() {
-        return Err(Fault {
+        return Err(CompileError {
             message: "a condition or a cost cannot roll dice".into(),
             spot: file_location_of(yaml),
         });
@@ -469,9 +471,9 @@ fn compile_expr_without_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
 }
 
 /// One `let:` id and its number. An id no number could read back is refused on its line.
-fn compile_let(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), Fault> {
+fn compile_let(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), CompileError> {
     if !expr::is_let_id(id) {
-        return Err(Fault {
+        return Err(CompileError {
             message: format!(
                 "let: id '{id}' is not a word a number can read; use letters, digits and _, \
                  not starting with a digit, and not an owner word or min, max, high or low"
@@ -482,12 +484,12 @@ fn compile_let(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), F
     Ok((id.to_string(), compile_expr(number)?))
 }
 
-fn compile_expr(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
+fn compile_expr(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileError> {
     let spot = file_location_of(yaml);
     match &yaml.value {
         ExprYaml::Literal(n) => Ok(Expr::Num(*n)),
         ExprYaml::Text(text) => {
-            let mut expr = Expr::parse(text).map_err(|message| Fault { message, spot })?;
+            let mut expr = Expr::parse(text).map_err(|message| CompileError { message, spot })?;
             if let Some(LineColumn { line, column }) = spot {
                 stamp_spots(&mut expr, line, column);
             }
@@ -512,7 +514,7 @@ fn compile_effects(
     Ok(out)
 }
 
-fn compile_effect(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
+fn compile_effect(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
     Ok(match yaml {
         EffectYaml::Meter(meter) if meter.add.is_some() == meter.set.is_some() => {
             return Err("a meter effect needs add or set, not both".into());
@@ -646,16 +648,16 @@ fn find_partial_band_message(
         ))
 }
 
-fn parse_object(yaml: &Spanned<String>) -> Result<grammar::Object, Fault> {
-    grammar::Object::parse(&yaml.value).map_err(|message| Fault {
+fn parse_object(yaml: &Spanned<String>) -> Result<grammar::Object, CompileError> {
+    grammar::Object::parse(&yaml.value).map_err(|message| CompileError {
         message,
         spot: file_location_of(yaml),
     })
 }
 
 /// The actor a slot that needs one names, refused on the word's line when it is another owner.
-fn parse_actor(yaml: &Spanned<String>) -> Result<grammar::Actor, Fault> {
-    grammar::Actor::parse(&yaml.value).map_err(|message| Fault {
+fn parse_actor(yaml: &Spanned<String>) -> Result<grammar::Actor, CompileError> {
+    grammar::Actor::parse(&yaml.value).map_err(|message| CompileError {
         message,
         spot: file_location_of(yaml),
     })

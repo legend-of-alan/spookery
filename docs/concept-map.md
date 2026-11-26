@@ -52,6 +52,7 @@ A short guide to the word each concept gets, and the synonyms to avoid for it. N
 | commit | seal, settle |
 | read, parse, compile, load, emit, write, render, build | convert, dump |
 | Yaml: the typed YAML of one pack file. A part of it ends in Yaml, as in CondYaml. | Doc |
+| Def: what the pack says about one thing | Descriptor |
 | get: one value by key. find: a search by predicate. resolve: a name into an id. | lookup, search |
 
 A bare path is a map link, and a file on disk ends in _path, _file or _dir. The MCP session is mcp_session. A token says which, such as claim_token.

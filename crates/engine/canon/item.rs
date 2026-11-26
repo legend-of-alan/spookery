@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::canon::pack_files::Page;
-use crate::canon::refusal::{Diags, FileText, Locator};
+use crate::canon::refusal::{Diagnostics, FileText, Locator};
 use crate::canon::rule_list::{self, parse::RuleYaml};
 use crate::diagnostic::parse_tagged;
 use crate::rules::rule::{Owner, Rule};
@@ -25,9 +25,9 @@ pub struct Def {
 pub(super) fn add(
     page: Page,
     items: &mut BTreeMap<String, Def>,
-    diags: &mut Diags,
+    diags: &mut Diagnostics,
 ) -> Option<Vec<Rule>> {
-    let item: ItemDoc = diags.keep(parse_tagged(&page.file, &page.yaml, SCHEMA, true))?;
+    let item: Yaml = diags.keep(parse_tagged(&page.file, &page.yaml, SCHEMA, true))?;
     let source = FileText::without_text(&page.file);
     let empty = ("an item id is empty", "set id to a short item id");
     let twice = ("item", "is already defined", "keep one item with this id");
@@ -53,8 +53,7 @@ pub(super) fn add(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ItemDoc {
-    // repeats module: every file shape in canon ends in Doc
+struct Yaml {
     #[serde(rename = "schema")]
     _schema: String,
     id: String,
