@@ -143,7 +143,8 @@ pub(super) enum Locator<'a> {
     FileLocation(Option<FileLocation>),
 }
 
-/// A message and its file location from a `compile_*` step that does not know its file yet.
+/// A message and its file location from a `rule_list::compile` function that does not know its
+/// file yet.
 #[derive(Debug)]
 pub(super) struct CompileError {
     pub message: String,

@@ -435,6 +435,11 @@ fn break_pack(pack: &Path, fault: &str) {
             "    rowan: docks_shop\n",
             "    rowan: { path: docks_shop.ladder, to: mira_rooms }\n",
         ),
+        "a rule with id say" => replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "  - id: wait\n",
+            "  - id: say\n",
+        ),
         "a verb named cancel" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "      verb: wait\n",
