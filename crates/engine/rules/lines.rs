@@ -142,7 +142,7 @@ pub(crate) fn map(
         Ok(PlaceView {
             place_id: place_id.to_string(),
             name: find_place_name(canon, place_id).ok_or(Reason::UnknownId)?,
-            exits: (canon.exits(place_id))
+            exits: (canon.paths.exits(place_id))
                 .filter(|exit| {
                     seen_path_ids
                         .iter()

@@ -245,7 +245,7 @@ fn find_unreachable_places(canon: &Canon) -> Vec<Diagnostic> {
         if !seen.insert(place_id.clone()) {
             continue;
         }
-        let exits = canon.exits(&place_id);
+        let exits = canon.paths.exits(&place_id);
         queue.extend(exits.map(|exit| exit.to_place_id().to_string()));
     }
     let mut diagnostics = Vec::new();

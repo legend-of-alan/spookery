@@ -31,7 +31,7 @@ mod verbs;
 use budget::Budget;
 use lint::entity_defs::{find_missing_components, find_unknown_meter_reads, EntityDefs};
 use lint::{find_unknown_modifiers, find_unknown_path_ids, find_unknown_rule_items};
-use map::{Exit, Paths};
+use map::Paths;
 use pack_files::{collect_files, collect_markdown_files, read_text};
 use refusal::{Diagnostics, FileText, Locator};
 
@@ -125,11 +125,6 @@ impl Canon {
             entity::IdRef::Global => self.world_meters.get(key),
             _ => self.meters.get(key).filter(|def| def.is_on(id)),
         }
-    }
-
-    /// The exits of `from_place_id`, in the file order of their paths.
-    pub(crate) fn exits(&self, from_place_id: &str) -> impl Iterator<Item = Exit<'_>> {
-        self.paths.exits(from_place_id)
     }
 
     pub(crate) fn idle_profile(&self, actor_id: &ActorId) -> Option<&cast::IdleProfile> {

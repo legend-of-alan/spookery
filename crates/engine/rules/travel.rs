@@ -162,7 +162,7 @@ pub(crate) fn exits_at(
     actor_id: &ActorId,
     place: &str,
 ) -> Vec<ExitView> {
-    (canon.exits(place))
+    (canon.paths.exits(place))
         .filter(|exit| is_revealed(world, actor_id, *exit))
         .map(|exit| exit_view(canon, world, actor_id, exit))
         .collect()
