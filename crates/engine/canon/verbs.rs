@@ -10,7 +10,7 @@ const SCHEMA: &str = "verbs";
 
 pub(super) fn load(file: &str, text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
     let yaml: Yaml = parse_tagged(file, text, SCHEMA, true)?;
-    rule_list::compile::compile(file, yaml.rules, &Scope::Verb)
+    rule_list::compile::build_rules(file, yaml.rules, &Scope::Verb)
 }
 
 #[derive(Deserialize)]

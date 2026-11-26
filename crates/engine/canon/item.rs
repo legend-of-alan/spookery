@@ -43,7 +43,8 @@ pub(super) fn add(
         diagnostics.push(diagnostic);
         return None;
     }
-    let rules = rule_list::compile::compile(&page.file, yaml.rules, &Scope::Item(yaml.id.clone()));
+    let rules =
+        rule_list::compile::build_rules(&page.file, yaml.rules, &Scope::Item(yaml.id.clone()));
     items.insert(
         yaml.id.clone(),
         Def {

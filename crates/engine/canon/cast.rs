@@ -72,7 +72,7 @@ pub(super) fn add(
             idle: yaml.idle,
         },
     );
-    diagnostics.keep(rule_list::compile::compile(
+    diagnostics.keep(rule_list::compile::build_rules(
         &page.file,
         yaml.rules,
         &Scope::Cast(id.into()),
