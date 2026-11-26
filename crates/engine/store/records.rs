@@ -180,7 +180,7 @@ impl Record {
     }
 }
 
-/// Flat effect object. Key order is `kind`, `as`, `intent_id`, then payload fields.
+/// Flat effect object. Key order is `kind`, `as`, `intent`, then payload fields.
 pub(crate) fn emit_effect(effect: &Effect) -> String {
     serde_json::to_string(effect).expect("effect json")
 }
