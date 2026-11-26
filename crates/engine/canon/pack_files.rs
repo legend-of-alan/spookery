@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::canon::refusal::{FileText, Locator, Problem};
+use crate::canon::refusal::{FileText, Locator};
 use crate::diagnostic::{error, schema_error, Diagnostic};
 use crate::Reason;
 
@@ -51,14 +51,12 @@ pub(super) fn collect_markdown_files(root: &Path, dir: &str) -> Vec<Result<Page,
 }
 
 pub(super) fn refuse_unreadable_dir(dir: &str) -> Diagnostic {
-    Problem {
-        source: &FileText::without_text(dir),
-        path: dir,
-        at: Locator::Nowhere,
-        message: format!("could not read {dir}/"),
-        hint: "check that the directory is readable",
-    }
-    .into_diagnostic()
+    FileText::without_text(dir).refuse_at(
+        dir,
+        Locator::Nowhere,
+        format!("could not read {dir}/"),
+        "check that the directory is readable",
+    )
 }
 
 pub(super) fn read_text(root: &Path, file: &str) -> Result<String, Vec<Diagnostic>> {

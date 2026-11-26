@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::refusal::{FileText, Locator, Problem};
+use crate::canon::refusal::{FileText, Locator};
 use crate::diagnostic::{parse_tagged, Diagnostic};
 
 const SCHEMA: &str = "budget";
@@ -89,16 +89,12 @@ pub(super) fn load(file: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
             Ok(ticks) if ticks > 0 => {
                 budget.cycles.insert(id, ticks);
             }
-            _ => diagnostics.push(
-                Problem {
-                    source: &file_text,
-                    path: &format!("cycles.{id}"),
-                    at: Locator::Key(&format!("{id}:")),
-                    message: format!("cycle {id} is {length}, which is not a positive length"),
-                    hint: "give the cycle a length of one tick or more",
-                }
-                .into_diagnostic(),
-            ),
+            _ => diagnostics.push(file_text.refuse_at(
+                &format!("cycles.{id}"),
+                Locator::Key(&format!("{id}:")),
+                format!("cycle {id} is {length}, which is not a positive length"),
+                "give the cycle a length of one tick or more",
+            )),
         }
     }
     budget.idle_rounds = parse_idle(&file_text, yaml.idle, &mut diagnostics);
@@ -139,16 +135,7 @@ fn set_number(
         0 => "use a number that is zero or greater",
         _ => "use a number greater than zero",
     };
-    diagnostics.push(
-        Problem {
-            source: file_text,
-            path: key,
-            at: Locator::Key(&format!("{key}:")),
-            message,
-            hint,
-        }
-        .into_diagnostic(),
-    );
+    diagnostics.push(file_text.refuse_at(key, Locator::Key(&format!("{key}:")), message, hint));
 }
 
 fn parse_idle(
@@ -160,16 +147,12 @@ fn parse_idle(
         None | Some("on") => true,
         Some("off") => false,
         Some(other) => {
-            diagnostics.push(
-                Problem {
-                    source: file_text,
-                    path: "idle",
-                    at: Locator::Key("idle:"),
-                    message: format!("idle is '{other}', which is not on or off"),
-                    hint: "write idle: on or idle: off",
-                }
-                .into_diagnostic(),
-            );
+            diagnostics.push(file_text.refuse_at(
+                "idle",
+                Locator::Key("idle:"),
+                format!("idle is '{other}', which is not on or off"),
+                "write idle: on or idle: off",
+            ));
             true
         }
     }

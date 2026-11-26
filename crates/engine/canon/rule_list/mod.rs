@@ -3,9 +3,7 @@
 use serde_saphyr::Spanned;
 use spookery_protocol::{is_built_in, Seat};
 
-use crate::canon::refusal::{
-    file_location_of, CompileError, Diagnostics, FileText, Locator, Problem,
-};
+use crate::canon::refusal::{file_location_of, CompileError, Diagnostics, FileText, Locator};
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::rules::expr::{self, stamp_spots, Expr};
 use crate::rules::grammar;
@@ -62,30 +60,22 @@ fn compile_rule(
     let mut diagnostics = Vec::new();
     let local_id = entry.id.value.clone();
     if local_id.is_empty() || local_id == "say" {
-        diagnostics.push(
-            Problem {
-                source: &file_text,
-                path: &format!("rules[{index}].id"),
-                at: Locator::FileLocation(file_location_of(&entry.id)),
-                message: "a rule id is empty or is say".into(),
-                hint: "set id to a short rule id; say is speech",
-            }
-            .into_diagnostic(),
-        );
+        diagnostics.push(file_text.refuse_at(
+            &format!("rules[{index}].id"),
+            Locator::FileLocation(file_location_of(&entry.id)),
+            "a rule id is empty or is say".into(),
+            "set id to a short rule id; say is speech",
+        ));
     }
     let when = match compile_rule_kind(&entry.when.value) {
         Ok(when) => Some(when),
         Err(message) => {
-            diagnostics.push(
-                Problem {
-                    source: &file_text,
-                    path: &format!("rules[{index}].when"),
-                    at: Locator::FileLocation(file_location_of(&entry.when)),
-                    message,
-                    hint: "set when to habit, a verb, or a change",
-                }
-                .into_diagnostic(),
-            );
+            diagnostics.push(file_text.refuse_at(
+                &format!("rules[{index}].when"),
+                Locator::FileLocation(file_location_of(&entry.when)),
+                message,
+                "set when to habit, a verb, or a change",
+            ));
             None
         }
     };
@@ -186,16 +176,12 @@ fn compile_rule(
         let band_message = (checks.into_iter())
             .find_map(|(check, partial)| find_partial_band_message(check, partial));
         if let Some((message, hint)) = band_message {
-            diagnostics.push(
-                Problem {
-                    source: &file_text,
-                    path: &format!("rules[{index}].id"),
-                    at: Locator::FileLocation(file_location_of(&entry.id)),
-                    message: format!("rule '{local_id}' {message}"),
-                    hint,
-                }
-                .into_diagnostic(),
-            );
+            diagnostics.push(file_text.refuse_at(
+                &format!("rules[{index}].id"),
+                Locator::FileLocation(file_location_of(&entry.id)),
+                format!("rule '{local_id}' {message}"),
+                hint,
+            ));
         }
     }
     if !diagnostics.is_empty() {
@@ -244,14 +230,12 @@ fn compile_rule(
         )
     });
     if let Some((message, hint)) = misplaced_message.or_else(|| find_let_read_message(&rule)) {
-        return Err(vec![Problem {
-            source: &file_text,
-            path: &format!("rules[{index}].id"),
-            at: Locator::FileLocation(file_location_of(&entry.id)),
-            message: format!("rule '{}' {message}", rule.local_id),
-            hint: &hint,
-        }
-        .into_diagnostic()]);
+        return Err(vec![file_text.refuse_at(
+            &format!("rules[{index}].id"),
+            Locator::FileLocation(file_location_of(&entry.id)),
+            format!("rule '{}' {message}", rule.local_id),
+            &hint,
+        )]);
     }
     Ok(rule)
 }

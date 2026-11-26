@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::canon::map::{self, OPEN};
-use crate::canon::refusal::{FileText, Locator, Problem};
+use crate::canon::refusal::{FileText, Locator};
 use crate::canon::{cast, place, story};
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::component::meter;
@@ -222,16 +222,7 @@ impl EntityDefs<'_> {
                     continue;
                 };
                 let at = Locator::FileLocation(*file_location);
-                let refuse = |message, hint| {
-                    Problem {
-                        source: file_text,
-                        path: key_path,
-                        at,
-                        message,
-                        hint,
-                    }
-                    .into_diagnostic()
-                };
+                let refuse = |message, hint| file_text.refuse_at(key_path, at, message, hint);
                 if let Some(reason) = self.meter_not_carried_reason(fixed_self_id, of, key) {
                     diagnostics.push(refuse(
                         format!("expression reads meter '{key}', but {reason}"),

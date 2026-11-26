@@ -89,15 +89,29 @@ impl<'a> FileText<'a> {
         self.refuse_at(key_path, at, error.message, "")
     }
 
-    fn refuse_at(&self, key_path: &str, at: Locator, message: String, hint: &str) -> Diagnostic {
-        Problem {
-            source: self,
-            path: key_path,
-            at,
-            message,
-            hint,
+    pub(super) fn refuse_at(
+        &self,
+        key_path: &str,
+        at: Locator,
+        message: String,
+        hint: &str,
+    ) -> Diagnostic {
+        let code = Code::Error(Reason::Schema);
+        let mut diagnostic = Diagnostic::new(self.file, code, &message, hint);
+        if !key_path.is_empty() {
+            diagnostic = diagnostic.at_path(key_path);
         }
-        .into_diagnostic()
+        match at {
+            Locator::Nowhere | Locator::FileLocation(None) => diagnostic,
+            Locator::Key(key) => diagnostic.at_spot(locate_nth(self.text, key, 0)),
+            Locator::Entry { list, index, key } => {
+                diagnostic.at_spot(locate_entry_field(self.text, list, index, key))
+            }
+            Locator::FileLocation(Some(file_location)) => {
+                let column = Some(file_location.column).filter(|column| *column > 0);
+                diagnostic.at_line(file_location.line, column)
+            }
+        }
     }
 }
 
@@ -127,37 +141,6 @@ pub(super) enum Locator<'a> {
     },
     /// A line and column serde recorded, already counted from the file's first line.
     FileLocation(Option<LineColumn>),
-}
-
-/// One problem in one pack file. `path` is `""` when there is none.
-pub(super) struct Problem<'a> {
-    pub source: &'a FileText<'a>,
-    pub path: &'a str,
-    pub at: Locator<'a>,
-    pub message: String,
-    pub hint: &'a str,
-}
-
-impl Problem<'_> {
-    pub(super) fn into_diagnostic(self) -> Diagnostic {
-        let file_text = self.source;
-        let code = Code::Error(Reason::Schema);
-        let mut diagnostic = Diagnostic::new(file_text.file, code, &self.message, self.hint);
-        if !self.path.is_empty() {
-            diagnostic = diagnostic.at_path(self.path);
-        }
-        match self.at {
-            Locator::Nowhere | Locator::FileLocation(None) => diagnostic,
-            Locator::Key(key) => diagnostic.at_spot(locate_nth(file_text.text, key, 0)),
-            Locator::Entry { list, index, key } => {
-                diagnostic.at_spot(locate_entry_field(file_text.text, list, index, key))
-            }
-            Locator::FileLocation(Some(file_location)) => {
-                let column = Some(file_location.column).filter(|column| *column > 0);
-                diagnostic.at_line(file_location.line, column)
-            }
-        }
-    }
 }
 
 /// A message and its file location from a `compile_*` step that does not know its file yet.

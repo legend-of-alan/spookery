@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::canon::meters::{self, MeterYaml};
 use crate::canon::pack_files::Page;
-use crate::canon::refusal::{Diagnostics, FileText, Locator, Problem};
+use crate::canon::refusal::{Diagnostics, FileText, Locator};
 use crate::canon::rule_list::{self, parse::RuleYaml};
 use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::ecs::component::meter;
@@ -89,31 +89,23 @@ fn parse(file: &str, frontmatter: &str) -> Result<Yaml, Vec<Diagnostic>> {
     let empty_words = ("id is empty", "set id to a short cast id");
     diagnostics.extend(file_text.refuse_empty(&yaml.id, "id", Locator::Key("id:"), empty_words));
     if yaml.id == "world" {
-        diagnostics.push(
-            Problem {
-                source: &file_text,
-                path: "id",
-                at: Locator::Key("id:"),
-                message: "id world is reserved".into(),
-                hint: "rename this cast member",
-            }
-            .into_diagnostic(),
-        );
+        diagnostics.push(file_text.refuse_at(
+            "id",
+            Locator::Key("id:"),
+            "id world is reserved".into(),
+            "rename this cast member",
+        ));
     }
     if yaml.control_type != "npc" && yaml.control_type != "pc_template" {
-        diagnostics.push(
-            Problem {
-                source: &file_text,
-                path: "control_type",
-                at: Locator::Key("control_type:"),
-                message: format!(
-                    "control_type is '{}', which is not npc or pc_template",
-                    yaml.control_type
-                ),
-                hint: "set control_type to npc or pc_template",
-            }
-            .into_diagnostic(),
-        );
+        diagnostics.push(file_text.refuse_at(
+            "control_type",
+            Locator::Key("control_type:"),
+            format!(
+                "control_type is '{}', which is not npc or pc_template",
+                yaml.control_type
+            ),
+            "set control_type to npc or pc_template",
+        ));
     }
     diagnostics.into_result(yaml)
 }
