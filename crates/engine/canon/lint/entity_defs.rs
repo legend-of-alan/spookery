@@ -15,7 +15,7 @@ use crate::rules::rule::{self, Cond, EffectTemplate, Rule, RuleKind, Scope, Targ
 
 pub(in crate::canon) fn find_unknown_meter_reads(
     entity_defs: &EntityDefs,
-    rules: &rule::Table,
+    rules: &rule::Rules,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for rule in rules.iter() {
@@ -49,7 +49,7 @@ pub(in crate::canon) fn find_unknown_meter_reads(
 /// flag.
 pub(in crate::canon) fn find_missing_components(
     entity_defs: &EntityDefs,
-    rules: &rule::Table,
+    rules: &rule::Rules,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for rule in rules.iter() {

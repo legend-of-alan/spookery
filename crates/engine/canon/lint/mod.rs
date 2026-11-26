@@ -46,7 +46,7 @@ pub(super) fn find_unknown_path_ids(
 }
 
 pub(super) fn find_unknown_rule_items(
-    rules: &rule::Table,
+    rules: &rule::Rules,
     items: &BTreeMap<String, item::Def>,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
@@ -67,7 +67,7 @@ pub(super) fn find_unknown_rule_items(
 
 /// Modifier effects naming a modifier `rules/modifiers.yaml` does not define.
 pub(super) fn find_unknown_modifiers(
-    rules: &rule::Table,
+    rules: &rule::Rules,
     modifiers: &BTreeMap<String, modifier::Def>,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();

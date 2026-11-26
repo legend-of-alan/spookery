@@ -566,11 +566,11 @@ pub(crate) enum NarrateTo {
 }
 
 #[derive(Clone, Debug)]
-pub struct Table {
+pub struct Rules {
     rules: Vec<Rule>,
 }
 
-impl Table {
+impl Rules {
     pub(crate) fn new(rules: Vec<Rule>) -> Self {
         Self { rules }
     }

@@ -47,7 +47,7 @@ pub struct Canon {
     pub paths: Paths,
     pub cast: BTreeMap<ActorId, cast::Def>,
     pub(crate) stories: BTreeMap<StoryId, story::Def>,
-    pub rules: rule::Table,
+    pub rules: rule::Rules,
     /// The meters `rules/meters.yaml` gives every actor, and those one cast, place or story
     /// file gives its entity. An id is listed once.
     pub meters: BTreeMap<String, meter::Def>,
@@ -258,7 +258,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
             }),
         );
     }
-    let rules = rule::Table::new(unsorted_rules);
+    let rules = rule::Rules::new(unsorted_rules);
     let budget = budget.and_then(|(file, text)| diagnostics.keep(budget::load(file, &text)));
     if let (Some(meters), Some(world_meters), Some(paths)) = (&meters, &world_meters, &paths) {
         let entity_defs = EntityDefs {
