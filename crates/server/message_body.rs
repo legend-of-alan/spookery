@@ -8,7 +8,7 @@ use spookery_engine::{self as engine, ActorId, Intent, MoveReport, Presence, Tap
 
 /// A move the gate or a round refused. Its `detail` is the meter or item id, or the
 /// sentence a locked exit shows.
-pub(super) fn build_refused_move(refusal: &engine::Refusal) -> protocol::Refusal {
+pub(super) fn build_refused_verb(refusal: &engine::Refusal) -> protocol::Refusal {
     protocol::Refusal {
         code: protocol::Code::Known(refusal.code),
         detail: refusal.detail.clone(),
@@ -53,7 +53,7 @@ pub(super) fn build_claim_reply(
     }
 }
 
-/// The `check` and `refused` bodies of this actor's moves.
+/// The `check` and `refused` bodies of this actor's verbs.
 pub(super) fn build_checks(reports: &[MoveReport], actor_id: &ActorId) -> Vec<ServerBody> {
     reports
         .iter()
@@ -66,7 +66,7 @@ pub(super) fn build_checks(reports: &[MoveReport], actor_id: &ActorId) -> Vec<Se
             MoveReport::Refused {
                 actor_id: id,
                 refusal,
-            } if id == actor_id => Some(ServerBody::Refused(build_refused_move(refusal))),
+            } if id == actor_id => Some(ServerBody::Refused(build_refused_verb(refusal))),
             _ => None,
         })
         .collect()
@@ -158,7 +158,7 @@ pub(super) fn build_status(
                 Some(QueuedVerb {
                     id: intent.id.clone(),
                     actor_id: intent.actor_id.as_ref()?.to_string(),
-                    move_id: intent.move_id.clone(),
+                    verb_id: intent.verb_id.clone(),
                 })
             })
             .collect(),

@@ -30,7 +30,7 @@ fn queue(opened: &mut spookery_engine::Session, line: &str) {
     let (verb, target) = line
         .split_once(' ')
         .map_or((line, None), |(v, t)| (v, Some(t)));
-    if let Err(refusal) = opened.queue_player_move(&seated(), &"rowan".into(), verb, target) {
+    if let Err(refusal) = opened.queue_player_verb(&seated(), &"rowan".into(), verb, target) {
         panic!("{line}: {}", refusal.code.as_str());
     }
 }
@@ -279,7 +279,7 @@ fn the_street_exit_shows(world: &mut World, rowan_ticks: u64, wren_ticks: u64) {
 fn refused_at_once(world: &mut World, line: String, code: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
     let refusal = opened
-        .queue_player_move(&seated(), &"rowan".into(), &line, None)
+        .queue_player_verb(&seated(), &"rowan".into(), &line, None)
         .expect_err("the line is refused");
     assert_eq!(refusal.code.as_str(), code);
     assert!(opened.queued_intents().is_empty());
@@ -290,7 +290,7 @@ fn refused_at_once(world: &mut World, line: String, code: String) {
 fn rowans_line_is_refused(world: &mut World, line: String, code: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
     let (verb, target) = split_line(&line);
-    let refused = match opened.queue_player_move(&seated(), &"rowan".into(), verb, target) {
+    let refused = match opened.queue_player_verb(&seated(), &"rowan".into(), verb, target) {
         Err(refusal) => refusal.code,
         Ok(_) => {
             let output = play(&mut opened);

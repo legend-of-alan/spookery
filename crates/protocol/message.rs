@@ -113,7 +113,7 @@ pub enum ServerBody {
         #[serde(rename = "actor")]
         actor_id: String,
         #[serde(rename = "verb")]
-        move_id: String,
+        verb_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<String>,
     },

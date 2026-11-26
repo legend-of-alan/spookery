@@ -233,7 +233,7 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
         actors_present: Vec::new(),
     };
     opened
-        .queue_player_move(&one_human, &"rowan".into(), "travel", Some("ferry_dock"))
+        .queue_player_verb(&one_human, &"rowan".into(), "travel", Some("ferry_dock"))
         .unwrap_or_else(|err| panic!("travel {}", err.code.as_str()));
     let wall = opened.world().last_round_at.clone();
     opened
@@ -513,7 +513,7 @@ fn harbormouse_attacks(world: &mut World) {
     let mut opened = open(&pack);
     let nobody = Presence::default();
     opened
-        .queue_player_move(&nobody, &"harbormouse".into(), "attack", Some("briar"))
+        .queue_player_verb(&nobody, &"harbormouse".into(), "attack", Some("briar"))
         .unwrap_or_else(|err| panic!("attack {}", err.code.as_str()));
     let wall = opened.world().last_round_at.clone();
     let outputs = opened
@@ -659,7 +659,7 @@ fn steady_costs_five_vigor(world: &mut World) {
 fn the_seated_pc_plays_steady(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open(&pack);
-    let played = opened.queue_player_move(&Presence::default(), &"rowan".into(), "steady", None);
+    let played = opened.queue_player_verb(&Presence::default(), &"rowan".into(), "steady", None);
     world.scratch = match played {
         Err(err) => format!("{} {}", err.code.as_str(), err.detail.unwrap_or_default()),
         Ok(_) => "queued".to_string(),
@@ -708,12 +708,12 @@ fn a_pc_is_gated_on_those_full_ids(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open(&pack);
     let mut codes = Vec::new();
-    for move_id in ["cast:mira/leave_door_note", "place:docks_street/travel"] {
-        match opened.queue_player_move(&Presence::default(), &"rowan".into(), move_id, None) {
+    for verb_id in ["cast:mira/leave_door_note", "place:docks_street/travel"] {
+        match opened.queue_player_verb(&Presence::default(), &"rowan".into(), verb_id, None) {
             Err(miss) if miss.code == Reason::NotInSpec => {
                 codes.push(miss.code.as_str());
             }
-            other => panic!("{move_id}: {other:?}"),
+            other => panic!("{verb_id}: {other:?}"),
         }
     }
     world.scratch = codes.join(" ");
@@ -787,7 +787,7 @@ fn the_seated_pc_queues_use_tonic(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open(&pack);
     let played =
-        opened.queue_player_move(&Presence::default(), &"rowan".into(), "use", Some("tonic"));
+        opened.queue_player_verb(&Presence::default(), &"rowan".into(), "use", Some("tonic"));
     world.scratch = match played {
         Ok((queued, _)) => {
             let intent = opened
@@ -795,7 +795,7 @@ fn the_seated_pc_queues_use_tonic(world: &mut World) {
                 .iter()
                 .find(|intent| intent.id == queued.id)
                 .unwrap();
-            format!("{:?} {}", intent.target, intent.move_id)
+            format!("{:?} {}", intent.target, intent.verb_id)
         }
         Err(err) => err.code.as_str().to_string(),
     };
@@ -912,7 +912,7 @@ fn play_harbormouse_line(world: &mut World, line: &str) {
     world.before = host::read_files(&pack);
     let (verb, target) = split_line(line);
     let (seated, mut opened) = (seated_harbormouse(), open(&pack));
-    if let Err(refusal) = opened.queue_player_move(&seated, &"harbormouse".into(), verb, target) {
+    if let Err(refusal) = opened.queue_player_verb(&seated, &"harbormouse".into(), verb, target) {
         world.scratch = refusal.code.as_str().to_string();
         return;
     }

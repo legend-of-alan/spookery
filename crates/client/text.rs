@@ -455,7 +455,7 @@ pub fn render_status(status: &HostStatus) -> String {
         let lines = status
             .queued
             .iter()
-            .map(|row| format!("{}: {}", humanize(&row.actor_id), row.move_id))
+            .map(|row| format!("{}: {}", humanize(&row.actor_id), row.verb_id))
             .collect::<Vec<_>>()
             .join("\n");
         format!("Queue:\n{lines}")
@@ -498,9 +498,9 @@ pub fn render_gm(body: &ServerBody) -> String {
     match body {
         ServerBody::Say(speech) => format!("{}: {}", speaker_name(speech), speech.text),
         ServerBody::Queued {
-            actor_id, move_id, ..
+            actor_id, verb_id, ..
         } => {
-            format!("{} queued: {move_id}", humanize(actor_id))
+            format!("{} queued: {verb_id}", humanize(actor_id))
         }
         ServerBody::Status(status) => render_status(status),
         ServerBody::View(view) => render_view(view),

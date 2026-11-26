@@ -45,7 +45,7 @@ fn wielded(pack: &Path, actor: &str) -> Option<String> {
 }
 
 /// One line with the GM seat empty: queue it, then commit its round.
-fn handle_move(
+fn handle_verb(
     pack: &Path,
     actor: &str,
     line: &str,
@@ -54,7 +54,7 @@ fn handle_move(
     let actor = resolve_id(session.canon(), actor);
     let (verb, target) = split_line(line);
     let nobody = spookery_engine::Presence::default();
-    session.queue_player_move(&nobody, &actor.into(), verb, target)?;
+    session.queue_player_verb(&nobody, &actor.into(), verb, target)?;
     let stamp = session.world().last_round_at.clone();
     Ok(session
         .commit_then_fast_forward(&nobody, &stamp)
@@ -163,7 +163,7 @@ fn harbormouse_holds_a_tonic(world: &mut World) {
 #[when(regex = r#"^(?P<actor>[A-Z]\S*) types "(?P<text>.*)"$"#)]
 fn actor_types(world: &mut World, actor: String, line: String) {
     let pack = world.pack.clone().unwrap();
-    world.scratch = match handle_move(&pack, &actor, &line) {
+    world.scratch = match handle_verb(&pack, &actor, &line) {
         Ok(outputs) => {
             let refused = list_refusals(outputs.iter().flat_map(|output| &output.reports));
             world.summary = outputs.into_iter().flat_map(|o| o.changed_keys).collect();
@@ -194,7 +194,7 @@ fn harbormouse_is_healed_and_empty(world: &mut World) {
 #[then(expr = "{string} again is rejected with {word} by the engine")]
 fn again_is_refused(world: &mut World, line: String, code: String) {
     let pack = world.pack.as_ref().unwrap();
-    let err = match handle_move(pack, "harbormouse", &line) {
+    let err = match handle_verb(pack, "harbormouse", &line) {
         Err(err) => err,
         Ok(_) => panic!("the second use was accepted"),
     };
@@ -221,7 +221,7 @@ fn docks_shop_has_3_lamp_oil(world: &mut World) {
 #[when(expr = "rowan takes lamp_oil")]
 fn rowan_takes_oil(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    handle_move(&pack, "rowan", "take lamp_oil")
+    handle_verb(&pack, "rowan", "take lamp_oil")
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 
@@ -305,7 +305,7 @@ fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
 #[when(expr = "rowan drops lamp_oil")]
 fn rowan_drops_oil(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let outputs = handle_move(&pack, "rowan", "drop lamp_oil")
+    let outputs = handle_verb(&pack, "rowan", "drop lamp_oil")
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
     world.scratch = list_refusals(outputs.iter().flat_map(|output| &output.reports));
 }
@@ -381,14 +381,14 @@ fn harbormouse_wields_nothing(world: &mut World) {
 #[when(expr = "harbormouse attacks wren")]
 fn harbormouse_attacks_wren(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    handle_move(&pack, "harbormouse", "attack wren")
+    handle_verb(&pack, "harbormouse", "attack wren")
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 
 #[when(expr = "harbormouse drops poisoned_dagger")]
 fn harbormouse_drops_poisoned_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    handle_move(&pack, "harbormouse", "drop poisoned_dagger")
+    handle_verb(&pack, "harbormouse", "drop poisoned_dagger")
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 

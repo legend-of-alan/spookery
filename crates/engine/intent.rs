@@ -72,7 +72,7 @@ pub struct Intent {
     pub actor_id: Option<ActorId>,
     pub source: Source,
     #[serde(rename = "verb")]
-    pub move_id: String,
+    pub verb_id: String,
     pub target: Target,
     pub args: IntentArgs,
     pub rationale_code: String,
@@ -85,7 +85,7 @@ impl Intent {
         round_index: u64,
         actor_id: Option<ActorId>,
         source: Source,
-        move_id: &str,
+        verb_id: &str,
         target: Target,
     ) -> Self {
         Self {
@@ -93,7 +93,7 @@ impl Intent {
             round_index,
             actor_id,
             source,
-            move_id: move_id.to_string(),
+            verb_id: verb_id.to_string(),
             target,
             args: IntentArgs::default(),
             rationale_code: String::new(),
