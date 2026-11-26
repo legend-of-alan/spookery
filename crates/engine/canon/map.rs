@@ -55,7 +55,7 @@ fn compile(index: usize, entry: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
         }
     };
     let cost = match &entry.cost {
-        Some(yaml) => rule_list::compile::build_cost(yaml).map_err(|error| {
+        Some(yaml) => rule_list::compile::cost(yaml).map_err(|error| {
             vec![file_text.refuse_error(&format!("paths[{index}].cost"), error)]
         })?,
         None => Cost {
@@ -70,9 +70,7 @@ fn compile(index: usize, entry: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
             let push_error = |error| {
                 diagnostics.push(file_text.refuse_error(&format!("paths[{index}].if"), error))
             };
-            rule_list::compile::build_cond(cond)
-                .map_err(push_error)
-                .ok()
+            rule_list::compile::cond(cond).map_err(push_error).ok()
         })
         .collect();
     diagnostics.into_result(())?;

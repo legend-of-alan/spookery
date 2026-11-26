@@ -12,11 +12,12 @@ use crate::rules::rule::{
     RuleKind, Scope, TargetKind,
 };
 
+use super::compile;
 use super::parse::{
     ChangeYaml, CondYaml, CostYaml, CountsYaml, EffectYaml, ExprYaml, IfYaml, RuleYaml, WhenYaml,
 };
 
-pub(in crate::canon) fn build_rules(
+pub(in crate::canon) fn rules(
     file: &str,
     entries: Vec<RuleYaml>,
     scope: &Scope,
@@ -26,7 +27,7 @@ pub(in crate::canon) fn build_rules(
     let mut rules: Vec<Rule> = Vec::new();
     let mut verb_ids = Vec::new();
     for (index, entry) in entries.into_iter().enumerate() {
-        let Some(rule) = diagnostics.keep(build_rule(file, index, entry, scope)) else {
+        let Some(rule) = diagnostics.keep(compile::rule(file, index, entry, scope)) else {
             continue;
         };
         if let RuleKind::Verb { verb_id, .. } = &rule.kind {
@@ -48,12 +49,7 @@ pub(in crate::canon) fn build_rules(
     diagnostics.into_result(rules)
 }
 
-fn build_rule(
-    file: &str,
-    index: usize,
-    entry: RuleYaml,
-    scope: &Scope,
-) -> Result<Rule, Vec<Diagnostic>> {
+fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule, Vec<Diagnostic>> {
     let file_text = FileText::without_text(file);
     let mut diagnostics = Diagnostics::default();
     let local_id = entry.id.value.clone();
@@ -66,7 +62,7 @@ fn build_rule(
             "set id to a short rule id; say is speech",
         ));
     }
-    let kind = match build_rule_kind(&entry.when.value) {
+    let kind = match compile::rule_kind(&entry.when.value) {
         Ok(kind) => Some(kind),
         Err(message) => {
             diagnostics.push(file_text.refuse_at(
@@ -78,14 +74,14 @@ fn build_rule(
             None
         }
     };
-    let if_ = match entry.if_.as_ref().map(build_conds).transpose() {
+    let if_ = match entry.if_.as_ref().map(compile::conds).transpose() {
         Ok(list) => list.unwrap_or_default(),
         Err(error) => {
             diagnostics.push(file_text.refuse_error("", error));
             Vec::new()
         }
     };
-    let cost = match entry.cost.as_ref().map(build_cost).transpose() {
+    let cost = match entry.cost.as_ref().map(compile::cost).transpose() {
         Ok(cost) => cost,
         Err(error) => {
             diagnostics.push(file_text.refuse_error("", error));
@@ -96,7 +92,7 @@ fn build_rule(
         .finish
         .as_ref()
         .and_then(|finish| finish.cost.as_ref());
-    let finish_cost = match finish_cost_yaml.map(build_cost).transpose() {
+    let finish_cost = match finish_cost_yaml.map(compile::cost).transpose() {
         Ok(Some(_)) if finish_cost_yaml.is_some_and(|cost| cost.ticks.is_some()) => {
             diagnostics.push(schema_error(
                 file,
@@ -114,7 +110,7 @@ fn build_rule(
     let mut lets: Vec<_> = entry.lets.iter().collect();
     lets.sort_by_key(|(_, number)| (number.referenced.line(), number.referenced.column()));
     let lets = (lets.into_iter())
-        .map(|(id, number)| build_let(id, number))
+        .map(|(id, number)| compile::let_(id, number))
         .collect::<Result<Vec<_>, CompileError>>();
     let lets = match lets {
         Ok(lets) => lets,
@@ -124,7 +120,7 @@ fn build_rule(
         }
     };
     let check = match (entry.check.as_ref())
-        .map(|yaml| build_check(&yaml.total, &yaml.success_at, yaml.partial_at.as_ref()))
+        .map(|yaml| compile::check(&yaml.total, &yaml.success_at, yaml.partial_at.as_ref()))
         .transpose()
     {
         Ok(check) => check,
@@ -133,10 +129,10 @@ fn build_rule(
             None
         }
     };
-    let do_ = build_effect_templates(file, &entry.do_)?;
-    let success = build_effect_templates(file, &entry.success)?;
-    let partial = build_effect_templates(file, &entry.partial)?;
-    let miss = build_effect_templates(file, &entry.miss)?;
+    let do_ = compile::effect_templates(file, &entry.do_)?;
+    let success = compile::effect_templates(file, &entry.success)?;
+    let partial = compile::effect_templates(file, &entry.partial)?;
+    let miss = compile::effect_templates(file, &entry.miss)?;
     if let Some(kind) = &kind {
         let timed = cost.is_some()
             || entry.start.is_some()
@@ -274,7 +270,7 @@ fn find_let_read_message(rule: &Rule) -> Option<(String, String)> {
     None
 }
 
-fn build_rule_kind(yaml: &WhenYaml) -> Result<RuleKind, String> {
+fn rule_kind(yaml: &WhenYaml) -> Result<RuleKind, String> {
     match yaml {
         WhenYaml::Word(word) if word == "habit" => Ok(RuleKind::Habit),
         WhenYaml::Word(word) => Err(format!("when '{word}' is not habit")),
@@ -301,13 +297,13 @@ fn build_rule_kind(yaml: &WhenYaml) -> Result<RuleKind, String> {
                     target,
                 })
             }
-            (None, Some(change)) => build_change_watch(change).map(RuleKind::Change),
+            (None, Some(change)) => compile::change_watch(change).map(RuleKind::Change),
             _ => Err("when needs one of verb or change".to_string()),
         },
     }
 }
 
-fn build_change_watch(yaml: &ChangeYaml) -> Result<ChangeWatch, String> {
+fn change_watch(yaml: &ChangeYaml) -> Result<ChangeWatch, String> {
     let subject = match yaml.subject.as_deref() {
         None | Some("any") => grammar::Subject::Any,
         Some("pc") => grammar::Subject::Pc,
@@ -361,25 +357,25 @@ fn build_change_watch(yaml: &ChangeYaml) -> Result<ChangeWatch, String> {
     Err("a change needs arrive, leave, meter, flag, or item".to_string())
 }
 
-fn build_conds(yaml: &IfYaml) -> Result<Vec<Cond>, CompileError> {
+fn conds(yaml: &IfYaml) -> Result<Vec<Cond>, CompileError> {
     match yaml {
-        IfYaml::List(list) => list.iter().map(build_cond).collect(),
-        IfYaml::One(one) => Ok(vec![build_cond(one)?]),
+        IfYaml::List(list) => list.iter().map(compile::cond).collect(),
+        IfYaml::One(one) => Ok(vec![compile::cond(one)?]),
     }
 }
 
-pub(in crate::canon) fn build_cond(yaml: &CondYaml) -> Result<Cond, CompileError> {
+pub(in crate::canon) fn cond(yaml: &CondYaml) -> Result<Cond, CompileError> {
     Ok(match yaml {
         CondYaml::HasItem(item) => Cond::HasItem {
             subject: parse_actor(&item.subject)?,
             id: item.id.clone(),
-            count: (item.count.as_ref()).map_or(Ok(Expr::Num(1)), build_expr_without_dice)?,
+            count: (item.count.as_ref()).map_or(Ok(Expr::Num(1)), compile::expr_without_dice)?,
         },
         CondYaml::Meter(meter) => Cond::Meter {
             of: parse_object(&meter.of)?,
             key: meter.id.clone(),
             op: parse_op(&meter.op)?,
-            value: build_expr_without_dice(&meter.value)?,
+            value: compile::expr_without_dice(&meter.value)?,
         },
         CondYaml::Flag(flag) => Cond::Flag {
             of: parse_object(&flag.of)?,
@@ -391,8 +387,8 @@ pub(in crate::canon) fn build_cond(yaml: &CondYaml) -> Result<Cond, CompileError
             place: at.place.clone(),
         },
         CondYaml::Cycle(cycle) => {
-            let from = build_expr_without_dice(&cycle.from)?;
-            let to = build_expr_without_dice(&cycle.to)?;
+            let from = compile::expr_without_dice(&cycle.from)?;
+            let to = compile::expr_without_dice(&cycle.to)?;
             if from.constant().is_some() && from.constant() == to.constant() {
                 return Err("cycle needs from and to that differ".into());
             }
@@ -404,48 +400,48 @@ pub(in crate::canon) fn build_cond(yaml: &CondYaml) -> Result<Cond, CompileError
         }
         CondYaml::Players(players) => Cond::Players {
             op: parse_op(&players.op)?,
-            value: build_expr_without_dice(&players.value)?,
+            value: compile::expr_without_dice(&players.value)?,
         },
         CondYaml::NoteExists(id) => Cond::NoteExists(id.clone()),
         CondYaml::Wielding(wielding) => Cond::Wielding {
             subject: parse_actor(&wielding.subject)?,
             id: wielding.id.clone(),
         },
-        CondYaml::All(all) => Cond::All(all.iter().map(build_cond).collect::<Result<_, _>>()?),
-        CondYaml::Any(any) => Cond::Any(any.iter().map(build_cond).collect::<Result<_, _>>()?),
-        CondYaml::Not(not) => Cond::Not(Box::new(build_cond(not)?)),
+        CondYaml::All(all) => Cond::All(all.iter().map(compile::cond).collect::<Result<_, _>>()?),
+        CondYaml::Any(any) => Cond::Any(any.iter().map(compile::cond).collect::<Result<_, _>>()?),
+        CondYaml::Not(not) => Cond::Not(Box::new(compile::cond(not)?)),
     })
 }
 
-pub(in crate::canon) fn build_cost(yaml: &CostYaml) -> Result<Cost, CompileError> {
+pub(in crate::canon) fn cost(yaml: &CostYaml) -> Result<Cost, CompileError> {
     Ok(Cost {
-        ticks: (yaml.ticks.as_ref()).map_or(Ok(Expr::Num(0)), build_expr_without_dice)?,
-        meters: build_counts(&yaml.meters)?,
-        items: build_counts(&yaml.items)?,
+        ticks: (yaml.ticks.as_ref()).map_or(Ok(Expr::Num(0)), compile::expr_without_dice)?,
+        meters: compile::counts(&yaml.meters)?,
+        items: compile::counts(&yaml.items)?,
     })
 }
 
-fn build_counts(yaml: &CountsYaml) -> Result<Vec<(String, Expr)>, CompileError> {
+fn counts(yaml: &CountsYaml) -> Result<Vec<(String, Expr)>, CompileError> {
     (yaml.iter())
-        .map(|(key, n)| Ok((key.clone(), build_expr_without_dice(n)?)))
+        .map(|(key, n)| Ok((key.clone(), compile::expr_without_dice(n)?)))
         .collect()
 }
 
-fn build_check(
+fn check(
     total: &Spanned<ExprYaml>,
     success_at: &Spanned<ExprYaml>,
     partial_at: Option<&Spanned<ExprYaml>>,
 ) -> Result<rule::Check, CompileError> {
     Ok(rule::Check {
-        total: build_expr(total)?,
-        success_at: build_expr(success_at)?,
-        partial_at: partial_at.map(build_expr).transpose()?,
+        total: compile::expr(total)?,
+        success_at: compile::expr(success_at)?,
+        partial_at: partial_at.map(compile::expr).transpose()?,
     })
 }
 
 /// A number in a cond or a cost, refused on its line when it rolls dice.
-fn build_expr_without_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileError> {
-    let expr = build_expr(yaml)?;
+fn expr_without_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileError> {
+    let expr = compile::expr(yaml)?;
     if expr.needs_dice() {
         return Err(CompileError {
             message: "a condition or a cost cannot roll dice".into(),
@@ -456,7 +452,7 @@ fn build_expr_without_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileErro
 }
 
 /// One `let:` id and its number. An id no number could read back is refused on its line.
-fn build_let(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), CompileError> {
+fn let_(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), CompileError> {
     if !expr::is_let_id(id) {
         return Err(CompileError {
             message: format!(
@@ -466,10 +462,10 @@ fn build_let(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), Com
             file_location: file_location_of(number),
         });
     }
-    Ok((id.to_string(), build_expr(number)?))
+    Ok((id.to_string(), compile::expr(number)?))
 }
 
-fn build_expr(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileError> {
+fn expr(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileError> {
     let file_location = file_location_of(yaml);
     match &yaml.value {
         ExprYaml::Literal(n) => Ok(Expr::Num(*n)),
@@ -486,13 +482,13 @@ fn build_expr(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileError> {
     }
 }
 
-fn build_effect_templates(
+fn effect_templates(
     file: &str,
     list: &[EffectYaml],
 ) -> Result<Vec<EffectTemplate>, Vec<Diagnostic>> {
     let mut out = Vec::new();
     for effect in list {
-        match build_effect_template(effect) {
+        match compile::effect_template(effect) {
             Ok(effect) => out.push(effect),
             Err(error) => {
                 return Err(vec![FileText::without_text(file).refuse_error("", error)]);
@@ -502,7 +498,7 @@ fn build_effect_templates(
     Ok(out)
 }
 
-fn build_effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
+fn effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
     Ok(match yaml {
         EffectYaml::Meter(meter) if meter.add.is_some() == meter.set.is_some() => {
             return Err("a meter effect needs add or set, not both".into());
@@ -510,8 +506,8 @@ fn build_effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileErr
         EffectYaml::Meter(meter) => EffectTemplate::Meter {
             of: parse_object(&meter.of)?,
             key: meter.key.clone(),
-            add: meter.add.as_ref().map(build_expr).transpose()?,
-            set: meter.set.as_ref().map(build_expr).transpose()?,
+            add: meter.add.as_ref().map(compile::expr).transpose()?,
+            set: meter.set.as_ref().map(compile::expr).transpose()?,
         },
         EffectYaml::Flag(flag) if flag.key == "busy" => {
             return Err("flag key busy is not a flag".into());
@@ -522,7 +518,7 @@ fn build_effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileErr
             value: flag.value,
         },
         EffectYaml::Modifier(modifier) => {
-            let ticks = build_expr(&modifier.ticks)?;
+            let ticks = compile::expr(&modifier.ticks)?;
             if ticks.constant().is_some_and(|ticks| ticks < 1) {
                 return Err(
                     "a modifier effect has ticks below 1, so set ticks to 1 or more".into(),
@@ -531,7 +527,7 @@ fn build_effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileErr
             EffectTemplate::Modifier {
                 to: parse_actor(&modifier.to)?,
                 id: modifier.id.clone(),
-                add: build_expr(&modifier.add)?,
+                add: compile::expr(&modifier.add)?,
                 ticks,
             }
         }
@@ -571,8 +567,8 @@ fn build_effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileErr
         EffectYaml::Item(item) => EffectTemplate::Item {
             of: parse_object(&item.of)?,
             id: item.id.clone(),
-            add: build_expr(&item.add)?,
-            max: item.max.as_ref().map(build_expr).transpose()?,
+            add: compile::expr(&item.add)?,
+            max: item.max.as_ref().map(compile::expr).transpose()?,
         },
         EffectYaml::Wield(wield) => EffectTemplate::Wield {
             subject: parse_actor(&wield.subject)?,
@@ -584,7 +580,7 @@ fn build_effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileErr
         EffectYaml::Check(nested) => {
             let list_of = |list: &[EffectYaml]| {
                 list.iter()
-                    .map(build_effect_template)
+                    .map(compile::effect_template)
                     .collect::<Result<Vec<_>, _>>()
             };
             EffectTemplate::Check {
@@ -592,7 +588,7 @@ fn build_effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileErr
                     Some(by) => parse_actor(by)?,
                     None => grammar::Actor::Self_,
                 },
-                check: build_check(
+                check: compile::check(
                     &nested.total,
                     &nested.success_at,
                     nested.partial_at.as_ref(),
