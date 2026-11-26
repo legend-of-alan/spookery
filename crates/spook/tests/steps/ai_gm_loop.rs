@@ -65,7 +65,7 @@ async fn start_docks_table_with_mira(world: &mut World, notes: Option<&str>) {
 }
 
 #[given(expr = "a docks table with a seated player who has queued a move")]
-async fn a_docks_table_with_a_queued_move(world: &mut World) {
+async fn a_docks_table_with_a_queued_verb(world: &mut World) {
     let (pack, _) = super::ai_gm::queued_travel(world, "ai-gm-stuck").await;
     world.pack = Some(pack);
 }
@@ -101,7 +101,7 @@ fn a_model_that_perceives_mira_and_rowan(world: &mut World) {
 }
 
 #[given(expr = "a scripted model that queues a move Mira can't make")]
-fn a_model_that_queues_a_bad_move(world: &mut World) {
+fn a_model_that_queues_a_bad_verb(world: &mut World) {
     world
         .model
         .push(&[("queue", r#"{"actor":"mira","verb":"fly"}"#)]);
@@ -304,7 +304,7 @@ async fn one_round_is_committed(world: &mut World) {
 }
 
 #[then(expr = "the round resolves the player's, Mira's and Aldric's moves together")]
-async fn the_round_resolves_three_moves(world: &mut World) {
+async fn the_round_resolves_three_verbs(world: &mut World) {
     assert_eq!(host::wait_rounds_to_view(world, world.mark).await.len(), 1);
     let now = world_of(host::pack(world));
     for actor in ["rowan", "mira", "aldric"] {

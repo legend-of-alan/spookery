@@ -180,7 +180,7 @@ fn status(
     )))
 }
 
-/// A PC a player holds takes only that player's moves, so the GM's is `ACTOR_MISMATCH`.
+/// A PC a player holds takes only that player's verbs, so the GM's is `ACTOR_MISMATCH`.
 fn queue(
     session: &mut spookery_engine::Session,
     presence: &Presence,
@@ -202,7 +202,7 @@ fn queue(
     Ok(Reply::new(ServerBody::Queued {
         intent: queued.id,
         actor_id: queued.actor_id,
-        move_id: queued.move_id,
+        verb_id: queued.verb_id,
         target,
     }))
 }
@@ -276,11 +276,11 @@ mod tests {
         let want = QueuedVerb {
             id: "i1".into(),
             actor_id: "rowan".into(),
-            move_id: "wait".into(),
+            verb_id: "wait".into(),
         };
         assert_eq!(queued, want);
         let intent = &session.queued_intents()[0];
-        assert_eq!(intent.move_id, "wait");
+        assert_eq!(intent.verb_id, "wait");
         assert_eq!(intent.args.message_to, Some(vec!["wren".into()]));
     }
 }

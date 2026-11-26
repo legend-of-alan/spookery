@@ -24,7 +24,7 @@ fn mira_plays(pack: &Path, verb: &str, target: Option<&str>) {
         id: Some(format!("mira-{}", session.world().round_index + 1)),
         round_index: None,
         actor_id: Some("mira".to_string()),
-        move_id: Some(verb.to_string()),
+        verb_id: Some(verb.to_string()),
         target: target.map(str::to_string),
         message_to: None,
         rationale_code: "test".to_string(),

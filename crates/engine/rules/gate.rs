@@ -116,7 +116,7 @@ fn scope_verb<'a>(canon: &'a Canon, scope: &Scope, verb_id: &str) -> Option<&'a 
 /// The rule the intent's verb picks, for its actor and target.
 pub(crate) fn rule_of<'c>(context: &Context<'c, '_>) -> Result<&'c Rule, Refusal> {
     let intent = context.intent;
-    let (verb_id, hint) = (&intent.move_id, hint_of(&intent.target));
+    let (verb_id, hint) = (&intent.verb_id, hint_of(&intent.target));
     let actor_id = intent
         .actor_id
         .as_ref()
@@ -180,7 +180,7 @@ pub(crate) const CANCEL: &str = "cancel";
 
 /// Whether this intent is a player's `cancel`.
 pub(crate) fn is_cancel(intent: &Intent) -> bool {
-    intent.source == Source::Player && intent.move_id == CANCEL
+    intent.source == Source::Player && intent.verb_id == CANCEL
 }
 
 /// A player may cancel only their own action under way, off any exit, whose rule is

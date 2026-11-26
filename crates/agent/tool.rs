@@ -71,7 +71,7 @@ pub(crate) async fn call<M: Model, Conn: Connection>(
         (tool_id, Some(args)) if COMMAND_TOOLS.contains(&tool_id) => {
             agent.send_command(tool_id, args).await?
         }
-        (END_TURN, Some(_)) => match agent.commit_queued_moves().await? {
+        (END_TURN, Some(_)) => match agent.commit_queued_verbs().await? {
             Some(body) => body,
             None => return Ok("nothing is queued, so there is no round to play".into()),
         },

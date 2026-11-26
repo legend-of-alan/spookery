@@ -21,10 +21,10 @@ fn seated() -> Presence {
 
 /// Queue each `(actor, verb)` in order, then play one round. The scratch lists the refusals
 /// the round reported.
-fn play_in_one_round(world: &mut World, moves: &[(&str, &str)]) {
+fn play_in_one_round(world: &mut World, verbs: &[(&str, &str)]) {
     let mut opened = open(world.pack.as_ref().unwrap());
-    for (actor, verb) in moves {
-        if let Err(refusal) = opened.queue_player_move(&seated(), &(*actor).into(), verb, None) {
+    for (actor, verb) in verbs {
+        if let Err(refusal) = opened.queue_player_verb(&seated(), &(*actor).into(), verb, None) {
             panic!("{actor} {verb}: {}", refusal.code.as_str());
         }
     }

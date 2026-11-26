@@ -177,7 +177,7 @@ fn pend(
         ledger.effects.push(effect);
     }
     let pending = PendingAction {
-        verb: intent.move_id.clone(),
+        verb: intent.verb_id.clone(),
         source: intent.source,
         target: intent.target.clone(),
         rule: rule.id.clone(),

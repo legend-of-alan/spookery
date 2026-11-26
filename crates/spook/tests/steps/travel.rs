@@ -217,7 +217,7 @@ fn the_round_still_ends_at_tick_1295(world: &mut World) {
 }
 
 #[then(expr = "a move from rowan is accepted from the round starting at tick 1295")]
-async fn the_next_round_accepts_a_move(world: &mut World) {
+async fn the_next_round_accepts_a_verb(world: &mut World) {
     let (_mark, added) = host::player_send(world, "wait", "\"kind\":").await;
     assert!(!added.contains("BUSY"), "{added}");
     let now = world_of(host::pack(world));
