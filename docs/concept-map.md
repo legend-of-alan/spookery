@@ -50,7 +50,10 @@ A short guide to the word each concept gets, and the synonyms to avoid for it. N
 | handle, handler: receiving a message | on_, receive_ |
 | start, finish | begin, init |
 | commit | seal, settle |
-| read, parse, compile, load, emit, write, render, build | convert, dump |
+| read, load, emit, write, render | convert, dump |
+| parse: text into a typed value, such as pack YAML or JSON into its typed source form | |
+| compile: the typed source form into the engine's loaded form | |
+| build: assemble any other value, as a builder does | |
 | Yaml: the typed YAML of one pack file. A part of it ends in Yaml, as in CondYaml. | Doc |
 | Def: what the pack says about one thing | Descriptor |
 | get: one value by key. find: a search by predicate. resolve: a name into an id. | lookup, search |
