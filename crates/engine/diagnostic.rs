@@ -110,9 +110,9 @@ impl Diagnostic {
         self
     }
 
-    /// At `spot`, a line and column in the file. No spot leaves it as is.
-    pub(crate) fn at_spot(self, spot: Option<(u32, u32)>) -> Self {
-        match spot {
+    /// At `file_location`, a line and column in the file. No file location leaves it as is.
+    pub(crate) fn at_file_location(self, file_location: Option<(u32, u32)>) -> Self {
+        match file_location {
             Some((line, column)) => self.at_line(line, Some(column)),
             None => self,
         }
@@ -202,7 +202,7 @@ pub(crate) fn check_tag(text: &str, expected: &str, file: &str) -> Option<Diagno
 /// or a single value where a list or map belongs is told to write `[]` or `{}` for an empty one.
 pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool) -> Diagnostic {
     let err = err.without_snippet();
-    let spot = err.location().and_then(|loc| {
+    let file_location = err.location().and_then(|loc| {
         let line = u32::try_from(loc.line()).ok()?;
         if line == 0 {
             return None;
@@ -299,7 +299,7 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool)
     if let Some(path) = path {
         diag = diag.at_path(path);
     }
-    if let Some((line, column)) = spot {
+    if let Some((line, column)) = file_location {
         diag = diag.at_line(line, column);
     }
     diag

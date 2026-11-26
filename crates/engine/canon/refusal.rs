@@ -3,7 +3,7 @@
 use serde_saphyr::Spanned;
 
 use crate::diagnostic::{locate_nth, Code, Diagnostic};
-use crate::rules::rule::LineColumn;
+use crate::rules::rule::FileLocation;
 use crate::Reason;
 
 /// One pack file as the loader sees it: its pack-relative name and its YAML text, which
@@ -104,9 +104,9 @@ impl<'a> FileText<'a> {
         }
         match at {
             Locator::Nowhere | Locator::FileLocation(None) => diagnostic,
-            Locator::Key(key) => diagnostic.at_spot(locate_nth(self.text, key, 0)),
+            Locator::Key(key) => diagnostic.at_file_location(locate_nth(self.text, key, 0)),
             Locator::Entry { list, index, key } => {
-                diagnostic.at_spot(locate_entry_field(self.text, list, index, key))
+                diagnostic.at_file_location(locate_entry_field(self.text, list, index, key))
             }
             Locator::FileLocation(Some(file_location)) => {
                 let column = Some(file_location.column).filter(|column| *column > 0);
@@ -141,14 +141,14 @@ pub(super) enum Locator<'a> {
         key: &'a str,
     },
     /// A line and column serde recorded, already counted from the file's first line.
-    FileLocation(Option<LineColumn>),
+    FileLocation(Option<FileLocation>),
 }
 
 /// A message and its file location from a `compile_*` step that does not know its file yet.
 #[derive(Debug)]
 pub(super) struct CompileError {
     pub message: String,
-    pub file_location: Option<LineColumn>,
+    pub file_location: Option<FileLocation>,
 }
 
 impl From<String> for CompileError {
@@ -197,10 +197,10 @@ impl Extend<Diagnostic> for Diagnostics {
 }
 
 /// The line and column serde recorded for a value, or `None` when it has no line.
-pub(super) fn file_location_of<T>(span: &Spanned<T>) -> Option<LineColumn> {
+pub(super) fn file_location_of<T>(span: &Spanned<T>) -> Option<FileLocation> {
     let line = u32::try_from(span.referenced.line()).unwrap_or(0);
     let column = u32::try_from(span.referenced.column()).unwrap_or(0);
-    (line > 0).then_some(LineColumn { line, column })
+    (line > 0).then_some(FileLocation { line, column })
 }
 
 /// `field` inside the `index`th entry of the top-level `list`. An entry starts at a line

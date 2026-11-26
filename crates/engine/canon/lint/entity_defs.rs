@@ -216,7 +216,7 @@ impl EntityDefs<'_> {
                 let Expr::Meter {
                     of,
                     key,
-                    spot: file_location,
+                    file_location,
                 } = read
                 else {
                     continue;
