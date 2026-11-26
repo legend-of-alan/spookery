@@ -1,6 +1,8 @@
-//! Lints across files: rules, paths, meters, items, and triggers.
+//! Lints on a pack: lints across files on rules, paths, meters, items, and triggers, and the
+//! per-rule lints the compile step runs on each rule.
 
 pub(super) mod entity_defs;
+pub(super) mod rule;
 mod trigger;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,7 +14,7 @@ use crate::ecs::component::modifier;
 use crate::ecs::id::PlaceId;
 use crate::rules::cond;
 use crate::rules::grammar;
-use crate::rules::rule::{self, ChangeWatch, Cond, EffectTemplate, RuleKind, Scope};
+use crate::rules::rule::{ChangeWatch, Cond, EffectTemplate, RuleKind, Rules, Scope};
 
 /// Paths whose ends are not places, and items a path names but the pack does not.
 pub(super) fn find_unknown_path_ids(
@@ -47,7 +49,7 @@ pub(super) fn find_unknown_path_ids(
 }
 
 pub(super) fn find_unknown_rule_items(
-    rules: &rule::Rules,
+    rules: &Rules,
     items: &BTreeMap<String, item::Def>,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
@@ -68,7 +70,7 @@ pub(super) fn find_unknown_rule_items(
 
 /// Modifier effects naming a modifier `rules/modifiers.yaml` does not define.
 pub(super) fn find_unknown_modifiers(
-    rules: &rule::Rules,
+    rules: &Rules,
     modifiers: &BTreeMap<String, modifier::Def>,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
