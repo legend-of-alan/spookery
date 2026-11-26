@@ -620,7 +620,7 @@ fn speech_recipients(
 /// the token as the kind the verb takes. A token where none fits, or none where one is
 /// needed, is `SCHEMA`.
 fn target_for(rule: &Rule, token: Option<&str>) -> Result<Target, Reason> {
-    match (rule.when.target_kind(), token) {
+    match (rule.kind.target_kind(), token) {
         (TargetKind::None, None) => Ok(Target::Empty),
         (TargetKind::None, Some(_)) | (_, None) => Err(Reason::Schema),
         (kind, Some(id)) => Ok(Target::new(kind, id)),

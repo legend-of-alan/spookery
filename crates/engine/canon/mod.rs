@@ -9,7 +9,7 @@ use crate::ecs::component::modifier;
 use crate::ecs::id::{ActorId, PlaceId, StoryId};
 use crate::entity;
 use crate::hash::blake2s_tagged;
-use crate::rules::rule::{self, Owner, TargetKind, When};
+use crate::rules::rule::{self, Owner, RuleKind, TargetKind};
 use crate::Reason;
 use spookery_protocol::{MenuRow, PackSummary};
 
@@ -69,8 +69,8 @@ impl Canon {
         let verbs: std::collections::BTreeSet<&str> = self
             .rules
             .iter()
-            .filter_map(|rule| match &rule.when {
-                When::Verb { verb_id, .. } => Some(verb_id.as_str()),
+            .filter_map(|rule| match &rule.kind {
+                RuleKind::Verb { verb_id, .. } => Some(verb_id.as_str()),
                 _ => None,
             })
             .collect();
@@ -81,11 +81,13 @@ impl Canon {
         let menu = self
             .rules
             .iter()
-            .filter_map(|rule| match &rule.when {
-                When::Verb { verb_id, target } if matches!(rule.owner, Owner::Verb) => {
+            .filter_map(|rule| match &rule.kind {
+                RuleKind::Verb { verb_id, target } if matches!(rule.owner, Owner::Verb) => {
                     Some((verb_id.clone(), "verb", target.as_str()))
                 }
-                When::Habit => Some((rule.local_id.clone(), "habit", TargetKind::None.as_str())),
+                RuleKind::Habit => {
+                    Some((rule.local_id.clone(), "habit", TargetKind::None.as_str()))
+                }
                 _ => None,
             })
             .map(|(id, audience, token)| MenuRow {

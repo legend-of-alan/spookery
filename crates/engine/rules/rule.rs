@@ -14,7 +14,7 @@ pub(crate) struct Rule {
     pub id: String,
     pub local_id: String,
     pub owner: Owner,
-    pub when: When,
+    pub kind: RuleKind,
     pub if_: Vec<Cond>,
     /// `let:`: each id and the number it stores, in the order written. They roll first, and
     /// the rule's check, effects and later ids read them by id.
@@ -253,18 +253,19 @@ impl Owner {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum When {
+pub(crate) enum RuleKind {
+    // repeats module: the concept map's word, beside TargetKind
     Verb { verb_id: String, target: TargetKind },
     Habit,
     Change(ChangeWatch),
 }
 
-impl When {
+impl RuleKind {
     /// What the rule's move targets. A habit and a change rule target nothing.
     pub(crate) fn target_kind(&self) -> TargetKind {
         match self {
-            When::Verb { target, .. } => *target,
-            When::Habit | When::Change(_) => TargetKind::None,
+            RuleKind::Verb { target, .. } => *target,
+            RuleKind::Habit | RuleKind::Change(_) => TargetKind::None,
         }
     }
 }
@@ -603,7 +604,7 @@ impl Table {
             .iter()
             .filter(|rule| {
                 matches!(&rule.owner, Owner::Cast(id) if *actor == **id)
-                    && matches!(rule.when, When::Habit)
+                    && matches!(rule.kind, RuleKind::Habit)
             })
             .collect()
     }

@@ -9,7 +9,7 @@ use crate::rules::expr::{self, stamp_file_locations, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
     self, ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner,
-    Phase, Rule, TargetKind, When,
+    Phase, Rule, RuleKind, TargetKind,
 };
 
 use parse::{
@@ -31,7 +31,7 @@ pub(super) fn compile(
         let Some(rule) = diagnostics.keep(compile_rule(file, index, entry, owner)) else {
             continue;
         };
-        if let When::Verb { verb_id, .. } = &rule.when {
+        if let RuleKind::Verb { verb_id, .. } = &rule.kind {
             let hint = "keep one rule for that verb in this file";
             let duplicate_words = ("two verb rules for", "at the same level", hint);
             let is_duplicate = verb_ids.contains(verb_id);
@@ -67,8 +67,8 @@ fn compile_rule(
             "set id to a short rule id; say is speech",
         ));
     }
-    let when = match compile_rule_kind(&entry.when.value) {
-        Ok(when) => Some(when),
+    let kind = match compile_rule_kind(&entry.when.value) {
+        Ok(kind) => Some(kind),
         Err(message) => {
             diagnostics.push(file_text.refuse_at(
                 &format!("rules[{index}].when"),
@@ -138,13 +138,13 @@ fn compile_rule(
     let success = compile_effects(file, &entry.success)?;
     let partial = compile_effects(file, &entry.partial)?;
     let miss = compile_effects(file, &entry.miss)?;
-    if let Some(when) = &when {
+    if let Some(kind) = &kind {
         let timed = cost.is_some()
             || entry.start.is_some()
             || entry.finish.is_some()
             || entry.cooldown > 0
             || entry.cancellable;
-        if matches!(when, When::Change(_)) && timed {
+        if matches!(kind, RuleKind::Change(_)) && timed {
             diagnostics.push(schema_error(
                 file,
                 "a change rule has a cost, start, finish, cooldown, or cancellable",
@@ -184,12 +184,12 @@ fn compile_rule(
             ));
         }
     }
-    let when = diagnostics.into_result(when)?.expect("when checked");
+    let kind = diagnostics.into_result(kind)?.expect("kind checked");
     let rule = Rule {
         id: owner.rule_id(&local_id),
         local_id,
         owner: owner.clone(),
-        when,
+        kind,
         if_,
         lets,
         check,
@@ -217,7 +217,7 @@ fn compile_rule(
         file: file.to_string(),
         index,
     };
-    let target_kind = rule.when.target_kind();
+    let target_kind = rule.kind.target_kind();
     let misplaced_target = rule.mentions().find_misplaced_target(target_kind);
     let misplaced_message = misplaced_target.map(|(key, needs)| {
         let (needs, target) = (needs.as_str(), target_kind.as_str());
@@ -270,9 +270,9 @@ fn find_let_read_message(rule: &Rule) -> Option<(String, String)> {
     None
 }
 
-fn compile_rule_kind(yaml: &WhenYaml) -> Result<When, String> {
+fn compile_rule_kind(yaml: &WhenYaml) -> Result<RuleKind, String> {
     match yaml {
-        WhenYaml::Word(word) if word == "habit" => Ok(When::Habit),
+        WhenYaml::Word(word) if word == "habit" => Ok(RuleKind::Habit),
         WhenYaml::Word(word) => Err(format!("when '{word}' is not habit")),
         WhenYaml::Map(map) => match (&map.verb, &map.change) {
             (Some(verb), None) => {
@@ -292,7 +292,7 @@ fn compile_rule_kind(yaml: &WhenYaml) -> Result<When, String> {
                     Some("item") => TargetKind::Item,
                     Some(other) => return Err(format!("target '{other}' is not a target kind")),
                 };
-                Ok(When::Verb {
+                Ok(RuleKind::Verb {
                     verb_id: verb.clone(),
                     target,
                 })
@@ -303,7 +303,7 @@ fn compile_rule_kind(yaml: &WhenYaml) -> Result<When, String> {
     }
 }
 
-fn compile_change(yaml: &ChangeYaml) -> Result<When, String> {
+fn compile_change(yaml: &ChangeYaml) -> Result<RuleKind, String> {
     let subject = match yaml.subject.as_deref() {
         None | Some("any") => grammar::Subject::Any,
         Some("pc") => grammar::Subject::Pc,
@@ -311,13 +311,13 @@ fn compile_change(yaml: &ChangeYaml) -> Result<When, String> {
         Some(actor) => grammar::Subject::Id(actor.to_string()),
     };
     if let Some(place) = &yaml.arrive {
-        return Ok(When::Change(ChangeWatch::Arrive {
+        return Ok(RuleKind::Change(ChangeWatch::Arrive {
             place: place.clone(),
             subject,
         }));
     }
     if let Some(place) = &yaml.leave {
-        return Ok(When::Change(ChangeWatch::Leave {
+        return Ok(RuleKind::Change(ChangeWatch::Leave {
             place: place.clone(),
             subject,
         }));
@@ -328,7 +328,7 @@ fn compile_change(yaml: &ChangeYaml) -> Result<When, String> {
             .as_deref()
             .ok_or_else(|| "a meter change needs crosses".to_string())?;
         let (op, bound) = parse_crosses(crosses)?;
-        return Ok(When::Change(ChangeWatch::Meter {
+        return Ok(RuleKind::Change(ChangeWatch::Meter {
             key: key.clone(),
             op,
             bound,
@@ -338,7 +338,7 @@ fn compile_change(yaml: &ChangeYaml) -> Result<When, String> {
         let becomes = yaml
             .becomes
             .ok_or_else(|| "a flag change needs becomes".to_string())?;
-        return Ok(When::Change(ChangeWatch::Flag {
+        return Ok(RuleKind::Change(ChangeWatch::Flag {
             key: key.clone(),
             becomes,
         }));
@@ -349,7 +349,7 @@ fn compile_change(yaml: &ChangeYaml) -> Result<When, String> {
             (_, Some(true)) => false,
             _ => return Err("an item change needs gained or lost".to_string()),
         };
-        return Ok(When::Change(ChangeWatch::Item {
+        return Ok(RuleKind::Change(ChangeWatch::Item {
             id: id.clone(),
             gained,
         }));

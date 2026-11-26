@@ -61,7 +61,7 @@ pub(crate) fn help(
             ) {
                 continue;
             }
-            let kind = rule.when.target_kind();
+            let kind = rule.kind.target_kind();
             let target_ids = match owner {
                 Some(owner) => vec![owner.clone()],
                 None => list_target_ids(canon, world, actor_id, kind, &ids),

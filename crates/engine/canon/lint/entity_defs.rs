@@ -11,7 +11,7 @@ use crate::ecs::id::{ActorId, PlaceId, StoryId};
 use crate::entity;
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
-use crate::rules::rule::{self, Cond, EffectTemplate, Owner, Rule, TargetKind, When};
+use crate::rules::rule::{self, Cond, EffectTemplate, Owner, Rule, RuleKind, TargetKind};
 
 pub(in crate::canon) fn find_unknown_meter_reads(
     entity_defs: &EntityDefs,
@@ -67,7 +67,7 @@ pub(in crate::canon) fn find_missing_components(
             _ => {}
         });
         let fixed = fixed_self_id(rule);
-        let target = rule.when.target_kind();
+        let target = rule.kind.target_kind();
         for (kind, of, key) in named {
             let reason = match kind {
                 "meter" => entity_defs.meter_not_carried_reason(fixed, of, key),
@@ -94,8 +94,8 @@ pub(in crate::canon) fn find_missing_components(
 
 /// The actor `self` always is on `rule`: the cast member, on its own habit.
 fn fixed_self_id(rule: &Rule) -> Option<&str> {
-    match (&rule.owner, &rule.when) {
-        (Owner::Cast(id), When::Habit) => Some(id),
+    match (&rule.owner, &rule.kind) {
+        (Owner::Cast(id), RuleKind::Habit) => Some(id),
         _ => None,
     }
 }
