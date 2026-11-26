@@ -49,7 +49,7 @@ pub(in crate::canon) fn compile(
 }
 
 fn compile_rule(
-    // repeats module: compile_<part> is the compile step for that YAML part
+    // repeats module: pairs with parse_*: compile_* reads YAML, parse_* reads a string
     file: &str,
     index: usize,
     entry: RuleYaml,
@@ -207,16 +207,9 @@ fn compile_rule(
         file: file.to_string(),
         index,
     };
-    let target_kind = rule.kind.target_kind();
-    let misplaced_target = rule.mentions().find_misplaced_target(target_kind);
-    let misplaced_message = misplaced_target.map(|(key, needs)| {
-        let (needs, target) = (needs.as_str(), target_kind.as_str());
-        (
-            format!("says target in {key}, but its target is {target}"),
-            format!("give the verb target: {needs}, or name the {needs} by its id"),
-        )
-    });
-    if let Some((message, hint)) = misplaced_message.or_else(|| find_let_read_message(&rule)) {
+    let target_or_let_message =
+        find_misplaced_target_message(&rule).or_else(|| find_let_read_message(&rule));
+    if let Some((message, hint)) = target_or_let_message {
         let message = format!("rule '{}' {message}", rule.local_id);
         return Err(vec![refuse_at_rule_id(
             &file_text, index, &entry.id, message, &hint,
@@ -235,6 +228,18 @@ fn refuse_at_rule_id(
 ) -> Diagnostic {
     let at = Locator::FileLocation(file_location_of(rule_id));
     file_text.refuse_at(&format!("rules[{index}].id"), at, message, hint)
+}
+
+/// The first key in `rule` whose `target` needs a target kind other than the rule's own, as
+/// the message and the hint.
+fn find_misplaced_target_message(rule: &Rule) -> Option<(String, String)> {
+    let target_kind = rule.kind.target_kind();
+    let (key, needs) = rule.mentions().find_misplaced_target(target_kind)?;
+    let (needs, target) = (needs.as_str(), target_kind.as_str());
+    Some((
+        format!("says target in {key}, but its target is {target}"),
+        format!("give the verb target: {needs}, or name the {needs} by its id"),
+    ))
 }
 
 /// The first `let:` read in `rule` that fails, as the message and the hint: an id its `let:`
@@ -271,7 +276,7 @@ fn find_let_read_message(rule: &Rule) -> Option<(String, String)> {
 }
 
 fn compile_rule_kind(yaml: &WhenYaml) -> Result<RuleKind, String> {
-    // repeats module: compile_<part> is the compile step for that YAML part
+    // repeats module: pairs with parse_*: compile_* reads YAML, parse_* reads a string
     match yaml {
         WhenYaml::Word(word) if word == "habit" => Ok(RuleKind::Habit),
         WhenYaml::Word(word) => Err(format!("when '{word}' is not habit")),
@@ -305,7 +310,7 @@ fn compile_rule_kind(yaml: &WhenYaml) -> Result<RuleKind, String> {
 }
 
 fn compile_change(yaml: &ChangeYaml) -> Result<RuleKind, String> {
-    // repeats module: compile_<part> is the compile step for that YAML part
+    // repeats module: pairs with parse_*: compile_* reads YAML, parse_* reads a string
     let subject = match yaml.subject.as_deref() {
         None | Some("any") => grammar::Subject::Any,
         Some("pc") => grammar::Subject::Pc,
@@ -360,7 +365,7 @@ fn compile_change(yaml: &ChangeYaml) -> Result<RuleKind, String> {
 }
 
 fn compile_conds(yaml: &IfYaml) -> Result<Vec<Cond>, CompileError> {
-    // repeats module: compile_<part> is the compile step for that YAML part
+    // repeats module: pairs with parse_*: compile_* reads YAML, parse_* reads a string
     match yaml {
         IfYaml::List(list) => list.iter().map(compile_cond).collect(),
         IfYaml::One(one) => Ok(vec![compile_cond(one)?]),
@@ -368,7 +373,7 @@ fn compile_conds(yaml: &IfYaml) -> Result<Vec<Cond>, CompileError> {
 }
 
 pub(in crate::canon) fn compile_cond(yaml: &CondYaml) -> Result<Cond, CompileError> {
-    // repeats module: compile_<part> is the compile step for that YAML part
+    // repeats module: pairs with parse_*: compile_* reads YAML, parse_* reads a string
     Ok(match yaml {
         CondYaml::HasItem(item) => Cond::HasItem {
             subject: parse_actor(&item.subject)?,
@@ -418,7 +423,7 @@ pub(in crate::canon) fn compile_cond(yaml: &CondYaml) -> Result<Cond, CompileErr
 }
 
 pub(in crate::canon) fn compile_cost(yaml: &CostYaml) -> Result<Cost, CompileError> {
-    // repeats module: compile_<part> is the compile step for that YAML part
+    // repeats module: pairs with parse_*: compile_* reads YAML, parse_* reads a string
     Ok(Cost {
         ticks: (yaml.ticks.as_ref()).map_or(Ok(Expr::Num(0)), compile_expr_without_dice)?,
         meters: compile_counts(&yaml.meters)?,
@@ -427,14 +432,14 @@ pub(in crate::canon) fn compile_cost(yaml: &CostYaml) -> Result<Cost, CompileErr
 }
 
 fn compile_counts(yaml: &CountsYaml) -> Result<Vec<(String, Expr)>, CompileError> {
-    // repeats module: compile_<part> is the compile step for that YAML part
+    // repeats module: pairs with parse_*: compile_* reads YAML, parse_* reads a string
     (yaml.iter())
         .map(|(key, n)| Ok((key.clone(), compile_expr_without_dice(n)?)))
         .collect()
 }
 
 fn compile_check(
-    // repeats module: compile_<part> is the compile step for that YAML part
+    // repeats module: pairs with parse_*: compile_* reads YAML, parse_* reads a string
     total: &Spanned<ExprYaml>,
     success_at: &Spanned<ExprYaml>,
     partial_at: Option<&Spanned<ExprYaml>>,
@@ -448,7 +453,7 @@ fn compile_check(
 
 /// A number in a cond or a cost, refused on its line when it rolls dice.
 fn compile_expr_without_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileError> {
-    // repeats module: compile_<part> is the compile step for that YAML part
+    // repeats module: pairs with parse_*: compile_* reads YAML, parse_* reads a string
     let expr = compile_expr(yaml)?;
     if expr.needs_dice() {
         return Err(CompileError {
@@ -461,7 +466,7 @@ fn compile_expr_without_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileEr
 
 /// One `let:` id and its number. An id no number could read back is refused on its line.
 fn compile_let(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), CompileError> {
-    // repeats module: compile_<part> is the compile step for that YAML part
+    // repeats module: pairs with parse_*: compile_* reads YAML, parse_* reads a string
     if !expr::is_let_id(id) {
         return Err(CompileError {
             message: format!(
@@ -475,7 +480,7 @@ fn compile_let(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), C
 }
 
 fn compile_expr(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileError> {
-    // repeats module: compile_<part> is the compile step for that YAML part
+    // repeats module: pairs with parse_*: compile_* reads YAML, parse_* reads a string
     let file_location = file_location_of(yaml);
     match &yaml.value {
         ExprYaml::Literal(n) => Ok(Expr::Num(*n)),
@@ -493,7 +498,7 @@ fn compile_expr(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileError> {
 }
 
 fn compile_effects(
-    // repeats module: compile_<part> is the compile step for that YAML part
+    // repeats module: pairs with parse_*: compile_* reads YAML, parse_* reads a string
     file: &str,
     list: &[EffectYaml],
 ) -> Result<Vec<EffectTemplate>, Vec<Diagnostic>> {
@@ -510,7 +515,7 @@ fn compile_effects(
 }
 
 fn compile_effect(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
-    // repeats module: compile_<part> is the compile step for that YAML part
+    // repeats module: pairs with parse_*: compile_* reads YAML, parse_* reads a string
     Ok(match yaml {
         EffectYaml::Meter(meter) if meter.add.is_some() == meter.set.is_some() => {
             return Err("a meter effect needs add or set, not both".into());
