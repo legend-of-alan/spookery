@@ -113,18 +113,21 @@ impl Intent {
             Some(token) => format!("{verb} {token}"),
             None => verb.to_string(),
         };
-        let id = intent_id(&world.world_id, round, actor_id.as_str(), &line);
-        let actor_id = Some(actor_id.clone());
-        let intent = Self::new(id, round, actor_id, Source::Player, verb, Target::Empty);
-        Ok(intent)
+        Ok(Self::new(
+            id(&world.world_id, round, actor_id.as_str(), &line),
+            round,
+            Some(actor_id.clone()),
+            Source::Player,
+            verb,
+            Target::Empty,
+        ))
     }
 
     /// The engine running `actor_id`'s habit `local_id` this round.
     pub(crate) fn habit(world: &ecs::World, actor_id: &ActorId, local_id: &str) -> Self {
         let round = world.round_index;
-        let id = intent_id(&world.world_id, round, actor_id.as_str(), local_id);
         Self::new(
-            id,
+            id(&world.world_id, round, actor_id.as_str(), local_id),
             round,
             Some(actor_id.clone()),
             Source::Engine,
@@ -237,7 +240,6 @@ impl TryFrom<TargetWire> for Target {
 
 /// Blake2s of `world|round|actor|line`: a player's line for the round after the save's,
 /// or a habit's local id for the save's round.
-pub(crate) fn intent_id(world_id: &str, round_index: u64, actor_id: &str, line: &str) -> String {
-    // repeats module: fills the intent_id field
+fn id(world_id: &str, round_index: u64, actor_id: &str, line: &str) -> String {
     crate::hash::blake2s_hex(format!("{world_id}|{round_index}|{actor_id}|{line}").as_bytes())
 }
