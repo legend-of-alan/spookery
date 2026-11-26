@@ -36,7 +36,7 @@ fn append_story_rule(pack: &Path, story: &str, effect: &str) {
         format!("schema: story\nid: {story}\nrules:\n")
     });
     text.push_str(&format!(
-        "  - id: on_oil\n    when:\n      change:\n        item_id: lamp_oil\n        gained: true\n    do:\n{effect}"
+        "  - id: on_oil\n    when:\n      change:\n        item: lamp_oil\n        gained: true\n    do:\n{effect}"
     ));
     fs::write(path, text).unwrap();
 }
@@ -63,7 +63,7 @@ fn flag_effect(of: &str, id: &str) -> String {
 fn add_verb_doing(pack: &Path, verb_id: &str, effects: &str) {
     add_verb(
         pack,
-        &format!("\n  - id: {verb_id}\n    when:\n      verb_id: {verb_id}\n    do:\n{effects}"),
+        &format!("\n  - id: {verb_id}\n    when:\n      verb: {verb_id}\n    do:\n{effects}"),
     );
 }
 
@@ -141,7 +141,7 @@ fn a_story_rule_sets(world: &mut World, story: String, id: String, of: String) {
 #[given(expr = "a rule sets flag {word} of {string} to true")]
 fn a_shared_rule_sets(world: &mut World, id: String, of: String) {
     let rule = format!(
-        "\n  - id: on_oil\n    when:\n      change:\n        item_id: lamp_oil\n        gained: true\n    do:\n{}",
+        "\n  - id: on_oil\n    when:\n      change:\n        item: lamp_oil\n        gained: true\n    do:\n{}",
         flag_effect(&of, &id)
     );
     add_verb(pack(world), &rule);
@@ -181,7 +181,7 @@ fn a_rule_tests_the_flag(world: &mut World, id: String, of: String) {
     add_verb(
         &pack,
         &format!(
-            "\n  - id: test_mark\n    when:\n      verb_id: test_mark\n    if:\n      - flag:\n          of: {of}\n          id: {id}\n          is: true\n    do:\n{}",
+            "\n  - id: test_mark\n    when:\n      verb: test_mark\n    if:\n      - flag:\n          of: {of}\n          id: {id}\n          is: true\n    do:\n{}",
             flag_effect("world", "mark_seen")
         ),
     );

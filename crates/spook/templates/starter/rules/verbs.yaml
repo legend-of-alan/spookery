@@ -2,12 +2,12 @@ schema: verbs
 rules:
   - id: wait
     when:
-      verb_id: wait
+      verb: wait
     do: []
 
   - id: travel
     when:
-      verb_id: travel
+      verb: travel
       target: path
     do:
       - location:
@@ -15,7 +15,7 @@ rules:
 
   - id: steady
     when:
-      verb_id: steady
+      verb: steady
     check:
       total: 2d6 + self.nerve
       success_at: 0
@@ -23,7 +23,7 @@ rules:
 
   - id: take
     when:
-      verb_id: take
+      verb: take
       target: item
     do:
       - item:
@@ -37,7 +37,7 @@ rules:
 
   - id: drop
     when:
-      verb_id: drop
+      verb: drop
       target: item
     do:
       - item:
@@ -51,7 +51,7 @@ rules:
 
   - id: wield
     when:
-      verb_id: wield
+      verb: wield
       target: item
     do:
       - wield:
@@ -60,7 +60,7 @@ rules:
 
   - id: unwield
     when:
-      verb_id: unwield
+      verb: unwield
     do:
       - unwield:
           subject: self

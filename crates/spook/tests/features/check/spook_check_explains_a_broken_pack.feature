@@ -47,7 +47,6 @@ Feature: spook check explains a broken pack
       | a rule with id say                  | rules/verbs.yaml           | SCHEMA            | a rule id is empty or is say                             |
       | flags under idle                    | cast/pc-rowan.md           | SCHEMA            | unknown field                                            |
       | a cast role named kind              | cast/pc-rowan.md           | SCHEMA            | unknown field 'kind'                                     |
-      | a when with the old key verb        | rules/verbs.yaml           | SCHEMA            | unknown field 'verb'                                     |
       | idle maybe                          | rules/budget.yaml          | SCHEMA            | not on or off                                            |
       | zero round interval                 | rules/budget.yaml          | SCHEMA            | round_every_real_seconds                                 |
       | zero idle ticks                     | rules/budget.yaml          | SCHEMA            | idle_ticks_per_round                                     |

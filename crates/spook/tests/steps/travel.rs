@@ -142,7 +142,7 @@ async fn a_place_rule_teleports(world: &mut World) {
     add_trapdoor(&pack);
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap();
-    let rules = "\nrules:\n  - id: slip\n    when:\n      verb_id: slip\n    do:\n      - location:\n          to: cellar\n          teleport: true\n";
+    let rules = "\nrules:\n  - id: slip\n    when:\n      verb: slip\n    do:\n      - location:\n          to: cellar\n          teleport: true\n";
     let text = text.replacen("\n---\n", &format!("{rules}---\n"), 1);
     assert!(text.contains("id: slip"), "{text}");
     fs::write(&path, text).unwrap();

@@ -20,7 +20,7 @@ rules:
           text: The yard stays watched.
   - id: strike
     when:
-      verb_id: strike
+      verb: strike
       target: actor
     if:
       - wielding:
@@ -66,7 +66,7 @@ rules:
   - id: yield_the_gate
     when:
       change:
-        meter_id: hp
+        meter: hp
         crosses: "<=0"
     if:
       - flag:
@@ -83,7 +83,7 @@ rules:
           text: Briar drops his staff and steps back from the gate.
   - id: ask
     when:
-      verb_id: ask
+      verb: ask
       target: actor
     do:
       - narrate:

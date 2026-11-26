@@ -99,7 +99,7 @@ pub(crate) fn write_file(pack: &Path, file: &str, text: &str) {
 /// Writes `story/tide.yaml`: one rule, `mark`, that watches the world's tide turn, with
 /// `fields` written after its `when`.
 pub(crate) fn write_tide_story(pack: &Path, fields: &str) {
-    let when = "when:\n      change:\n        flag_id: tide_turned\n        becomes: true";
+    let when = "when:\n      change:\n        flag: tide_turned\n        becomes: true";
     let text = format!("schema: story\nid: tide\nrules:\n  - id: mark\n    {when}\n{fields}");
     write_file(pack, "story/tide.yaml", &text);
 }
@@ -134,7 +134,7 @@ pub(crate) fn format_meter_row(id: &str, hidden: Option<bool>) -> String {
 fn add_verb_rule(pack: &Path, verb_id: &str, body: &str) {
     add_verb(
         pack,
-        &format!("\n  - id: {verb_id}\n    when:\n      verb_id: {verb_id}\n{body}"),
+        &format!("\n  - id: {verb_id}\n    when:\n      verb: {verb_id}\n{body}"),
     );
 }
 
@@ -148,7 +148,7 @@ fn break_pack(pack: &Path, fault: &str) {
     match fault {
         "missing when" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "  - id: exert\n    when:\n      verb_id: exert\n",
+            "  - id: exert\n    when:\n      verb: exert\n",
             "  - id: exert\n",
         ),
         "unknown field" => replace_in_file(
@@ -239,18 +239,13 @@ fn break_pack(pack: &Path, fault: &str) {
         ),
         "a verb named look" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "      verb_id: wait\n",
-            "      verb_id: look\n",
+            "      verb: wait\n",
+            "      verb: look\n",
         ),
         "a verb named say" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "      verb_id: wait\n",
-            "      verb_id: say\n",
-        ),
-        "a when with the old key verb" => replace_in_file(
-            &pack.join("rules/verbs.yaml"),
-            "      verb_id: wait\n",
             "      verb: wait\n",
+            "      verb: say\n",
         ),
         "a cast role named kind" => replace_in_file(
             &pack.join("cast/pc-rowan.md"),
@@ -310,17 +305,17 @@ fn break_pack(pack: &Path, fault: &str) {
         "world as an actor" => replace_in_file(
             &pack.join("world/places/gate_yard.md"),
             "      - has_item:\n          subject: self\n          id: chock\n",
-            "      - at:\n          subject: world\n          place_id: gate_yard\n",
+            "      - at:\n          subject: world\n          place: gate_yard\n",
         ),
         "target on a move with none" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "      verb_id: wait\n    do: []\n",
-            "      verb_id: wait\n    do:\n      - meter: { of: target, id: hp, add: -1 }\n",
+            "      verb: wait\n    do: []\n",
+            "      verb: wait\n    do:\n      - meter: { of: target, id: hp, add: -1 }\n",
         ),
         "owner target on an item move" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "      verb_id: drop\n      target: item\n    do:\n",
-            "      verb_id: drop\n      target: item\n    do:\n      - meter: { of: target, id: hp, add: -1 }\n",
+            "      verb: drop\n      target: item\n    do:\n",
+            "      verb: drop\n      target: item\n    do:\n      - meter: { of: target, id: hp, add: -1 }\n",
         ),
         "a meter on a travel move's target" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
@@ -340,13 +335,13 @@ fn break_pack(pack: &Path, fault: &str) {
         ),
         "id: target with no target" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "      verb_id: wait\n    do: []\n",
-            "      verb_id: wait\n    do:\n      - item: { of: self, id: target, add: 1 }\n",
+            "      verb: wait\n    do: []\n",
+            "      verb: wait\n    do:\n      - item: { of: self, id: target, add: 1 }\n",
         ),
         "a save by target with none" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "      verb_id: wait\n    do: []\n",
-            "      verb_id: wait\n    do:\n      - check: { by: target, total: 1d20, success_at: 12 }\n",
+            "      verb: wait\n    do: []\n",
+            "      verb: wait\n    do:\n      - check: { by: target, total: 1d20, success_at: 12 }\n",
         ),
         "target on an exit" => replace_in_file(
             &pack.join("world/map.yaml"),
@@ -387,7 +382,7 @@ fn break_pack(pack: &Path, fault: &str) {
         "a named narrate of an arrival" => write_file(
             pack,
             "story/greet.yaml",
-            "schema: story\nid: greet\nrules:\n  - id: tell\n    when:\n      change:\n        arrive_place_id: docks_shop\n    do:\n      - narrate: { to: wren, text: Someone came in. }\n",
+            "schema: story\nid: greet\nrules:\n  - id: tell\n    when:\n      change:\n        arrive: docks_shop\n    do:\n      - narrate: { to: wren, text: Someone came in. }\n",
         ),
         "max_stacks 0" => write_modifiers(
             pack,
@@ -421,7 +416,7 @@ fn break_pack(pack: &Path, fault: &str) {
             write_file(
                 pack,
                 "story/prologue.yaml",
-                "schema: story\nid: prologue\nrules:\n  - id: on_oil\n    when:\n      change:\n        item_id: lamp_oil\n        gained: true\n    do:\n      - meter: { of: \"story:prologue\", id: dread, add: 1 }\n",
+                "schema: story\nid: prologue\nrules:\n  - id: on_oil\n    when:\n      change:\n        item: lamp_oil\n        gained: true\n    do:\n      - meter: { of: \"story:prologue\", id: dread, add: 1 }\n",
             );
         }
         "an undeclared place meter" => add_verb_rule(
@@ -447,8 +442,8 @@ fn break_pack(pack: &Path, fault: &str) {
         ),
         "a verb named cancel" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "      verb_id: wait\n",
-            "      verb_id: cancel\n",
+            "      verb: wait\n",
+            "      verb: cancel\n",
         ),
         "a saved item with no definition" => replace_in_file(
             &pack.join("state/save.yaml"),

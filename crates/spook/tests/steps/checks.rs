@@ -15,7 +15,7 @@ use super::{common, host};
 const NOTICE_ROWS: &str = "
   - id: notice_sure
     when:
-      verb_id: notice_sure
+      verb: notice_sure
     check:
       total: 2d6 + self.vigor
       success_at: 3
@@ -31,7 +31,7 @@ const NOTICE_ROWS: &str = "
           value: true
   - id: notice_hard
     when:
-      verb_id: notice_hard
+      verb: notice_hard
     check:
       total: 2d6 + self.vigor
       success_at: 14
@@ -50,7 +50,7 @@ const NOTICE_ROWS: &str = "
 const CONTESTED_MARK_ROW: &str = "
   - id: mark
     when:
-      verb_id: mark
+      verb: mark
       target: actor
     let:
       attack: 2d6 + self.vigor
@@ -358,7 +358,7 @@ fn find_committed(value: &Value) -> Option<Value> {
 const PRESS_ROW: &str = "
   - id: press
     when:
-      verb_id: press
+      verb: press
       target: actor
     check:
       total: 1d1 + self.vigor
@@ -389,7 +389,7 @@ const PRESS_ROW: &str = "
 const NOTICE_PARTIAL_ROW: &str = "
   - id: notice_partial
     when:
-      verb_id: notice_partial
+      verb: notice_partial
     check:
       total: 1d1 + self.vigor
       success_at: 10

@@ -116,7 +116,7 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
             "
   - id: overreach
     when:
-      verb_id: overreach
+      verb: overreach
     do:
       - item:
           of: place:docks_shop
@@ -143,7 +143,7 @@ fn a_docks_row_spilled(world: &mut World, remove: i64) {
             "
   - id: spilled
     when:
-      verb_id: spilled
+      verb: spilled
     check:
       total: 2d6 + self.vigor
       success_at: 0
@@ -246,7 +246,7 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
         "
   - id: two_stock
     when:
-      verb_id: two_stock
+      verb: two_stock
     do:
       - item:
           of: place:docks_shop
@@ -291,7 +291,7 @@ fn a_docks_pack_where_aldric_holds_a_timed_verb(world: &mut World) {
     let rule = "  eligible: false
 rules:
   - id: ask
-    when: { verb_id: ask, target: actor }
+    when: { verb: ask, target: actor }
     cost: { ticks: 10 }
     do: [meter: { of: target, id: rest, add: -1 }]
 ---";
@@ -346,7 +346,7 @@ fn a_docks_pack_with_a_timed_haul(world: &mut World, oil: i64) {
         &format!(
             "
   - id: haul
-    when: {{ verb_id: haul }}
+    when: {{ verb: haul }}
     cost: {{ ticks: 10 }}
     do: [item: {{ of: self, id: lamp_oil, add: -{oil} }}]
 "
@@ -405,7 +405,7 @@ fn a_docks_pack_with_a_broken_pick(world: &mut World) {
         &pack.join("rules/verbs.yaml"),
         "
   - id: pick
-    when: { verb_id: pick }
+    when: { verb: pick }
     check: { total: 2d6 + self.vigor, success_at: \"10 / (self.vigor - 1)\" }
     do: []
 ",
@@ -458,7 +458,7 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
     let pack = support::copy_pack("docks", "rummage");
     let rule = format!(
         "  - id: rummage
-    when: {{ verb_id: rummage }}
+    when: {{ verb: rummage }}
     cost: {{ meters: {{ rest: {shop} }} }}
     check: {{ total: 2d6 + self.vigor, success_at: self.rest }}
     do: []"
@@ -467,7 +467,7 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
     let rule = format!(
         "
   - id: rummage
-    when: {{ verb_id: rummage }}
+    when: {{ verb: rummage }}
     cost: {{ meters: {{ rest: {shared} }} }}
     do: []
 "
@@ -520,7 +520,7 @@ fn a_street_rule_over_the_cap(world: &mut World) {
     let pack = support::copy_pack("docks", "trigger-cap");
     set_budget(&pack, "max_effects_per_intent", 1);
     let rule = "  - id: greeted
-    when: { change: { arrive_place_id: here, subject: rowan } }
+    when: { change: { arrive: here, subject: rowan } }
     do:
       - flag: { of: self, id: greeted, value: true }
       - flag: { of: self, id: welcomed, value: true }";
@@ -643,7 +643,7 @@ fn the_docks_pack_allows_keys(world: &mut World, limit: u64) {
         &pack.join("rules/verbs.yaml"),
         "
   - id: overset
-    when: { verb_id: overset }
+    when: { verb: overset }
     do:
       - flag: { of: world, id: greeted, value: true }
       - flag: { of: world, id: welcomed, value: true }
@@ -866,7 +866,7 @@ fn the_docks_pack_allows_keys_and_braces(world: &mut World, limit: u64, add: i64
         &format!(
             "
   - id: brace
-    when: {{ verb_id: brace }}
+    when: {{ verb: brace }}
     do:
       - modifier: {{ to: self, id: brace, add: {add}, ticks: 10 }}
 "
@@ -892,7 +892,7 @@ fn a_cast_member_the_save_does_not_list(world: &mut World, row: String) {
         &format!(
             "
   - id: {row}
-    when: {{ verb_id: {row} }}
+    when: {{ verb: {row} }}
     do:
       - flag: {{ of: nell, id: marked, value: true }}
 "

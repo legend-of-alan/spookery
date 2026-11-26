@@ -61,11 +61,11 @@ fn stairs_open(pack: &Path) -> bool {
 fn the_stair_door_needs_the_key(world: &mut World) {
     let pack = support::copy_pack("docks", "door");
     let bolt = "  - id: bolt
-    when: { verb_id: bolt, target: path }
+    when: { verb: bolt, target: path }
     do:
       - flag: { of: target, id: open, value: false }
   - id: creak
-    when: { change: { flag_id: open, becomes: true } }
+    when: { change: { flag: open, becomes: true } }
     do:
       - flag: { of: world, id: creaked, value: true }";
     super::round_play::add_place_rules(&pack, "docks_shop", bolt);
