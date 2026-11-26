@@ -19,8 +19,8 @@ use spookery_engine::Reason;
 
 use super::host::{report_close, Rejection, Request};
 use super::limits::{
-    wait_for_token, TokenBucket, BURST, CLIENT_MESSAGE_CAP, KEEPALIVE, MESSAGE_CAP, RATE_PER_SEC,
-    REQUESTED_SEND_BUFFER,
+    wait_for_token, TokenBucket, BURST, CLIENT_MESSAGE_CAP_BYTES, KEEPALIVE, MESSAGE_CAP_BYTES,
+    RATE_PER_SEC, REQUESTED_SEND_BUFFER_BYTES,
 };
 use super::seat::{frame_queue, write_frames, ConnId};
 use crate::protocol::{ClientMessage, Seat};
@@ -64,7 +64,7 @@ fn set_socket_options(stream: &tokio::net::TcpStream) -> io::Result<()> {
     stream.set_nodelay(true)?;
     let socket = socket2::SockRef::from(stream);
     socket.set_tcp_keepalive(&KEEPALIVE)?;
-    socket.set_send_buffer_size(REQUESTED_SEND_BUFFER)
+    socket.set_send_buffer_size(REQUESTED_SEND_BUFFER_BYTES)
 }
 
 async fn upgrade(
@@ -84,8 +84,8 @@ async fn upgrade(
         return StatusCode::FORBIDDEN.into_response();
     }
     socket
-        .max_message_size(MESSAGE_CAP)
-        .max_frame_size(MESSAGE_CAP)
+        .max_message_size(MESSAGE_CAP_BYTES)
+        .max_frame_size(MESSAGE_CAP_BYTES)
         .write_buffer_size(0)
         .on_upgrade(move |socket| run(socket, acceptor, seat))
 }
@@ -183,14 +183,14 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
     let _ = writer.await;
 }
 
-/// One client message, read by serde_json. One over `CLIENT_MESSAGE_CAP` is `LINE_TOO_LONG`,
+/// One client message, read by serde_json. One over `CLIENT_MESSAGE_CAP_BYTES` is `LINE_TOO_LONG`,
 /// and one that does not parse is `SCHEMA`, with the `id` it named when it named one.
 fn read_message(text: &str) -> Result<ClientMessage, Rejection> {
     let id = || {
         let value: Value = serde_json::from_str(text).ok()?;
         Some(value.get("id")?.as_str()?.to_string())
     };
-    if text.len() > CLIENT_MESSAGE_CAP {
+    if text.len() > CLIENT_MESSAGE_CAP_BYTES {
         return Err(Rejection {
             id: None,
             code: Reason::LineTooLong,

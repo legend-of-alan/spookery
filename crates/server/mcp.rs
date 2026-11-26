@@ -27,7 +27,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 use super::gm;
 use super::host::{report_close, Request};
-use super::limits::GM_BODY_CAP;
+use super::limits::GM_BODY_CAP_BYTES;
 use super::seat::{frame_queue, ConnId, FrameReceiver};
 use crate::protocol::{ClientBody, ClientMessage, Seat, ToolResult, COMMANDS};
 
@@ -60,7 +60,7 @@ fn http_config() -> StreamableHttpServerConfig {
     let mut config = StreamableHttpServerConfig::default()
         .with_allowed_hosts(["127.0.0.1"])
         .with_allowed_origins(["http://127.0.0.1:*"]);
-    config.max_request_body_bytes = GM_BODY_CAP;
+    config.max_request_body_bytes = GM_BODY_CAP_BYTES;
     config
 }
 
