@@ -1060,7 +1060,7 @@
       ]
     },
     "PlaceView": {
-      "description": "A place as one viewer sees it: its id, its name and the exits they may see there. A view's\n`place` and `nearby`, and each place of a `map` reply, are one.",
+      "description": "Part of a `View`, as its `place` and each of `nearby`, and of a `map` reply, sent from the\nhost to a client: its id, its name and the exits the viewer may see there.",
       "type": "object",
       "properties": {
         "place_id": {

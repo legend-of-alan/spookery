@@ -173,8 +173,8 @@ pub struct CommandView {
     pub owner: Option<String>,
 }
 
-/// A place as one viewer sees it: its id, its name and the exits they may see there. A view's
-/// `place` and `nearby`, and each place of a `map` reply, are one.
+/// Part of a `View`, as its `place` and each of `nearby`, and of a `map` reply, sent from the
+/// host to a client: its id, its name and the exits the viewer may see there.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PlaceView {

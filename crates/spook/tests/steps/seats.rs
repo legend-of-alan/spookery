@@ -567,7 +567,7 @@ fn answer_claim_then_stay_silent(socket: &mut tungstenite::WebSocket<net::TcpStr
         match socket.read() {
             Ok(Message::Text(_)) if !claim_answered => {
                 claim_answered = true;
-                let view = r#"{"body":{"kind":"view","viewer":"rowan","place":"docks_shop","visible_actors":[],"notes":[],"items":[],"habits":[]}}"#;
+                let view = r#"{"body":{"kind":"view","viewer":"rowan","place":{"place_id":"docks_shop","name":"Docks Shop"},"visible_actors":[],"notes":[],"items":[],"habits":[]}}"#;
                 if socket.send(Message::text(view)).is_err() {
                     return;
                 }
