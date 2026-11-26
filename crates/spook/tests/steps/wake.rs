@@ -68,7 +68,7 @@ fn write_idle(pack: &Path, value: &str) {
 /// With a GM seated, Rowan queues a wait. Wakes come while Rowan drops and claims again.
 #[when(expr = "a queued wait meets wakes while the player drops and claims again")]
 async fn a_queued_wait_meets_wakes(world: &mut World) {
-    let pack = serve_docks(world, "held", None).await;
+    let pack = serve_docks(world, "wakes", None).await;
     host::seat_rowan(world, &pack).await;
     advance_and_settle(world, INTERVAL).await;
     host::release_probe_gm(world).await;

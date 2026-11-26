@@ -193,7 +193,7 @@ Tested in `features/rules/triggers.feature`,
 
 A meter lives on the entity whose file declares it: every actor for
 `rules/meters.yaml`, one actor for a cast file's `meters`, and the world for
-`world/meters.yaml`. A world meter is held once, so every rule that names
+`world/meters.yaml`. A world meter is saved once, so every rule that names
 `of: world` reads and writes the same value, and its change rules fire once per
 change, whoever is seated. The world and an actor may each carry a meter of one name, and
 `of` picks which. Check refuses a cast meter whose id `rules/meters.yaml` or

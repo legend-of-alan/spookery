@@ -353,13 +353,6 @@ impl Check {
     }
 }
 
-/// Where a parsed meter read sits in the pack file. Line and column are 1-based.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FileLocation {
-    pub line: u32,
-    pub column: u32,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Cost {
     pub ticks: Expr,

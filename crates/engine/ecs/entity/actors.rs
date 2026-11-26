@@ -65,9 +65,9 @@ entity::has!(Actors, component::WieldedItem, wielded: undo::Store<BTreeMap<Actor
 entity::has!(Actors, Act, acts: undo::Store<BTreeMap<ActorId, Act>>);
 
 impl Reader<'_, Actors> {
-    /// Each store's key, as the save writes it, with each actor it carries something for. The
+    /// Each store's key, as the save writes it, with each actor id that store lists. The
     /// control type is left out: an actor exists when it has one.
-    pub(crate) fn carriers_by_store(&self) -> BTreeSet<(&'static str, &ActorId)> {
+    pub(crate) fn ids_by_store(&self) -> BTreeSet<(&'static str, &ActorId)> {
         let Actors {
             control_type: _,
             place,

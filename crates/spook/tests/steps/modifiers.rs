@@ -405,7 +405,7 @@ fn neither_keeps_the_dropped_meter(world: &mut World) {
     assert!(!meters.contains("luck"));
     assert!(meters.contains("vigor"));
     let world_meters = now.globals().query::<&Meter>();
-    assert!(!world_meters.iter().any(|held| held.contains("tide")));
+    assert!(!world_meters.iter().any(|meters| meters.contains("tide")));
 }
 
 #[then(expr = "the GM sees {string} as a changed key")]

@@ -21,8 +21,8 @@ pub trait QueryData<E: entity::Collection> {
     where
         E: 'a;
 
-    /// The entities that carry the first component this reads, or `None` when it reads none.
-    fn carriers<'a>(_: Reader<'a, E>) -> Option<Ids<'a, E>> {
+    /// The ids of the entities that have the first component this reads, or `None` when it reads none.
+    fn entity_ids<'a>(_: Reader<'a, E>) -> Option<Ids<'a, E>> {
         None
     }
 
@@ -33,8 +33,8 @@ pub trait QueryData<E: entity::Collection> {
 /// Which entities a query keeps: `With<C>`, `Without<C>`, or a tuple of up to four of them.
 pub trait QueryFilter<E: entity::Collection> {
     // repeats module: mirrors Bevy's QueryFilter (Naming rule 15)
-    /// The entities that carry the first component this requires, or `None` when it requires none.
-    fn carriers<'a>(_: Reader<'a, E>) -> Option<Ids<'a, E>> {
+    /// The ids of the entities that have the first component this requires, or `None` when it requires none.
+    fn entity_ids<'a>(_: Reader<'a, E>) -> Option<Ids<'a, E>> {
         None
     }
 
@@ -43,7 +43,7 @@ pub trait QueryFilter<E: entity::Collection> {
 }
 
 /// The entities of one collection that pass `F`, and what `D` reads from each. It walks the
-/// carriers of the first component `D` reads, else of the first `F` requires, else every entity
+/// ids of the first component `D` reads, else of the first `F` requires, else every entity
 /// the collection lists; a component the save holds for an entity that does not exist is walked
 /// too.
 pub struct Query<'w, E, D, F = ()> {
@@ -55,8 +55,8 @@ impl<'w, E: entity::Collection, D: QueryData<E>, F: QueryFilter<E>> Query<'w, E,
     /// What each entity that passes gives, in id order. The items borrow the save, not the query.
     pub fn iter(&self) -> impl Iterator<Item = D::Item<'w>> {
         let entities = self.entities;
-        let carriers = D::carriers(entities).or_else(|| F::carriers(entities));
-        let ids = carriers.unwrap_or_else(|| entities.components.ids(entities.canon));
+        let entity_ids = D::entity_ids(entities).or_else(|| F::entity_ids(entities));
+        let ids = entity_ids.unwrap_or_else(|| entities.components.ids(entities.canon));
         let passing = ids.filter(move |id| F::matches(entities, id));
         passing.filter_map(move |id| D::fetch(entities, id))
     }
@@ -83,8 +83,8 @@ impl<E: entity::Collection, C: 'static> QueryFilter<E> for With<C>
 where
     for<'a> &'a C: QueryData<E>,
 {
-    fn carriers<'a>(entities: Reader<'a, E>) -> Option<Ids<'a, E>> {
-        <&C>::carriers(entities)
+    fn entity_ids<'a>(entities: Reader<'a, E>) -> Option<Ids<'a, E>> {
+        <&C>::entity_ids(entities)
     }
 
     fn matches<'a>(entities: Reader<'a, E>, id: &'a E::Id) -> bool {
@@ -118,7 +118,7 @@ where
     where
         E: 'a;
 
-    fn carriers<'a>(entities: Reader<'a, E>) -> Option<Ids<'a, E>> {
+    fn entity_ids<'a>(entities: Reader<'a, E>) -> Option<Ids<'a, E>> {
         let mut last = None;
         let ids = (entities.components.store().keys()).map(|(id, _)| id);
         Some(Box::new(
@@ -127,12 +127,12 @@ where
     }
 
     fn fetch<'a>(entities: Reader<'a, E>, id: &'a E::Id) -> Option<Self::Item<'a>> {
-        let held = entities.get::<C>(id);
-        held.iter().next().is_some().then_some(held)
+        let value = entities.get::<C>(id);
+        value.iter().next().is_some().then_some(value)
     }
 }
 
-/// `Option<&C>` gives what `&C` gives, or `None` for an entity without `C`. It names no carriers,
+/// `Option<&C>` gives what `&C` gives, or `None` for an entity without `C`. It names no entity ids,
 /// so it never picks which entities a query walks: alone, it walks every entity.
 impl<'a, E: entity::Collection, C> QueryData<E> for Option<&'a C>
 where
@@ -168,8 +168,8 @@ macro_rules! tuples {
         impl<E: entity::Collection, $($part: QueryData<E>),+> QueryData<E> for ($($part,)+) {
             type Item<'a> = ($($part::Item<'a>,)+) where E: 'a;
 
-            fn carriers<'a>(entities: Reader<'a, E>) -> Option<Ids<'a, E>> {
-                None $(.or_else(|| $part::carriers(entities)))+
+            fn entity_ids<'a>(entities: Reader<'a, E>) -> Option<Ids<'a, E>> {
+                None $(.or_else(|| $part::entity_ids(entities)))+
             }
 
             fn fetch<'a>(entities: Reader<'a, E>, id: &'a E::Id) -> Option<Self::Item<'a>> {
@@ -178,8 +178,8 @@ macro_rules! tuples {
         }
 
         impl<E: entity::Collection, $($part: QueryFilter<E>),+> QueryFilter<E> for ($($part,)+) {
-            fn carriers<'a>(entities: Reader<'a, E>) -> Option<Ids<'a, E>> {
-                None $(.or_else(|| $part::carriers(entities)))+
+            fn entity_ids<'a>(entities: Reader<'a, E>) -> Option<Ids<'a, E>> {
+                None $(.or_else(|| $part::entity_ids(entities)))+
             }
 
             fn matches<'a>(entities: Reader<'a, E>, id: &'a E::Id) -> bool {

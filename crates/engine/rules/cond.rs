@@ -60,8 +60,8 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         Cond::HasItem { subject, id, count } => {
             let actor = subject.actor_id(context)?;
             let id = context.item_id(id)?;
-            let held = world.actors().get::<component::Item>(actor);
-            Ok(i64::from(held.get(&id).copied().unwrap_or(0)) >= eval::eval(context, count)?)
+            let items = world.actors().get::<component::Item>(actor);
+            Ok(i64::from(items.get(&id).copied().unwrap_or(0)) >= eval::eval(context, count)?)
         }
         Cond::Wielding { subject, id } => {
             let actor = subject.actor_id(context)?;

@@ -296,8 +296,8 @@ fn apply_modifier(
     let carried = canon.meter_def(entity::IdRef::Actor(actor_id), &def.meter);
     carried.ok_or(Reason::UnknownId)?;
     let now = world.world_time;
-    let held = world.actors().get::<Modifier>(actor_id).get(id);
-    let mut next = held.cloned().unwrap_or_else(|| Modifier {
+    let modifier = world.actors().get::<Modifier>(actor_id).get(id);
+    let mut next = modifier.cloned().unwrap_or_else(|| Modifier {
         meter: def.meter.clone(),
         until: now,
         max_ticks: 0,

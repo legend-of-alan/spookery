@@ -332,8 +332,8 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
 fn rest_is(world: &mut World, actor: String, rest: i64) {
     let now = support::world_of(world.pack());
     let actor = spookery_engine::entity::Id::Actor(resolve_id(now.canon(), &actor).into());
-    let held = now.entities().get::<component::Meter>(&actor).value("rest");
-    assert_eq!(held, Ok(rest), "{}", world.scratch);
+    let rest_now = now.entities().get::<component::Meter>(&actor).value("rest");
+    assert_eq!(rest_now, Ok(rest), "{}", world.scratch);
 }
 
 #[given(

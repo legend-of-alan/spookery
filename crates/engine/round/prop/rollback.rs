@@ -63,9 +63,9 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         !text.contains("\n    docks_street:"),
         "the street holds something"
     );
-    let held = "\n  items:\n    harbormouse:\n      tonic: 1\n";
-    let actor_items = &format!("{held}    mira:\n      brass_key: 1\n");
-    let edited = text.replacen(held, actor_items, 1);
+    let mouse_items = "\n  items:\n    harbormouse:\n      tonic: 1\n";
+    let actor_items = &format!("{mouse_items}    mira:\n      brass_key: 1\n");
+    let edited = text.replacen(mouse_items, actor_items, 1);
     assert!(edited.contains(actor_items), "Mira holds no key");
     let edited = crate::store::save::parse(&edited).expect("the edited save reads");
     let edited = crate::store::save::emit(&edited).expect("the edited save writes");
@@ -234,7 +234,7 @@ fn every_moved_meter_is_reported(
         value.ok().map(ChangeValue::Number)
     };
     let meters = now.actors().query::<&Meter>();
-    for (actor_id, key, _) in meters.iter().flat_map(|held| held.iter_with_id()) {
+    for (actor_id, key, _) in meters.iter().flat_map(|entry| entry.iter_with_id()) {
         let (before, after) = (read(taken, actor_id, key), read(now, actor_id, key));
         if before == after {
             continue;

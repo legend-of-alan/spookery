@@ -211,8 +211,8 @@ fn rounds_pass_until(world: &mut World, tick: u64) {
 fn rowan_holds(world: &mut World, count: u32, id: String) {
     let now = world_of(world.pack.as_ref().unwrap());
     let rowan = "rowan".into();
-    let held = now.actors().get::<component::Item>(&rowan).get(&id);
-    assert_eq!(held.copied().unwrap_or(0), count);
+    let count_now = now.actors().get::<component::Item>(&rowan).get(&id);
+    assert_eq!(count_now.copied().unwrap_or(0), count);
 }
 
 #[then(expr = "Rowan has used no act")]

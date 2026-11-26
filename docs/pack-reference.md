@@ -741,7 +741,7 @@ rules:
 - `rules/meters.yaml` gives the meter to every actor.
 - `meters:` in `cast/<name>.md` gives it to that one actor. The id is refused when `rules/meters.yaml` or another cast file has it too. `cast/keeper.md` declares `shop_day`.
 - `meters:` in `world/places/<id>.md` gives it to that one place, and `meters:` in `story/<id>.yaml` to that one story. The id is refused when `rules/meters.yaml`, a cast, place or other story file has it too, and a story's also when `world/meters.yaml` has it. `world/places/loft.md` declares `light`, and `story/samples.yaml` declares `dread`.
-- `world/meters.yaml` gives it to the world, held once in the save under `world.meters` and shared by every rule that names `of: world`. The world and an actor or place may each declare a meter with the same id, and `of` picks which one.
+- `world/meters.yaml` gives it to the world, saved once under `world.meters` and shared by every rule that names `of: world`. The world and an actor or place may each declare a meter with the same id, and `of` picks which one.
 
 `base` is what an entity with no row for the meter in the save reads, with an offset of 0. The save lists a meter only while it differs from that, and a write that brings it back takes the row off. So adding a meter to the pack writes no rows, and a changed `base` reaches every entity still at it. Migrate drops a meter from an entity the pack no longer gives it, and a save that lists a meter on an entity the pack does not give it, with no migrate to drop it, is refused.
 

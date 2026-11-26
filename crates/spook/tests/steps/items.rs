@@ -16,8 +16,8 @@ use crate::World;
 /// Give `actor` one more of `item`.
 fn give(now: &mut ecs::World, actor: &str, item: &str) {
     let (actor, mut actors) = (actor.into(), now.actors_mut());
-    let mut held = actors.get_mut::<component::Item>(&actor);
-    held.shift(item, 1, None).unwrap();
+    let mut items = actors.get_mut::<component::Item>(&actor);
+    items.shift(item, 1, None).unwrap();
 }
 
 fn hp(pack: &Path, actor: &str) -> i64 {
@@ -40,8 +40,8 @@ fn count(pack: &Path, actor: &str, item: &str) -> u32 {
 
 fn wielded(pack: &Path, actor: &str) -> Option<String> {
     let (now, actor) = (support::world_of(pack), actor.into());
-    let held = now.actors().get::<component::WieldedItem>(&actor).get();
-    held.map(String::from)
+    let wielded = now.actors().get::<component::WieldedItem>(&actor).get();
+    wielded.map(String::from)
 }
 
 /// One line with the GM seat empty: queue it, then commit its round.

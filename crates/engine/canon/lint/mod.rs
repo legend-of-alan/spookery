@@ -102,8 +102,8 @@ pub(crate) fn refuse_unknown_item(file: &str, id: &str, key_path: &str) -> Diagn
 }
 
 /// Static warnings and trigger-reach errors on a loaded `Canon`, whose save lists the flag keys in
-/// `held_flags`.
-pub(crate) fn run(canon: &Canon, held_flags: &BTreeSet<&str>) -> Vec<Diagnostic> {
+/// `saved_flags`.
+pub(crate) fn run(canon: &Canon, saved_flags: &BTreeSet<&str>) -> Vec<Diagnostic> {
     let mut diagnostics = find_unreachable_places(canon);
     diagnostics.extend(find_teleport_verbs(canon));
     diagnostics.extend(trigger::find_cycles(canon));
@@ -111,7 +111,7 @@ pub(crate) fn run(canon: &Canon, held_flags: &BTreeSet<&str>) -> Vec<Diagnostic>
     diagnostics.extend(trigger::find_world_change_subjects(canon));
     diagnostics.extend(find_bad_cycle_conds(canon));
     diagnostics.extend(find_long_gm_notes(canon));
-    diagnostics.extend(find_unset_flags(canon, held_flags));
+    diagnostics.extend(find_unset_flags(canon, saved_flags));
     diagnostics
 }
 
@@ -130,12 +130,13 @@ fn rule_and_path_conds(canon: &Canon) -> impl Iterator<Item = (&str, String, &[C
 }
 
 /// Flag conds, on a rule or a path, a change rule's flag watch and a path's `revealed_by`,
-/// that name a key no rule sets and `held` does not list, so its value never moves: most likely
+/// that name a key no rule sets and `saved_flags` does not list, so its value never moves: most likely
 /// a misspelt key. `open` gets no warning here: the round sets it on paths, not through rules,
 /// and `find_missing_components` checks it in a cond.
-fn find_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
+fn find_unset_flags(canon: &Canon, saved_flags: &BTreeSet<&str>) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    let is_ever_set = |key| held.contains(key) || find_flag_objects(canon, key).next().is_some();
+    let is_ever_set =
+        |key| saved_flags.contains(key) || find_flag_objects(canon, key).next().is_some();
     let hint = "set the flag in a rule or the save, or name a flag that is set";
     let unset_message =
         |key: &str| format!("names flag '{key}', which no rule sets and no save holds");

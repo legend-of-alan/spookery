@@ -1,8 +1,8 @@
 //! A number in a rule: its syntax tree and the walks over it. `parse` reads text into the tree
 //! and `eval` reads the tree to a value, drawing its dice.
 
+use crate::diagnostic::FileLocation;
 use crate::rules::grammar;
-use crate::rules::rule::FileLocation;
 use crate::Reason;
 
 pub(crate) mod eval;

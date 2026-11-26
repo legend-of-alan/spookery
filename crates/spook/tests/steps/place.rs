@@ -35,9 +35,9 @@ fn rowan_wields_the_latch_and_the_world_shows_dawn(world: &mut World) {
     crate::support::edit_save(&pack, |now| {
         let rowan = "rowan".into();
         let mut actors = now.actors_mut();
-        let mut held = actors.get_mut::<component::Item>(&rowan);
-        held.shift("tonic", 2, None).unwrap();
-        held.shift("latch", 1, None).unwrap();
+        let mut items = actors.get_mut::<component::Item>(&rowan);
+        items.shift("tonic", 2, None).unwrap();
+        items.shift("latch", 1, None).unwrap();
         let mut wielded = actors.get_mut::<component::WieldedItem>(&rowan);
         wielded.set(Some("latch")).unwrap();
     });

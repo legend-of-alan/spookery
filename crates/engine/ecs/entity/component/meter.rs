@@ -78,13 +78,13 @@ pub(crate) fn value(def: &Def, live: &Meter, modifiers: i64) -> Result<i64, Reas
     Ok(sum.clamp(def.min, def.max))
 }
 
-/// `held` with its offset moved by `delta` inside `def`'s bounds.
-fn shift(held: Meter, def: &Def, delta: i64) -> Result<Meter, Reason> {
-    let offset = held.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
-    if !is_storable(def, held.base, offset) {
+/// `meter` with its offset moved by `delta` inside `def`'s bounds.
+fn shift(meter: Meter, def: &Def, delta: i64) -> Result<Meter, Reason> {
+    let offset = meter.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
+    if !is_storable(def, meter.base, offset) {
         return Err(Reason::OutOfRange);
     }
-    Ok(Meter { offset, ..held })
+    Ok(Meter { offset, ..meter })
 }
 
 impl Component for Meter {
@@ -97,8 +97,8 @@ impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Ref<'_, E, Meter
     /// none. `None` when the entity does not carry the meter.
     pub fn get_or_base(&self, entry_id: &str) -> Option<Meter> {
         let def = (self.entities.canon).meter_def(self.id.as_id_ref(), entry_id)?;
-        let held = self.get(entry_id).copied();
-        (self.entities.contains(self.id)).then(|| held.unwrap_or(Meter::at_base(def)))
+        let meter = self.get(entry_id).copied();
+        (self.entities.contains(self.id)).then(|| meter.unwrap_or(Meter::at_base(def)))
     }
 }
 
@@ -112,9 +112,9 @@ impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter
         let def = (self.writer.canon.meter_def(id, entry_id)).ok_or(Reason::UnknownId)?;
         let pack_base = Meter::at_base(def);
         let entry = (self.id.clone(), entry_id.to_string());
-        let held = self.store().get(&entry).copied().unwrap_or(pack_base);
-        let next = shift(held, def, delta)?;
-        let report = change::Report::Meter(self.key(Some(entry_id)), Some(held));
+        let meter = self.store().get(&entry).copied().unwrap_or(pack_base);
+        let next = shift(meter, def, delta)?;
+        let report = change::Report::Meter(self.key(Some(entry_id)), Some(meter));
         let next = (next != pack_base).then_some(next);
         let (store, transaction) = self.store_mut();
         store.set(transaction, entry, next, [report])
@@ -128,8 +128,8 @@ impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter
             self.check_exists()?;
         }
         let entry = (self.id.clone(), entry_id.to_string());
-        let held = self.store().get(&entry).copied();
-        let report = change::Report::Meter(self.key(Some(entry_id)), held);
+        let previous = self.store().get(&entry).copied();
+        let report = change::Report::Meter(self.key(Some(entry_id)), previous);
         let (store, transaction) = self.store_mut();
         store.set(transaction, entry, meter, [report])
     }
@@ -149,12 +149,12 @@ impl Ref<'_, Save, Meter> {
                 let def = canon
                     .meter_def(id.as_ref(), entry_id)
                     .ok_or(Reason::UnknownId);
-                let held = in_collection!(id, [&save], |entities, id| {
+                let meter = in_collection!(id, [&save], |entities, id| {
                     Reader::new(entities, canon)
                         .get::<Meter>(id)
                         .get_or_base(entry_id)
                 });
-                value(def?, &held.ok_or(Reason::UnknownId)?, 0)
+                value(def?, &meter.ok_or(Reason::UnknownId)?, 0)
             }
         }
     }

@@ -164,16 +164,16 @@ impl ecs::World {
                     }
                     Entry::Occupied(mut entry) => entry.get_mut().after = change.after.clone(),
                 },
-                change::Report::Meter(key, held) => {
-                    (meters_before.entry(key).or_default().0).get_or_insert(held.as_ref());
+                change::Report::Meter(key, meter) => {
+                    (meters_before.entry(key).or_default().0).get_or_insert(meter.as_ref());
                 }
                 change::Report::Modifiers(key, sum) => {
                     (meters_before.entry(key).or_default().1).get_or_insert(*sum);
                 }
             }
         }
-        for (key, (held, sum)) in meters_before {
-            net.insert(key.clone(), self.read_meter_change(key, held, sum));
+        for (key, (previous, sum)) in meters_before {
+            net.insert(key.clone(), self.read_meter_change(key, previous, sum));
         }
         self.transaction.taken = self.transaction.changes.len();
         let moved = net
@@ -182,12 +182,12 @@ impl ecs::World {
         moved.collect()
     }
 
-    /// Meter `key`'s change as rules read it: before, from `held` and `sum` where a write handed
-    /// them over and from the meter as it is where none did; and as it is now.
+    /// Meter `key`'s change as rules read it: before, from `previous` and `sum` where a write
+    /// handed them over and from the meter as it is where none did; and as it is now.
     fn read_meter_change(
         &self,
         key: &change::Key,
-        held: Option<Option<&Meter>>,
+        previous: Option<Option<&Meter>>,
         sum: Option<Result<i64, Reason>>,
     ) -> Change {
         let (canon, save) = (&*self.canon, &self.save);
@@ -202,12 +202,12 @@ impl ecs::World {
             entity::Id::Actor(actor) => self.actors().get::<Modifier>(actor).sum(entry_id),
             _ => Ok(0),
         };
-        let reading = |held: Option<&Meter>, sum: Result<i64, Reason>| {
-            let value = (def.zip(held).ok_or(Reason::UnknownId))
-                .and_then(|(def, held)| meter::value(def, held, sum?));
+        let reading = |meter: Option<&Meter>, sum: Result<i64, Reason>| {
+            let value = (def.zip(meter).ok_or(Reason::UnknownId))
+                .and_then(|(def, meter)| meter::value(def, meter, sum?));
             value.ok().map(ChangeValue::Number)
         };
-        let before = reading(held.unwrap_or(now.as_ref()), sum.unwrap_or(sum_now));
+        let before = reading(previous.unwrap_or(now.as_ref()), sum.unwrap_or(sum_now));
         Change::new(key.clone(), before, reading(now.as_ref(), sum_now))
     }
 

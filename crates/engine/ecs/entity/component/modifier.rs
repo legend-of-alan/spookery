@@ -43,8 +43,8 @@ impl Component for Modifier {
 }
 
 /// The modifier as a change value: its stacks, the tick it expires at and its longest ticks.
-fn stacks_value(live: &Modifier) -> ChangeValue {
-    let (stacks, until, max_ticks) = (&live.stacks, live.until, live.max_ticks);
+fn stacks_value(modifier: &Modifier) -> ChangeValue {
+    let (stacks, until, max_ticks) = (&modifier.stacks, modifier.until, modifier.max_ticks);
     ChangeValue::Text(format!("{stacks:?} until {until} max_ticks {max_ticks}"))
 }
 
@@ -53,23 +53,23 @@ fn stacks_value(live: &Modifier) -> ChangeValue {
 /// Below `max_stacks` it is one more stack. At the cap it replaces the first weakest
 /// stack when its absolute value is larger. Stacks past a `max_stacks` the pack lowered
 /// go first, weakest first.
-pub(crate) fn stack(def: &Def, live: &mut Modifier, add: i64, ticks: u64, now: u64) {
-    live.max_ticks = live.max_ticks.max(ticks);
-    let left = live.until.saturating_sub(now).saturating_add(ticks);
-    live.until = now.saturating_add(left.min(live.max_ticks));
-    while live.stacks.len() > def.max_stacks {
-        if let Some(index) = weakest(&live.stacks) {
-            live.stacks.remove(index);
+pub(crate) fn stack(def: &Def, modifier: &mut Modifier, add: i64, ticks: u64, now: u64) {
+    modifier.max_ticks = modifier.max_ticks.max(ticks);
+    let left = modifier.until.saturating_sub(now).saturating_add(ticks);
+    modifier.until = now.saturating_add(left.min(modifier.max_ticks));
+    while modifier.stacks.len() > def.max_stacks {
+        if let Some(index) = weakest(&modifier.stacks) {
+            modifier.stacks.remove(index);
         }
     }
-    if live.stacks.len() < def.max_stacks {
-        live.stacks.push(add);
+    if modifier.stacks.len() < def.max_stacks {
+        modifier.stacks.push(add);
         return;
     }
-    let stronger = weakest(&live.stacks)
-        .filter(|&index| add.unsigned_abs() > live.stacks[index].unsigned_abs());
+    let stronger = weakest(&modifier.stacks)
+        .filter(|&index| add.unsigned_abs() > modifier.stacks[index].unsigned_abs());
     if let Some(index) = stronger {
-        live.stacks[index] = add;
+        modifier.stacks[index] = add;
     }
 }
 
@@ -78,19 +78,23 @@ fn weakest(stacks: &[i64]) -> Option<usize> {
     stacks
         .iter()
         .enumerate()
-        .min_by_key(|(_, held)| held.unsigned_abs())
+        .min_by_key(|(_, stack)| stack.unsigned_abs())
         .map(|(index, _)| index)
 }
 
-/// Whether `defs` still define modifier `id` on the meter `live` was applied to.
-pub(crate) fn is_defined(defs: &BTreeMap<String, Def>, id: &str, live: &Modifier) -> bool {
-    defs.get(id).is_some_and(|def| def.meter == live.meter)
+/// Whether `defs` still define modifier `id` on the meter `modifier` was applied to.
+pub(crate) fn is_defined(defs: &BTreeMap<String, Def>, id: &str, modifier: &Modifier) -> bool {
+    defs.get(id).is_some_and(|def| def.meter == modifier.meter)
 }
 
-/// What the modifiers in `held` add to meter `key`: the sum of their stacks.
-pub(crate) fn sum<'a>(held: impl Iterator<Item = &'a Modifier>, key: &str) -> Result<i64, Reason> {
-    held.filter(|live| live.meter == key)
-        .flat_map(|live| &live.stacks)
+/// What the modifiers in `modifiers` add to meter `key`: the sum of their stacks.
+pub(crate) fn sum<'a>(
+    modifiers: impl Iterator<Item = &'a Modifier>,
+    key: &str,
+) -> Result<i64, Reason> {
+    modifiers
+        .filter(|modifier| modifier.meter == key)
+        .flat_map(|modifier| &modifier.stacks)
         .try_fold(0i64, |total, add| total.checked_add(*add))
         .ok_or(Reason::OutOfRange)
 }
@@ -98,7 +102,7 @@ pub(crate) fn sum<'a>(held: impl Iterator<Item = &'a Modifier>, key: &str) -> Re
 impl Ref<'_, entity::Actors, Modifier> {
     /// What the actor's modifiers add to meter `key`.
     pub fn sum(&self, key: &str) -> Result<i64, Reason> {
-        sum(self.iter().map(|(_, held)| held), key)
+        sum(self.iter().map(|(_, modifier)| modifier), key)
     }
 }
 
@@ -123,9 +127,9 @@ pub(in crate::ecs) fn value_with(
     modifiers: Result<i64, Reason>,
 ) -> Result<i64, Reason> {
     let def = actors.canon.meter_def(entity::IdRef::Actor(actor), key);
-    let held = actors.get::<Meter>(actor).get_or_base(key);
-    let held = held.ok_or(Reason::UnknownId);
-    meter::value(def.ok_or(Reason::UnknownId)?, &held?, modifiers?)
+    let meter = actors.get::<Meter>(actor).get_or_base(key);
+    let meter = meter.ok_or(Reason::UnknownId);
+    meter::value(def.ok_or(Reason::UnknownId)?, &meter?, modifiers?)
 }
 
 impl Mut<'_, entity::Actors, Modifier> {
@@ -137,29 +141,30 @@ impl Mut<'_, entity::Actors, Modifier> {
     pub fn set(&mut self, id: &str, next: Option<Modifier>) -> Result<(), Reason> {
         let (canon, actor) = (self.writer.canon, self.id);
         let actors = Reader::new(&*self.writer.components, canon);
-        let held = actors.get::<Modifier>(actor).get(id);
-        let meter = match (&next, held) {
+        let modifier = actors.get::<Modifier>(actor).get(id);
+        let meter = match (&next, modifier) {
             (Some(_), _) => canon
                 .modifiers
                 .get(id)
                 .ok_or(Reason::UnknownId)?
                 .meter
                 .clone(),
-            (None, Some(held)) => held.meter.clone(),
+            (None, Some(modifier)) => modifier.meter.clone(),
             (None, None) => return Ok(()),
         };
         if next.is_some() {
             self.check_exists()?;
         }
-        let own = |held: Option<&Modifier>| held.map(stacks_value);
-        let own = Change::new(self.key(Some(id)), own(held), own(next.as_ref()));
-        let stacks_move = held.map(|held| &held.stacks) != next.as_ref().map(|next| &next.stacks);
+        let own = |modifier: Option<&Modifier>| modifier.map(stacks_value);
+        let own = Change::new(self.key(Some(id)), own(modifier), own(next.as_ref()));
+        let stacks_move =
+            modifier.map(|modifier| &modifier.stacks) != next.as_ref().map(|next| &next.stacks);
         let watched = change::Key::new(Meter::ID, entity::IdRef::Actor(actor), Some(&meter));
         if stacks_move {
             self.writer.transaction.count_key(&watched)?;
         }
-        let others = (actors.get::<Modifier>(actor).iter()).filter(|(held, _)| *held != id);
-        let with_next = sum(others.map(|(_, held)| held).chain(&next), &meter);
+        let others = (actors.get::<Modifier>(actor).iter()).filter(|(entry_id, _)| *entry_id != id);
+        let with_next = sum(others.map(|(_, modifier)| modifier).chain(&next), &meter);
         if next.is_some() {
             value_with(actors, actor, &meter, with_next)?;
         }
@@ -176,8 +181,8 @@ impl Writer<'_, entity::Actors> {
     /// Take off every modifier whose tick has come by `world_time`, all its stacks at once.
     pub fn expire_modifiers(&mut self, world_time: u64) -> Result<(), Reason> {
         let actors = Reader::new(&*self.components, self.canon).query::<&Modifier>();
-        let held = actors.iter().flat_map(|held| held.iter_with_id());
-        let due = held.filter(|(_, _, held)| held.until <= world_time);
+        let modifiers = actors.iter().flat_map(|entry| entry.iter_with_id());
+        let due = modifiers.filter(|(_, _, modifier)| modifier.until <= world_time);
         let due: Vec<(ActorId, String)> =
             (due.map(|(actor, id, _)| (actor.clone(), id.to_string()))).collect();
         for (actor, id) in due {
@@ -199,7 +204,7 @@ mod tests {
         }
     }
 
-    fn held(stacks: &[i64]) -> Modifier {
+    fn with_stacks(stacks: &[i64]) -> Modifier {
         Modifier {
             meter: "vigor".to_string(),
             until: 2,
@@ -210,14 +215,14 @@ mod tests {
 
     #[test]
     fn a_lowered_cap_drops_the_weakest_extra_stacks_on_the_next_application() {
-        let mut live = held(&[-1, -3, -2, -1]);
-        stack(&fatigue(2), &mut live, -1, 10, 2);
-        assert_eq!(live.stacks, vec![-3, -2]);
+        let mut modifier = with_stacks(&[-1, -3, -2, -1]);
+        stack(&fatigue(2), &mut modifier, -1, 10, 2);
+        assert_eq!(modifier.stacks, vec![-3, -2]);
     }
 
     #[test]
     fn sum_counts_only_the_named_meter_and_refuses_an_overflow() {
-        let mut map = BTreeMap::from([("fatigue".to_string(), held(&[-1, -2]))]);
+        let mut map = BTreeMap::from([("fatigue".to_string(), with_stacks(&[-1, -2]))]);
         map.insert(
             "calm".to_string(),
             Modifier {
@@ -229,7 +234,7 @@ mod tests {
         );
         assert_eq!(sum(map.values(), "vigor"), Ok(-3));
         assert_eq!(sum(map.values(), "nerve"), Ok(0));
-        map.insert("vast".to_string(), held(&[i64::MIN]));
+        map.insert("vast".to_string(), with_stacks(&[i64::MIN]));
         assert_eq!(sum(map.values(), "vigor"), Err(Reason::OutOfRange));
     }
 }

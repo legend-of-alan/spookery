@@ -69,6 +69,13 @@ fn unquote(value: &str) -> &str {
     value
 }
 
+/// A line and column in a file. Both are 1-based.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FileLocation {
+    pub line: u32,
+    pub column: u32,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Diagnostic {
     /// Pack-relative path, with `/` on every OS.
@@ -111,9 +118,9 @@ impl Diagnostic {
     }
 
     /// At `file_location`, a line and column in the file. No file location leaves it as is.
-    pub(crate) fn at_file_location(self, file_location: Option<(u32, u32)>) -> Self {
+    pub(crate) fn at_file_location(self, file_location: Option<FileLocation>) -> Self {
         match file_location {
-            Some((line, column)) => self.at_line(line, Some(column)),
+            Some(FileLocation { line, column }) => self.at_line(line, Some(column)),
             None => self,
         }
     }
@@ -159,7 +166,7 @@ pub(crate) fn warning(file: &str, problem: &str, hint: &str) -> Diagnostic {
 }
 
 /// Line and column of the `nth` match of `needle` in `text`. Both are 1-based.
-pub(crate) fn locate_nth(text: &str, needle: &str, nth: usize) -> Option<(u32, u32)> {
+pub(crate) fn locate_nth(text: &str, needle: &str, nth: usize) -> Option<FileLocation> {
     if needle.is_empty() {
         return None;
     }
@@ -169,7 +176,10 @@ pub(crate) fn locate_nth(text: &str, needle: &str, nth: usize) -> Option<(u32, u
             continue;
         };
         if seen == nth {
-            return Some((index as u32 + 1, col as u32 + 1));
+            return Some(FileLocation {
+                line: index as u32 + 1,
+                column: col as u32 + 1,
+            });
         }
         seen += 1;
     }

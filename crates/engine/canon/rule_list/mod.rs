@@ -4,12 +4,12 @@ use serde_saphyr::Spanned;
 use spookery_protocol::{is_built_in, Seat};
 
 use crate::canon::refusal::{file_location_of, CompileError, Diagnostics, FileText, Locator};
-use crate::diagnostic::{schema_error, Diagnostic};
+use crate::diagnostic::{schema_error, Diagnostic, FileLocation};
 use crate::rules::expr::{self, stamp_file_locations, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
-    self, ChangeWatch, Cond, Cost, EffectTemplate, FileLocation, LocationTo, NarrateTo, Op, Phase,
-    Rule, RuleKind, Scope, TargetKind,
+    self, ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Op, Phase, Rule,
+    RuleKind, Scope, TargetKind,
 };
 
 use parse::{
@@ -249,13 +249,13 @@ fn find_let_read_message(rule: &Rule) -> Option<(String, String)> {
             let Expr::Let { id, keep } = read else {
                 continue;
             };
-            let (message, hint) = match (readable.iter().find(|(held, _)| held == id), keep) {
+            let (message, hint) = match (readable.iter().find(|(bound, _)| bound == id), keep) {
                 (Some((_, Expr::Dice { keep: None, .. })), _) | (Some(_), None) => continue,
                 (Some(_), Some(_)) => (
                     format!("reads high or low of '{id}', which is not one dice group with no keep"),
                     "read high or low only of an id whose number is dice such as 2d8, with no keep such as kh1",
                 ),
-                (None, _) if lets.iter().any(|(held, _)| held == id) => (
+                (None, _) if lets.iter().any(|(bound, _)| bound == id) => (
                     format!("reads '{id}' in let: at or above the line that holds it"),
                     "a let: number reads only the ids written above it",
                 ),

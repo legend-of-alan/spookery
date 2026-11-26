@@ -2,8 +2,7 @@
 
 use serde_saphyr::Spanned;
 
-use crate::diagnostic::{locate_nth, Code, Diagnostic};
-use crate::rules::rule::FileLocation;
+use crate::diagnostic::{locate_nth, Code, Diagnostic, FileLocation};
 use crate::Reason;
 
 /// One pack file as the loader sees it: its pack-relative name and its YAML text, which
@@ -205,7 +204,7 @@ pub(super) fn file_location_of<T>(span: &Spanned<T>) -> Option<FileLocation> {
 
 /// `field` inside the `index`th entry of the top-level `list`. An entry starts at a line
 /// whose key is `id:`, so an `id:` inside a value, or the file's own `id:`, starts none.
-fn locate_entry_field(text: &str, list: &str, index: usize, field: &str) -> Option<(u32, u32)> {
+fn locate_entry_field(text: &str, list: &str, index: usize, field: &str) -> Option<FileLocation> {
     let lines: Vec<&str> = text.lines().collect();
     let first = lines.iter().position(|line| line.starts_with(list))? + 1;
     let last = lines[first..]
@@ -219,7 +218,10 @@ fn locate_entry_field(text: &str, list: &str, index: usize, field: &str) -> Opti
     let end = marks.get(index + 1).copied().unwrap_or(last);
     (start..end).find_map(|line_index| {
         let column = lines[line_index].find(field)?;
-        Some((line_index as u32 + 1, column as u32 + 1))
+        Some(FileLocation {
+            line: line_index as u32 + 1,
+            column: column as u32 + 1,
+        })
     })
 }
 

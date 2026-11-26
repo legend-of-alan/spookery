@@ -539,8 +539,8 @@ mod tests {
             .port();
         let (tx, rx) = mpsc::channel();
         let (fault_tx, fault_seen) = tokio::sync::mpsc::unbounded_channel();
-        let (let_go, held) = mpsc::channel();
-        spawn_fake_host(rx, fault_tx, held);
+        let (let_go, stay) = mpsc::channel();
+        spawn_fake_host(rx, fault_tx, stay);
         tokio::spawn(serve(listener, tx, Arc::new(AtomicU64::new(1))));
         (port, fault_seen, let_go)
     }
