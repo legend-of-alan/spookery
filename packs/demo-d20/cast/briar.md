@@ -14,9 +14,9 @@ rules:
     do:
       - note:
           id: note_gate_watch
-          to_ids:
+          to:
             - corin
-          place_id: yard
+          place: yard
           text: The yard stays watched.
   - id: strike
     when:

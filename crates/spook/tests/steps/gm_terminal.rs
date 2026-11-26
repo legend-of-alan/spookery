@@ -66,8 +66,8 @@ async fn a_docks_table_with_a_gm_and_a_seat(world: &mut World, actor: String) {
 }
 
 #[when(expr = "the GM queues {string} for {string} and commits")]
-fn the_gm_queues_for_and_commits(world: &mut World, move_id: String, actor: String) {
-    write_gm(world, &format!("queue {actor} {move_id}"));
+fn the_gm_queues_for_and_commits(world: &mut World, verb_id: String, actor: String) {
+    write_gm(world, &format!("queue {actor} {verb_id}"));
     write_gm(world, "commit");
 }
 
@@ -145,9 +145,9 @@ fn the_gm_types(world: &mut World, line: String) {
     write_gm(world, &line);
 }
 
-#[when(expr = "the GM queues an unknown move")]
-fn the_gm_queues_an_unknown_move(world: &mut World) {
-    write_gm(world, "queue mira not_a_move");
+#[when(expr = "the GM queues an unknown verb")]
+fn the_gm_queues_an_unknown_verb(world: &mut World) {
+    write_gm(world, "queue mira not_a_verb");
 }
 
 #[when(expr = "spook run stops")]

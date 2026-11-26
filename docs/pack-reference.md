@@ -297,9 +297,9 @@ rules:
           value: true
       - note:
           id: note_tended
-          to_ids:
+          to:
             - ada
-          place_id: yard
+          place: yard
           text: The yard is swept.
 ---
 Keeper sweeps the yard.
@@ -643,9 +643,9 @@ rules:
     do:
       - note:
           id: note_lane
-          to_ids:
+          to:
             - ada
-          place_id: yard
+          place: yard
           text: A chalk mark points down the lane.
 
   - id: ring_bell
@@ -829,7 +829,7 @@ One effect under each dash. The rules in `rules/verbs.yaml` are the examples. `s
 
 `location.via` names a path id, walked as an exit from the actor's current place. `travel` uses `via: target`, which needs a rule with `target: path`. `location.to` names a place, or `target`, which needs a rule that targets a place. Playing `to` without `teleport: true` is refused. `teleport: true` in `rules/verbs.yaml` is a warning.
 
-`note` names its readers as `to_ids` and its place as `place_id`. It is stored on the save under `globals.notes`, keyed by the note's `id`, with its `to_ids` in order and listed once. A note is shown to everyone named in `to_ids`, wherever they are, and to anyone standing in `place_id`. Place bodies and note text are shown as written to everyone who reads them. `narrate` is one-off text for the people its `to` names, written on the round and left out of the save. `to` is `self`, `here`, or an actor id. A world change rule may leave it out, and then it is every player present; check refuses a missing `to` anywhere else. A rule that should not speak to everyone it names gets an `if`. `memory` writes a memory line to the actor `to` names. The save groups what each kind of entity holds by component: an actor's flags are under `actors.flags`, a place's items, meters and flags under `places.items`, `places.meters` and `places.flags`, a path's flags under `paths.flags`, a story's under `stories`, and the world's under `globals.meters`, `globals.flags` and `globals.notes`, each listed by the entity's id. The save lists no places, paths or stories of its own: every place, path and story the pack defines exists. It lists an actor's action state under `actors.acts` only while it differs from that of an actor who has not acted, and a meter only while it differs from its `base`.
+`note` names its readers as `to` and its place as `place`. It is stored on the save under `globals.notes`, keyed by the note's `id`, with its `to` in order and listed once. A note is shown to everyone named in `to`, wherever they are, and to anyone standing in `place`. Place bodies and note text are shown as written to everyone who reads them. `narrate` is one-off text for the people its `to` names, written on the round and left out of the save. `to` is `self`, `here`, or an actor id. A world change rule may leave it out, and then it is every player present; check refuses a missing `to` anywhere else. A rule that should not speak to everyone it names gets an `if`. `memory` writes a memory line to the actor `to` names. The save groups what each kind of entity holds by component: an actor's flags are under `actors.flags`, a place's items, meters and flags under `places.items`, `places.meters` and `places.flags`, a path's flags under `paths.flags`, a story's under `stories`, and the world's under `globals.meters`, `globals.flags` and `globals.notes`, each listed by the entity's id. The save lists no places, paths or stories of its own: every place, path and story the pack defines exists. It lists an actor's action state under `actors.acts` only while it differs from that of an actor who has not acted, and a meter only while it differs from its `base`.
 
 `flag` sets a flag on its `of` or takes it off. Any actor, place, story or the world may carry any flag but `busy`, and no file lists them. A flag that is not set reads false. Check warns about a flag a condition or a path's `revealed_by` names that no rule sets and no save holds, which is most often a misspelt key.
 

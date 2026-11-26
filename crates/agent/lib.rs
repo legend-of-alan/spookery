@@ -158,9 +158,9 @@ impl<M: Model, Conn: Connection> Agent<M, Conn> {
         }
     }
 
-    /// Commits the queued moves with their round: the reply, or `None` when no move is queued.
-    async fn commit_queued_moves(&self) -> graph_flow::Result<Option<ServerBody>> {
-        if self.state().queued_moves.is_empty() {
+    /// Commits the queued verbs with their round: the reply, or `None` when no verb is queued.
+    async fn commit_queued_verbs(&self) -> graph_flow::Result<Option<ServerBody>> {
+        if self.state().queued_verbs.is_empty() {
             return Ok(None);
         }
         let args = json!(CommitArgs {
@@ -191,9 +191,9 @@ mod tests {
     use crate::protocol::ServerMessage;
 
     const STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"pack":{"menu":[],"control_types":{"pc":"pc_template"},"places":{},"cast":{}}}"#;
-    const VIEW: &str = r#"{"kind":"view","viewer":"pc","place":{"place_id":"docks","name":"Docks"},"visible_actors":["pc"],"notes":[],"items":[],"habits":[]}"#;
+    const VIEW: &str = r#"{"kind":"view","viewer":"pc","place":{"place":"docks","name":"Docks"},"visible_actors":["pc"],"notes":[],"items":[],"habits":[]}"#;
     const ROUND: &str = r#"{"kind":"round","round_index":1,"world_time":5}"#;
-    const QUEUED: &str = r#"{"kind":"queued","intent":"q2","actor":"pc","move":"wait"}"#;
+    const QUEUED: &str = r#"{"kind":"queued","intent":"q2","actor":"pc","verb":"wait"}"#;
     const PLAYER_SAY: &str = r#"{"kind":"say","from":"player:pc","to":"table","text":"ok"}"#;
     const GM_SAY: &str = r#"{"kind":"say","from":"gm","to":"table","text":"ok"}"#;
     /// Read as a failed read rather than as a body.

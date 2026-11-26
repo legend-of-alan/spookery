@@ -367,7 +367,7 @@ mod tests {
         format!(
             "\
 schema: {tag}
-world_id: ex
+world: ex
 pack_rev: blake2s:00
 rules_rev: {rules}
 state_rev: 0

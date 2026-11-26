@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// The wire version the hello announces.
-pub const VERSION: u32 = 5;
+pub const VERSION: u32 = 6;
 
 /// One message on a seat's stream. `id` is chosen by the client and comes back as
 /// `reply_to` on the reply. `seq` is set by the server, from one counter per host, on
@@ -112,8 +112,8 @@ pub enum ServerBody {
         intent: String,
         #[serde(rename = "actor")]
         actor_id: String,
-        #[serde(rename = "move")]
-        move_id: String,
+        #[serde(rename = "verb")]
+        verb_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<String>,
     },
@@ -167,7 +167,7 @@ pub struct Speech {
     /// Who actually heard it: the ids of the seated players' actors that `to` reached when it
     /// was said, plus a seated speaker. `to` is who the speaker addressed; this is who was
     /// there, kept because seats and places change later. Empty on a player's copy.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "recipients", default, skip_serializing_if = "Vec::is_empty")]
     pub recipient_ids: Vec<String>,
     pub text: String,
 }
@@ -383,7 +383,7 @@ mod tests {
         };
         assert_eq!(
             hello.to_text(),
-            r#"{"body":{"kind":"hello","version":5,"commands":["claim"],"open":["rowan"],"taken":["wren"]}}"#
+            r#"{"body":{"kind":"hello","version":6,"commands":["claim"],"open":["rowan"],"taken":["wren"]}}"#
         );
         let released = ServerMessage {
             body: ServerBody::Released,

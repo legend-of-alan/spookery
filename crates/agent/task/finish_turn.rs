@@ -18,7 +18,7 @@ impl<M: Model, Conn: Connection> Task for FinishTurn<M, Conn> {
     }
 
     async fn run(&self, _context: graph_flow::Context) -> graph_flow::Result<TaskResult> {
-        self.0.commit_queued_moves().await?;
+        self.0.commit_queued_verbs().await?;
         Ok(TaskResult::new(None, NextAction::End))
     }
 }

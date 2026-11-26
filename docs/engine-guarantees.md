@@ -335,8 +335,8 @@ A refusal names one code, and the refused change is not kept.
 `MISSING_ITEM` is using an item the actor does not hold, taking one that is not
 there, or dropping one they do not hold. `OUT_OF_RANGE` is a removal that would
 pass below zero from a count above zero, and the rest of that rule is not kept.
-`NOT_A_WEAPON` is wielding an item that is not a weapon. `UNKNOWN_MOVE` is a
-move the actor does not have. `TABLE_FULL` is a fourth player or a second GM.
+`NOT_A_WEAPON` is wielding an item that is not a weapon. `UNKNOWN_VERB` is a
+verb the actor does not have. `TABLE_FULL` is a fourth player or a second GM.
 `SEAT_TAKEN` is a claim for a character another seat holds, even one whose
 connection dropped. `ACTOR_MISMATCH` is a GM move for a PC a player holds.
 `UNKNOWN_ID` is a claim by a token no claim holds. `LINE_TOO_LONG`

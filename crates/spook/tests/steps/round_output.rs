@@ -15,7 +15,7 @@ async fn a_docks_table_with_a_gm_and_one_pc(world: &mut World) {
 }
 
 /// Wren is busy in Mira's rooms, so a commit fast-forwards, and Rowan's travel to the street
-/// touches no seated player, so his moves keep queue order. Rowan has no player, so the GM
+/// touches no seated player, so his verbs keep queue order. Rowan has no player, so the GM
 /// drives him.
 #[given(expr = "a docks table with a GM and a travelling wren seated")]
 async fn a_docks_table_with_a_gm_and_a_busy_pc(world: &mut World) {
@@ -74,17 +74,17 @@ fn both_players_are_travelling(world: &mut World) {
 }
 
 #[when(expr = "the GM queues {string} for {string}")]
-async fn the_gm_queues_a_move(world: &mut World, move_id: String, actor: String) {
-    queue_move(world, &actor, &move_id, None).await;
+async fn the_gm_queues_a_verb(world: &mut World, verb_id: String, actor: String) {
+    queue_verb(world, &actor, &verb_id, None).await;
 }
 
 #[when(expr = "the GM queues a 10-tick travel for {string}")]
 async fn the_gm_queues_a_ten_tick_travel(world: &mut World, actor: String) {
-    queue_move(world, &actor, "travel", Some("docks_shop.docks_street")).await;
+    queue_verb(world, &actor, "travel", Some("docks_shop.docks_street")).await;
 }
 
 #[when(expr = "{string} sends a move")]
-async fn the_player_sends_a_move(world: &mut World, actor: String) {
+async fn the_player_sends_a_verb(world: &mut World, actor: String) {
     host::wait_until(world, "both seats printed", |text| {
         text.matches(STATUS_LINE).count() >= 2
     })
@@ -165,17 +165,17 @@ async fn the_host_prints_its_status_once(world: &mut World) {
 
 const STATUS_LINE: &str = "meter mira shop_day 1 1";
 
-async fn queue_move(world: &mut World, actor: &str, move_id: &str, place: Option<&str>) {
+async fn queue_verb(world: &mut World, actor: &str, verb_id: &str, place: Option<&str>) {
     let target = match place {
         Some(place) => format!(r#","target":"{place}""#),
         None => String::new(),
     };
-    let args = format!(r#"{{"actor":"{actor}","move":"{move_id}"{target}}}"#);
+    let args = format!(r#"{{"actor":"{actor}","verb":"{verb_id}"{target}}}"#);
     let text = host::gm_tool_call(world, 4, "queue", &args).await;
     assert_eq!(
         host::read_reply(&text)["kind"],
         "queued",
-        "queue {move_id} for {actor}\n{text}"
+        "queue {verb_id} for {actor}\n{text}"
     );
 }
 

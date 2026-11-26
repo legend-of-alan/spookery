@@ -305,7 +305,7 @@ fn location_effect(context: &Context, to: ActorLocation) -> Result<Effect, Reaso
     Ok(Effect::new(
         intent.actor_id.as_ref(),
         &intent.id,
-        EffectKind::Location {
+        EffectKind::Move {
             actor_id,
             from,
             to,

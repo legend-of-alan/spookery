@@ -110,7 +110,7 @@ fn a_queued_intent_is_written_into_a_round_record(world: &mut World) {
             "round_index": 1,
             "actor": "rowan",
             "source": "player",
-            "move": "take",
+            "verb": "take",
             "target": { "item": "lamp_oil" },
             "args": {},
             "rationale_code": "",
@@ -183,7 +183,7 @@ fn one_effect_kind_is_need(world: &mut World) {
             effects.push(serde_json::json!({
                 "kind": "need",
                 "as": "mira",
-                "intent_id": "i",
+                "intent": "i",
             }));
         } else {
             effects[0]["kind"] = Value::String("need".to_string());

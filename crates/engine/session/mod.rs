@@ -1,4 +1,4 @@
-//! An open pack, and the moves and speech its seats send it.
+//! An open pack, and the verbs and speech its seats send it.
 
 pub(crate) mod open;
 
@@ -25,7 +25,7 @@ use crate::store::journal;
 use crate::store::records::Record;
 use crate::store::tape::{append_record, read_scrollback, TapeRecord};
 use crate::Reason;
-use spookery_protocol::{Audience, QueuedMove, Refusal, Speaker};
+use spookery_protocol::{Audience, QueuedVerb, Refusal, Speaker};
 
 /// One say, in characters. Four kibibytes still fits in an 8 KiB client message.
 const MAX_SAY_CHARS: usize = 4 * 1024;
@@ -225,7 +225,7 @@ impl<Lock> Session<Lock> {
         self.canon().to_pack_summary()
     }
 
-    /// Every verb the pack's rules name: the commands a player seat may send as moves.
+    /// Every verb the pack's rules name: the commands a player seat may send as verbs.
     pub fn verbs(&self) -> Vec<String> {
         self.canon().verbs()
     }
@@ -269,13 +269,13 @@ impl<Lock> Session<Lock> {
     /// name and those ids, as `Briar: bram, briar`. Only a save at
     /// the last round index has no next round to name, and refuses `SCHEMA` with an empty id.
     /// Returns the queued move and the target id it names.
-    pub fn queue_player_move(
+    pub fn queue_player_verb(
         &mut self,
         presence: &Presence,
         actor_id: &ActorId,
         verb: &str,
         target: Option<&str>,
-    ) -> Result<(QueuedMove, Option<String>), gate::Refusal> {
+    ) -> Result<(QueuedVerb, Option<String>), gate::Refusal> {
         let words = target.filter(|token| !token.is_empty());
         let ids = match words {
             Some(_) => gate::list_ids(self.canon(), &self.world, presence, actor_id),
@@ -312,10 +312,10 @@ impl<Lock> Session<Lock> {
             let context = Context::new(self.canon(), &self.world, presence, &intent);
             gate::admit(&context, rule, Some(&ids))?;
         }
-        let queued = QueuedMove {
+        let queued = QueuedVerb {
             id: intent.id.clone(),
             actor_id: actor_id.to_string(),
-            move_id: verb.to_string(),
+            verb_id: verb.to_string(),
         };
         let target = intent.target.token().map(String::from);
         self.queue_intent(intent);
@@ -332,7 +332,7 @@ impl<Lock> Session<Lock> {
         if !(actors.get::<component::ControlType>(actor_id)).is_pc() {
             return Err(Reason::Schema);
         }
-        let verb = &line.move_id;
+        let verb = &line.verb_id;
         let rule = gate::pick(
             self.canon(),
             &self.world,
@@ -355,14 +355,14 @@ impl<Lock> Session<Lock> {
         presence: &Presence,
         spec: spookery_protocol::QueueArgs,
         new_id: impl FnOnce() -> Result<String, Reason>,
-    ) -> Result<QueuedMove, Reason> {
+    ) -> Result<QueuedVerb, Reason> {
         let actor_id: ActorId = spec
             .actor_id
             .filter(|id| !id.is_empty() && !id.contains(':'))
             .ok_or(Reason::Schema)?
             .into();
-        let move_id = spec
-            .move_id
+        let verb_id = spec
+            .verb_id
             .filter(|m| !m.is_empty())
             .ok_or(Reason::Schema)?;
         if !self.world.actors().contains(&actor_id) {
@@ -370,7 +370,7 @@ impl<Lock> Session<Lock> {
         }
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
         let (canon, world) = (self.canon(), &self.world);
-        let rule = gate::pick(canon, world, &actor_id, Source::Gm, &move_id, token)?;
+        let rule = gate::pick(canon, world, &actor_id, Source::Gm, &verb_id, token)?;
         let target = target_for(rule, token)?;
         let id = match spec.id {
             Some(id) if !id.is_empty() => id,
@@ -398,7 +398,7 @@ impl<Lock> Session<Lock> {
             round_index,
             actor_id: Some(actor_id.clone()),
             source: Source::Gm,
-            move_id: move_id.clone(),
+            verb_id: verb_id.clone(),
             target,
             args,
             rationale_code: spec.rationale_code,
@@ -406,10 +406,10 @@ impl<Lock> Session<Lock> {
         let context = Context::new(canon, world, presence, &intent);
         gate::admit(&context, rule, None).map_err(|refusal| refusal.code)?;
         self.queue_intent(intent);
-        Ok(QueuedMove {
+        Ok(QueuedVerb {
             id,
             actor_id: actor_id.into(),
-            move_id,
+            verb_id,
         })
     }
 

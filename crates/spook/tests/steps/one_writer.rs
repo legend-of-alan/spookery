@@ -41,7 +41,7 @@ fn the_state_is_unchanged(world: &mut World) {
 }
 
 #[when(expr = "a seated player commits a move")]
-async fn a_seated_player_commits_a_move(world: &mut World) {
+async fn a_seated_player_commits_a_verb(world: &mut World) {
     let pack = host::pack(world).to_path_buf();
     host::seat_rowan(world, &pack).await;
     host::actor_send(world, "rowan", "wait", "\"kind\":").await;

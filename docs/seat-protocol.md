@@ -4,7 +4,7 @@ This page is the wire a player client or a GM speaks to `spook run`. [Engine gua
 
 - this page, whose examples are one live session of `tests/packs/docks`. A test plays that session and fails when an example and the host disagree.
 - the JSON Schema, [`client.json`](../crates/protocol/schema/client.json) for what a client sends and [`server.json`](../crates/protocol/schema/server.json) for what the host sends. A test fails when the schema `spookery-protocol` derives with its `schema` feature is not the published one.
-- the recorded session, [`v5.jsonl`](../crates/protocol/sessions/v5.jsonl), a player and a GM recorded against version 5. The `compatibility-replay` CI job replays it against each build.
+- the recorded session, [`v6.jsonl`](../crates/protocol/sessions/v6.jsonl), a player and a GM recorded against version 6. The `compatibility-replay` CI job replays it against each build.
 
 In the examples, Rowan is the player, in the shop, at game time 1080. A tick is game time. A round is one batch of queued moves.
 
@@ -46,12 +46,12 @@ The host speaks first, with `version`, the `commands` this seat may send, and, o
 
 <!-- example: player-hello -->
 ```json
-{"body":{"kind":"hello","version":5,"commands":["claim","release","say","look","help","map","cancel","ask","chock","drop","exert","strike","take","travel","unwield","use","wait","wield"],"open":["harbormouse","rowan","wren"],"pc_names":{"harbormouse":"Harbormouse","rowan":"Rowan","wren":"Wren"}}}
+{"body":{"kind":"hello","version":6,"commands":["claim","release","say","look","help","map","cancel","ask","chock","drop","exert","strike","take","travel","unwield","use","wait","wield"],"open":["harbormouse","rowan","wren"],"pc_names":{"harbormouse":"Harbormouse","rowan":"Rowan","wren":"Wren"}}}
 ```
 
 <!-- example: gm-hello -->
 ```json
-{"body":{"kind":"hello","version":5,"commands":["status","perceive","queue","say","commit","release"]}}
+{"body":{"kind":"hello","version":6,"commands":["status","perceive","queue","say","commit","release"]}}
 ```
 
 One GM holds the seat at a time, on `/gm` or on `/mcp`. A second GM on `/gm` gets one `refused` with `TABLE_FULL`, and the connection closes.
@@ -72,8 +72,8 @@ Each command reads `args` as one type, and the schema's `$defs` in `client.json`
 | a pack verb | player | `MoveArgs`: `target`, when the verb takes one | `queued` |
 | `status` | GM | `NoArgs` | `status` |
 | `perceive` | GM | `PerceiveArgs`: `as` | `view` |
-| `queue` | GM | `QueueArgs`: `actor`, `move`, `id`, `target`, `to`, `round_index`, `rationale_code` | `queued` |
-| `commit` | GM | `CommitArgs`: `include_round`, `session_id` | a `round` for each round played, then `committed` |
+| `queue` | GM | `QueueArgs`: `actor`, `verb`, `id`, `target`, `to`, `round_index`, `rationale_code` | `queued` |
+| `commit` | GM | `CommitArgs`: `include_round`, `session` | a `round` for each round played, then `committed` |
 
 ### claim and release
 
@@ -111,7 +111,7 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 ### say
 
-`to` names who hears it: `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`. A player's say to an actor is read as one line, the actor then `text`, so `spook play` sends `say Mira Vell hi` (or `tell Mira Vell hi`, the same line) as `to` `{"actor": "Mira"}` and `text` `Vell hi`. The longest run of leading words that names an actor in sight, by id or name and ignoring case and outer spaces as a move's target does, is who it is said to, and the rest is the text. A name two in sight share is `AMBIGUOUS_NAME`, with the move's `detail`. A line that names nobody in sight is said to `"table"`, its text the whole line. `text` is at most 4096 characters. The host sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. The GM may add `as`, the bare id of an NPC, to speak as that NPC, and `from` is then `npc:<id>`. A `say` message carries `from_name`, the speaking PC's or NPC's name, and leaves it out when the GM speaks as itself. An `as` that names a PC, no actor or anything but a bare id is `SCHEMA`, and so is a player's `as`. A GM say with `as` and no `to` is heard where that NPC stands. Any other say without `to` is `SCHEMA`. A `place` say from a player or from the NPC in `as` must name where that speaker stands, or it is `SCHEMA`. A say puts one line of speech on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipient_ids`, the seated players who heard it, so an NPC is never in it.
+`to` names who hears it: `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`. A player's say to an actor is read as one line, the actor then `text`, so `spook play` sends `say Mira Vell hi` (or `tell Mira Vell hi`, the same line) as `to` `{"actor": "Mira"}` and `text` `Vell hi`. The longest run of leading words that names an actor in sight, by id or name and ignoring case and outer spaces as a move's target does, is who it is said to, and the rest is the text. A name two in sight share is `AMBIGUOUS_NAME`, with the move's `detail`. A line that names nobody in sight is said to `"table"`, its text the whole line. `text` is at most 4096 characters. The host sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. The GM may add `as`, the bare id of an NPC, to speak as that NPC, and `from` is then `npc:<id>`. A `say` message carries `from_name`, the speaking PC's or NPC's name, and leaves it out when the GM speaks as itself. An `as` that names a PC, no actor or anything but a bare id is `SCHEMA`, and so is a player's `as`. A GM say with `as` and no `to` is heard where that NPC stands. Any other say without `to` is `SCHEMA`. A `place` say from a player or from the NPC in `as` must name where that speaker stands, or it is `SCHEMA`. A say puts one line of speech on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipients`, the seated players who heard it, so an NPC is never in it.
 
 <!-- example: player-say -->
 ```json
@@ -125,7 +125,7 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 <!-- example: gm-heard -->
 ```json
-{"seq":6,"body":{"kind":"say","from":"player:rowan","from_name":"Rowan","to":"table","recipient_ids":["rowan"],"text":"evening"}}
+{"seq":6,"body":{"kind":"say","from":"player:rowan","from_name":"Rowan","to":"table","recipients":["rowan"],"text":"evening"}}
 ```
 
 ### Moves
@@ -139,7 +139,7 @@ A move is a pack verb, its target in `target`. The target is an id or a name the
 
 <!-- example: player-queued -->
 ```json
-{"seq":9,"reply_to":"c3","body":{"kind":"queued","intent":"150ad41608eafe8bfb76d88485e665c77021363782bbb8bc1f5eafb2345ac8b6","actor":"rowan","move":"exert"}}
+{"seq":9,"reply_to":"c3","body":{"kind":"queued","intent":"150ad41608eafe8bfb76d88485e665c77021363782bbb8bc1f5eafb2345ac8b6","actor":"rowan","verb":"exert"}}
 ```
 
 `cancel` is a move too, and a busy player may send it. It drops the PC's own action under way when its rule says `cancellable`, with no refund, and the action never finishes. A walk is never cancelled. With nothing to cancel, or an action whose rule does not allow it, `cancel` is refused `INELIGIBLE` and the action still lands.
@@ -173,11 +173,11 @@ A move the host can judge at once is refused before it is queued. Here Rowan sen
 ]}}
 ```
 
-`map` lists each place the PC's save says they visited, by `place_id` and `name`, with the exits they saw there when they last stood there at the end of a round. A hidden exit revealed since then shows only after they go back. Where each exit goes, its ticks and `locked` are read now.
+`map` lists each place the PC's save says they visited, by `place` and `name`, with the exits they saw there when they last stood there at the end of a round. A hidden exit revealed since then shows only after they go back. Where each exit goes, its ticks and `locked` are read now.
 
 <!-- example: player-map -->
 ```json
-{"seq":32,"reply_to":"c4","body":{"kind":"map","places":[{"place_id":"docks_shop","name":"Docks Shop","exits":[{"path_id":"docks_shop.docks_street","name":"Docks Street","place_id":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"path_id":"stairs","name":"stairs","place_id":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}]}}
+{"seq":32,"reply_to":"c4","body":{"kind":"map","places":[{"place":"docks_shop","name":"Docks Shop","exits":[{"path":"docks_shop.docks_street","name":"Docks Street","place":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"path":"stairs","name":"stairs","place":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}]}}
 ```
 
 ### status
@@ -200,7 +200,7 @@ The host's state for a GM. `world_time` is the game clock in ticks. `pack_rev` i
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:4f30897b2d27a398b2e40b0674d083d13daed20a3f3ecd648f2adfcf141959fc",
+    "pack_rev": "blake2s:7752a49435cdc789f6d7b8bae7124251063e841ce5da20535cd3e957d986dffd",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {
@@ -294,16 +294,16 @@ The host's state for a GM. `world_time` is the game clock in ticks. `pack_rev` i
 
 ### queue
 
-`actor` and `move` are required. `id` becomes the queue id, and the host mints one when it is left out. A PC a player holds takes only that player's moves, so the GM's move for it is `ACTOR_MISMATCH`.
+`actor` and `verb` are required. `id` becomes the queue id, and the host mints one when it is left out. A PC a player holds takes only that player's moves, so the GM's move for it is `ACTOR_MISMATCH`.
 
 <!-- example: gm-queue -->
 ```json
-{"id":"c2","body":{"kind":"queue","args":{"actor":"aldric","move":"wait","id":"gm-wait"}}}
+{"id":"c2","body":{"kind":"queue","args":{"actor":"aldric","verb":"wait","id":"gm-wait"}}}
 ```
 
 <!-- example: gm-queued -->
 ```json
-{"seq":8,"reply_to":"c2","body":{"kind":"queued","intent":"gm-wait","actor":"aldric","move":"wait"}}
+{"seq":8,"reply_to":"c2","body":{"kind":"queued","intent":"gm-wait","actor":"aldric","verb":"wait"}}
 ```
 
 ### commit
@@ -347,8 +347,8 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 | `released` | the releasing seat | the claim or the GM seat is free |
 | `presence` | the GM | `actors_present` after a claim starts or ends |
 | `refused` | the sender | `code` and, when the refusal names something, `detail` |
-| `queued` | the sender and the GM | `intent`, `actor`, `move`, `target` |
-| `say` | every seat that hears it | `from`, `from_name`, `to`, `text`, and for the GM `recipient_ids` |
+| `queued` | the sender and the GM | `intent`, `actor`, `verb`, `target` |
+| `say` | every seat that hears it | `from`, `from_name`, `to`, `text`, and for the GM `recipients` |
 | `round` | every seat | `round_index` and `world_time` of one committed round |
 | `check` | the player who rolled | `outcome`: `success`, `partial` or `miss` |
 | `committed` | the GM | the reply to `commit` |
@@ -358,11 +358,11 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 | `lines` | a player | `text` to print: one narrate line |
 | `changes` | a player | `viewer` and `changes`: the changes one round showed that player |
 | `help` | the asking player | `commands`, each with `id`, `target`, `names` and `owner` |
-| `map` | the asking player | `places`, each with `place_id`, `name` and `exits` |
+| `map` | the asking player | `places`, each with `place`, `name` and `exits` |
 
 ### view and resume
 
-`viewer` is the bare actor id. `place` is where the viewer is, shaped like a `map` place: its `place_id`, the pack's `name` for it and the `exits` the viewer sees there. A walker's `place_id` is `path:<path_id>`, and its `name` is the path's. `actor_names` and each item's `name` are the pack's names, and `body` is the place prose. Each exit has the `path_id` of the path it walks, the `name` a player reads for it, and where it goes as `place_id` and `place_name`. `notes` are the notes left to the viewer and those lying in their place. Each note has its `id`, the actor ids it addresses as `to_ids`, an optional `place_id`, and `text`. `items` lie in the viewer's place. `items_carried` are the items the viewer holds, and `wielded_item_id` is the one of them they wield. Each is left out when there is none. `meters` are the viewer's own, without hidden ones, and each has the pack's `name` when its row gives one. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `place.exits` is left out when the place has none. `nearby` holds the places those exits go to that the viewer's `map` knows, each as a `map` place with the exits seen there, and is left out when there is none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`, except `cancel` (see [Moves](#moves)). `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
+`viewer` is the bare actor id. `place` is where the viewer is, shaped like a `map` place: its `place`, the pack's `name` for it and the `exits` the viewer sees there. A walker's `place` is `path:<id>`, and its `name` is the path's. `actor_names` and each item's `name` are the pack's names, and `body` is the place prose. Each exit has the `path` of the path it walks, the `name` a player reads for it, and where it goes as `place` and `place_name`. `notes` are the notes left to the viewer and those lying in their place. Each note has its `id`, the actor ids it addresses as `to`, an optional `place`, and `text`. `items` lie in the viewer's place. `items_carried` are the items the viewer holds, and `wielded_item` is the one of them they wield. Each is left out when there is none. `meters` are the viewer's own, without hidden ones, and each has the pack's `name` when its row gives one. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `place.exits` is left out when the place has none. `nearby` holds the places those exits go to that the viewer's `map` knows, each as a `map` place with the exits seen there, and is left out when there is none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`, except `cancel` (see [Moves](#moves)). `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
 
 <!-- example: player-resume -->
 ```json
@@ -377,21 +377,21 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
     "kind": "view",
     "viewer": "rowan",
     "place": {
-      "place_id": "docks_shop",
+      "place": "docks_shop",
       "name": "Docks Shop",
       "exits": [
         {
-          "path_id": "docks_shop.docks_street",
+          "path": "docks_shop.docks_street",
           "name": "Docks Street",
-          "place_id": "docks_street",
+          "place": "docks_street",
           "place_name": "Docks Street",
           "ticks": 0,
           "locked": false
         },
         {
-          "path_id": "stairs",
+          "path": "stairs",
           "name": "stairs",
-          "place_id": "mira_rooms",
+          "place": "mira_rooms",
           "place_name": "Mira's Rooms",
           "ticks": 2,
           "locked": true
@@ -452,7 +452,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `changes` with every change that player may know. A player is told their own meter changes and the world's shown ones, not another actor's, even in the same place, and never a flag change. They are also told the items, place and wielded item of each actor in their place and the notes they may read. A modifier or busy change is not sent: neither has a wire value yet. An empty `changes` is not sent.
 
-`changes` holds one object per change, in key order, not the order the round made them, and the client writes the sentence. `component_id` names what changed, as an open set: `meter`, `item`, `place`, `wielded_item` and `note` today, and a client ignores one it does not know. `entity_id` is whose it is as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's, place's or story's name, and is left out for the world. `entry_id` is which one of the entity's, such as the meter or item id, and is left out when the entity holds one, as with `place`. `entry_name` is the item's name for `item`, the meter's name for a `meter` whose row gives one, or for `place` the name of the place moved to, or for a walker the name of the exit toward the end they head for, and is left out otherwise. `before` and `after` are the values as JSON writes them: a number for a meter or an item count, text for a place or a wielded item and `true` for a note. Either is left out when there was none, as with a meter that did not read. When an item moves between an actor and a place, both counts are in `changes`, so `spook play` reads the take below as `You picked up the Lamp oil.` `spook play` words only meters, items and places, so a move reads like `Your place is now Docks Street.`, and prints nothing for the rest. An NPC's roll or refused habit sends no player message.
+`changes` holds one object per change, in key order, not the order the round made them, and the client writes the sentence. `component` names what changed, as an open set: `meter`, `item`, `place`, `wielded_item` and `note` today, and a client ignores one it does not know. `entity` is whose it is as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's, place's or story's name, and is left out for the world. `entry` is which one of the entity's, such as the meter or item id, and is left out when the entity holds one, as with `place`. `entry_name` is the item's name for `item`, the meter's name for a `meter` whose row gives one, or for `place` the name of the place moved to, or for a walker the name of the exit toward the end they head for, and is left out otherwise. `before` and `after` are the values as JSON writes them: a number for a meter or an item count, text for a place or a wielded item and `true` for a note. Either is left out when there was none, as with a meter that did not read. When an item moves between an actor and a place, both counts are in `changes`, so `spook play` reads the take below as `You picked up the Lamp oil.` `spook play` words only meters, items and places, so a move reads like `Your place is now Docks Street.`, and prints nothing for the rest. An NPC's roll or refused habit sends no player message.
 
 <!-- example: player-round -->
 ```json
@@ -472,8 +472,8 @@ Each seated player gets, in order: the `round`, a `check` for each of their own 
     "kind": "changes",
     "viewer": "rowan",
     "changes": [
-      {"component_id": "item", "entity_id": "rowan", "entity_name": "Rowan", "entry_id": "lamp_oil", "entry_name": "Lamp oil", "before": 0, "after": 1},
-      {"component_id": "item", "entity_id": "place:docks_shop", "entity_name": "Docks Shop", "entry_id": "lamp_oil", "entry_name": "Lamp oil", "before": 4, "after": 3}
+      {"component": "item", "entity": "rowan", "entity_name": "Rowan", "entry": "lamp_oil", "entry_name": "Lamp oil", "before": 0, "after": 1},
+      {"component": "item", "entity": "place:docks_shop", "entity_name": "Docks Shop", "entry": "lamp_oil", "entry_name": "Lamp oil", "before": 4, "after": 3}
     ]
   }
 }
@@ -485,21 +485,21 @@ Each seated player gets, in order: the `round`, a `check` for each of their own 
 
 <!-- example: mcp-call -->
 ```json
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"queue","arguments":{"actor":"aldric","move":"wait","id":"mcp-wait"}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"queue","arguments":{"actor":"aldric","verb":"wait","id":"mcp-wait"}}}
 ```
 
 The result's `structuredContent` is `messages`: every message the command sent this seat, in order, the reply last.
 
 <!-- example: mcp-result -->
 ```json
-{"messages":[{"seq":28,"reply_to":"1","body":{"kind":"queued","intent":"mcp-wait","actor":"aldric","move":"wait"}}]}
+{"messages":[{"seq":28,"reply_to":"1","body":{"kind":"queued","intent":"mcp-wait","actor":"aldric","verb":"wait"}}]}
 ```
 
 Every other message the host sends this seat, the hello first, comes as a `spook/event` notification whose params are the message:
 
 <!-- example: mcp-event -->
 ```json
-{"jsonrpc":"2.0","method":"spook/event","params":{"seq":29,"body":{"kind":"queued","intent":"d32e26ecab93720f81c493ca1330c145246d058f0b2d692bfe8500621c8ce1de","actor":"rowan","move":"exert"}}}
+{"jsonrpc":"2.0","method":"spook/event","params":{"seq":29,"body":{"kind":"queued","intent":"d32e26ecab93720f81c493ca1330c145246d058f0b2d692bfe8500621c8ce1de","actor":"rowan","verb":"exert"}}}
 ```
 
 An `initialize` opens a session and is never refused, even when every seat is taken. POST it with `Accept` listing both `application/json` and `text/event-stream` and with `Content-Type: application/json`. Keep the `mcp-session-id` response header, and send the negotiated `protocolVersion` as `MCP-Protocol-Version` on every later request.
@@ -620,7 +620,7 @@ A refusal is a `refused` body, and the connection stays up. `detail` is there on
 | `ACTOR_MISMATCH` | That actor is a player's, or the move is not this actor's. |
 | `NO_EXIT`, `CANT_AFFORD`, `MISSING_ITEM`, `NOT_A_WEAPON`, `BUSY` | The move was not queued. `BUSY` clears when the character is free. |
 | `AMBIGUOUS_NAME` | Two things in sight, or two PCs, share that name. Name one by an id `detail` lists. |
-| `UNKNOWN_MOVE`, `UNKNOWN_ID` | That move or id is not in the world, or the token is no claim's. |
+| `UNKNOWN_VERB`, `UNKNOWN_ID` | That verb or id is not in the world, or the token is no claim's. |
 | `INELIGIBLE`, `OUT_OF_RANGE`, `BUDGET`, `UNKNOWN_EFFECT`, `VIEWER_MISMATCH`, `ENGINE_ON_PLAYER`, `TABLE_EMPTY` | The rules refused the change, and nothing of it was kept. |
 | `COMMIT_CONFLICT` | Another process holds the pack. Stop. |
 | `HAND_EDIT` | The save was edited by hand. Stop until it is migrated. |
@@ -635,7 +635,7 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 
 - A client ignores a body `kind` and a field it does not know.
 - Changes only add. A field never changes meaning, and a new meaning gets a new name.
-- The hello announces `version` and the commands. A command is removed only after one release of being marked as going away. Version 5 has no such command and no marker yet. The marker is added to the hello before the first command needs it.
+- The hello announces `version` and the commands. A command is removed only after one release of being marked as going away. Version 6 has no such command and no marker yet. The marker is added to the hello before the first command needs it.
 - Version 2 broke version 1 once, on purpose: clocks left the wire with world clocks. `clocks` left `view` and `resume`, `pause` left `status`, `PAUSED_CLOCK` left the refusal codes, and `view.status` became `view.cant_act`. `view.world_meters` was added. The session recorded against version 1 was replaced by one recorded against version 2.
 - Version 2 dropped one field before any release, on purpose: `CHOOSE_PC` no longer lists the open PCs in `detail`, since the hello's `open` already does, so `detail` is always a string. The version stayed 2 because no build had shipped.
 - Version 2 renamed two things before any release, on purpose, when game time became ticks: an exit's `minutes` became `ticks`, and the changed key `live_acts_this_hour` became `live_acts_this_window`. The recording took the docks pack's new `pack_rev` with them. The version stayed 2 because no build had shipped.
@@ -656,5 +656,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 3 broke version 2 once, on purpose, when known facts left the engine: a place's public facts moved into its prose, and what someone has found out became a flag, which never reaches a player. `known_facts` and `unknown_mentions` left `view`, `fact_ids` left a note, `max_body_chars` left the GM's `perceive`, the changed key `actor_known_facts` went, and `ILLEGAL_KNOWLEDGE` left the refusal codes. The session recorded against version 2 was replaced by one recorded against version 3.
 - Version 4 broke version 3 once, on purpose, when a path became an entity: a door's open state is the path's `open` flag, one for both ends of a two-way path. The changed key `place_exit_open <place> <exit>` became `path_flag <path> open`, a walker's place in `view` and in a `place` change became `path:<path>` instead of `exit:<place>.<exit>`, and an exit in `view` and `map` gained `path_id`, the path it walks, and lost `exit_id`. A verb that takes an exit reports `"target":"path"` in `help` and `status`, and a journal intent names its exit under the target key `path`, not `exit`. The session recorded against version 3 was replaced by one recorded against version 4.
 - Version 5 broke version 4 once, on purpose, so a view's place has the shape of a `map` place: the flat `place`, `place_name` and `exits` of `view` became one `place` with `place_id`, `name` and `exits`. It also added `view.nearby`, the places past those exits that the viewer's `map` knows, so a window draws them from the view without sending `map`. The session recorded against version 4 was replaced by one recorded against version 5.
+- Version 6 broke version 5 once, on purpose, so a key drops an `_id` suffix it reads clearly without and a player's verb is called `verb`: an exit's `path_id` and `place_id` became `path` and `place`, a `view` or `map` place's `place_id` became `place`, a note's `to_ids` and `place_id` became `to` and `place`, `view.wielded_item_id` became `wielded_item`, a change's `component_id`, `entity_id` and `entry_id` became `component`, `entity` and `entry`, a speech's `recipient_ids` became `recipients`, `commit`'s `session_id` became `session`, and `move` in `queue`, `queued` and `status.queued[]` became `verb`, with `UNKNOWN_MOVE` now `UNKNOWN_VERB`. There is no alias for an old key. The session recorded against version 5 was replaced by one recorded against version 6.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each host mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

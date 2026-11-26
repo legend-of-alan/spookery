@@ -55,11 +55,11 @@ Feature: A human GM runs a round
     And another GM connects to that seat
     Then the GM shows "Commands:"
 
-  Scenario: An unknown move is refused in a sentence
+  Scenario: An unknown verb is refused in a sentence
     Given a docks table
     When a human GM connects on a free loopback port
-    And the GM queues an unknown move
-    Then the GM's stderr shows "That is not a move. [UNKNOWN_MOVE]"
+    And the GM queues an unknown verb
+    Then the GM's stderr shows "That is not a verb. [UNKNOWN_VERB]"
 
   Scenario: A GM with nothing listening leaves the pack
     Given a docks table

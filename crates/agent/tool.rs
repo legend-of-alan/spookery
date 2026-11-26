@@ -71,7 +71,7 @@ pub(crate) async fn call<M: Model, Conn: Connection>(
         (tool_id, Some(args)) if COMMAND_TOOLS.contains(&tool_id) => {
             agent.send_command(tool_id, args).await?
         }
-        (END_TURN, Some(_)) => match agent.commit_queued_moves().await? {
+        (END_TURN, Some(_)) => match agent.commit_queued_verbs().await? {
             Some(body) => body,
             None => return Ok("nothing is queued, so there is no round to play".into()),
         },
@@ -141,7 +141,7 @@ mod tests {
             ..PackSummary::default()
         };
         let view = serde_json::from_value(json!({
-            "viewer": "mira", "place": {"place_id": "docks_shop", "name": "Docks Shop"}, "visible_actors": ["aldric", "mira"],
+            "viewer": "mira", "place": {"place": "docks_shop", "name": "Docks Shop"}, "visible_actors": ["aldric", "mira"],
             "notes": [], "items": [], "habits": []
         }))
         .unwrap();

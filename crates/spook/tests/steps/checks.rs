@@ -263,8 +263,8 @@ async fn listen_and_seat_both(world: &mut World, pack: &Path) {
     host::seat_rowan(world, pack).await;
 }
 
-async fn queue_mira(world: &mut World, move_id: &str) {
-    let args = format!(r#"{{"actor":"mira","move":"{move_id}"}}"#);
+async fn queue_mira(world: &mut World, verb_id: &str) {
+    let args = format!(r#"{{"actor":"mira","verb":"{verb_id}"}}"#);
     let text = host::gm_tool_call(world, 4, "queue", &args).await;
     assert!(text.contains("\"id\""), "{text}");
     assert!(!text.contains("UNKNOWN_ID"), "{text}");

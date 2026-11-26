@@ -213,7 +213,7 @@ fn player_in_the_shop() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn queue_gm_intent(opened: &mut spookery_engine::Session, id: &str, actor: &str, move_id: &str) {
+fn queue_gm_intent(opened: &mut spookery_engine::Session, id: &str, actor: &str, verb_id: &str) {
     opened
         .queue_gm_intent(
             &spookery_engine::Presence::default(),
@@ -221,7 +221,7 @@ fn queue_gm_intent(opened: &mut spookery_engine::Session, id: &str, actor: &str,
                 id: None,
                 round_index: None,
                 actor_id: Some(actor.to_string()),
-                move_id: Some(move_id.to_string()),
+                verb_id: Some(verb_id.to_string()),
                 target: None,
                 message_to: None,
                 rationale_code: String::new(),
@@ -282,11 +282,11 @@ fn claimed_note_sorts_first() {
     }
     let mut opened = resume(&pack);
     let wall = opened.world().last_round_at.clone();
-    for (id, actor, move_id) in [
+    for (id, actor, verb_id) in [
         ("gm-1", "bram", "wait"),
         ("gm-2", "mira", "leave_door_note"),
     ] {
-        queue_gm_intent(&mut opened, id, actor, move_id);
+        queue_gm_intent(&mut opened, id, actor, verb_id);
     }
     opened.play(&rowan(), &wall).unwrap();
     let world = opened.world();
@@ -532,7 +532,7 @@ fn play_mark(pack: &Path) -> ecs::World {
     let mut opened = resume(pack);
     let wall = opened.world().last_round_at.clone();
     opened
-        .queue_player_move(&rowan(), &"rowan".into(), "mark", Some("mira"))
+        .queue_player_verb(&rowan(), &"rowan".into(), "mark", Some("mira"))
         .unwrap();
     let played = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
     assert!(!played.is_empty(), "mark mira did not commit");
@@ -542,11 +542,11 @@ fn play_mark(pack: &Path) -> ecs::World {
 fn effects_run_on_both_outcomes_and_lists_run_on_one() {
     for (label, difficulty, success) in [("effects-pass", 0, true), ("effects-fail", 14, false)] {
         let pack = support::copy_pack("docks", label);
-        let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
-        moves.push_str(&format!(
+        let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
+        verbs.push_str(&format!(
             "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    check:\n      total: 2d6 + self.vigor\n      success_at: {difficulty}\n    do:\n      - flag:\n          of: target\n          key: marked\n          value: true\n",
         ));
-        fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
+        fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
         put_mira_in_the_shop(&pack);
         stamp_pack_rev(&pack);
         let world = play_mark(&pack);
@@ -561,11 +561,11 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
 
     for (label, difficulty, flag) in [("lists-pass", 0, "marked"), ("lists-fail", 14, "missed")] {
         let pack = support::copy_pack("docks", label);
-        let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
-        moves.push_str(&format!(
+        let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
+        verbs.push_str(&format!(
             "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    check:\n      total: 2d6 + self.vigor\n      success_at: {difficulty}\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n",
         ));
-        fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
+        fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
         put_mira_in_the_shop(&pack);
         stamp_pack_rev(&pack);
         let world = play_mark(&pack);
@@ -702,7 +702,7 @@ fn a_docks_table(world: &mut World) {
 #[when(expr = "a player queues take lamp_oil and the host stops before a round")]
 fn a_player_queues_take_and_the_host_stops(world: &mut World) {
     let mut host = resume(world.pack());
-    host.queue_player_move(&rowan(), &"rowan".into(), "take", Some("lamp_oil"))
+    host.queue_player_verb(&rowan(), &"rowan".into(), "take", Some("lamp_oil"))
         .unwrap();
     assert_eq!(host.queued_intents().len(), 1);
 }
@@ -765,7 +765,7 @@ fn empty_save(canon: Canon, world_id: &str, rev: &str) -> ecs::World {
     let text = format!(
         "\
 schema: save
-world_id: {world_id}
+world: {world_id}
 pack_rev: \"{rev}\"
 rules_rev: {rules_rev}
 state_rev: 0

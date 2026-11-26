@@ -285,7 +285,7 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
             key: key.to_string(),
             value: *value,
         },
-        Step::Walk(to) => EffectKind::Location {
+        Step::Walk(to) => EffectKind::Move {
             from: (world.actors().get::<component::Place>(&mira).get())
                 .cloned()
                 .unwrap_or_else(|| ActorLocation::Place("".into())),
@@ -325,7 +325,7 @@ fn mira_intent() -> Intent {
         round_index: 0,
         actor_id: Some("mira".into()),
         source: Source::Engine,
-        move_id: "rollback".to_string(),
+        verb_id: "rollback".to_string(),
         target: Target::Empty,
         args: IntentArgs::default(),
         rationale_code: String::new(),

@@ -641,7 +641,7 @@ fn a_message_hidden_from_wren_is_written(world: &mut World) {
     let pack = copy_pack("docks", "trigger-message");
     add_verb(
         &pack,
-        "\n  - id: pass_word\n    when:\n      verb: pass_word\n    do:\n      - note:\n          id: note_private\n          to_ids:\n            - nell\n          text: The tide turns at dusk.\n",
+        "\n  - id: pass_word\n    when:\n      verb: pass_word\n    do:\n      - note:\n          id: note_private\n          to:\n            - nell\n          text: The tide turns at dusk.\n",
     );
     write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
@@ -938,7 +938,7 @@ pub(crate) fn intent(
         id: Some(id.to_string()),
         round_index: None,
         actor_id: Some(actor_id.to_string()),
-        move_id: Some(verb.to_string()),
+        verb_id: Some(verb.to_string()),
         target: target.map(str::to_string),
         message_to: None,
         rationale_code: "test".to_string(),

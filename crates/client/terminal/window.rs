@@ -578,7 +578,7 @@ mod tests {
     use super::{KeyRequest, Screen, ScreenAreas};
     use crate::protocol::{self, ServerBody, ServerMessage};
 
-    const RECORDING: &str = include_str!("../../protocol/sessions/v5.jsonl");
+    const RECORDING: &str = include_str!("../../protocol/sessions/v6.jsonl");
 
     fn press(screen: &mut Screen, code: KeyCode, commands: &[String]) -> Option<KeyRequest> {
         screen.on_key(KeyEvent::from(code), commands)
@@ -709,7 +709,7 @@ mod tests {
     }
 
     /// Docks Street from Rowan's `map` reply in that session, after a walk there and back.
-    const MAP_REPLY: &str = r#"{"seq":26,"body":{"kind":"map","places":[{"place_id":"docks_street","name":"Docks Street","exits":[{"path_id":"docks_shop.docks_street","name":"Docks Shop","place_id":"docks_shop","place_name":"Docks Shop","ticks":0,"locked":false},{"path_id":"docks_street.gate_yard","name":"Gate Yard","place_id":"gate_yard","place_name":"Gate Yard","ticks":0,"locked":false}]}]}}"#;
+    const MAP_REPLY: &str = r#"{"seq":26,"body":{"kind":"map","places":[{"place":"docks_street","name":"Docks Street","exits":[{"path":"docks_shop.docks_street","name":"Docks Shop","place":"docks_shop","place_name":"Docks Shop","ticks":0,"locked":false},{"path":"docks_street.gate_yard","name":"Gate Yard","place":"gate_yard","place_name":"Gate Yard","ticks":0,"locked":false}]}]}}"#;
 
     /// Three commands from Rowan's `help` reply in the Docks Shop, from a docks session against
     /// this build.

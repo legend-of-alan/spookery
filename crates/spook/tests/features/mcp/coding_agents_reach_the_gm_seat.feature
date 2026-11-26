@@ -53,11 +53,11 @@ Feature: Coding agents reach the GM seat
       | tool     | fields                                                | required           |
       | status   |                                                       |                    |
       | perceive | as                                                    | as                 |
-      | queue    | id round_index actor move target to rationale_code    | actor move         |
+      | queue    | id round_index actor verb target to rationale_code    | actor verb         |
       | say      | to text as                                            | text               |
-      | commit   | include_round session_id                              | include_round      |
+      | commit   | include_round session                                 | include_round      |
       | release  |                                                       |                    |
-    And a queue call with "actor", "move" and "to" is accepted
+    And a queue call with "actor", "verb" and "to" is accepted
 
   Scenario: spook gm and a coding agent share one seat
     Given a docks table

@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use crate::model;
 use crate::protocol::{
-    Audience, HostStatus, MenuRow, PackSummary, QueuedMove, ServerBody, ServerMessage, Speaker,
+    Audience, HostStatus, MenuRow, PackSummary, QueuedVerb, ServerBody, ServerMessage, Speaker,
     Speech,
 };
 use crate::turn::Turn;
@@ -41,8 +41,8 @@ pub(crate) struct ClientState {
     pub(crate) pack: PackSummary,
     /// The actors present, as of the last message read.
     actors_present: Vec<String>,
-    /// The queued moves, as of the last message read.
-    pub(crate) queued_moves: Vec<QueuedMove>,
+    /// The queued verbs, as of the last message read.
+    pub(crate) queued_verbs: Vec<QueuedVerb>,
     /// Player speech read since a turn last showed it to the model.
     new_player_lines: Vec<TapeLine>,
     causes: VecDeque<TurnCause>,
@@ -52,17 +52,17 @@ pub(crate) struct ClientState {
 
 impl ClientState {
     /// Fills the state from the first `status`: the pack, the actors present and the queue,
-    /// which starts a turn when a move already waits.
+    /// which starts a turn when a verb already waits.
     pub(crate) fn initialize(&mut self, status: HostStatus) {
         self.pack = status.pack;
         self.actors_present = status.presence.actors_present;
-        self.queued_moves = status.queued;
-        self.add_queued_move_cause(VecDeque::push_front);
+        self.queued_verbs = status.queued;
+        self.add_queued_verb_cause(VecDeque::push_front);
     }
 
     /// Records what one server message shows about the game: a player's speech starts a turn,
     /// the GM's own speech (the reply to its `say`, as the GM or an NPC) joins `tape_lines`,
-    /// a queued move joins the queued moves and starts a turn, a round empties them, and
+    /// a queued verb joins the queued verbs and starts a turn, a round empties them, and
     /// presence names the actors present.
     pub(crate) fn record_server_message(&mut self, message: &ServerMessage) {
         let seq = message.seq.unwrap_or_default();
@@ -78,19 +78,19 @@ impl ClientState {
             ServerBody::Queued {
                 intent,
                 actor_id,
-                move_id,
+                verb_id,
                 ..
             } => {
-                self.queued_moves.push(QueuedMove {
+                self.queued_verbs.push(QueuedVerb {
                     id: intent.clone(),
                     actor_id: actor_id.clone(),
-                    move_id: move_id.clone(),
+                    verb_id: verb_id.clone(),
                 });
-                self.add_queued_move_cause(VecDeque::push_back);
+                self.add_queued_verb_cause(VecDeque::push_back);
             }
             ServerBody::Round { .. } => {
-                self.queued_moves.clear();
-                self.causes.retain(|cause| *cause != TurnCause::QueuedMove);
+                self.queued_verbs.clear();
+                self.causes.retain(|cause| *cause != TurnCause::QueuedVerb);
             }
             ServerBody::Presence { actors_present } => {
                 self.actors_present = actors_present.clone();
@@ -101,9 +101,9 @@ impl ClientState {
 
     /// Adds the queued-move turn cause with `push` when a move is queued and no queued-move
     /// cause waits yet.
-    fn add_queued_move_cause(&mut self, push: fn(&mut VecDeque<TurnCause>, TurnCause)) {
-        if !self.queued_moves.is_empty() && !self.causes.contains(&TurnCause::QueuedMove) {
-            push(&mut self.causes, TurnCause::QueuedMove);
+    fn add_queued_verb_cause(&mut self, push: fn(&mut VecDeque<TurnCause>, TurnCause)) {
+        if !self.queued_verbs.is_empty() && !self.causes.contains(&TurnCause::QueuedVerb) {
+            push(&mut self.causes, TurnCause::QueuedVerb);
         }
     }
 
@@ -116,7 +116,7 @@ impl ClientState {
             menu: &self.pack.menu,
             tape_lines: &self.tape_lines,
             new_player_lines: &self.new_player_lines,
-            queued_moves: &self.queued_moves,
+            queued_verbs: &self.queued_verbs,
             cause: &cause,
             actors_present: &self.actors_present,
         })
@@ -124,7 +124,7 @@ impl ClientState {
         for line in std::mem::take(&mut self.new_player_lines) {
             push_recent(&mut self.tape_lines, line);
         }
-        self.causes.retain(|cause| *cause == TurnCause::QueuedMove);
+        self.causes.retain(|cause| *cause == TurnCause::QueuedVerb);
         let conversation = vec![
             model::Message::System {
                 content: self.system_text(),
@@ -172,7 +172,7 @@ impl TapeLine {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TurnCause {
     Speech,
-    QueuedMove,
+    QueuedVerb,
 }
 
 /// Pushes `line` onto the prompt's `tape_lines`, and drops the oldest past `RECENT_LINES`.
@@ -184,14 +184,14 @@ fn push_recent(tape_lines: &mut Vec<TapeLine>, line: TapeLine) {
 }
 
 /// What the GM can see of the game when a turn starts, sent as the turn's first message on
-/// every model call: the menu, the recent tape, the new player lines, the queued moves, what
+/// every model call: the menu, the recent tape, the new player lines, the queued verbs, what
 /// started the turn and the actors present.
 #[derive(Serialize)]
 struct Observation<'a> {
     menu: &'a [MenuRow],
     tape_lines: &'a [TapeLine],
     new_player_lines: &'a [TapeLine],
-    queued_moves: &'a [QueuedMove],
+    queued_verbs: &'a [QueuedVerb],
     cause: &'a TurnCause,
     actors_present: &'a [String],
 }

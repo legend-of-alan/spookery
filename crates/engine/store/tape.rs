@@ -30,6 +30,7 @@ pub struct TapeRecord {
     pub from_name: String,
     pub to: Audience,
     /// Who heard it, as in [`spookery_protocol::Speech::recipient_ids`].
+    #[serde(rename = "recipients")]
     pub recipient_ids: Vec<String>,
     pub text: String,
     pub round_index: u64,
@@ -150,7 +151,7 @@ mod tests {
         let root = fresh_dir("tape-bytes");
         let stored = append_record(&root, sample(0, "rowan", "line0")).unwrap();
         let bytes = fs::read(root.join("state/tape.jsonl")).unwrap();
-        let line = "{\"seq\":1,\"from\":\"gm\",\"to\":{\"actor\":\"rowan\"},\"recipient_ids\":[\"rowan\"],\"text\":\"line0\",\"round_index\":0,\"world_time\":1080}\n";
+        let line = "{\"seq\":1,\"from\":\"gm\",\"to\":{\"actor\":\"rowan\"},\"recipients\":[\"rowan\"],\"text\":\"line0\",\"round_index\":0,\"world_time\":1080}\n";
         assert_eq!(bytes, line.as_bytes());
         assert_eq!(parse_record(line.trim_end()).unwrap(), stored);
         let _ = fs::remove_dir_all(&root);

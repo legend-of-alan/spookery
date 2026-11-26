@@ -349,7 +349,7 @@ pub(crate) fn list_player_waits(pack: &Path, key: &str) -> Vec<String> {
         .as_array()
         .unwrap_or_else(|| panic!("intents"))
         .iter()
-        .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
+        .filter(|intent| intent["verb"] == "wait" && intent["source"] == "player")
         .map(|intent| {
             intent["actor"]
                 .as_str()

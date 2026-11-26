@@ -128,7 +128,7 @@ async fn capture() -> BTreeMap<String, Example> {
     let queue = send(
         &mut gm,
         "queue",
-        json!({"actor": "aldric", "move": "wait", "id": "gm-wait"}),
+        json!({"actor": "aldric", "verb": "wait", "id": "gm-wait"}),
     );
     insert_json(&mut out, "gm-queue", queue);
     insert_json(&mut out, "gm-queued", next_kind(&gm, "queued"));
@@ -197,7 +197,7 @@ async fn capture() -> BTreeMap<String, Example> {
     let mut mcp = GmClient::connect(mcp_addr)
         .await
         .unwrap_or_else(|err| panic!("MCP GM: {err}"));
-    let queue_args = json!({"actor": "aldric", "move": "wait", "id": "mcp-wait"});
+    let queue_args = json!({"actor": "aldric", "verb": "wait", "id": "mcp-wait"});
     insert_json(&mut out, "mcp-call", tool_call(1, "queue", &queue_args));
     insert_json(
         &mut out,
