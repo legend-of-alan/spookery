@@ -169,55 +169,55 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
     let held = actors.carriers_by_store();
     let lacking = held.iter().filter(|(_, id)| !actors.contains(id));
     for (store, id) in lacking {
-        let problem = format!("actor '{id}' has {store} but no control type");
+        let message = format!("actor '{id}' has {store} but no control type");
         let hint = "give the actor a control type under actors.control_type";
-        let diagnostic = schema_error(FILE, &problem, hint);
+        let diagnostic = schema_error(FILE, &message, hint);
         diagnostics.push(diagnostic.at_path(format!("actors.{store}.{id}")));
     }
     for id in actors.query::<ActorId>().iter() {
         if !canon.cast.contains_key(id) {
-            let problem = format!("actor '{id}' is not a cast member");
+            let message = format!("actor '{id}' is not a cast member");
             let hint = "add a cast file with this id, or remove the actor from the save";
             diagnostics.push(
-                schema_error(FILE, &problem, hint).at_path(format!("actors.control_type.{id}")),
+                schema_error(FILE, &message, hint).at_path(format!("actors.control_type.{id}")),
             );
         }
         if !held.contains(&("place", id)) {
-            let problem = format!("actor '{id}' has a control type but no place");
-            let diagnostic = schema_error(FILE, &problem, "give every actor a place");
+            let message = format!("actor '{id}' has a control type but no place");
+            let diagnostic = schema_error(FILE, &message, "give every actor a place");
             diagnostics.push(diagnostic.at_path(format!("actors.place.{id}")));
         }
     }
     for (id, location) in actors.query::<(ActorId, &component::Place)>().iter() {
         if !location.is_known(canon) {
-            let problem =
+            let message =
                 format!("actor '{id}' is at '{location}', which the pack does not define");
-            let diagnostic = schema_error(FILE, &problem, "move the actor to a place");
+            let diagnostic = schema_error(FILE, &message, "move the actor to a place");
             diagnostics.push(diagnostic.at_path(format!("actors.place.{id}")));
         }
     }
     for meter in find_stale_meters(world) {
-        let problem = format!(
+        let message = format!(
             "lists meter '{}', which the pack does not give it",
             meter.id
         );
         let hint = "run spook migrate to drop the meter";
-        diagnostics.push(meter_error(&meter.entity_id, &meter.id, &problem, hint));
+        diagnostics.push(meter_error(&meter.entity_id, &meter.id, &message, hint));
     }
     for (entity_id, key, held) in held_meters(world) {
         let def = canon.meter_def(entity_id.as_ref(), key);
         if def.is_some_and(|def| !meter::is_storable(def, held.base, held.offset)) {
-            let problem = format!("meter '{key}' is outside the rules");
+            let message = format!("meter '{key}' is outside the rules");
             let hint = "set base and offset so the stored pair fits the meter";
-            diagnostics.push(meter_error(&entity_id, key, &problem, hint));
+            diagnostics.push(meter_error(&entity_id, key, &message, hint));
         }
     }
     for (id, key, live) in find_stale_modifiers(world) {
-        let problem = format!(
+        let message = format!(
             "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
             live.meter
         );
-        let diagnostic = schema_error(FILE, &problem, "run spook migrate to drop the modifier");
+        let diagnostic = schema_error(FILE, &message, "run spook migrate to drop the modifier");
         diagnostics.push(diagnostic.at_path(format!("actors.modifiers.{id}.{key}")));
     }
     let held = actors.query::<&component::Item>();
@@ -309,8 +309,8 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
 }
 
 /// A save error on meter `key` of `entity_id`, at the meter's path: who carries it, then
-/// `problem`.
-fn meter_error(entity_id: &entity::Id, key: &str, problem: &str, hint: &str) -> Diagnostic {
+/// `message`.
+fn meter_error(entity_id: &entity::Id, key: &str, message: &str, hint: &str) -> Diagnostic {
     let (who, path) = match entity_id {
         entity::Id::Actor(id) => (format!("actor '{id}'"), format!("actors.meters.{id}")),
         entity::Id::Place(id) => (entity_id.to_string(), format!("places.meters.{id}")),
@@ -318,7 +318,7 @@ fn meter_error(entity_id: &entity::Id, key: &str, problem: &str, hint: &str) -> 
         entity::Id::Story(id) => (entity_id.to_string(), format!("stories.meters.{id}")),
         entity::Id::Global => ("the world".to_string(), "world.meters".to_string()),
     };
-    let diagnostic = schema_error(FILE, &format!("{who} {problem}"), hint);
+    let diagnostic = schema_error(FILE, &format!("{who} {message}"), hint);
     diagnostic.at_path(format!("{path}.{key}"))
 }
 

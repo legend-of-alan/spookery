@@ -56,26 +56,26 @@ async fn the_seat_page_matches_a_live_table() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/seat-protocol.md");
     let doc = std::fs::read_to_string(&path).unwrap_or_default();
     let documented = examples_in(&doc);
-    let mut problems = Vec::new();
+    let mut messages = Vec::new();
     for example_id in captured.keys() {
         if !documented.contains_key(example_id) {
-            problems.push(format!("missing example `{example_id}`"));
+            messages.push(format!("missing example `{example_id}`"));
         }
     }
     for example_id in documented.keys() {
         if !captured.contains_key(example_id) {
-            problems.push(format!("doc example `{example_id}` was not captured"));
+            messages.push(format!("doc example `{example_id}` was not captured"));
         }
     }
     for (example_id, live) in &captured {
         let Some(doc_example) = documented.get(example_id) else {
             continue;
         };
-        if let Some(problem) = differ(example_id, live, doc_example) {
-            problems.push(problem);
+        if let Some(message) = differ(example_id, live, doc_example) {
+            messages.push(message);
         }
     }
-    if problems.is_empty() {
+    if messages.is_empty() {
         return;
     }
     let capture_path = crate::support::fresh_dir("seat-protocol").join("seat-protocol-capture.md");
@@ -83,8 +83,8 @@ async fn the_seat_page_matches_a_live_table() {
         .unwrap_or_else(|err| panic!("write capture: {err}"));
     panic!(
         "docs/seat-protocol.md drifted ({}):\n{}\ncaptures: {}",
-        problems.len(),
-        problems.join("\n"),
+        messages.len(),
+        messages.join("\n"),
         capture_path.display()
     );
 }

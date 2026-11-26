@@ -1,4 +1,4 @@
-//! One problem a loader or pack check can show.
+//! One error or warning a loader or pack check can show.
 //!
 //! `code` is an [`Error`](Code::Error) [`Reason`] or a [`Warning`](Code::Warning).
 //! The struct is plain data so a later JSON printer can serialize it as it stands.
@@ -83,11 +83,11 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
-    /// An empty `hint` leaves the message as the problem alone.
-    pub fn new(file: &str, code: Code, problem: &str, hint: &str) -> Self {
+    /// An empty `hint` leaves `message` alone.
+    pub fn new(file: &str, code: Code, message: &str, hint: &str) -> Self {
         let (message, hint) = match hint {
-            "" => (problem.to_string(), None),
-            hint => (format!("{problem}; {hint}"), Some(hint.to_string())),
+            "" => (message.to_string(), None),
+            hint => (format!("{message}; {hint}"), Some(hint.to_string())),
         };
         Self {
             file: file.replace('\\', "/"),
@@ -146,16 +146,16 @@ pub fn first_reason(diagnostics: &[Diagnostic]) -> Reason {
         .unwrap_or(Reason::Schema)
 }
 
-pub(crate) fn schema_error(file: &str, problem: &str, hint: &str) -> Diagnostic {
-    error(file, Reason::Schema, problem, hint)
+pub(crate) fn schema_error(file: &str, message: &str, hint: &str) -> Diagnostic {
+    error(file, Reason::Schema, message, hint)
 }
 
-pub(crate) fn error(file: &str, code: Reason, problem: &str, hint: &str) -> Diagnostic {
-    Diagnostic::new(file, Code::Error(code), problem, hint)
+pub(crate) fn error(file: &str, code: Reason, message: &str, hint: &str) -> Diagnostic {
+    Diagnostic::new(file, Code::Error(code), message, hint)
 }
 
-pub(crate) fn warning(file: &str, problem: &str, hint: &str) -> Diagnostic {
-    Diagnostic::new(file, Code::Warning, problem, hint)
+pub(crate) fn warning(file: &str, message: &str, hint: &str) -> Diagnostic {
+    Diagnostic::new(file, Code::Warning, message, hint)
 }
 
 /// Line and column of the `nth` match of `needle` in `text`. Both are 1-based.
@@ -189,9 +189,9 @@ pub(crate) fn check_tag(text: &str, expected: &str, file: &str) -> Option<Diagno
     if found.value == expected {
         return None;
     }
-    let problem = format!("schema is '{}', which this file does not use", found.value);
+    let message = format!("schema is '{}', which this file does not use", found.value);
     Some(
-        schema_error(file, &problem, &hint)
+        schema_error(file, &message, &hint)
             .at_path("schema")
             .at_line(found.line, Some(1)),
     )
@@ -212,7 +212,7 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool)
             .filter(|column| *column > 0);
         Some((line, column))
     });
-    let (path, problem, hint) = match err {
+    let (path, message, hint) = match err {
         YamlError::SerdeUnknownField { field, .. } => (
             Some(field.clone()),
             format!("unknown field '{field}'"),
@@ -253,7 +253,7 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool)
             expected: "mapping end",
             ..
         } => {
-            let (problem, hint) = if holds_rule_lines {
+            let (message, hint) = if holds_rule_lines {
                 (
                     "two keys in one condition or effect",
                     "give each condition or effect its own dash; combine conditions with all:, any: or not:",
@@ -261,7 +261,7 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool)
             } else {
                 ("two keys where one belongs", "keep one of them")
             };
-            (None, problem.to_string(), hint.to_string())
+            (None, message.to_string(), hint.to_string())
         }
         YamlError::Unexpected {
             expected: "sequence start",
@@ -295,7 +295,7 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool)
             "fix the syntax at this spot and try again".to_string(),
         ),
     };
-    let mut diagnostic = schema_error(file, &problem, &hint);
+    let mut diagnostic = schema_error(file, &message, &hint);
     if let Some(path) = path {
         diagnostic = diagnostic.at_path(path);
     }
