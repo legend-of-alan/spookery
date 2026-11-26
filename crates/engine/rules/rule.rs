@@ -22,9 +22,9 @@ pub(crate) struct Rule {
     pub check: Option<Check>,
     /// Paid when the action starts. Its `cost` is the rule's `cost`, whose ticks are how long
     /// the action takes.
-    pub start: Phase,
+    pub start: ActionCost,
     /// Paid when the action finishes.
-    pub finish: Phase,
+    pub finish: ActionCost,
     /// Ticks the actor stays busy after the finish.
     pub cooldown_ticks: u64,
     /// Whether the actor may cancel the action while it is under way.
@@ -207,7 +207,7 @@ impl<'l> Mentions<'l> {
 
 /// What the start or the finish of an action costs, and whether it uses the actor's act.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Phase {
+pub(crate) struct ActionCost {
     pub cost: Option<Cost>,
     pub counts_as_act: bool,
 }
