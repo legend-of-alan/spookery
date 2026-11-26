@@ -252,7 +252,7 @@ pub(crate) enum RuleKind {
 }
 
 impl RuleKind {
-    /// What the rule's verb targets. A habit and a change rule target nothing.
+    /// The kind of thing the rule's verb targets. A habit and a change rule target nothing.
     pub(crate) fn target_kind(&self) -> TargetKind {
         match self {
             RuleKind::Verb { target, .. } => *target,
