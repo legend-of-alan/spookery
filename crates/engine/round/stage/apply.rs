@@ -9,7 +9,7 @@ use crate::rules::cost;
 use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::expand::{self, Cause, Expansion};
 use crate::rules::gate;
-use crate::rules::roll::MoveReport;
+use crate::rules::roll;
 use crate::rules::rule::Rule;
 use crate::rules::travel;
 use crate::store::records::Step;
@@ -306,7 +306,7 @@ pub(crate) fn refuse(
     if let Some(actor_id) =
         actor_id.filter(|id| world.actors().get::<component::ControlType>(id).is_pc())
     {
-        ledger.reports.push(MoveReport::Refused {
+        ledger.reports.push(roll::Report::Refused {
             actor_id: actor_id.clone(),
             refusal: refusal.clone(),
         });

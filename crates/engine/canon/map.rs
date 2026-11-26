@@ -32,7 +32,7 @@ pub(super) fn load(text: &str) -> Result<Vec<PathDef>, Vec<Diagnostic>> {
 fn compile(index: usize, entry: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
     let file_text = FileText::without_text(FILE);
     let refuse = |field: &str, message: &str, hint: &str| {
-        vec![schema_error(FILE, message, hint).at_path(format!("paths[{index}]{field}"))]
+        vec![schema_error(FILE, message, hint).at_key_path(format!("paths[{index}]{field}"))]
     };
     let Some((end_place_ids, bidirectional)) = split_ends(&entry.path) else {
         let message = format!(
@@ -247,7 +247,7 @@ impl Paths {
                 let message = format!("path id '{}' is used twice", path_def.id);
                 let key_path = format!("paths[{index}]{field}");
                 let hint = "give one of these paths its own id";
-                diagnostics.push(schema_error(FILE, &message, hint).at_path(key_path));
+                diagnostics.push(schema_error(FILE, &message, hint).at_key_path(key_path));
             }
             let ends = path_def.end_place_ids.iter();
             for from_place_id in ends.take(if path_def.bidirectional { 2 } else { 1 }) {

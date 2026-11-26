@@ -5,7 +5,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::roll;
-use spookery_engine::{component, ecs, entity, MoveReport};
+use spookery_engine::{self as engine, component, ecs, entity};
 
 use super::common::resolve_id;
 use super::host;
@@ -173,13 +173,15 @@ fn actor_types(world: &mut World, actor: String, line: String) {
     };
 }
 
-/// Each move `reports` told a player was refused, as `actor CODE`, joined by commas.
-pub(crate) fn list_refusals<'r>(reports: impl IntoIterator<Item = &'r MoveReport>) -> String {
+/// Each verb `reports` told a player was refused, as `actor CODE`, joined by commas.
+pub(crate) fn list_refusals<'r>(
+    reports: impl IntoIterator<Item = &'r engine::roll::Report>,
+) -> String {
     let refused = reports.into_iter().filter_map(|report| match report {
-        MoveReport::Refused { actor_id, refusal } => {
+        engine::roll::Report::Refused { actor_id, refusal } => {
             Some(format!("{actor_id} {}", refusal.code.as_str()))
         }
-        MoveReport::Rolled { .. } => None,
+        engine::roll::Report::Rolled { .. } => None,
     });
     refused.collect::<Vec<_>>().join(", ")
 }

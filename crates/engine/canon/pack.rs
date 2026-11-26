@@ -29,7 +29,7 @@ impl Yaml {
                 "checkpoint_every is 0",
                 "set checkpoint_every to a positive number of rounds, or omit it",
             )
-            .at_path("checkpoint_every")]),
+            .at_key_path("checkpoint_every")]),
             Some(every) => Ok(every),
         }
     }

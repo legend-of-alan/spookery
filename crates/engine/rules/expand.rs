@@ -11,18 +11,17 @@ use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::expr::eval::{self, Dice};
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
-use crate::rules::roll::Outcome;
-use crate::rules::roll::{MoveReport, Roll};
-use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, Rule};
+use crate::rules::roll::{self, Outcome, Roll};
+use crate::rules::rule::{EffectTemplate, MoveTo, NarrateTo, Rule};
 use crate::Reason;
 
-/// Why a rule's effects are expanded and landed, which decides what the landing journals.
+/// Why a rule's effects are expanded and applied, which decides what applying them journals.
 #[derive(Clone, Copy)]
 pub(crate) enum Cause {
     /// An action finishing, now or when its ticks pass: each effect takes an `EffectApplied`
     /// step, and a refusal is told to a player.
     Finish,
-    /// A change rule firing, which is nobody's move: its effects take no step of their own and
+    /// A change rule firing, which is nobody's action: its effects take no step of their own and
     /// its refusal is told to nobody.
     Trigger,
 }
@@ -32,7 +31,7 @@ pub(crate) enum Cause {
 pub(crate) struct Expansion {
     pub effects: Vec<Effect>,
     pub rolled: Option<Roll>,
-    pub reports: Vec<MoveReport>,
+    pub reports: Vec<roll::Report>,
     pub cause: Cause,
 }
 
@@ -81,7 +80,7 @@ fn build_effects(
     rule: &Rule,
     outcome: Option<Outcome>,
     dice: &mut dyn Dice,
-    reports: &mut Vec<MoveReport>,
+    reports: &mut Vec<roll::Report>,
 ) -> Result<Vec<Effect>, Reason> {
     let picked =
         outcome.map(|outcome| select_list(outcome, &rule.success, &rule.partial, &rule.miss));
@@ -110,7 +109,7 @@ fn push_effects(
     context: &Context,
     template: &EffectTemplate,
     effects: &mut Vec<Effect>,
-    reports: &mut Vec<MoveReport>,
+    reports: &mut Vec<roll::Report>,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let (world, intent) = (context.world, context.intent);
@@ -137,20 +136,20 @@ fn push_effects(
                 },
             ));
         }
-        EffectTemplate::Location { to, teleport } => {
+        EffectTemplate::Move { to, teleport } => {
             let place_id = match to {
-                LocationTo::Via(via) => {
+                MoveTo::Via(via) => {
                     let exit = crate::rules::travel::exit_via(context, via)?;
                     exit.ok_or(Reason::Schema)?.to_place_id().clone()
                 }
-                LocationTo::Place(id) if *teleport => id.as_str().into(),
-                LocationTo::Target if *teleport => match &intent.target {
+                MoveTo::Place(id) if *teleport => id.as_str().into(),
+                MoveTo::Target if *teleport => match &intent.target {
                     Target::Place(id) => id.clone(),
                     _ => return Err(Reason::Schema),
                 },
-                LocationTo::Place(_) | LocationTo::Target => return Err(Reason::NotInSpec),
+                MoveTo::Place(_) | MoveTo::Target => return Err(Reason::NotInSpec),
             };
-            effects.push(location_effect(context, ActorLocation::Place(place_id))?);
+            effects.push(move_effect(context, ActorLocation::Place(place_id))?);
         }
         EffectTemplate::Meter { of, id, add, set } => {
             let entity = of.entity_id(context)?;
@@ -264,7 +263,7 @@ fn push_effects(
             let actor_id = by.actor_id(context)?.clone();
             let roll = check.roll(context, dice)?;
             let picked = select_list(roll.outcome, success, partial, miss);
-            reports.push(MoveReport::Rolled { actor_id, roll });
+            reports.push(roll::Report::Rolled { actor_id, roll });
             for template in picked {
                 push_effects(context, template, effects, reports, dice)?;
             }
@@ -293,7 +292,7 @@ fn meter_offset(
     ))
 }
 
-fn location_effect(context: &Context, to: ActorLocation) -> Result<Effect, Reason> {
+fn move_effect(context: &Context, to: ActorLocation) -> Result<Effect, Reason> {
     let intent = context.intent;
     let actor_id = grammar::Actor::Self_.actor_id(context)?.clone();
     let from = context

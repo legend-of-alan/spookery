@@ -5,7 +5,7 @@ use crate::canon::Canon;
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::ecs::component::meter;
 use crate::rules::grammar;
-use crate::rules::rule::{ChangeWatch, EffectTemplate, LocationTo, NarrateTo, Rule, RuleKind};
+use crate::rules::rule::{ChangeWatch, EffectTemplate, MoveTo, NarrateTo, Rule, RuleKind};
 use crate::Reason;
 
 /// Change rules that set each other's watched values.
@@ -49,7 +49,7 @@ pub(super) fn find_cycles(canon: &Canon) -> Vec<Diagnostic> {
                 &format!("rule '{}' is in a trigger cycle", rule.local_id),
                 "stop one rule in the cycle from setting the next watched value",
             )
-            .at_path(format!("rules[{}]", rule.index))
+            .at_key_path(format!("rules[{}]", rule.index))
         })
         .collect()
 }
@@ -81,7 +81,7 @@ pub(super) fn find_leaks(canon: &Canon) -> Vec<Diagnostic> {
                 ),
                 "address that output to self, or to here when the room can see the change",
             )
-            .at_path(format!("rules[{}]", rule.index)),
+            .at_key_path(format!("rules[{}]", rule.index)),
         );
     }
     diagnostics
@@ -136,8 +136,8 @@ fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<EffectWrite
                 }
             }
         }
-        EffectTemplate::Location {
-            to: LocationTo::Place(id),
+        EffectTemplate::Move {
+            to: MoveTo::Place(id),
             ..
         } => out.push(EffectWrite::Arrive(id.clone())),
         _ => {}
@@ -249,7 +249,7 @@ pub(super) fn find_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
                 &format!("rule '{}' {message}", rule.local_id),
                 hint,
             )
-            .at_path(format!("rules[{}]", rule.index)),
+            .at_key_path(format!("rules[{}]", rule.index)),
         );
     }
     diagnostics
@@ -278,7 +278,7 @@ fn needs_subject(rule: &Rule) -> bool {
         EffectTemplate::Narrate { to, .. } => {
             needs |= matches!(to, NarrateTo::Self_ | NarrateTo::Here);
         }
-        EffectTemplate::Location { .. } => needs = true,
+        EffectTemplate::Move { .. } => needs = true,
         _ => {}
     });
     let self_or_here = [

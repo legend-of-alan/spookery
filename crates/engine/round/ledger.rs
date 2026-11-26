@@ -4,7 +4,7 @@ use crate::ecs::change::Change;
 use crate::ecs::id::ActorId;
 use crate::rules::effect::Effect;
 use crate::rules::gate;
-use crate::rules::roll::{MoveReport, Roll};
+use crate::rules::roll::{self, Roll};
 use crate::store::records::Step;
 
 /// Everything a round writes down, in the order it happened. `record` consumes it.
@@ -14,7 +14,7 @@ pub(crate) struct Ledger {
     pub effects: Vec<Effect>,
     pub dice: Vec<String>,
     pub extra_steps: Vec<Step>,
-    pub reports: Vec<MoveReport>,
+    pub reports: Vec<roll::Report>,
     /// Every change record of the round, trigger pass by trigger pass.
     pub changes: Vec<Change>,
 }
@@ -25,7 +25,7 @@ impl Ledger {
         self.reports.extend(
             rolled
                 .zip(actor_id)
-                .map(|(roll, actor_id)| MoveReport::Rolled {
+                .map(|(roll, actor_id)| roll::Report::Rolled {
                     actor_id: actor_id.clone(),
                     roll,
                 }),

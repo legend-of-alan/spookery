@@ -4,11 +4,11 @@ use super::seat::Claim;
 use crate::protocol::{
     self, CommitBody, HostStatus, PackSummary, QueuedVerb, Roll, ServerBody, Speech, StatusPresence,
 };
-use spookery_engine::{self as engine, ActorId, Intent, MoveReport, Presence, TapeRecord};
+use spookery_engine::{self as engine, ActorId, Intent, Presence, TapeRecord};
 
-/// A move the gate or a round refused. Its `detail` is the meter or item id, or the
+/// A verb the gate or a round refused. Its `detail` is the meter or item id, or the
 /// sentence a locked exit shows.
-pub(super) fn build_refused_verb(refusal: &engine::Refusal) -> protocol::Refusal {
+pub(super) fn build_refusal(refusal: &engine::Refusal) -> protocol::Refusal {
     protocol::Refusal {
         code: protocol::Code::Known(refusal.code),
         detail: refusal.detail.clone(),
@@ -54,28 +54,33 @@ pub(super) fn build_claim_reply(
 }
 
 /// The `check` and `refused` bodies of this actor's verbs.
-pub(super) fn build_checks(reports: &[MoveReport], actor_id: &ActorId) -> Vec<ServerBody> {
+pub(super) fn build_checks(
+    reports: &[engine::roll::Report],
+    actor_id: &ActorId,
+) -> Vec<ServerBody> {
     reports
         .iter()
         .filter_map(|report| match report {
-            MoveReport::Rolled { actor_id: id, roll } if id == actor_id => {
+            engine::roll::Report::Rolled { actor_id: id, roll } if id == actor_id => {
                 Some(ServerBody::Check {
                     outcome: roll.outcome,
                 })
             }
-            MoveReport::Refused {
+            engine::roll::Report::Refused {
                 actor_id: id,
                 refusal,
-            } if id == actor_id => Some(ServerBody::Refused(build_refused_verb(refusal))),
+            } if id == actor_id => Some(ServerBody::Refused(build_refusal(refusal))),
             _ => None,
         })
         .collect()
 }
 
-fn rolls<'a>(reports: impl IntoIterator<Item = &'a MoveReport>) -> impl Iterator<Item = &'a Roll> {
+fn rolls<'a>(
+    reports: impl IntoIterator<Item = &'a engine::roll::Report>,
+) -> impl Iterator<Item = &'a Roll> {
     reports.into_iter().filter_map(|report| match report {
-        MoveReport::Rolled { roll: out, .. } => Some(out),
-        MoveReport::Refused { .. } => None,
+        engine::roll::Report::Rolled { roll: out, .. } => Some(out),
+        engine::roll::Report::Refused { .. } => None,
     })
 }
 

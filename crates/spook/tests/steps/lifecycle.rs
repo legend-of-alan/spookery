@@ -3,7 +3,7 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::{component, entity, MoveReport, Presence};
+use spookery_engine::{component, entity, roll, Presence};
 
 use super::common::give_key;
 use super::rules::{open, split_line};
@@ -285,7 +285,7 @@ fn refused_at_once(world: &mut World, line: String, code: String) {
     assert!(opened.queued_intents().is_empty());
 }
 
-/// The code Rowan's player is refused with, when the move is queued or when its round runs.
+/// The code Rowan's player is refused with, when the verb is queued or when its round runs.
 #[then(expr = "Rowan's {string} is refused {word}")]
 fn rowans_line_is_refused(world: &mut World, line: String, code: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
@@ -295,7 +295,7 @@ fn rowans_line_is_refused(world: &mut World, line: String, code: String) {
         Ok(_) => {
             let output = play(&mut opened);
             let refused = output.reports.iter().find_map(|report| match report {
-                MoveReport::Refused { actor_id, refusal } if actor_id == "rowan" => {
+                roll::Report::Refused { actor_id, refusal } if actor_id == "rowan" => {
                     Some(refusal.code)
                 }
                 _ => None,
@@ -311,6 +311,6 @@ fn rowans_line_lands(world: &mut World, line: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
     queue(&mut opened, &line);
     let reports = play(&mut opened).reports;
-    let refused = (reports.iter()).any(|report| matches!(report, MoveReport::Refused { .. }));
+    let refused = (reports.iter()).any(|report| matches!(report, roll::Report::Refused { .. }));
     assert!(!refused, "{reports:?}");
 }

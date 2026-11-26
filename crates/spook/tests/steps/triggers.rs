@@ -5,8 +5,8 @@ use std::sync::Arc;
 use cucumber::{given, then, when};
 use spookery::protocol::{self, ChangeView};
 use spookery_engine::testing::world_of;
+use spookery_engine::{self as engine, ecs, entity, Presence};
 use spookery_engine::{component, emit_save, parse_save};
-use spookery_engine::{ecs, entity, Presence};
 
 use super::common::{add_verb, flags_of, replace_in_file, write_tide_story};
 use super::meters::write_world_meter_rows;
@@ -294,8 +294,8 @@ The ground gives.
         )],
     );
     let faces = rolls.iter().any(|report| match report {
-        spookery_engine::MoveReport::Rolled { actor_id, .. }
-        | spookery_engine::MoveReport::Refused { actor_id, .. } => actor_id == "nell",
+        engine::roll::Report::Rolled { actor_id, .. }
+        | engine::roll::Report::Refused { actor_id, .. } => actor_id == "nell",
     });
     assert!(faces, "nell did not roll\n{rolls:?}");
     world.pack = Some(pack);
@@ -871,7 +871,7 @@ fn remembered_presence(world: &World, pack: &Path) -> Option<Presence> {
 
 pub(crate) struct PlayedRound {
     now: ecs::World,
-    reports: Vec<spookery_engine::MoveReport>,
+    reports: Vec<engine::roll::Report>,
     pub(crate) changed_keys: Vec<String>,
     pub(crate) seen: Vec<(String, Vec<String>)>,
     pub(crate) lines: Vec<(String, String)>,
@@ -883,7 +883,7 @@ fn play(
     world: &mut World,
     pack: &Path,
     intents: Vec<protocol::QueueArgs>,
-) -> (ecs::World, Vec<spookery_engine::MoveReport>) {
+) -> (ecs::World, Vec<engine::roll::Report>) {
     let played = play_round(world, pack, intents);
     (played.now, played.reports)
 }

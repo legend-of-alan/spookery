@@ -8,7 +8,7 @@ use crate::diagnostic::{schema_error, Diagnostic, FileLocation};
 use crate::rules::expr::{self, stamp_file_locations, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
-    self, ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Op, Phase, Rule,
+    self, ActionCost, ChangeWatch, Cond, Cost, EffectTemplate, MoveTo, NarrateTo, Op, Rule,
     RuleKind, Scope, TargetKind,
 };
 
@@ -178,7 +178,7 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
         if_,
         lets,
         check,
-        start: Phase {
+        start: ActionCost {
             cost,
             counts_as_act: entry
                 .start
@@ -186,7 +186,7 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
                 .and_then(|start| start.counts_as_act)
                 .unwrap_or(true),
         },
-        finish: Phase {
+        finish: ActionCost {
             cost: finish_cost,
             counts_as_act: entry
                 .finish
@@ -538,11 +538,11 @@ fn effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
                 ticks,
             }
         }
-        EffectYaml::Location(location) => EffectTemplate::Location {
+        EffectYaml::Location(location) => EffectTemplate::Move {
             to: match (&location.to, &location.via) {
-                (Some(word), None) if word == "target" => LocationTo::Target,
-                (Some(place), None) => LocationTo::Place(place.clone()),
-                (None, Some(via)) => LocationTo::Via(via.clone()),
+                (Some(word), None) if word == "target" => MoveTo::Target,
+                (Some(place), None) => MoveTo::Place(place.clone()),
+                (None, Some(via)) => MoveTo::Via(via.clone()),
                 _ => return Err("location needs to or via".into()),
             },
             teleport: location.teleport,

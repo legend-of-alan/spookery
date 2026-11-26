@@ -16,6 +16,11 @@ pub mod entity {
     pub use crate::ecs::entity::{Id, IdRef, Query, QueryData, QueryFilter, With, Without};
 }
 
+/// The report of each verb a round played: its roll or its refusal.
+pub mod roll {
+    pub use crate::rules::roll::Report;
+}
+
 pub use canon::{load_canon, pack_rev};
 pub use check::check_pack;
 pub use diagnostic::{first_reason, Code, Diagnostic};
@@ -29,7 +34,6 @@ pub use intent::{Intent, IntentArgs, Source, Target};
 pub use round::{play_pack_once, verify_pack, verify_quick};
 pub use rules::gate::Refusal;
 pub use rules::perceive::View;
-pub use rules::roll::MoveReport;
 pub use rules::visibility::RecipientLine;
 pub use session::{migrate_pack, Session};
 pub use spookery_protocol::Reason;

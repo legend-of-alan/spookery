@@ -33,7 +33,7 @@ fn find_pack_rev_mismatch(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagno
                 "pack_rev does not match the canon hash",
                 "run spook migrate to store the current hash",
             )
-            .at_path("pack_rev");
+            .at_key_path("pack_rev");
             if let Ok(text) = std::str::from_utf8(bytes) {
                 diagnostic = diagnostic.at_file_location(locate_nth(text, "pack_rev:", 0));
             }
@@ -47,7 +47,7 @@ fn find_pack_rev_mismatch(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagno
                 "the canon files could not be hashed",
                 "check that world/, cast/, and rules/ are readable",
             )
-            .at_path("pack_rev"),
+            .at_key_path("pack_rev"),
         ),
     }
 }
@@ -74,7 +74,7 @@ pub(crate) fn load_save_file(
             "this file is not UTF-8 text",
             "save it as UTF-8",
         )
-        .at_path("schema")]
+        .at_key_path("schema")]
     })?;
     let save = save::parse(text)?;
     let live = journal::read_live_records(root).unwrap_or_default();
@@ -99,7 +99,7 @@ pub(crate) fn load_save_file(
                     "this save differs from the checkpoint head it claims",
                     "restore the file, or run spook migrate to keep the edit if no round follows it",
                 )
-                .at_path("save"),
+                .at_key_path("save"),
             ),
             Err(err) => diagnostics.push(
                 error(
@@ -108,7 +108,7 @@ pub(crate) fn load_save_file(
                     "the checkpoint head could not be read",
                     "check that state/journal/head.json is readable",
                 )
-                .at_path("schema"),
+                .at_key_path("schema"),
             ),
         }
     }
@@ -149,7 +149,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
                 "state/save.yaml could not be read",
                 "check that the file is readable",
             )
-            .at_path("schema"),
+            .at_key_path("schema"),
         ),
     }
     if let Some(canon) = &canon {
@@ -173,7 +173,7 @@ fn find_save_text_diagnostics(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
             "actor id world is reserved",
             "rename that actor",
         );
-        diagnostics.push(diagnostic.at_path("actors.world"));
+        diagnostics.push(diagnostic.at_key_path("actors.world"));
     }
     match save::emit(save) {
         Ok(emitted) if emitted.as_bytes() != bytes => {
@@ -188,7 +188,7 @@ fn find_save_text_diagnostics(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
             );
             diagnostic = match line {
                 Some(line) => diagnostic.at_line(line, None),
-                None => diagnostic.at_path("save"),
+                None => diagnostic.at_key_path("save"),
             };
             diagnostics.push(diagnostic);
         }
@@ -200,7 +200,7 @@ fn find_save_text_diagnostics(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
                 "the save could not be written back as YAML",
                 "fix the values so they match the save format",
             )
-            .at_path("save"),
+            .at_key_path("save"),
         ),
     }
     diagnostics

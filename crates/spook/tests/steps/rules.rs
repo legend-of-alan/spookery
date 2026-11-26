@@ -6,8 +6,9 @@ use serde_json::Value;
 use spookery_engine::testing::roll;
 
 use crate::support::{edit_as_saved, edit_meter, insert_before_fence, put_items, put_meter};
-use spookery_engine::MoveReport;
-use spookery_engine::{component, entity, ActorId, GlobalId, Meter, Note, Presence, Reason};
+use spookery_engine::{
+    self as engine, component, entity, ActorId, GlobalId, Meter, Note, Presence, Reason,
+};
 
 use super::common::flags_of;
 use super::host;
@@ -521,7 +522,7 @@ fn harbormouse_attacks(world: &mut World) {
         .unwrap_or_else(|err| panic!("attack {err}"));
     let reports = outputs.into_iter().next().unwrap().reports;
     let rolled = reports.into_iter().find_map(|report| match report {
-        MoveReport::Rolled { actor_id, roll } if actor_id == *"harbormouse" => Some(roll),
+        engine::roll::Report::Rolled { actor_id, roll } if actor_id == *"harbormouse" => Some(roll),
         _ => None,
     });
     let rolled = rolled.unwrap_or_else(|| panic!("Harbormouse did not roll"));

@@ -22,9 +22,9 @@ pub(crate) struct Rule {
     pub check: Option<Check>,
     /// Paid when the action starts. Its `cost` is the rule's `cost`, whose ticks are how long
     /// the action takes.
-    pub start: Phase,
+    pub start: ActionCost,
     /// Paid when the action finishes.
-    pub finish: Phase,
+    pub finish: ActionCost,
     /// Ticks the actor stays busy after the finish.
     pub cooldown_ticks: u64,
     /// Whether the actor may cancel the action while it is under way.
@@ -94,12 +94,12 @@ impl Rule {
                     mentions.add_actor("subject:", subject);
                 }
                 EffectTemplate::Check { by, .. } => mentions.add_actor("by:", by),
-                EffectTemplate::Location { to, .. } => match to {
-                    LocationTo::Target => mentions.add_target("location to:", &[TargetKind::Place]),
-                    LocationTo::Via(via) if via == "target" => {
+                EffectTemplate::Move { to, .. } => match to {
+                    MoveTo::Target => mentions.add_target("location to:", &[TargetKind::Place]),
+                    MoveTo::Via(via) if via == "target" => {
                         mentions.add_target("location via:", &[TargetKind::Path]);
                     }
-                    LocationTo::Via(_) | LocationTo::Place(_) => {}
+                    MoveTo::Via(_) | MoveTo::Place(_) => {}
                 },
                 EffectTemplate::Note { .. } | EffectTemplate::Narrate { .. } => {}
             }
@@ -112,7 +112,7 @@ impl Rule {
 }
 
 /// What a rule's or exit's lines name, borrowed from those lines (`'l`) and sorted by kind. The
-/// word `target` stands for whatever the move targets, so it is kept apart from the entities and
+/// word `target` stands for whatever the verb targets, so it is kept apart from the entities and
 /// items it could name.
 #[derive(Default)]
 pub(crate) struct Mentions<'l> {
@@ -120,7 +120,7 @@ pub(crate) struct Mentions<'l> {
     pub(crate) entities: Vec<grammar::Object>,
     /// The item ids other than `target`, each once.
     pub(crate) item_ids: BTreeSet<&'l str>,
-    /// Each key that says `target`, as written and in the order written, with what the move
+    /// Each key that says `target`, as written and in the order written, with what the verb
     /// may target for it to name something. A refusal suggests the first.
     target_keys: Vec<(&'static str, &'static [TargetKind])>,
 }
@@ -192,8 +192,8 @@ impl<'l> Mentions<'l> {
         self.target_keys.push((key, allowed));
     }
 
-    /// The first of the target keys where a move that targets `targets` does not allow
-    /// `target`, as the key and what it needs the move to target. A habit, a change rule and an
+    /// The first of the target keys where a verb that targets `targets` does not allow
+    /// `target`, as the key and what it needs the verb to target. A habit, a change rule and an
     /// exit target nothing.
     pub(crate) fn find_misplaced_target(
         self,
@@ -207,7 +207,7 @@ impl<'l> Mentions<'l> {
 
 /// What the start or the finish of an action costs, and whether it uses the actor's act.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Phase {
+pub(crate) struct ActionCost {
     pub cost: Option<Cost>,
     pub counts_as_act: bool,
 }
@@ -252,7 +252,7 @@ pub(crate) enum RuleKind {
 }
 
 impl RuleKind {
-    /// What the rule's move targets. A habit and a change rule target nothing.
+    /// The kind of thing the rule's verb targets. A habit and a change rule target nothing.
     pub(crate) fn target_kind(&self) -> TargetKind {
         match self {
             RuleKind::Verb { target, .. } => *target,
@@ -485,8 +485,8 @@ pub(crate) enum EffectTemplate {
         add: Expr,
         ticks: Expr,
     },
-    Location {
-        to: LocationTo,
+    Move {
+        to: MoveTo,
         teleport: bool,
     },
     Note {
@@ -550,7 +550,7 @@ impl EffectTemplate {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum LocationTo {
+pub(crate) enum MoveTo {
     Target,
     Place(String),
     Via(String),
@@ -566,11 +566,11 @@ pub(crate) enum NarrateTo {
 }
 
 #[derive(Clone, Debug)]
-pub struct Table {
+pub struct Rules {
     rules: Vec<Rule>,
 }
 
-impl Table {
+impl Rules {
     pub(crate) fn new(rules: Vec<Rule>) -> Self {
         Self { rules }
     }

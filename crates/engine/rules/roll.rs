@@ -24,11 +24,11 @@ pub(crate) fn classify(total: i64, success_at: i64, partial_at: Option<i64>) -> 
 /// the journal keeps only the round's dice lines.
 pub(crate) use spookery_protocol::Roll;
 
-/// What the round did with a move: the roll, or a refusal and its reason. Returned from the
+/// What the round did with a verb: the roll, or a refusal and its reason. Returned from the
 /// engine's round to the host table, which turns it into check frames. Neither the save nor
 /// the journal stores it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum MoveReport {
+pub enum Report {
     Rolled {
         actor_id: ActorId,
         roll: Roll,
