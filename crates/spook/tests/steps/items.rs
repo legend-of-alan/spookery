@@ -81,7 +81,7 @@ fn write_dagger(pack: &Path, rules: &str) {
 const DAGGER_ATTACK: &str = "
   - id: attack
     when:
-      verb_id: attack
+      verb: attack
       target: actor
     if:
       - wielding:
@@ -100,7 +100,7 @@ const DAGGER_ATTACK: &str = "
 const DAGGER_STRIKE: &str = "
   - id: strike
     when:
-      verb_id: strike
+      verb: strike
       target: actor
     do:
       - meter:
@@ -112,7 +112,7 @@ const DAGGER_STRIKE: &str = "
 const BARE_HANDS_ATTACK: &str = "
   - id: attack
     when:
-      verb_id: attack
+      verb: attack
       target: actor
     check:
       total: 1d20 + self.might
@@ -445,7 +445,7 @@ fn wren_rolls_a_nested_check_on_a_seeded_roll(world: &mut World) {
         "
   - id: attack
     when:
-      verb_id: attack
+      verb: attack
       target: actor
     if:
       - wielding:

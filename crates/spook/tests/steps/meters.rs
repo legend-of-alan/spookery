@@ -225,7 +225,7 @@ fn rowan_has_vigor_verbs(world: &mut World) {
         let effect = format!("      - meter: {{ of: self, id: vigor, add: {add} }}\n");
         add_verb(
             &pack,
-            &format!("\n  - id: {verb}\n    when:\n      verb_id: {verb}\n    do:\n{effect}"),
+            &format!("\n  - id: {verb}\n    when:\n      verb: {verb}\n    do:\n{effect}"),
         );
     }
     world.pack = Some(pack);
@@ -266,7 +266,7 @@ fn rowan_stands_in_the_shop(world: &mut World) {
     let pack = copy_pack("docks", "flag-sight");
     add_verb(
         &pack,
-        "\n  - id: ring_bells\n    when:\n      verb_id: ring_bells\n    do:\n      - flag:\n          of: world\n          id: bells_rung\n          value: true\n  - id: open_shop\n    when:\n      verb_id: open_shop\n    do:\n      - flag:\n          of: mira\n          id: shop_open\n          value: true\n",
+        "\n  - id: ring_bells\n    when:\n      verb: ring_bells\n    do:\n      - flag:\n          of: world\n          id: bells_rung\n          value: true\n  - id: open_shop\n    when:\n      verb: open_shop\n    do:\n      - flag:\n          of: mira\n          id: shop_open\n          value: true\n",
     );
     edit_table(world, &pack, |now, seated| {
         set_place(now, "mira", "docks_shop");
@@ -315,7 +315,7 @@ fn world_meters_declares_at(world: &mut World, key: String, base: i64) {
 fn write_dawn_story(pack: &Path, story: &str, more: &str) {
     fs::create_dir_all(pack.join("story")).unwrap();
     let text = format!(
-        "schema: story\nid: {story}\nrules:\n  - id: dawn_nears\n    when:\n      change:\n        item_id: lamp_oil\n        gained: true\n    do:\n      - meter:\n          of: world\n          id: dawn\n          add: -1\n{more}"
+        "schema: story\nid: {story}\nrules:\n  - id: dawn_nears\n    when:\n      change:\n        item: lamp_oil\n        gained: true\n    do:\n      - meter:\n          of: world\n          id: dawn\n          add: -1\n{more}"
     );
     fs::write(pack.join(format!("story/{story}.yaml")), text).unwrap();
 }
@@ -335,7 +335,7 @@ fn vigil_counts_down(world: &mut World, of: String) {
 #[given(expr = "story\\/vigil.yaml has a change rule that watches dawn cross {string}")]
 fn vigil_watches_dawn(world: &mut World, crosses: String) {
     let watch = format!(
-        "  - id: dawn_breaks\n    when:\n      change:\n        meter_id: dawn\n        crosses: \"{crosses}\"\n    do:\n      - flag:\n          of: world\n          id: dawn_broke\n          value: true\n"
+        "  - id: dawn_breaks\n    when:\n      change:\n        meter: dawn\n        crosses: \"{crosses}\"\n    do:\n      - flag:\n          of: world\n          id: dawn_broke\n          value: true\n"
     );
     write_dawn_story(pack(world), "vigil", &watch);
 }
@@ -420,7 +420,7 @@ fn a_rule_adds_to_dawn(world: &mut World, of: String) {
             "
   - id: dawn_falls
     when:
-      verb_id: dawn_falls
+      verb: dawn_falls
     do:
       - meter:
           of: {of}
@@ -506,7 +506,7 @@ fn a_rule_darkens_dawn_and_doom(world: &mut World, first: String, second: String
     let pack = world.pack.clone().unwrap();
     add_verb(
         &pack,
-        "\n  - id: darken\n    when:\n      verb_id: darken\n    do:\n      - meter:\n          of: world\n          id: dawn\n          add: -1\n      - meter:\n          of: world\n          id: doom\n          add: -1\n",
+        "\n  - id: darken\n    when:\n      verb: darken\n    do:\n      - meter:\n          of: world\n          id: dawn\n          add: -1\n      - meter:\n          of: world\n          id: doom\n          add: -1\n",
     );
     edit_table(world, &pack, |_, seated| set_present(seated, &["rowan"]));
     migrate_and_play(world, vec![intent("darken", "rowan", "darken", None)]);

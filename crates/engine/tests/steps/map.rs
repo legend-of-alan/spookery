@@ -66,7 +66,7 @@ fn the_shop_has_a_trapdoor(world: &mut World) {
     )
     .unwrap();
     let dig = "  - id: dig
-    when: { verb_id: dig }
+    when: { verb: dig }
     do:
       - flag: { of: self, id: found_trapdoor, value: true }";
     for place in ["docks_shop", "docks_street"] {

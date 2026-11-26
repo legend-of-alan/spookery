@@ -20,7 +20,7 @@ fn nell_travels_via_door(world: &mut World) {
     add_bell(&pack);
     add_verb(
         &pack,
-        "\n  - id: blink\n    when:\n      verb_id: blink\n    do:\n      - location:\n          to: docks_shop\n          teleport: true\n",
+        "\n  - id: blink\n    when:\n      verb: blink\n    do:\n      - location:\n          to: docks_shop\n          teleport: true\n",
     );
     write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
@@ -85,7 +85,7 @@ rules:
   - id: ledger
     when:
       change:
-        arrive_place_id: mira_rooms
+        arrive: mira_rooms
         subject: pc
     if:
       - flag:
@@ -140,7 +140,7 @@ fn two_rules_set_each_others_flag(world: &mut World) {
     write_nell(&pack);
     add_verb(
         &pack,
-        "\n  - id: raise\n    when:\n      verb_id: raise\n    do:\n      - flag:\n          of: self\n          id: sun\n          value: true\n",
+        "\n  - id: raise\n    when:\n      verb: raise\n    do:\n      - flag:\n          of: self\n          id: sun\n          value: true\n",
     );
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(
@@ -152,7 +152,7 @@ rules:
   - id: sun_to_moon
     when:
       change:
-        flag_id: sun
+        flag: sun
         becomes: true
     do:
       - flag:
@@ -170,7 +170,7 @@ rules:
   - id: moon_to_sun
     when:
       change:
-        flag_id: moon
+        flag: moon
         becomes: true
     do:
       - flag:
@@ -229,7 +229,7 @@ rules:
   - id: tell
     when:
       change:
-        arrive_place_id: docks_shop
+        arrive: docks_shop
     do:
       - narrate:
           to: self
@@ -259,7 +259,7 @@ rules:
   - id: sink
     when:
       change:
-        arrive_place_id: here
+        arrive: here
         subject: pc
     check:
       total: 1d6 + self.vigor
@@ -379,7 +379,7 @@ fn the_street_has_a_trapdoor(world: &mut World, entity: String) {
     .unwrap();
     add_verb(
         &pack,
-        &format!("\n  - id: uncover\n    when:\n      verb_id: uncover\n    do:\n      - flag:\n          of: {entity}\n          id: found_trapdoor\n          value: true\n"),
+        &format!("\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - flag:\n          of: {entity}\n          id: found_trapdoor\n          value: true\n"),
     );
     write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
@@ -424,7 +424,7 @@ fn a_verb_sets_the_tide(world: &mut World) {
         "
   - id: turn_tide
     when:
-      verb_id: turn_tide
+      verb: turn_tide
     do:
       - flag:
           of: world
@@ -641,7 +641,7 @@ fn a_message_hidden_from_wren_is_written(world: &mut World) {
     let pack = copy_pack("docks", "trigger-message");
     add_verb(
         &pack,
-        "\n  - id: pass_word\n    when:\n      verb_id: pass_word\n    do:\n      - note:\n          id: note_private\n          to:\n            - nell\n          text: The tide turns at dusk.\n",
+        "\n  - id: pass_word\n    when:\n      verb: pass_word\n    do:\n      - note:\n          id: note_private\n          to:\n            - nell\n          text: The tide turns at dusk.\n",
     );
     write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
@@ -667,7 +667,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
     let pack = copy_pack("docks", "trigger-idle-narrate");
     add_verb(
         &pack,
-        "\n  - id: quiet\n    when:\n      verb_id: quiet\n    do:\n      - narrate:\n          to: rowan\n          text: The shop is quiet.\n  - id: back\n    when:\n      verb_id: back\n    do:\n      - narrate:\n          to: self\n          text: You are back.\n",
+        "\n  - id: quiet\n    when:\n      verb: quiet\n    do:\n      - narrate:\n          to: rowan\n          text: The shop is quiet.\n  - id: back\n    when:\n      verb: back\n    do:\n      - narrate:\n          to: self\n          text: You are back.\n",
     );
     edit_table(world, &pack, |_, _| {});
     let mut session = spookery_engine::testing::resume(&pack);
@@ -739,7 +739,7 @@ pub(crate) fn set_present(presence: &mut Presence, ids: &[&str]) {
 fn add_bell_narrate(pack: &Path) {
     support::insert_before_fence(
         &pack.join("world/places/docks_shop.md"),
-        "rules:\n  - id: bell\n    when:\n      change:\n        arrive_place_id: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          id: heard_bell\n          value: true\n      - narrate:\n          to: here\n          text: The bell rings.\n",
+        "rules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          id: heard_bell\n          value: true\n      - narrate:\n          to: here\n          text: The bell rings.\n",
     );
 }
 
@@ -747,7 +747,7 @@ fn downed_pack(world: &mut World, hp: i64, crosses: &str) -> std::path::PathBuf 
     let pack = copy_pack("docks", "trigger-downed");
     add_verb(
         &pack,
-        "\n  - id: hit\n    when:\n      verb_id: hit\n      target: actor\n    do:\n      - meter:\n          of: target\n          id: hp\n          add: -4\n  - id: nick\n    when:\n      verb_id: nick\n      target: actor\n    do:\n      - meter:\n          of: target\n          id: hp\n          add: -1\n",
+        "\n  - id: hit\n    when:\n      verb: hit\n      target: actor\n    do:\n      - meter:\n          of: target\n          id: hp\n          add: -4\n  - id: nick\n    when:\n      verb: nick\n      target: actor\n    do:\n      - meter:\n          of: target\n          id: hp\n          add: -1\n",
     );
     fs::write(
         pack.join("story/injury.yaml"),
@@ -759,7 +759,7 @@ rules:
   - id: downed
     when:
       change:
-        meter_id: hp
+        meter: hp
         crosses: \"{crosses}\"
     do:
       - flag:
@@ -793,7 +793,7 @@ fn add_rooms(pack: &Path) {
 fn add_bell(pack: &Path) {
     support::insert_before_fence(
         &pack.join("world/places/docks_shop.md"),
-        "rules:\n  - id: bell\n    when:\n      change:\n        arrive_place_id: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          id: heard_bell\n          value: true\n",
+        "rules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          id: heard_bell\n          value: true\n",
     );
 }
 
