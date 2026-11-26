@@ -285,7 +285,7 @@ fn refused_at_once(world: &mut World, line: String, code: String) {
     assert!(opened.queued_intents().is_empty());
 }
 
-/// The code Rowan's player is refused with, when the move is queued or when its round runs.
+/// The code Rowan's player is refused with, when the verb is queued or when its round runs.
 #[then(expr = "Rowan's {string} is refused {word}")]
 fn rowans_line_is_refused(world: &mut World, line: String, code: String) {
     let mut opened = open(world.pack.as_ref().unwrap());

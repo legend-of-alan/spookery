@@ -439,13 +439,13 @@ impl Host {
                     target,
                 },
                 Err(refused) if gm.is_none() && refused.code == Reason::Busy => {
-                    ServerBody::Refused(message_body::build_refused_move(&refused))
+                    ServerBody::Refused(message_body::build_refusal(&refused))
                 }
                 Err(refused) => {
                     return self.reply(
                         conn,
                         id,
-                        ServerBody::Refused(message_body::build_refused_move(&refused)),
+                        ServerBody::Refused(message_body::build_refusal(&refused)),
                     );
                 }
             };

@@ -16,7 +16,7 @@ pub mod entity {
     pub use crate::ecs::entity::{Id, IdRef, Query, QueryData, QueryFilter, With, Without};
 }
 
-/// The roll or refusal a round reports for each verb it plays.
+/// The report of each verb a round played: its roll or its refusal.
 pub mod roll {
     pub use crate::rules::roll::Report;
 }

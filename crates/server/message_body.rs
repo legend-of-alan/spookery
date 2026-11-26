@@ -6,9 +6,9 @@ use crate::protocol::{
 };
 use spookery_engine::{self as engine, ActorId, Intent, Presence, TapeRecord};
 
-/// A move the gate or a round refused. Its `detail` is the meter or item id, or the
+/// A verb the gate or a round refused. Its `detail` is the meter or item id, or the
 /// sentence a locked exit shows.
-pub(super) fn build_refused_move(refusal: &engine::Refusal) -> protocol::Refusal {
+pub(super) fn build_refusal(refusal: &engine::Refusal) -> protocol::Refusal {
     protocol::Refusal {
         code: protocol::Code::Known(refusal.code),
         detail: refusal.detail.clone(),
@@ -53,7 +53,7 @@ pub(super) fn build_claim_reply(
     }
 }
 
-/// The `check` and `refused` bodies of this actor's moves.
+/// The `check` and `refused` bodies of this actor's verbs.
 pub(super) fn build_checks(
     reports: &[engine::roll::Report],
     actor_id: &ActorId,
@@ -69,7 +69,7 @@ pub(super) fn build_checks(
             engine::roll::Report::Refused {
                 actor_id: id,
                 refusal,
-            } if id == actor_id => Some(ServerBody::Refused(build_refused_move(refusal))),
+            } if id == actor_id => Some(ServerBody::Refused(build_refusal(refusal))),
             _ => None,
         })
         .collect()
