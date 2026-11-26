@@ -537,7 +537,7 @@ mod tests {
         assert!(parsed.effects.iter().any(|effect| {
             matches!(
                 effect.kind,
-                crate::rules::effect::EffectKind::Location {
+                crate::rules::effect::EffectKind::Move {
                     arrived_at: Some(1082),
                     ..
                 }

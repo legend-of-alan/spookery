@@ -264,7 +264,7 @@ async fn listen_and_seat_both(world: &mut World, pack: &Path) {
 }
 
 async fn queue_mira(world: &mut World, move_id: &str) {
-    let args = format!(r#"{{"actor":"mira","move":"{move_id}"}}"#);
+    let args = format!(r#"{{"actor":"mira","verb":"{move_id}"}}"#);
     let text = host::gm_tool_call(world, 4, "queue", &args).await;
     assert!(text.contains("\"id\""), "{text}");
     assert!(!text.contains("UNKNOWN_ID"), "{text}");

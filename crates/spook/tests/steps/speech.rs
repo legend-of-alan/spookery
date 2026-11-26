@@ -170,7 +170,7 @@ fn the_tape_line_is_said_to(world: &mut World, audience: String, id: String) {
 fn the_tape_recipients_are(world: &mut World, id: String) {
     let tape = tape_text(world);
     assert!(
-        tape.contains(&format!("\"recipient_ids\":[\"{id}\"]")),
+        tape.contains(&format!("\"recipients\":[\"{id}\"]")),
         "{tape}"
     );
 }
@@ -286,7 +286,7 @@ async fn say_lines(world: &mut World, actor: &str, count: usize) -> Vec<String> 
         let args = format!(r#"{{"to":{{"actor":"{actor}"}},"text":"{text}"}}"#);
         let body = host::call_gm_tool(world, "say", &args).await;
         let addressed = body
-            .get("recipient_ids")
+            .get("recipients")
             .and_then(Value::as_array)
             .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(actor)));
         assert!(addressed, "say {text} was not addressed to {actor}: {body}");

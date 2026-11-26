@@ -181,7 +181,7 @@
             "actor": {
               "type": "string"
             },
-            "move": {
+            "verb": {
               "type": "string"
             },
             "target": {
@@ -199,7 +199,7 @@
             "kind",
             "intent",
             "actor",
-            "move"
+            "verb"
           ]
         },
         {
@@ -444,7 +444,7 @@
             }
           ]
         },
-        "recipient_ids": {
+        "recipients": {
           "description": "Who actually heard it: the ids of the seated players' actors that `to` reached when it\nwas said, plus a seated speaker. `to` is who the speaker addressed; this is who was\nthere, kept because seats and places change later. Empty on a player's copy.",
           "type": "array",
           "items": {
@@ -491,7 +491,7 @@
         "TABLE_EMPTY",
         "PACK_REV_MISMATCH",
         "RULES_REV_MISMATCH",
-        "UNKNOWN_MOVE",
+        "UNKNOWN_VERB",
         "UNSCOPED_PERCEIVE",
         "COMMIT_CONFLICT",
         "HAND_EDIT",
@@ -622,8 +622,8 @@
         "actors_present"
       ]
     },
-    "QueuedMove": {
-      "description": "A queued move in `HostStatus`, sent from the host to a GM client.",
+    "QueuedVerb": {
+      "description": "A queued verb in `HostStatus`, sent from the host to a GM client.",
       "type": "object",
       "properties": {
         "id": {
@@ -632,14 +632,14 @@
         "actor": {
           "type": "string"
         },
-        "move": {
+        "verb": {
           "type": "string"
         }
       },
       "required": [
         "id",
         "actor",
-        "move"
+        "verb"
       ]
     },
     "PackSummary": {
@@ -741,7 +741,7 @@
         "queued": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/QueuedMove"
+            "$ref": "#/$defs/QueuedVerb"
           }
         },
         "pack": {
@@ -766,13 +766,13 @@
         "id": {
           "type": "string"
         },
-        "to_ids": {
+        "to": {
           "type": "array",
           "items": {
             "type": "string"
           }
         },
-        "place_id": {
+        "place": {
           "type": [
             "string",
             "null"
@@ -784,7 +784,7 @@
       },
       "required": [
         "id",
-        "to_ids",
+        "to",
         "text"
       ]
     },
@@ -836,16 +836,16 @@
       ]
     },
     "ExitView": {
-      "description": "Part of a `View`, sent from the host to a player client. `path_id` is the path it walks, as\na move's `path` target, a `path_flag` change and a walker's `path:<id>` name it. `name` is\nwhat a player reads for the exit, such as `stairs` or `Docks Street`. `place_id` and\n`place_name` are where it goes.",
+      "description": "Part of a `View`, sent from the host to a player client. `path` is the path it walks, as\na verb's `path` target, a `path_flag` change and a walker's `path:<id>` name it. `name` is\nwhat a player reads for the exit, such as `stairs` or `Docks Street`. `place` and\n`place_name` are where it goes.",
       "type": "object",
       "properties": {
-        "path_id": {
+        "path": {
           "type": "string"
         },
         "name": {
           "type": "string"
         },
-        "place_id": {
+        "place": {
           "type": "string"
         },
         "place_name": {
@@ -861,9 +861,9 @@
         }
       },
       "required": [
-        "path_id",
+        "path",
         "name",
-        "place_id",
+        "place",
         "place_name",
         "ticks",
         "locked"
@@ -877,7 +877,7 @@
           "type": "string"
         },
         "place": {
-          "description": "Where the viewer is, with the exits they see there. A walker's `place_id` is\n`path:<path_id>` and its name the path's.",
+          "description": "Where the viewer is, with the exits they see there. A walker's `place` is\n`path:<id>` and its name the path's.",
           "$ref": "#/$defs/PlaceView"
         },
         "body": {
@@ -922,7 +922,7 @@
             "$ref": "#/$defs/ItemStack"
           }
         },
-        "wielded_item_id": {
+        "wielded_item": {
           "description": "Which of `items_carried` the viewer wields.",
           "type": [
             "string",
@@ -966,19 +966,19 @@
       ]
     },
     "ChangeView": {
-      "description": "One change of a `changes` body, sent from the host to a player client. `component_id`\nnames what changed, such as `meter`, `item` or `place`. `entity_id` is whose it is as a\nrule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`.\n`entity_name` is that actor's, place's or story's name. `entry_id` is which one of the\nentity's, such as the meter or item id, and `entry_name` the item's or meter's name, or for\n`place` the name of the place moved to. `before` and `after` are left out when there was none.",
+      "description": "One change of a `changes` body, sent from the host to a player client. `component`\nnames what changed, such as `meter`, `item` or `place`. `entity` is whose it is as a\nrule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`.\n`entity_name` is that actor's, place's or story's name. `entry` is which one of the\nentity's, such as the meter or item id, and `entry_name` the item's or meter's name, or for\n`place` the name of the place moved to. `before` and `after` are left out when there was none.",
       "type": "object",
       "properties": {
-        "component_id": {
+        "component": {
           "type": "string"
         },
-        "entity_id": {
+        "entity": {
           "type": "string"
         },
         "entity_name": {
           "type": "string"
         },
-        "entry_id": {
+        "entry": {
           "type": "string"
         },
         "entry_name": {
@@ -1006,8 +1006,8 @@
         }
       },
       "required": [
-        "component_id",
-        "entity_id"
+        "component",
+        "entity"
       ]
     },
     "ChangeValue": {
@@ -1063,7 +1063,7 @@
       "description": "Part of a `View`, as its `place` and each of `nearby`, and of a `map` reply, sent from the\nhost to a client: its id, its name and the exits the viewer may see there.",
       "type": "object",
       "properties": {
-        "place_id": {
+        "place": {
           "type": "string"
         },
         "name": {
@@ -1077,7 +1077,7 @@
         }
       },
       "required": [
-        "place_id",
+        "place",
         "name"
       ]
     }

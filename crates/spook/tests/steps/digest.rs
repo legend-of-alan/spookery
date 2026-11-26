@@ -20,10 +20,10 @@ meter mira shop_day 1 1
 /// `shop_day` sorts last, so its meter line ends every host printout.
 const PRINTOUT_END: &str = "meter mira shop_day ";
 
-const DOOR_NOTE: &str = "effect note 1 {\"note_id\":\"note_mira_door\",\"to_ids\":[\"rowan\"],\"place_id\":\"docks_shop\",\"text\":\"Back at dusk. Oil on the shelf.\"}";
+const DOOR_NOTE: &str = "effect note 1 {\"id\":\"note_mira_door\",\"to\":[\"rowan\"],\"place\":\"docks_shop\",\"text\":\"Back at dusk. Oil on the shelf.\"}";
 
 const HOST: &str = "\
-effect note 1 {\"note_id\":\"note_mira_door\",\"to_ids\":[\"rowan\"],\"place_id\":\"docks_shop\",\"text\":\"Back at dusk. Oil on the shelf.\"}
+effect note 1 {\"id\":\"note_mira_door\",\"to\":[\"rowan\"],\"place\":\"docks_shop\",\"text\":\"Back at dusk. Oil on the shelf.\"}
 meter rowan assassination_debt 2 6
 meter place:docks_shop comfort 2 3
 meter mira shop_day 1 1
@@ -169,8 +169,8 @@ fn the_docks_pack_where_miras_door_note_is_left_to_wren(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "hidden-note");
     rewrite_mira(
         &pack,
-        "            - rowan\n          place_id: docks_shop\n",
-        "            - wren\n          place_id: mira_rooms\n",
+        "            - rowan\n          place: docks_shop\n",
+        "            - wren\n          place: mira_rooms\n",
     );
     world.pack = Some(pack);
 }
@@ -185,8 +185,8 @@ async fn the_player_resume_lists_the_door_message(world: &mut World) {
             "notes": [
                 {
                     "id": "note_mira_door",
-                    "to_ids": ["rowan"],
-                    "place_id": "docks_shop",
+                    "to": ["rowan"],
+                    "place": "docks_shop",
                     "text": "Back at dusk. Oil on the shelf."
                 }
             ]

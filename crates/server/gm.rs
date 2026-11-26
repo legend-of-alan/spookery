@@ -73,7 +73,7 @@ pub(super) fn describe(command: &str) -> Option<(&'static str, Arc<Map<String, V
             schema_for_type::<PerceiveArgs>(),
         ),
         "queue" => (
-            "queue requires actor_id and move. A habit row is legal when actor_id is an npc. A PC a player holds is ACTOR_MISMATCH.",
+            "queue requires actor and verb. A habit row is legal when actor is an npc. A PC a player holds is ACTOR_MISMATCH.",
             schema_for_type::<QueueArgs>(),
         ),
         "say" => (
@@ -81,7 +81,7 @@ pub(super) fn describe(command: &str) -> Option<(&'static str, Arc<Map<String, V
             schema_for_type::<SayArgs>(),
         ),
         "commit" => (
-            "commit requires include_round. session_id may be a string. The round messages come before the reply.",
+            "commit requires include_round. session may be a string. The round messages come before the reply.",
             schema_for_type::<CommitArgs>(),
         ),
         "release" => (
@@ -215,7 +215,7 @@ mod tests {
     use spookery_engine::{Presence, Reason};
 
     use crate::gm;
-    use crate::protocol::{QueuedMove, Seat, COMMANDS};
+    use crate::protocol::{QueuedVerb, Seat, COMMANDS};
 
     /// `gm::run` runs each GM command the hello lists: well-formed arguments are not
     /// `SCHEMA`, and a command that is not one is.
@@ -226,7 +226,7 @@ mod tests {
         let calls = [
             ("status", json!({})),
             ("perceive", json!({"as": "rowan"})),
-            ("queue", json!({"actor": "rowan", "move": "wait"})),
+            ("queue", json!({"actor": "rowan", "verb": "wait"})),
             ("say", json!({"to": "table", "text": "hi"})),
             ("commit", json!({"include_round": false})),
             ("release", json!({})),
@@ -265,15 +265,15 @@ mod tests {
     }
 
     #[test]
-    fn parsed_intent_reaches_the_session_with_move_and_to() {
+    fn parsed_intent_reaches_the_session_with_verb_and_to() {
         let pack = copy_pack("docks", "gm_intent");
         let mut session = spookery_engine::Session::open(&pack).unwrap();
-        let args = json!({"actor": "rowan", "move": "wait", "to": ["wren"]});
+        let args = json!({"actor": "rowan", "verb": "wait", "to": ["wren"]});
         let call = crate::protocol::parse_args(args.as_object()).unwrap();
         let queued = session
             .queue_gm_intent(&Presence::default(), call, || Ok("i1".into()))
             .unwrap();
-        let want = QueuedMove {
+        let want = QueuedVerb {
             id: "i1".into(),
             actor_id: "rowan".into(),
             move_id: "wait".into(),

@@ -285,7 +285,7 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
             key: key.to_string(),
             value: *value,
         },
-        Step::Walk(to) => EffectKind::Location {
+        Step::Walk(to) => EffectKind::Move {
             from: (world.actors().get::<component::Place>(&mira).get())
                 .cloned()
                 .unwrap_or_else(|| ActorLocation::Place("".into())),

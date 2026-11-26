@@ -14,8 +14,9 @@ use crate::Reason;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Note {
+    #[serde(rename = "to")]
     pub to_ids: BTreeSet<ActorId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "place", default, skip_serializing_if = "Option::is_none")]
     pub place_id: Option<PlaceId>,
     pub text: String,
 }

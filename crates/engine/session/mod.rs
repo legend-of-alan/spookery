@@ -25,7 +25,7 @@ use crate::store::journal;
 use crate::store::records::Record;
 use crate::store::tape::{append_record, read_scrollback, TapeRecord};
 use crate::Reason;
-use spookery_protocol::{Audience, QueuedMove, Refusal, Speaker};
+use spookery_protocol::{Audience, QueuedVerb, Refusal, Speaker};
 
 /// One say, in characters. Four kibibytes still fits in an 8 KiB client message.
 const MAX_SAY_CHARS: usize = 4 * 1024;
@@ -275,7 +275,7 @@ impl<Lock> Session<Lock> {
         actor_id: &ActorId,
         verb: &str,
         target: Option<&str>,
-    ) -> Result<(QueuedMove, Option<String>), gate::Refusal> {
+    ) -> Result<(QueuedVerb, Option<String>), gate::Refusal> {
         let words = target.filter(|token| !token.is_empty());
         let ids = match words {
             Some(_) => gate::list_ids(self.canon(), &self.world, presence, actor_id),
@@ -312,7 +312,7 @@ impl<Lock> Session<Lock> {
             let context = Context::new(self.canon(), &self.world, presence, &intent);
             gate::admit(&context, rule, Some(&ids))?;
         }
-        let queued = QueuedMove {
+        let queued = QueuedVerb {
             id: intent.id.clone(),
             actor_id: actor_id.to_string(),
             move_id: verb.to_string(),
@@ -355,7 +355,7 @@ impl<Lock> Session<Lock> {
         presence: &Presence,
         spec: spookery_protocol::QueueArgs,
         new_id: impl FnOnce() -> Result<String, Reason>,
-    ) -> Result<QueuedMove, Reason> {
+    ) -> Result<QueuedVerb, Reason> {
         let actor_id: ActorId = spec
             .actor_id
             .filter(|id| !id.is_empty() && !id.contains(':'))
@@ -406,7 +406,7 @@ impl<Lock> Session<Lock> {
         let context = Context::new(canon, world, presence, &intent);
         gate::admit(&context, rule, None).map_err(|refusal| refusal.code)?;
         self.queue_intent(intent);
-        Ok(QueuedMove {
+        Ok(QueuedVerb {
             id,
             actor_id: actor_id.into(),
             move_id,

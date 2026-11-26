@@ -2,7 +2,7 @@
 
 use super::seat::Claim;
 use crate::protocol::{
-    self, CommitBody, HostStatus, PackSummary, QueuedMove, Roll, ServerBody, Speech, StatusPresence,
+    self, CommitBody, HostStatus, PackSummary, QueuedVerb, Roll, ServerBody, Speech, StatusPresence,
 };
 use spookery_engine::{self as engine, ActorId, Intent, MoveReport, Presence, TapeRecord};
 
@@ -155,7 +155,7 @@ pub(super) fn build_status(
         queued: queued
             .iter()
             .filter_map(|intent| {
-                Some(QueuedMove {
+                Some(QueuedVerb {
                     id: intent.id.clone(),
                     actor_id: intent.actor_id.as_ref()?.to_string(),
                     move_id: intent.move_id.clone(),

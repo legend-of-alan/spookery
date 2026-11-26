@@ -543,7 +543,7 @@ fn effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
         EffectYaml::Note(note)
             if note.id.is_empty() || note.text.is_empty() || note.to_ids.is_empty() =>
         {
-            return Err("a note needs id, text, and to_ids".into());
+            return Err("a note needs id, text, and to".into());
         }
         EffectYaml::Note(note) => EffectTemplate::Note {
             id: note.id.clone(),

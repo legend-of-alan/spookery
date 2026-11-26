@@ -71,7 +71,7 @@ pub struct Intent {
     #[serde(rename = "actor", default, skip_serializing_if = "Option::is_none")]
     pub actor_id: Option<ActorId>,
     pub source: Source,
-    #[serde(rename = "move")]
+    #[serde(rename = "verb")]
     pub move_id: String,
     pub target: Target,
     pub args: IntentArgs,
@@ -238,6 +238,6 @@ impl TryFrom<TargetWire> for Target {
 /// Blake2s of `world|round|actor|line`: a player's line for the round after the save's,
 /// or a habit's local id for the save's round.
 pub(crate) fn intent_id(world_id: &str, round_index: u64, actor_id: &str, line: &str) -> String {
-    // repeats module: fills the intent_id field and journal key
+    // repeats module: fills the intent_id field
     crate::hash::blake2s_hex(format!("{world_id}|{round_index}|{actor_id}|{line}").as_bytes())
 }

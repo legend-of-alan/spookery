@@ -170,7 +170,7 @@ async fn queue_move(world: &mut World, actor: &str, move_id: &str, place: Option
         Some(place) => format!(r#","target":"{place}""#),
         None => String::new(),
     };
-    let args = format!(r#"{{"actor":"{actor}","move":"{move_id}"{target}}}"#);
+    let args = format!(r#"{{"actor":"{actor}","verb":"{move_id}"{target}}}"#);
     let text = host::gm_tool_call(world, 4, "queue", &args).await;
     assert_eq!(
         host::read_reply(&text)["kind"],

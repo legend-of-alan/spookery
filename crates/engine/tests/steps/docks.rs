@@ -765,7 +765,7 @@ fn empty_save(canon: Canon, world_id: &str, rev: &str) -> ecs::World {
     let text = format!(
         "\
 schema: save
-world_id: {world_id}
+world: {world_id}
 pack_rev: \"{rev}\"
 rules_rev: {rules_rev}
 state_rev: 0

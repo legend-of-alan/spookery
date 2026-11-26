@@ -420,7 +420,7 @@ async fn a_round_commits(world: &mut World) {
     }
     let pack = host::pack(world).to_path_buf();
     let before = world_of(&pack).round_index;
-    let queued = host::gm_tool_call(world, 5, "queue", r#"{"actor":"aldric","move":"wait"}"#).await;
+    let queued = host::gm_tool_call(world, 5, "queue", r#"{"actor":"aldric","verb":"wait"}"#).await;
     assert!(queued.contains("\"id\""), "{queued}");
     let committed = host::gm_tool_call(world, 6, "commit", r#"{"include_round":true}"#).await;
     assert_eq!(world_of(&pack).round_index, before + 1, "{committed}");
@@ -473,7 +473,7 @@ async fn the_gm_says_a_line_to_the_table(world: &mut World) {
 async fn hears_it_and_does_not(world: &mut World, seated: String, free: String) {
     let speech = host::read_reply(&world.scratch);
     assert_eq!(
-        speech["recipient_ids"],
+        speech["recipients"],
         serde_json::json!([seated]),
         "{speech}"
     );
@@ -567,7 +567,7 @@ fn answer_claim_then_stay_silent(socket: &mut tungstenite::WebSocket<net::TcpStr
         match socket.read() {
             Ok(Message::Text(_)) if !claim_answered => {
                 claim_answered = true;
-                let view = r#"{"body":{"kind":"view","viewer":"rowan","place":{"place_id":"docks_shop","name":"Docks Shop"},"visible_actors":[],"notes":[],"items":[],"habits":[]}}"#;
+                let view = r#"{"body":{"kind":"view","viewer":"rowan","place":{"place":"docks_shop","name":"Docks Shop"},"visible_actors":[],"notes":[],"items":[],"habits":[]}}"#;
                 if socket.send(Message::text(view)).is_err() {
                     return;
                 }

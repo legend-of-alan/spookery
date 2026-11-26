@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct View {
     pub viewer: String,
-    /// Where the viewer is, with the exits they see there. A walker's `place_id` is
-    /// `path:<path_id>` and its name the path's.
+    /// Where the viewer is, with the exits they see there. A walker's `place` is
+    /// `path:<id>` and its name the path's.
     pub place: PlaceView,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub body: String,
@@ -31,7 +31,11 @@ pub struct View {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub items_carried: Vec<ItemStack>,
     /// Which of `items_carried` the viewer wields.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "wielded_item",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub wielded_item_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub meters: Vec<MeterView>,
@@ -52,15 +56,17 @@ impl View {
     }
 }
 
-/// Part of a `View`, sent from the host to a player client. `path_id` is the path it walks, as
-/// a move's `path` target, a `path_flag` change and a walker's `path:<id>` name it. `name` is
-/// what a player reads for the exit, such as `stairs` or `Docks Street`. `place_id` and
+/// Part of a `View`, sent from the host to a player client. `path` is the path it walks, as
+/// a verb's `path` target, a `path_flag` change and a walker's `path:<id>` name it. `name` is
+/// what a player reads for the exit, such as `stairs` or `Docks Street`. `place` and
 /// `place_name` are where it goes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ExitView {
+    #[serde(rename = "path")]
     pub path_id: String,
     pub name: String,
+    #[serde(rename = "place")]
     pub place_id: String,
     pub place_name: String,
     pub ticks: u64,
@@ -72,8 +78,9 @@ pub struct ExitView {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct NoteView {
     pub id: String,
+    #[serde(rename = "to")]
     pub to_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "place", default, skip_serializing_if = "Option::is_none")]
     pub place_id: Option<String>,
     pub text: String,
 }
@@ -101,20 +108,22 @@ pub struct MeterView {
     pub max: i64,
 }
 
-/// One change of a `changes` body, sent from the host to a player client. `component_id`
-/// names what changed, such as `meter`, `item` or `place`. `entity_id` is whose it is as a
+/// One change of a `changes` body, sent from the host to a player client. `component`
+/// names what changed, such as `meter`, `item` or `place`. `entity` is whose it is as a
 /// rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`.
-/// `entity_name` is that actor's, place's or story's name. `entry_id` is which one of the
+/// `entity_name` is that actor's, place's or story's name. `entry` is which one of the
 /// entity's, such as the meter or item id, and `entry_name` the item's or meter's name, or for
 /// `place` the name of the place moved to. `before` and `after` are left out when there was none.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ChangeView {
+    #[serde(rename = "component")]
     pub component_id: String,
+    #[serde(rename = "entity")]
     pub entity_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub entity_name: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[serde(rename = "entry", default, skip_serializing_if = "String::is_empty")]
     pub entry_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub entry_name: String,
@@ -178,6 +187,7 @@ pub struct CommandView {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PlaceView {
+    #[serde(rename = "place")]
     pub place_id: String,
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -195,7 +205,7 @@ mod tests {
 
     #[test]
     fn a_view_body_ignores_unknown_fields() {
-        let body = r#"{"kind":"view","viewer":"rowan","place":{"place_id":"shop","name":"Shop"},"visible_actors":[],"notes":[],"items":[{"id":"oil","count":1,"extra":true}],"habits":[],"future":1}"#;
+        let body = r#"{"kind":"view","viewer":"rowan","place":{"place":"shop","name":"Shop"},"visible_actors":[],"notes":[],"items":[{"id":"oil","count":1,"extra":true}],"habits":[],"future":1}"#;
         assert!(matches!(
             serde_json::from_str(body),
             Ok(ServerBody::View(_))
@@ -204,7 +214,7 @@ mod tests {
 
     #[test]
     fn a_view_body_keeps_the_scene_after_the_place() {
-        let body = r#"{"kind":"view","viewer":"rowan","place":{"place_id":"shop","name":"Shop"},"body":"b","actor_names":["Rowan"],"cant_act":"s","visible_actors":["rowan"],"notes":[],"items":[],"habits":[]}"#;
+        let body = r#"{"kind":"view","viewer":"rowan","place":{"place":"shop","name":"Shop"},"body":"b","actor_names":["Rowan"],"cant_act":"s","visible_actors":["rowan"],"notes":[],"items":[],"habits":[]}"#;
         let view: ServerBody = serde_json::from_str(body).unwrap();
         assert_eq!(serde_json::to_string(&view).unwrap(), body);
     }

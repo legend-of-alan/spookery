@@ -180,11 +180,11 @@
           "minimum": 0
         },
         "actor": {
-          "description": "The actor the move is for. The schema requires it, and the host refuses a call without\nit as `SCHEMA`.",
+          "description": "The actor the verb is for. The schema requires it, and the host refuses a call without\nit as `SCHEMA`.",
           "type": "string"
         },
-        "move": {
-          "description": "The move to queue. The schema requires it, and the host refuses a call without it as\n`SCHEMA`.",
+        "verb": {
+          "description": "The verb to queue. The schema requires it, and the host refuses a call without it as\n`SCHEMA`.",
           "type": "string"
         },
         "target": {
@@ -209,7 +209,7 @@
       "additionalProperties": false,
       "required": [
         "actor",
-        "move"
+        "verb"
       ]
     },
     "CommitArgs": {
@@ -219,7 +219,7 @@
         "include_round": {
           "type": "boolean"
         },
-        "session_id": {
+        "session": {
           "type": [
             "string",
             "null"

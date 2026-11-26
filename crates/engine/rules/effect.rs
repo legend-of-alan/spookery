@@ -16,7 +16,7 @@ use crate::entity;
 use crate::intent::Intent;
 use crate::Reason;
 
-/// One effect. JSON is `kind`, `as`, `intent_id`, then the fields of `kind`.
+/// One effect. JSON is `kind`, `as`, `intent`, then the fields of `kind`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Effect {
     pub kind: EffectKind,
@@ -36,7 +36,7 @@ pub enum EffectKind {
         write: meter::Write,
     },
     Item {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "actor", default, skip_serializing_if = "Option::is_none")]
         actor_id: Option<ActorId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         place: Option<PlaceId>,
@@ -47,19 +47,23 @@ pub enum EffectKind {
     },
     /// One application of modifier `id`, of magnitude `add`, to an actor, lasting `ticks`.
     Modifier {
+        #[serde(rename = "actor")]
         actor_id: ActorId,
         id: String,
         add: i64,
         ticks: u64,
     },
     Wield {
+        #[serde(rename = "actor")]
         actor_id: ActorId,
         id: String,
     },
     Unwield {
+        #[serde(rename = "actor")]
         actor_id: ActorId,
     },
-    Location {
+    Move {
+        #[serde(rename = "actor")]
         actor_id: ActorId,
         from: ActorLocation,
         to: ActorLocation,
@@ -68,6 +72,7 @@ pub enum EffectKind {
         arrived_at: Option<u64>,
     },
     Memory {
+        #[serde(rename = "actor")]
         actor_id: ActorId,
         tags: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -79,9 +84,11 @@ pub enum EffectKind {
         value: bool,
     },
     Note {
+        #[serde(rename = "id")]
         note_id: String,
+        #[serde(rename = "to")]
         to_ids: Vec<ActorId>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "place", default, skip_serializing_if = "Option::is_none")]
         place_id: Option<PlaceId>,
         text: String,
     },
@@ -91,7 +98,7 @@ pub enum EffectKind {
     },
 }
 
-/// Writes `kind`, then `as` when there is one, then `intent_id`, then the fields of `kind`.
+/// Writes `kind`, then `as` when there is one, then `intent`, then the fields of `kind`.
 impl Serialize for Effect {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let Value::Object(mut fields) =
@@ -99,7 +106,7 @@ impl Serialize for Effect {
         else {
             return Err(S::Error::custom("effect kind is not an object"));
         };
-        fields.shift_insert(1, "intent_id".into(), self.intent_id.clone().into());
+        fields.shift_insert(1, "intent".into(), self.intent_id.clone().into());
         if let Some(actor_id) = &self.actor_id {
             fields.shift_insert(1, "as".into(), actor_id.to_string().into());
         }
@@ -117,8 +124,8 @@ impl<'de> Deserialize<'de> for Effect {
             .transpose()
             .map_err(D::Error::custom)?;
         let intent_id = fields
-            .shift_remove("intent_id")
-            .ok_or_else(|| D::Error::missing_field("intent_id"))?;
+            .shift_remove("intent")
+            .ok_or_else(|| D::Error::missing_field("intent"))?;
         let intent_id = String::deserialize(intent_id).map_err(D::Error::custom)?;
         let variant = fields
             .get("kind")
@@ -209,7 +216,7 @@ impl Effect {
                 let mut actors = world.actors_mut();
                 (actors.get_mut::<component::WieldedItem>(&actor_id)).set(None)
             }
-            EffectKind::Location {
+            EffectKind::Move {
                 actor_id, from, to, ..
             } => move_actor(canon, world, presence, intent, &actor_id, &from, &to),
             EffectKind::Memory {
@@ -260,7 +267,7 @@ impl EffectKind {
             EffectKind::Modifier { .. } => "modifier",
             EffectKind::Wield { .. } => "wield",
             EffectKind::Unwield { .. } => "unwield",
-            EffectKind::Location { .. } => "location",
+            EffectKind::Move { .. } => "move",
             EffectKind::Memory { .. } => "memory",
             EffectKind::Flag { .. } => "flag",
             EffectKind::Note { .. } => "note",

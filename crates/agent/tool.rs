@@ -141,7 +141,7 @@ mod tests {
             ..PackSummary::default()
         };
         let view = serde_json::from_value(json!({
-            "viewer": "mira", "place": {"place_id": "docks_shop", "name": "Docks Shop"}, "visible_actors": ["aldric", "mira"],
+            "viewer": "mira", "place": {"place": "docks_shop", "name": "Docks Shop"}, "visible_actors": ["aldric", "mira"],
             "notes": [], "items": [], "habits": []
         }))
         .unwrap();

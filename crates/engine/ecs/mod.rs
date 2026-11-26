@@ -32,6 +32,7 @@ use crate::canon::Canon;
 #[serde(deny_unknown_fields)]
 pub struct Save {
     pub schema: String,
+    #[serde(rename = "world")]
     pub world_id: String,
     /// The world's dice seed. Empty in a shipped save; chosen the first time the world opens
     /// for play.
@@ -263,7 +264,9 @@ pub(crate) fn sort_unique<T: Ord>(items: &mut Vec<T>) {
 #[serde(deny_unknown_fields)]
 pub struct MemoryLine {
     pub round_index: u64,
+    #[serde(rename = "actor")]
     pub actor_id: ActorId,
+    #[serde(rename = "intent")]
     pub intent_id: String,
     pub tags: Vec<String>,
     pub text: Option<String>,

@@ -32,7 +32,7 @@ impl Outcome {
 
 pub use gm::{
     parse_args, Audience, CommitArgs, CommitBody, ControlType, HostStatus, MenuRow, PackSummary,
-    PerceiveArgs, QueueArgs, QueuedMove, Roll, SayArgs, StatusPresence, ToolResult,
+    PerceiveArgs, QueueArgs, QueuedVerb, Roll, SayArgs, StatusPresence, ToolResult,
 };
 #[cfg(feature = "schema")]
 pub use message::{generate_client_schema, generate_server_schema};
@@ -81,7 +81,7 @@ pub enum Reason {
     TableEmpty,
     PackRevMismatch,
     RulesRevMismatch,
-    UnknownMove,
+    UnknownVerb,
     UnscopedPerceive,
     CommitConflict,
     HandEdit,
@@ -116,7 +116,7 @@ impl Reason {
             Reason::TableEmpty => "TABLE_EMPTY",
             Reason::PackRevMismatch => "PACK_REV_MISMATCH",
             Reason::RulesRevMismatch => "RULES_REV_MISMATCH",
-            Reason::UnknownMove => "UNKNOWN_MOVE",
+            Reason::UnknownVerb => "UNKNOWN_VERB",
             Reason::UnscopedPerceive => "UNSCOPED_PERCEIVE",
             Reason::CommitConflict => "COMMIT_CONFLICT",
             Reason::HandEdit => "HAND_EDIT",
@@ -222,7 +222,7 @@ impl fmt::Display for Refusal {
             Reason::ActorMismatch => "That action is not yours.",
             Reason::TableEmpty => "Nobody is seated.",
             Reason::PackRevMismatch => "The save does not match this pack.",
-            Reason::UnknownMove => "That is not a move.",
+            Reason::UnknownVerb => "That is not a verb.",
             Reason::UnscopedPerceive => "You cannot see that.",
             Reason::CommitConflict => "Another process holds the pack. Stop.",
             Reason::HandEdit => "The save was edited by hand.",
@@ -327,7 +327,7 @@ mod tests {
         Reason::TableEmpty,
         Reason::PackRevMismatch,
         Reason::RulesRevMismatch,
-        Reason::UnknownMove,
+        Reason::UnknownVerb,
         Reason::UnscopedPerceive,
         Reason::CommitConflict,
         Reason::HandEdit,
@@ -362,7 +362,7 @@ mod tests {
             | Reason::TableEmpty
             | Reason::PackRevMismatch
             | Reason::RulesRevMismatch
-            | Reason::UnknownMove
+            | Reason::UnknownVerb
             | Reason::UnscopedPerceive
             | Reason::CommitConflict
             | Reason::HandEdit

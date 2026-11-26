@@ -227,7 +227,7 @@ async fn harbormouse_queues(world: &mut World, line: String) {
 
 #[when(expr = "the GM sends Harbormouse's strike on {word}")]
 async fn the_gm_sends_harbormouses_strike(world: &mut World, target: String) {
-    let args = format!(r#"{{"actor":"harbormouse","move":"strike","target":"{target}"}}"#);
+    let args = format!(r#"{{"actor":"harbormouse","verb":"strike","target":"{target}"}}"#);
     world.scratch = host::gm_tool_call(world, 4, "queue", &args).await;
 }
 

@@ -105,7 +105,7 @@ fn stamp_target(canon: &Canon, world: &ecs::World, presence: &Presence, intent: 
     );
     for effect in &effects {
         if !keeps_empty && intent.target == Target::Empty {
-            if let EffectKind::Location {
+            if let EffectKind::Move {
                 to: component::ActorLocation::Place(to),
                 ..
             } = &effect.kind

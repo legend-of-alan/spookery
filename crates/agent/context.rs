@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use crate::model;
 use crate::protocol::{
-    Audience, HostStatus, MenuRow, PackSummary, QueuedMove, ServerBody, ServerMessage, Speaker,
+    Audience, HostStatus, MenuRow, PackSummary, QueuedVerb, ServerBody, ServerMessage, Speaker,
     Speech,
 };
 use crate::turn::Turn;
@@ -42,7 +42,7 @@ pub(crate) struct ClientState {
     /// The actors present, as of the last message read.
     actors_present: Vec<String>,
     /// The queued moves, as of the last message read.
-    pub(crate) queued_moves: Vec<QueuedMove>,
+    pub(crate) queued_moves: Vec<QueuedVerb>,
     /// Player speech read since a turn last showed it to the model.
     new_player_lines: Vec<TapeLine>,
     causes: VecDeque<TurnCause>,
@@ -81,7 +81,7 @@ impl ClientState {
                 move_id,
                 ..
             } => {
-                self.queued_moves.push(QueuedMove {
+                self.queued_moves.push(QueuedVerb {
                     id: intent.clone(),
                     actor_id: actor_id.clone(),
                     move_id: move_id.clone(),
@@ -191,7 +191,7 @@ struct Observation<'a> {
     menu: &'a [MenuRow],
     tape_lines: &'a [TapeLine],
     new_player_lines: &'a [TapeLine],
-    queued_moves: &'a [QueuedMove],
+    queued_moves: &'a [QueuedVerb],
     cause: &'a TurnCause,
     actors_present: &'a [String],
 }

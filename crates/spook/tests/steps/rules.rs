@@ -92,7 +92,7 @@ async fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
         .as_array_mut()
         .unwrap_or_else(|| panic!("no effects\n{text}"));
     assert!(!effects.is_empty(), "{text}");
-    effects[0]["intent_id"] = Value::String("not-the-replayed-effect".to_string());
+    effects[0]["intent"] = Value::String("not-the-replayed-effect".to_string());
     let index = round["round_index"]
         .as_u64()
         .unwrap_or_else(|| panic!("no round_index\n{text}"));

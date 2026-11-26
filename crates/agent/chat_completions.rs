@@ -189,7 +189,7 @@ mod tests {
     #[test]
     fn tool_calls_keep_their_order_ids_and_raw_arguments() {
         let text = r#"{"choices":[{"message":{"role":"assistant","tool_calls":[
-            {"id":"a","type":"function","function":{"name":"queue","arguments":"{\"actor\":\"mira\",\"move\":\"wait\"}"}},
+            {"id":"a","type":"function","function":{"name":"queue","arguments":"{\"actor\":\"mira\",\"verb\":\"wait\"}"}},
             {"type":"function","function":{"name":"end_turn","arguments":{}}},
             {"id":"c","type":"function","function":{"name":"perceive","arguments":"not json"}}
         ]}}],"usage":{"prompt_tokens":812,"completion_tokens":64,
@@ -204,7 +204,7 @@ mod tests {
         assert_eq!(
             tool_calls,
             [
-                call("a", "queue", r#"{"actor":"mira","move":"wait"}"#),
+                call("a", "queue", r#"{"actor":"mira","verb":"wait"}"#),
                 call("call_1", "end_turn", "{}"),
                 call("c", "perceive", "not json"),
             ]

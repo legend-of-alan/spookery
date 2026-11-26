@@ -41,7 +41,7 @@ impl Refusal {
 /// The rule `viewer`'s `verb_id` runs, the queue's and the round's alike. An NPC's habit is
 /// picked by its local id first; any other verb is `verb_for`'s, looking in `hint` first.
 /// A full rule id picks nothing. A player's move never runs a habit, and a missing rule is
-/// `NOT_IN_SPEC` for it and `UNKNOWN_MOVE` for anyone else.
+/// `NOT_IN_SPEC` for it and `UNKNOWN_VERB` for anyone else.
 pub(crate) fn pick<'a>(
     canon: &'a Canon,
     world: &ecs::World,
@@ -60,7 +60,7 @@ pub(crate) fn pick<'a>(
     }
     let habits = canon.rules.habits_of(actor_id);
     let habit = habits.into_iter().find(|rule| rule.local_id == verb_id);
-    habit.or(found).ok_or(Reason::UnknownMove)
+    habit.or(found).ok_or(Reason::UnknownVerb)
 }
 
 /// The entity an intent's target names for `pick` to look in first: an actor or an item.

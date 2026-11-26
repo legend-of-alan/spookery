@@ -28,7 +28,7 @@ pub(crate) fn run(
         } = due_action.pending;
         let actor_id = &due_action.actor_id;
         let intent = Intent::finish(world, actor_id, source, &verb, target)?;
-        let rule = canon.rules.get(&rule).ok_or(Reason::UnknownMove)?;
+        let rule = canon.rules.get(&rule).ok_or(Reason::UnknownVerb)?;
         let until = due_action.until;
         apply::finish(canon, world, presence, &intent, rule, until, dice, ledger);
         triggers::run(canon, world, presence, dice, ledger);

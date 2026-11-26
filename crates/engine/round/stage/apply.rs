@@ -166,7 +166,7 @@ fn pend(
     let actor_id = intent.actor_id.as_ref().ok_or(Reason::UnknownId)?;
     if let Some(exit) = exit {
         let from = world.actors().get::<component::Place>(actor_id).get();
-        let kind = EffectKind::Location {
+        let kind = EffectKind::Move {
             actor_id: actor_id.clone(),
             from: from.ok_or(Reason::UnknownId)?.clone(),
             to: exit.walker_location(),
@@ -209,7 +209,7 @@ pub(crate) fn finish(
         }
     };
     for effect in &mut expansion.effects {
-        if let EffectKind::Location { arrived_at, .. } = &mut effect.kind {
+        if let EffectKind::Move { arrived_at, .. } = &mut effect.kind {
             *arrived_at = Some(at);
         }
     }

@@ -51,7 +51,7 @@ async fn the_gm_queues_aldrics_wait_and_commits(world: &mut World) {
     let pack = host::pack(world).to_path_buf();
     host::listen(world, &pack).await;
     host::seat_gm(world).await;
-    host::gm_tool_call(world, 6, "queue", r#"{"actor":"aldric","move":"wait"}"#).await;
+    host::gm_tool_call(world, 6, "queue", r#"{"actor":"aldric","verb":"wait"}"#).await;
     world.stdout = host::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#).await;
 }
 
@@ -179,7 +179,7 @@ async fn the_player_hits_and_the_gm_commits(world: &mut World, hits: String) {
     let _ = host::player_send(world, line, "\"kind\":\"queued\"").await;
     if hits.ends_with("rouse") {
         let queued =
-            host::gm_tool_call(world, 6, "queue", r#"{"actor":"mira","move":"rouse"}"#).await;
+            host::gm_tool_call(world, 6, "queue", r#"{"actor":"mira","verb":"rouse"}"#).await;
         assert!(!queued.contains("\"refused\""), "{queued}");
     }
     world.mark = host::player_mark(world);

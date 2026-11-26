@@ -20,7 +20,7 @@ use super::scripted_gm::{read_tool_results, start_ai_gm};
 const GRAPH_TASK_TIMEOUT: Duration = Duration::from_secs(300);
 
 const END_TURN: (&str, &str) = ("end_turn", "{}");
-const QUEUE_MIRA_WAIT: (&str, &str) = ("queue", r#"{"actor":"mira","move":"wait"}"#);
+const QUEUE_MIRA_WAIT: (&str, &str) = ("queue", r#"{"actor":"mira","verb":"wait"}"#);
 const NARRATION: &str = "The street opens past the shop door.";
 
 #[given(expr = "a docks table with a seated player and the NPC Mira in the shop")]
@@ -104,7 +104,7 @@ fn a_model_that_perceives_mira_and_rowan(world: &mut World) {
 fn a_model_that_queues_a_bad_move(world: &mut World) {
     world
         .model
-        .push(&[("queue", r#"{"actor":"mira","move":"fly"}"#)]);
+        .push(&[("queue", r#"{"actor":"mira","verb":"fly"}"#)]);
     world.model.push(&[QUEUE_MIRA_WAIT]);
     world.model.push(&[END_TURN]);
 }
@@ -115,7 +115,7 @@ fn a_model_that_queues_a_bad_move(world: &mut World) {
 fn a_model_that_queues_two_npcs(world: &mut World) {
     world.model.push(&[
         QUEUE_MIRA_WAIT,
-        ("queue", r#"{"actor":"aldric","move":"wait"}"#),
+        ("queue", r#"{"actor":"aldric","verb":"wait"}"#),
     ]);
     world.model.push(&[END_TURN]);
     let say = format!(r#"{{"to":"table","text":"{NARRATION}"}}"#);

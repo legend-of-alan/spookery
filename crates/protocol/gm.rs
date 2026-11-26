@@ -32,7 +32,7 @@ pub struct PerceiveArgs {
 #[serde(deny_unknown_fields)]
 pub struct CommitArgs {
     pub include_round: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
 }
 
@@ -72,15 +72,15 @@ pub struct QueueArgs {
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub round_index: Option<u64>,
-    /// The actor the move is for. The schema requires it, and the host refuses a call without
+    /// The actor the verb is for. The schema requires it, and the host refuses a call without
     /// it as `SCHEMA`.
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(rename = "actor", skip_serializing_if = "Option::is_none")]
     pub actor_id: Option<String>,
-    /// The move to queue. The schema requires it, and the host refuses a call without it as
+    /// The verb to queue. The schema requires it, and the host refuses a call without it as
     /// `SCHEMA`.
     #[cfg_attr(feature = "schema", schemars(required))]
-    #[serde(rename = "move", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "verb", skip_serializing_if = "Option::is_none")]
     pub move_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
@@ -100,7 +100,7 @@ pub struct HostStatus {
     pub state_rev: u64,
     pub pack_rev: String,
     pub last_round_at: String,
-    pub queued: Vec<QueuedMove>,
+    pub queued: Vec<QueuedVerb>,
     pub pack: PackSummary,
 }
 
@@ -112,14 +112,14 @@ pub struct StatusPresence {
     pub actors_present: Vec<String>,
 }
 
-/// A queued move in `HostStatus`, sent from the host to a GM client.
+/// A queued verb in `HostStatus`, sent from the host to a GM client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct QueuedMove {
+pub struct QueuedVerb {
     pub id: String,
     #[serde(rename = "actor")]
     pub actor_id: String,
-    #[serde(rename = "move")]
+    #[serde(rename = "verb")]
     pub move_id: String,
 }
 
@@ -200,20 +200,20 @@ mod tests {
             assert_eq!(back, v);
         }
         assert_reencodes::<HostStatus>(
-            r#"{"presence":{"players":1,"actors_present":["rowan"],"x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor":"rowan","move":"wait","x":1}],"pack":{"menu":[],"control_types":{},"places":{},"cast":{},"x":1},"x":1}"#,
+            r#"{"presence":{"players":1,"actors_present":["rowan"],"x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor":"rowan","verb":"wait","x":1}],"pack":{"menu":[],"control_types":{},"places":{},"cast":{},"x":1},"x":1}"#,
         );
         assert_reencodes::<CommitBody>(
             r#"{"state_rev":3,"changed_keys":["d"],"journal_path":null,"rolls":[{"total":8,"success_at":7,"outcome":"partial","x":1}],"x":1}"#,
         );
         let m =
-            serde_json::from_str(r#"{"actor":"a","move":"m","target":"t","to":["b"]}"#).unwrap();
+            serde_json::from_str(r#"{"actor":"a","verb":"m","target":"t","to":["b"]}"#).unwrap();
         let c: QueueArgs = parse_args(Some(&m)).unwrap();
         assert_eq!(c.actor_id.as_deref(), Some("a"));
         assert_eq!(c.move_id.as_deref(), Some("m"));
         assert_eq!(c.target.as_deref(), Some("t"));
         assert_eq!(c.message_to, Some(vec!["b".to_string()]));
         let nested =
-            serde_json::from_str(r#"{"actor":"a","move":"m","args":{"to":["b"]}}"#).unwrap();
+            serde_json::from_str(r#"{"actor":"a","verb":"m","args":{"to":["b"]}}"#).unwrap();
         assert!(parse_args::<QueueArgs>(Some(&nested)).is_err());
     }
 
@@ -223,9 +223,9 @@ mod tests {
             let args = serde_json::from_str(raw).unwrap();
             serde_json::to_string(&parse_args::<QueueArgs>(Some(&args)).unwrap()).unwrap()
         };
-        let bare = r#"{"actor":"mira","move":"restock_lamp_oil"}"#;
+        let bare = r#"{"actor":"mira","verb":"restock_lamp_oil"}"#;
         assert_eq!(call(bare), bare);
-        let aimed = r#"{"actor":"rowan","move":"travel","target":"docks_street"}"#;
+        let aimed = r#"{"actor":"rowan","verb":"travel","target":"docks_street"}"#;
         assert_eq!(call(aimed), aimed);
     }
 

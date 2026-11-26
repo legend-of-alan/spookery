@@ -46,9 +46,7 @@ async fn the_gm_closes_the_seat(world: &mut World) {
 #[then(expr = "the player sees rowan arrive at {word}")]
 async fn the_player_sees_rowan_arrive(world: &mut World, place_id: String) {
     wait_player_frame(world, &format!("a view at {place_id}"), |frame| {
-        frame["kind"] == "view"
-            && frame["viewer"] == "rowan"
-            && frame["place"]["place_id"] == place_id
+        frame["kind"] == "view" && frame["viewer"] == "rowan" && frame["place"]["place"] == place_id
     })
     .await;
 }
@@ -70,7 +68,7 @@ async fn the_player_is_shown(world: &mut World, place_name: String, place_id: St
             .unwrap_or_default();
         frame["kind"] == "view"
             && frame["place"]["name"] == place_name
-            && exits.iter().any(|exit| exit["place_id"] == place_id)
+            && exits.iter().any(|exit| exit["place"] == place_id)
     })
     .await;
 }
@@ -86,7 +84,7 @@ async fn the_player_is_refused(world: &mut World, code: String) {
 #[then(expr = "the GM sees rowan's travel queued")]
 async fn the_gm_sees_the_travel_queued(world: &mut World) {
     wait_gm_event(world, "rowan's travel queued", |event| {
-        event["kind"] == "queued" && event["actor"] == "rowan" && event["move"] == "travel"
+        event["kind"] == "queued" && event["actor"] == "rowan" && event["verb"] == "travel"
     })
     .await;
 }
@@ -103,7 +101,7 @@ async fn the_gm_hears(world: &mut World, actor_id: String, text: String) {
 #[then(expr = "the GM sees rowan in {word}")]
 async fn the_gm_sees_rowan_in(world: &mut World, place_id: String) {
     let view = host::call_gm_tool(world, "perceive", r#"{"as":"rowan"}"#).await;
-    assert_eq!(view["place"]["place_id"], place_id, "{view}");
+    assert_eq!(view["place"]["place"], place_id, "{view}");
 }
 
 #[then(expr = "the GM sees nothing queued")]

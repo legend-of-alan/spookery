@@ -288,8 +288,9 @@ pub(super) struct LocationYaml {
 #[serde(deny_unknown_fields)]
 pub(super) struct NoteYaml {
     pub id: String,
-    #[serde(default)]
+    #[serde(rename = "to", default)]
     pub to_ids: Vec<ActorId>,
+    #[serde(rename = "place")]
     pub place_id: Option<PlaceId>,
     pub text: String,
 }
