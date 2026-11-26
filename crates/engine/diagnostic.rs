@@ -1,4 +1,4 @@
-//! One problem a loader or pack check can show.
+//! One error or warning a loader or pack check can show.
 //!
 //! `code` is an [`Error`](Code::Error) [`Reason`] or a [`Warning`](Code::Warning).
 //! The struct is plain data so a later JSON printer can serialize it as it stands.
@@ -69,6 +69,13 @@ fn unquote(value: &str) -> &str {
     value
 }
 
+/// A line and column in a file. Both are 1-based.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FileLocation {
+    pub line: u32,
+    pub column: u32,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Diagnostic {
     /// Pack-relative path, with `/` on every OS.
@@ -83,11 +90,11 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
-    /// An empty `hint` leaves the message as the problem alone.
-    pub fn new(file: &str, code: Code, problem: &str, hint: &str) -> Self {
+    /// An empty `hint` leaves `message` alone.
+    pub fn new(file: &str, code: Code, message: &str, hint: &str) -> Self {
         let (message, hint) = match hint {
-            "" => (problem.to_string(), None),
-            hint => (format!("{problem}; {hint}"), Some(hint.to_string())),
+            "" => (message.to_string(), None),
+            hint => (format!("{message}; {hint}"), Some(hint.to_string())),
         };
         Self {
             file: file.replace('\\', "/"),
@@ -110,10 +117,10 @@ impl Diagnostic {
         self
     }
 
-    /// At `spot`, a line and column in the file. No spot leaves it as is.
-    pub(crate) fn at_spot(self, spot: Option<(u32, u32)>) -> Self {
-        match spot {
-            Some((line, column)) => self.at_line(line, Some(column)),
+    /// At `file_location`, a line and column in the file. No file location leaves it as is.
+    pub(crate) fn at_file_location(self, file_location: Option<FileLocation>) -> Self {
+        match file_location {
+            Some(FileLocation { line, column }) => self.at_line(line, Some(column)),
             None => self,
         }
     }
@@ -139,27 +146,27 @@ impl fmt::Display for Diagnostic {
 pub fn first_reason(diagnostics: &[Diagnostic]) -> Reason {
     diagnostics
         .iter()
-        .find_map(|diag| match diag.code {
+        .find_map(|diagnostic| match diagnostic.code {
             Code::Error(reason) => Some(reason),
             Code::Warning => None,
         })
         .unwrap_or(Reason::Schema)
 }
 
-pub(crate) fn schema_error(file: &str, problem: &str, hint: &str) -> Diagnostic {
-    error(file, Reason::Schema, problem, hint)
+pub(crate) fn schema_error(file: &str, message: &str, hint: &str) -> Diagnostic {
+    error(file, Reason::Schema, message, hint)
 }
 
-pub(crate) fn error(file: &str, code: Reason, problem: &str, hint: &str) -> Diagnostic {
-    Diagnostic::new(file, Code::Error(code), problem, hint)
+pub(crate) fn error(file: &str, code: Reason, message: &str, hint: &str) -> Diagnostic {
+    Diagnostic::new(file, Code::Error(code), message, hint)
 }
 
-pub(crate) fn warning(file: &str, problem: &str, hint: &str) -> Diagnostic {
-    Diagnostic::new(file, Code::Warning, problem, hint)
+pub(crate) fn warning(file: &str, message: &str, hint: &str) -> Diagnostic {
+    Diagnostic::new(file, Code::Warning, message, hint)
 }
 
 /// Line and column of the `nth` match of `needle` in `text`. Both are 1-based.
-pub(crate) fn locate_nth(text: &str, needle: &str, nth: usize) -> Option<(u32, u32)> {
+pub(crate) fn locate_nth(text: &str, needle: &str, nth: usize) -> Option<FileLocation> {
     if needle.is_empty() {
         return None;
     }
@@ -169,7 +176,10 @@ pub(crate) fn locate_nth(text: &str, needle: &str, nth: usize) -> Option<(u32, u
             continue;
         };
         if seen == nth {
-            return Some((index as u32 + 1, col as u32 + 1));
+            return Some(FileLocation {
+                line: index as u32 + 1,
+                column: col as u32 + 1,
+            });
         }
         seen += 1;
     }
@@ -189,9 +199,9 @@ pub(crate) fn check_tag(text: &str, expected: &str, file: &str) -> Option<Diagno
     if found.value == expected {
         return None;
     }
-    let problem = format!("schema is '{}', which this file does not use", found.value);
+    let message = format!("schema is '{}', which this file does not use", found.value);
     Some(
-        schema_error(file, &problem, &hint)
+        schema_error(file, &message, &hint)
             .at_path("schema")
             .at_line(found.line, Some(1)),
     )
@@ -202,7 +212,7 @@ pub(crate) fn check_tag(text: &str, expected: &str, file: &str) -> Option<Diagno
 /// or a single value where a list or map belongs is told to write `[]` or `{}` for an empty one.
 pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool) -> Diagnostic {
     let err = err.without_snippet();
-    let spot = err.location().and_then(|loc| {
+    let file_location = err.location().and_then(|loc| {
         let line = u32::try_from(loc.line()).ok()?;
         if line == 0 {
             return None;
@@ -212,7 +222,7 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool)
             .filter(|column| *column > 0);
         Some((line, column))
     });
-    let (path, problem, hint) = match err {
+    let (path, message, hint) = match err {
         YamlError::SerdeUnknownField { field, .. } => (
             Some(field.clone()),
             format!("unknown field '{field}'"),
@@ -253,7 +263,7 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool)
             expected: "mapping end",
             ..
         } => {
-            let (problem, hint) = if holds_rule_lines {
+            let (message, hint) = if holds_rule_lines {
                 (
                     "two keys in one condition or effect",
                     "give each condition or effect its own dash; combine conditions with all:, any: or not:",
@@ -261,7 +271,7 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool)
             } else {
                 ("two keys where one belongs", "keep one of them")
             };
-            (None, problem.to_string(), hint.to_string())
+            (None, message.to_string(), hint.to_string())
         }
         YamlError::Unexpected {
             expected: "sequence start",
@@ -295,14 +305,14 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool)
             "fix the syntax at this spot and try again".to_string(),
         ),
     };
-    let mut diag = schema_error(file, &problem, &hint);
+    let mut diagnostic = schema_error(file, &message, &hint);
     if let Some(path) = path {
-        diag = diag.at_path(path);
+        diagnostic = diagnostic.at_path(path);
     }
-    if let Some((line, column)) = spot {
-        diag = diag.at_line(line, column);
+    if let Some((line, column)) = file_location {
+        diagnostic = diagnostic.at_line(line, column);
     }
-    diag
+    diagnostic
 }
 
 pub(crate) fn parse_file<T: serde::de::DeserializeOwned>(
@@ -313,13 +323,25 @@ pub(crate) fn parse_file<T: serde::de::DeserializeOwned>(
     serde_saphyr::from_str(text).map_err(|err| vec![diagnose_yaml(file, &err, holds_rule_lines)])
 }
 
+pub(crate) fn parse_tagged<T: serde::de::DeserializeOwned>(
+    file: &str,
+    text: &str,
+    expected: &str,
+    holds_rule_lines: bool,
+) -> Result<T, Vec<Diagnostic>> {
+    if let Some(diagnostic) = check_tag(text, expected, file) {
+        return Err(vec![diagnostic]);
+    }
+    parse_file(file, text, holds_rule_lines)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn a_diagnostic_serializes_and_prints_the_line_form() {
-        let diag = schema_error(
+        let diagnostic = schema_error(
             "rules/verbs.yaml",
             "rule 'exert' is missing when",
             "add when",
@@ -327,22 +349,22 @@ mod tests {
         .at_path("rules[0].when")
         .at_line(14, Some(5));
         assert_eq!(
-            diag.to_string(),
+            diagnostic.to_string(),
             "rules/verbs.yaml:14: rule 'exert' is missing when; add when (SCHEMA)"
         );
-        let json = serde_json::to_value(&diag).unwrap();
+        let json = serde_json::to_value(&diagnostic).unwrap();
         assert_eq!(json["file"], "rules/verbs.yaml");
         assert_eq!(json["line"], 14);
         assert_eq!(json["column"], 5);
         assert_eq!(json["path"], "rules[0].when");
         assert_eq!(json["code"], "SCHEMA");
         assert!(json["hint"].as_str().unwrap().contains("add when"));
-        assert_eq!(first_reason(&[diag]), Reason::Schema);
+        assert_eq!(first_reason(&[diagnostic]), Reason::Schema);
     }
 
     #[test]
     fn a_path_is_the_location_when_the_line_is_unknown() {
-        let diag = error(
+        let diagnostic = error(
             "state/save.yaml",
             Reason::PackRevMismatch,
             "pack_rev does not match the canon hash",
@@ -350,7 +372,7 @@ mod tests {
         )
         .at_path("pack_rev");
         assert_eq!(
-            diag.to_string(),
+            diagnostic.to_string(),
             "state/save.yaml: pack_rev: pack_rev does not match the canon hash; run spook migrate to store the current hash (PACK_REV_MISMATCH)"
         );
     }

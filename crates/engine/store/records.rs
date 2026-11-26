@@ -14,7 +14,8 @@ use crate::rules::gate;
 #[serde(deny_unknown_fields)]
 pub struct DroppedMeter {
     pub id: String,
-    pub carrier: entity::Id,
+    #[serde(rename = "entity")]
+    pub entity_id: entity::Id,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

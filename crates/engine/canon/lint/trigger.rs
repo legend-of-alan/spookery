@@ -1,18 +1,19 @@
 //! Which change rules set each other's watched values, and who their narrates and notes reach.
 
-use crate::canon::{Canon, PathDef, OPEN};
+use crate::canon::map::{PathDef, OPEN};
+use crate::canon::Canon;
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::ecs::component::meter;
 use crate::rules::grammar;
-use crate::rules::rule::{ChangeWatch, EffectTemplate, LocationTo, NarrateTo, Rule, When};
+use crate::rules::rule::{ChangeWatch, EffectTemplate, LocationTo, NarrateTo, Rule, RuleKind};
 use crate::Reason;
 
 /// Change rules that set each other's watched values.
-pub(super) fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
+pub(super) fn find_cycles(canon: &Canon) -> Vec<Diagnostic> {
     let rules: Vec<&Rule> = canon
         .rules
         .iter()
-        .filter(|rule| matches!(rule.when, When::Change(_)))
+        .filter(|rule| matches!(rule.kind, RuleKind::Change(_)))
         .collect();
     let written: Vec<Vec<EffectWrite>> = rules
         .iter()
@@ -28,7 +29,7 @@ pub(super) fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
             if from == to {
                 continue;
             }
-            let When::Change(watch) = &rule.when else {
+            let RuleKind::Change(watch) = &rule.kind else {
                 continue;
             };
             if writes.iter().any(|write| sets_watch(watch, rule, write)) {
@@ -54,10 +55,10 @@ pub(super) fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// Narrate and note on a change rule that can reach a viewer who cannot see the change.
-pub(super) fn check_leaks(canon: &Canon) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
+pub(super) fn find_leaks(canon: &Canon) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
     for rule in canon.rules.iter() {
-        let When::Change(watch) = &rule.when else {
+        let RuleKind::Change(watch) = &rule.kind else {
             continue;
         };
         let sight = sight_of(canon, watch);
@@ -70,7 +71,7 @@ pub(super) fn check_leaks(canon: &Canon) -> Vec<Diagnostic> {
         if !leak {
             continue;
         }
-        diags.push(
+        diagnostics.push(
             error(
                 &rule.file,
                 Reason::TriggerLeak,
@@ -83,7 +84,7 @@ pub(super) fn check_leaks(canon: &Canon) -> Vec<Diagnostic> {
             .at_path(format!("rules[{}]", rule.index)),
         );
     }
-    diags
+    diagnostics
 }
 
 /// A value an effect writes, as a change watch matches it.
@@ -95,26 +96,26 @@ enum EffectWrite {
     Arrive(String),
 }
 
-/// Who a narrate or note reaches: the subject, the room, or anyone else it names.
+/// Who a narrate or note reaches: the subject, the place, or anyone else it names.
 enum Reach {
     Subject,
-    Room,
+    Place,
     Others,
 }
 
-/// Who may see a watched change. A meter or flag change on a watch counts as the room's,
-/// because a rule that narrates it is the pack choosing to tell the room. A world change has
-/// no room, so the pack tells whoever it names.
+/// Who may see a watched change. A meter or flag change on a watch counts as the place's,
+/// because a rule that narrates it is the pack choosing to tell the place. A world change has
+/// no place, so the pack tells whoever it names.
 enum Sight {
-    Room,
+    Place,
     World,
 }
 
 fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<EffectWrite>) {
     match effect {
         EffectTemplate::Modifier { id, .. } => {
-            if let Some(desc) = canon.modifiers.get(id) {
-                out.push(EffectWrite::Meter(desc.meter.clone()));
+            if let Some(def) = canon.modifiers.get(id) {
+                out.push(EffectWrite::Meter(def.meter.clone()));
             }
         }
         EffectTemplate::Flag { key, value, .. } => {
@@ -171,7 +172,7 @@ fn sight_of(canon: &Canon, watch: &ChangeWatch) -> Sight {
     if watches_world(canon, watch) && !watches_actor_key(canon, watch) {
         Sight::World
     } else {
-        Sight::Room
+        Sight::Place
     }
 }
 
@@ -179,7 +180,7 @@ fn reach_of(effect: &EffectTemplate) -> Option<Reach> {
     match effect {
         EffectTemplate::Narrate { to, .. } => Some(match to {
             NarrateTo::Self_ => Reach::Subject,
-            NarrateTo::Here => Reach::Room,
+            NarrateTo::Here => Reach::Place,
             NarrateTo::Actors(_) | NarrateTo::Present => Reach::Others,
         }),
         EffectTemplate::Note { .. } => Some(Reach::Others),
@@ -189,7 +190,7 @@ fn reach_of(effect: &EffectTemplate) -> Option<Reach> {
 
 fn is_too_wide(sight: &Sight, reach: &Reach) -> bool {
     match sight {
-        Sight::Room => !matches!(reach, Reach::Subject | Reach::Room),
+        Sight::Place => !matches!(reach, Reach::Subject | Reach::Place),
         Sight::World => false,
     }
 }
@@ -204,11 +205,11 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
                 || canon
                     .meters
                     .get(key)
-                    .is_some_and(|desc| !desc.is_actor_meter())
+                    .is_some_and(|def| !def.is_actor_meter())
         }
         ChangeWatch::Flag { key, .. } => {
             (key == OPEN && canon.paths.iter().any(PathDef::is_conditional))
-                || super::find_flag_holders(canon, key)
+                || super::find_flag_objects(canon, key)
                     .any(|of| !matches!(of, grammar::Object::Actor(_)))
         }
         _ => false,
@@ -222,9 +223,9 @@ fn watches_actor_key(canon: &Canon, watch: &ChangeWatch) -> bool {
         ChangeWatch::Meter { key, .. } => canon
             .meters
             .get(key)
-            .is_some_and(meter::Descriptor::is_actor_meter),
+            .is_some_and(meter::Def::is_actor_meter),
         ChangeWatch::Flag { key, .. } => {
-            super::find_flag_holders(canon, key).any(|of| matches!(of, grammar::Object::Actor(_)))
+            super::find_flag_objects(canon, key).any(|of| matches!(of, grammar::Object::Actor(_)))
         }
         _ => false,
     }
@@ -232,10 +233,10 @@ fn watches_actor_key(canon: &Canon, watch: &ChangeWatch) -> bool {
 
 /// A change rule on a world change runs once, for no one, so it has no `self` and no `here`.
 /// Every other rule has a subject, so its `narrate` names who hears it.
-pub(super) fn check_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
+pub(super) fn find_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
     for rule in canon.rules.iter() {
-        let on_world = matches!(&rule.when, When::Change(watch) if watches_world(canon, watch));
+        let on_world = matches!(&rule.kind, RuleKind::Change(watch) if watches_world(canon, watch));
         let (message, hint) = if on_world && needs_subject(rule) {
             (
                 "watches a world change, which has no self and no here",
@@ -249,7 +250,7 @@ pub(super) fn check_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
         } else {
             continue;
         };
-        diags.push(
+        diagnostics.push(
             schema_error(
                 &rule.file,
                 &format!("rule '{}' {message}", rule.local_id),
@@ -258,7 +259,7 @@ pub(super) fn check_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
             .at_path(format!("rules[{}]", rule.index)),
         );
     }
-    diags
+    diagnostics
 }
 
 fn narrates_to_present(rule: &Rule) -> bool {
@@ -291,8 +292,8 @@ fn needs_subject(rule: &Rule) -> bool {
         grammar::Object::Actor(grammar::Actor::Self_),
         grammar::Object::Here,
     ];
-    let owners = rule.mentions().owners;
-    needs || self_or_here.iter().any(|of| owners.contains(of))
+    let entities = rule.mentions().entities;
+    needs || self_or_here.iter().any(|of| entities.contains(of))
 }
 
 fn mark_cycles(next: &[Vec<usize>], in_cycle: &mut [bool]) {

@@ -4,104 +4,115 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::meters::{self, meter_descs, MeterYaml};
-use crate::canon::rule_list::{self, RuleYaml};
-use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem, CAST_SCHEMA};
-use crate::canon::{self, CastDef, IdleProfile};
-use crate::diagnostic::Diagnostic;
+use crate::canon::meters::{self, MeterYaml};
+use crate::canon::pack_files::Page;
+use crate::canon::refusal::{Diagnostics, FileText, Locator};
+use crate::canon::rule_list::{self, parse::RuleYaml};
+use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::ActorId;
 use crate::entity;
-use crate::rules::rule::{Owner, Rule};
+use crate::rules::rule::{Rule, Scope};
+
+const SCHEMA: &str = "cast";
+
+#[derive(Clone, Debug)]
+pub struct Def {
+    pub control_type: spookery_protocol::ControlType,
+    /// The name a player reads, the id when the pack gives none.
+    pub name: String,
+    pub body: String,
+    pub idle: Option<IdleProfile>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IdleProfile {
+    pub eligible: bool,
+}
 
 /// One cast page into `cast`, its own meters into `meters` when those loaded, and its rules.
 pub(super) fn add(
     page: Page,
-    cast: &mut BTreeMap<ActorId, CastDef>,
-    meters: Option<&mut BTreeMap<String, meter::Descriptor>>,
-    diags: &mut Diags,
+    cast: &mut BTreeMap<ActorId, Def>,
+    meters: Option<&mut BTreeMap<String, meter::Def>>,
+    diagnostics: &mut Diagnostics,
 ) -> Option<Vec<Rule>> {
-    let file = diags.keep(load(&page.file, &page.yaml))?;
-    let whole = FileText {
+    let yaml = diagnostics.keep(parse(&page.file, &page.frontmatter))?;
+    let page_text = FileText {
         file: &page.file,
         text: &page.text,
     };
-    let control_type = if file.control_type == "npc" {
-        canon::ControlType::Npc
+    let control_type = if yaml.control_type == "npc" {
+        spookery_protocol::ControlType::Npc
     } else {
-        canon::ControlType::PcTemplate
+        spookery_protocol::ControlType::PcTemplate
     };
     let hint = "keep one cast file with this id";
-    let twice = ("cast id", "is already defined", hint);
-    let taken = cast.contains_key(file.id.as_str());
-    if let Some(diag) =
-        taken.then(|| whole.refuse_duplicate(&file.id, "id", Locator::Nowhere, twice))
+    let duplicate_words = ("cast id", "is already defined", hint);
+    let is_duplicate = cast.contains_key(yaml.id.as_str());
+    if let Some(diagnostic) = is_duplicate
+        .then(|| page_text.refuse_duplicate(&yaml.id, "id", Locator::Nowhere, duplicate_words))
     {
-        diags.push(diag);
+        diagnostics.push(diagnostic);
         return None;
     }
-    let id: ActorId = file.id.clone().into();
-    let carrier = Some(entity::Id::Actor(id.clone()));
-    let own = diags.keep(meter_descs(&whole, file.meters, carrier));
+    let id: ActorId = yaml.id.clone().into();
+    let entity_id = Some(entity::Id::Actor(id.clone()));
+    let own = diagnostics.keep(meters::compile(&page_text, yaml.meters, entity_id));
     if let (Some(meters), Some(own)) = (meters, own) {
-        meters::add_own(meters, own, None, &whole, diags);
+        meters::add_own(meters, own, None, &page_text, diagnostics);
     }
     cast.insert(
         id.clone(),
-        CastDef {
+        Def {
             control_type,
-            name: file.name.unwrap_or(file.id),
+            name: yaml.name.unwrap_or(yaml.id),
             body: page.body,
-            idle: file.idle,
+            idle: yaml.idle,
         },
     );
-    diags.keep(rule_list::compile(
+    diagnostics.keep(rule_list::compile(
         &page.file,
-        file.rules,
-        &Owner::Cast(id.into()),
+        yaml.rules,
+        &Scope::Cast(id.into()),
     ))
 }
 
-fn load(file: &str, yaml: &str) -> Result<CastDoc, Vec<Diagnostic>> {
-    let parsed: CastDoc = load_tagged(file, yaml, CAST_SCHEMA)?;
-    let source = FileText { file, text: yaml };
-    let mut diags = Diags::default();
-    let empty = ("id is empty", "set id to a short cast id");
-    diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));
-    if parsed.id == "world" {
-        diags.push(
-            Problem {
-                source: &source,
-                path: "id",
-                at: Locator::Key("id:"),
-                message: "id world is reserved".into(),
-                hint: "rename this cast member",
-            }
-            .into_diagnostic(),
-        );
+fn parse(file: &str, frontmatter: &str) -> Result<Yaml, Vec<Diagnostic>> {
+    let yaml: Yaml = parse_tagged(file, frontmatter, SCHEMA, true)?;
+    let file_text = FileText {
+        file,
+        text: frontmatter,
+    };
+    let mut diagnostics = Diagnostics::default();
+    let empty_words = ("id is empty", "set id to a short cast id");
+    diagnostics.extend(file_text.refuse_empty(&yaml.id, "id", Locator::Key("id:"), empty_words));
+    if yaml.id == "world" {
+        diagnostics.push(file_text.refuse_at(
+            "id",
+            Locator::Key("id:"),
+            "id world is reserved".into(),
+            "rename this cast member",
+        ));
     }
-    if parsed.control_type != "npc" && parsed.control_type != "pc_template" {
-        diags.push(
-            Problem {
-                source: &source,
-                path: "control_type",
-                at: Locator::Key("control_type:"),
-                message: format!(
-                    "control_type is '{}', which is not npc or pc_template",
-                    parsed.control_type
-                ),
-                hint: "set control_type to npc or pc_template",
-            }
-            .into_diagnostic(),
-        );
+    if yaml.control_type != "npc" && yaml.control_type != "pc_template" {
+        diagnostics.push(file_text.refuse_at(
+            "control_type",
+            Locator::Key("control_type:"),
+            format!(
+                "control_type is '{}', which is not npc or pc_template",
+                yaml.control_type
+            ),
+            "set control_type to npc or pc_template",
+        ));
     }
-    diags.into_result(parsed)
+    diagnostics.into_result(yaml)
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct CastDoc {
-    // repeats module: every file shape in canon ends in Doc
+struct Yaml {
     #[serde(rename = "schema")]
     _schema: String,
     id: String,

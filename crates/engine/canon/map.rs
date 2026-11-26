@@ -5,93 +5,97 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::canon::refusal::{Diagnostics, FileText};
 use crate::canon::rule_list;
-use crate::canon::source::{load_tagged, Diags, FileText, MAP_SCHEMA};
 use crate::canon::Canon;
-use crate::diagnostic::{schema_error, Diagnostic};
+use crate::diagnostic::{parse_tagged, schema_error, Diagnostic};
 use crate::ecs::component::ActorLocation;
 use crate::ecs::id::{PathId, PlaceId};
 use crate::rules::expr::Expr;
 use crate::rules::rule::{self, Cond, Cost, TargetKind};
 
 /// The one pack file that lists the paths.
-pub(super) const MAP_FILE: &str = "world/map.yaml";
+pub(super) const FILE: &str = "world/map.yaml";
+const SCHEMA: &str = "map";
 
-/// Every line under `paths:`, in file order, or the refusals of the lines that do not compile.
+/// Every entry under `paths:`, in file order, or the refusals of the entries that do not compile.
 pub(super) fn load(text: &str) -> Result<Vec<PathDef>, Vec<Diagnostic>> {
-    let doc: MapDoc = load_tagged(MAP_FILE, text, MAP_SCHEMA)?;
-    let mut diags = Diags::default();
-    let paths = (doc.paths.iter().enumerate())
-        .filter_map(|(row, line)| diags.keep(compile(row, line)))
+    let yaml: Yaml = parse_tagged(FILE, text, SCHEMA, true)?;
+    let mut diagnostics = Diagnostics::default();
+    let path_defs = (yaml.paths.iter().enumerate())
+        .filter_map(|(index, entry)| diagnostics.keep(compile(index, entry)))
         .collect();
-    diags.into_result(paths)
+    diagnostics.into_result(path_defs)
 }
 
-/// The `row`th line under `paths:`: its ends, its id, its name, its cost and its `if`.
-fn compile(row: usize, line: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
-    let source = FileText::named(MAP_FILE);
-    let refuse = |field: &str, problem: &str, hint: &str| {
-        vec![schema_error(MAP_FILE, problem, hint).at_path(format!("paths[{row}]{field}"))]
+/// The `index`th entry under `paths:`: its ends, its id, its name, its cost and its `if`.
+fn compile(index: usize, entry: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
+    let file_text = FileText::without_text(FILE);
+    let refuse = |field: &str, message: &str, hint: &str| {
+        vec![schema_error(FILE, message, hint).at_path(format!("paths[{index}]{field}"))]
     };
-    let Some((end_place_ids, bidirectional)) = split_ends(&line.path) else {
-        let problem = format!(
+    let Some((end_place_ids, bidirectional)) = split_ends(&entry.path) else {
+        let message = format!(
             "path '{}' needs two place ids joined by -> or <->",
-            line.path
+            entry.path
         );
         return Err(refuse(
             ".path",
-            &problem,
+            &message,
             "write a -> b, or a <-> b for both ways",
         ));
     };
-    let id = match line.id.as_deref() {
+    let id = match entry.id.as_deref() {
         None => PathId::from(format!("{}.{}", end_place_ids[0], end_place_ids[1])),
         Some(id) if !id.is_empty() && !id.contains('.') => PathId::from(id),
         Some(id) => {
-            let problem = format!("path id '{id}' is not one word");
+            let message = format!("path id '{id}' is not one word");
             let hint = "write the id as one word with no dot, or leave it out";
-            return Err(refuse(".id", &problem, hint));
+            return Err(refuse(".id", &message, hint));
         }
     };
-    let cost = match &line.cost {
-        Some(yaml) => rule_list::cost_of(yaml)
-            .map_err(|fault| vec![source.fault(&format!("paths[{row}].cost"), fault)])?,
+    let cost = match &entry.cost {
+        Some(yaml) => rule_list::compile_cost(yaml).map_err(|error| {
+            vec![file_text.refuse_error(&format!("paths[{index}].cost"), error)]
+        })?,
         None => Cost {
             ticks: Expr::Num(0),
             meters: Vec::new(),
             items: Vec::new(),
         },
     };
-    let mut diags = Diags::default();
-    let if_ = (line.if_.iter())
+    let mut diagnostics = Diagnostics::default();
+    let if_ = (entry.if_.iter())
         .filter_map(|cond| {
-            let fault = |fault| diags.push(source.fault(&format!("paths[{row}].if"), fault));
-            rule_list::cond_of(cond).map_err(fault).ok()
+            let push_error = |error| {
+                diagnostics.push(file_text.refuse_error(&format!("paths[{index}].if"), error))
+            };
+            rule_list::compile_cond(cond).map_err(push_error).ok()
         })
         .collect();
-    diags.into_result(())?;
-    let path = PathDef {
+    diagnostics.into_result(())?;
+    let path_def = PathDef {
         id,
-        name: line.name.clone(),
+        name: entry.name.clone(),
         end_place_ids,
         bidirectional,
         cost,
         if_,
-        locked_text: line.locked_text.clone(),
-        revealed_by: line.revealed_by.clone(),
+        locked_text: entry.locked_text.clone(),
+        revealed_by: entry.revealed_by.clone(),
     };
-    if let Some((key, _)) = path.mentions().find_misplaced_target(TargetKind::None) {
-        let problem = format!(
+    if let Some((key, _)) = path_def.mentions().find_misplaced_target(TargetKind::None) {
+        let message = format!(
             "path '{}' says target in {key}, but an exit has no target",
-            line.path
+            entry.path
         );
         return Err(refuse(
             "",
-            &problem,
+            &message,
             "an exit is walked, not targeted; name self or an id",
         ));
     }
-    Ok(path)
+    Ok(path_def)
 }
 
 /// `a -> b` or `a <-> b` as its two place ids and whether it goes both ways, or `None` for
@@ -118,9 +122,9 @@ pub struct PathDef {
     pub id: PathId,
     /// What a player reads for it at either end. Left out, each end reads the place it goes to.
     pub name: Option<String>,
-    /// The two places the line names, in its order.
+    /// The two places the entry names, in its order.
     pub end_place_ids: [PlaceId; 2],
-    /// The line says `<->`.
+    /// The entry says `<->`.
     pub bidirectional: bool,
     /// `cost.ticks` is the game time the walk takes.
     pub cost: Cost,
@@ -158,14 +162,14 @@ impl PathDef {
         })
     }
 
-    /// Every number the path holds: its cost's, then its conditions'.
-    pub(crate) fn exprs(&self) -> Vec<&Expr> {
+    /// Every number the path holds: its cost's, then its conds'.
+    pub(super) fn exprs(&self) -> Vec<&Expr> {
         let cond_numbers = self.if_.iter().flat_map(Cond::exprs);
         self.cost.exprs().chain(cond_numbers).collect()
     }
 
-    /// The owners, item ids and `target`s the path's conditions, cost and numbers name.
-    pub(crate) fn mentions(&self) -> rule::Mentions<'_> {
+    /// The entities, item ids and `target`s the path's conds, cost and numbers name.
+    pub(super) fn mentions(&self) -> rule::Mentions<'_> {
         rule::Mentions::of_lines(&self.if_, [&self.cost], self.exprs())
     }
 
@@ -232,7 +236,7 @@ impl Paths {
     pub(super) fn new(path_defs: Vec<PathDef>) -> Result<Self, Vec<Diagnostic>> {
         let mut exit_def_indexes_by_place_id: BTreeMap<PlaceId, Vec<usize>> = BTreeMap::new();
         let mut def_index_by_path_id = BTreeMap::new();
-        let mut diags = Diags::default();
+        let mut diagnostics = Diagnostics::default();
         for (index, path_def) in path_defs.iter().enumerate() {
             if def_index_by_path_id
                 .insert(path_def.id.clone(), index)
@@ -240,10 +244,10 @@ impl Paths {
             {
                 let id_from_ends = path_def.id.as_str().contains('.');
                 let field = if id_from_ends { ".path" } else { ".id" };
-                let problem = format!("path id '{}' is used twice", path_def.id);
-                let at = format!("paths[{index}]{field}");
+                let message = format!("path id '{}' is used twice", path_def.id);
+                let key_path = format!("paths[{index}]{field}");
                 let hint = "give one of these paths its own id";
-                diags.push(schema_error(MAP_FILE, &problem, hint).at_path(at));
+                diagnostics.push(schema_error(FILE, &message, hint).at_path(key_path));
             }
             let ends = path_def.end_place_ids.iter();
             for from_place_id in ends.take(if path_def.bidirectional { 2 } else { 1 }) {
@@ -252,7 +256,7 @@ impl Paths {
                     .push(index);
             }
         }
-        diags.into_result(())?;
+        diagnostics.into_result(())?;
         Ok(Self {
             path_defs,
             exit_def_indexes_by_place_id,
@@ -289,8 +293,7 @@ impl Paths {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct MapDoc {
-    // repeats module: every file shape in canon ends in Doc
+struct Yaml {
     #[serde(rename = "schema")]
     _schema: String,
     paths: Vec<PathYaml>,
@@ -302,9 +305,9 @@ struct PathYaml {
     path: String,
     id: Option<String>,
     name: Option<String>,
-    cost: Option<rule_list::CostYaml>,
+    cost: Option<rule_list::parse::CostYaml>,
     #[serde(default, rename = "if")]
-    if_: Vec<rule_list::CondYaml>,
+    if_: Vec<rule_list::parse::CondYaml>,
     #[serde(default)]
     locked_text: String,
     revealed_by: Option<String>,

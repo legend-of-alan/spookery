@@ -292,18 +292,18 @@ fn apply_modifier(
     add: i64,
     ticks: u64,
 ) -> Result<(), Reason> {
-    let desc = canon.modifiers.get(id).ok_or(Reason::UnknownId)?;
-    let carried = canon.meter_desc(entity::IdRef::Actor(actor_id), &desc.meter);
+    let def = canon.modifiers.get(id).ok_or(Reason::UnknownId)?;
+    let carried = canon.meter_def(entity::IdRef::Actor(actor_id), &def.meter);
     carried.ok_or(Reason::UnknownId)?;
     let now = world.world_time;
-    let held = world.actors().get::<Modifier>(actor_id).get(id);
-    let mut next = held.cloned().unwrap_or_else(|| Modifier {
-        meter: desc.meter.clone(),
+    let modifier = world.actors().get::<Modifier>(actor_id).get(id);
+    let mut next = modifier.cloned().unwrap_or_else(|| Modifier {
+        meter: def.meter.clone(),
         until: now,
         max_ticks: 0,
         stacks: Vec::new(),
     });
-    modifier::stack(desc, &mut next, add, ticks, now);
+    modifier::stack(def, &mut next, add, ticks, now);
     (world.actors_mut().get_mut::<Modifier>(actor_id)).set(id, Some(next))
 }
 

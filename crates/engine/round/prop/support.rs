@@ -185,8 +185,8 @@ fn item_tokens(session: &session::Session, actor: &ActorId) -> Vec<String> {
     let mut ids: Vec<String> = session.canon().items.keys().cloned().collect();
     let world = session.world();
     if let Some(place) = world.actors().get::<component::Place>(actor).place_id() {
-        let held = world.actors().get::<component::Item>(actor);
-        ids.extend(held.iter().map(|(id, _)| id.to_string()));
+        let items = world.actors().get::<component::Item>(actor);
+        ids.extend(items.iter().map(|(id, _)| id.to_string()));
         let lying = world.places().get::<component::Item>(place);
         ids.extend(lying.iter().map(|(id, _)| id.to_string()));
     }

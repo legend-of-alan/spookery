@@ -11,7 +11,7 @@ use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::perceive;
-use crate::rules::rule::{Owner, Rule, TargetKind, When};
+use crate::rules::rule::{Rule, RuleKind, Scope, TargetKind};
 use crate::Reason;
 
 /// One refused intent: its id, its code, and a detail when there is one. Returned from the
@@ -63,7 +63,7 @@ pub(crate) fn pick<'a>(
     habit.or(found).ok_or(Reason::UnknownMove)
 }
 
-/// The owner an intent's target names for `pick` to look in first: an actor or an item.
+/// The entity an intent's target names for `pick` to look in first: an actor or an item.
 pub(crate) fn hint_of(target: &Target) -> Option<&str> {
     match target {
         Target::Actor(id) => Some(id.as_str()),
@@ -86,30 +86,30 @@ pub(crate) fn verb_for<'a>(
 ) -> Option<&'a Rule> {
     let wielded = world.actors().get::<component::WieldedItem>(actor_id).get();
     if let Some(item) = wielded.filter(|item| !item.is_empty()) {
-        if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb_id) {
+        if let Some(rule) = scope_verb(canon, &Scope::Item(item.to_string()), verb_id) {
             return Some(rule);
         }
     }
     if let Some(token) = hint.filter(|token| !token.is_empty()) {
-        if let Some(rule) = owner_verb(canon, &Owner::Item(token.to_string()), verb_id) {
+        if let Some(rule) = scope_verb(canon, &Scope::Item(token.to_string()), verb_id) {
             return Some(rule);
         }
-        if let Some(rule) = owner_verb(canon, &Owner::Cast(token.to_string()), verb_id) {
+        if let Some(rule) = scope_verb(canon, &Scope::Cast(token.to_string()), verb_id) {
             return Some(rule);
         }
     }
     if let Some(place) = world.actors().get::<component::Place>(actor_id).place_id() {
-        if let Some(rule) = owner_verb(canon, &Owner::Place(place.to_string()), verb_id) {
+        if let Some(rule) = scope_verb(canon, &Scope::Place(place.to_string()), verb_id) {
             return Some(rule);
         }
     }
-    owner_verb(canon, &Owner::Verb, verb_id)
+    scope_verb(canon, &Scope::Verb, verb_id)
 }
 
-fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb_id: &str) -> Option<&'a Rule> {
+fn scope_verb<'a>(canon: &'a Canon, scope: &Scope, verb_id: &str) -> Option<&'a Rule> {
     canon.rules.iter().find(|rule| {
-        &rule.owner == owner
-            && matches!(&rule.when, When::Verb { verb_id: id, .. } if id == verb_id)
+        &rule.scope == scope
+            && matches!(&rule.kind, RuleKind::Verb { verb_id: id, .. } if id == verb_id)
     })
 }
 
@@ -145,7 +145,7 @@ pub(crate) fn admit(
     if let Some(id) = intent.actor_id.as_ref() {
         let act = world.actors().get::<component::Act>(id);
         let acted = act.get().last_act_round == intent.round_index;
-        if acted && rule.start.counts_as_act && matches!(rule.when, When::Habit) {
+        if acted && rule.start.counts_as_act && matches!(rule.kind, RuleKind::Habit) {
             return Err(Refusal::new(intent, Reason::Ineligible));
         }
         if act.is_busy(world.world_time) {
@@ -153,7 +153,7 @@ pub(crate) fn admit(
         }
     }
     crate::rules::travel::admit(context, rule)?;
-    if let When::Verb { target, .. } = &rule.when {
+    if let RuleKind::Verb { target, .. } = &rule.kind {
         if !can_name(context, ids) {
             return Err(Refusal::new(intent, Reason::NotInSpec));
         }

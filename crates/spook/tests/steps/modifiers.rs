@@ -73,7 +73,7 @@ fn modifier_of(pack: &Path, id: &str) -> Option<Modifier> {
 
 fn stacks_of(pack: &Path, id: &str) -> Vec<i64> {
     modifier_of(pack, id)
-        .map(|live| live.stacks)
+        .map(|modifier| modifier.stacks)
         .unwrap_or_default()
 }
 
@@ -98,7 +98,7 @@ fn ticks_left(pack: &Path, id: &str) -> u64 {
 fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
     support::edit_save(pack, |now| {
         let until = now.world_time + left;
-        let live = Modifier {
+        let modifier = Modifier {
             meter: now.canon().modifiers[id].meter.clone(),
             until,
             max_ticks: left,
@@ -107,7 +107,7 @@ fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
         let (mut actors, rowan) = (now.actors_mut(), "rowan".into());
         actors
             .get_mut::<Modifier>(&rowan)
-            .set(id, Some(live))
+            .set(id, Some(modifier))
             .unwrap();
     });
 }
@@ -405,7 +405,7 @@ fn neither_keeps_the_dropped_meter(world: &mut World) {
     assert!(!meters.contains("luck"));
     assert!(meters.contains("vigor"));
     let world_meters = now.globals().query::<&Meter>();
-    assert!(!world_meters.iter().any(|held| held.contains("tide")));
+    assert!(!world_meters.iter().any(|meters| meters.contains("tide")));
 }
 
 #[then(expr = "the GM sees {string} as a changed key")]

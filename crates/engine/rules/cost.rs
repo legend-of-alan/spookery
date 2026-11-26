@@ -36,8 +36,8 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
     for (id, expr) in &cost.items {
         let amount = eval::eval(context, expr).map_err(|_| cant_afford(id))?;
         let count = item_count(amount).map_err(|_| cant_afford(id))?;
-        let held = world.actors().get::<component::Item>(actor_id);
-        if held.get(id).copied().unwrap_or(0) < count {
+        let items = world.actors().get::<component::Item>(actor_id);
+        if items.get(id).copied().unwrap_or(0) < count {
             return Err(cant_afford(id));
         }
     }

@@ -16,7 +16,7 @@ use crate::World;
 
 use super::host;
 
-/// How long a held model call waits on the AI GM's paused clock.
+/// How long a paused model call waits on the AI GM's paused clock.
 pub(crate) const HOLD: Duration = Duration::from_secs(1);
 
 /// A model that answers each call with the next scripted tool calls, read through
@@ -35,7 +35,7 @@ struct Script {
     /// The reply once the script runs out, none for a reply with no calls.
     repeat: Option<String>,
     /// How many of the next calls wait `HOLD` before they answer.
-    held: usize,
+    pause_count: usize,
     calls: Vec<Vec<model::Message>>,
 }
 
@@ -61,7 +61,7 @@ impl ScriptedModel {
     }
 
     pub fn hold_next(&self) {
-        self.script.lock().unwrap().held += 1;
+        self.script.lock().unwrap().pause_count += 1;
     }
 
     /// The messages of each call so far.
@@ -89,18 +89,18 @@ impl Model for ScriptedModel {
         &self,
         messages: &[model::Message],
     ) -> Result<Vec<ToolCall>, CompletionError> {
-        let (reply, held) = {
+        let (reply, paused) = {
             let mut script = self.script.lock().unwrap();
             script.calls.push(messages.to_vec());
-            let held = script.held > 0;
-            script.held = script.held.saturating_sub(1);
+            let paused = script.pause_count > 0;
+            script.pause_count = script.pause_count.saturating_sub(1);
             let repeat = script
                 .repeat
                 .clone()
                 .unwrap_or_else(|| render_completion(&[]));
-            (script.replies.pop_front().unwrap_or(Ok(repeat)), held)
+            (script.replies.pop_front().unwrap_or(Ok(repeat)), paused)
         };
-        if held {
+        if paused {
             tokio::time::sleep(HOLD).await;
         }
         chat_completions::parse_reply(&reply?).map(|reply| reply.tool_calls)
@@ -151,7 +151,7 @@ pub struct Seen {
 }
 
 /// `ai_gm::play` on its own thread, on a current-thread runtime whose clock starts paused.
-/// A blocking task held for the run keeps tokio from auto-advancing, so paused time moves
+/// A blocking task that stays open for the run keeps tokio from auto-advancing, so paused time moves
 /// only on `advance`.
 pub struct AiGm {
     /// What the run wrote to `err`, and then its error if it returned one, as `spook ai-gm`
@@ -191,8 +191,8 @@ pub(crate) async fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
             .try_clone()
             .unwrap_or_else(|err| panic!("pipe: {err}"));
         let result = runtime.block_on(async {
-            let (_hold, held) = std::sync::mpsc::channel::<()>();
-            tokio::task::spawn_blocking(move || held.recv());
+            let (_tx, rx) = std::sync::mpsc::channel::<()>();
+            tokio::task::spawn_blocking(move || rx.recv());
             let play = ai_gm::play(addr, model, report);
             tokio::pin!(play);
             loop {

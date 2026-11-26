@@ -1,8 +1,8 @@
 //! A number in a rule: its syntax tree and the walks over it. `parse` reads text into the tree
 //! and `eval` reads the tree to a value, drawing its dice.
 
+use crate::diagnostic::FileLocation;
 use crate::rules::grammar;
-use crate::rules::rule::LineColumn;
 use crate::Reason;
 
 pub(crate) mod eval;
@@ -40,7 +40,7 @@ pub enum Expr {
     Meter {
         of: grammar::Object,
         key: String,
-        spot: Option<LineColumn>,
+        file_location: Option<FileLocation>,
     },
     Binary {
         op: BinOp,
@@ -142,33 +142,34 @@ impl Expr {
     }
 }
 
-/// Fill meter spots that the parser left empty. A structured meter keeps its own spot.
-pub(crate) fn stamp_spots(expr: &mut Expr, line: u32, column: u32) {
+/// Fill each meter file location that the parser left empty. A structured meter keeps its own.
+pub(crate) fn stamp_file_locations(expr: &mut Expr, line: u32, column: u32) {
     if line == 0 {
         return;
     }
-    let spot = LineColumn { line, column };
-    stamp_at(expr, spot);
+    let file_location = FileLocation { line, column };
+    stamp_at(expr, file_location);
 }
 
-fn stamp_at(expr: &mut Expr, spot: LineColumn) {
+fn stamp_at(expr: &mut Expr, file_location: FileLocation) {
     match expr {
         Expr::Meter {
-            spot: meter_spot, ..
+            file_location: meter_file_location,
+            ..
         } => {
-            meter_spot.get_or_insert(spot);
+            meter_file_location.get_or_insert(file_location);
         }
-        Expr::Neg(inner) => stamp_at(inner, spot),
+        Expr::Neg(inner) => stamp_at(inner, file_location),
         Expr::Binary { left, right, .. } | Expr::Call { left, right, .. } => {
-            stamp_at(left, spot);
-            stamp_at(right, spot);
+            stamp_at(left, file_location);
+            stamp_at(right, file_location);
         }
         Expr::Num(_) | Expr::Dice { .. } | Expr::Let { .. } => {}
     }
 }
 
 /// Whether `word` can be a `let:` id: a bare word that a number reads back as that id, and
-/// not an owner word such as `self` or `world` or a call such as `min` or `high`.
+/// not an entity word such as `self` or `world` or a call such as `min` or `high`.
 pub(crate) fn is_let_id(word: &str) -> bool {
     let read = Expr::Let {
         id: word.to_string(),

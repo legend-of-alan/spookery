@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use spookery_protocol::{CommandView, PlaceView};
 
-use crate::canon::Budget;
+use crate::canon::budget::Budget;
 use crate::canon::{load_canon, Canon};
 use crate::diagnostic::first_reason;
 use crate::ecs::id::{ActorId, PlaceId};
@@ -480,7 +480,7 @@ impl<Lock> Session<Lock> {
             .canon()
             .meters
             .iter()
-            .filter_map(|(id, desc)| Some((desc.carrier.clone()?, id)));
+            .filter_map(|(id, def)| Some((def.entity_id.clone()?, id)));
         let world_meters = self
             .canon()
             .world_meters
@@ -488,11 +488,11 @@ impl<Lock> Session<Lock> {
             .map(|id| (entity::Id::Global, id));
         carried
             .chain(world_meters)
-            .filter_map(|(carrier, id)| {
-                let meter = self.world.entities().get::<component::Meter>(&carrier);
+            .filter_map(|(entity_id, id)| {
+                let meter = self.world.entities().get::<component::Meter>(&entity_id);
                 let value = meter.value(id).ok()?;
-                let max = self.canon().meter_desc(carrier.as_ref(), id)?.max;
-                Some(format!("meter {carrier} {id} {value} {max}"))
+                let max = self.canon().meter_def(entity_id.as_ref(), id)?.max;
+                Some(format!("meter {entity_id} {id} {value} {max}"))
             })
             .collect()
     }
@@ -559,9 +559,9 @@ impl Session<()> {
             return Err(Reason::NotInSpec);
         }
         let now_bytes = journal::read_save(&journal::save_path(root))?;
-        let canon = Arc::new(load_canon(root).map_err(|diags| first_reason(&diags))?);
+        let canon = Arc::new(load_canon(root).map_err(|diagnostics| first_reason(&diagnostics))?);
         let save = crate::check::load_save_file(root, Some(&canon), &now_bytes)
-            .map_err(|diags| first_reason(&diags))?;
+            .map_err(|diagnostics| first_reason(&diagnostics))?;
         Ok(Self {
             root: root.to_path_buf(),
             world: ecs::World::new(save, canon),
@@ -620,7 +620,7 @@ fn speech_recipients(
 /// the token as the kind the verb takes. A token where none fits, or none where one is
 /// needed, is `SCHEMA`.
 fn target_for(rule: &Rule, token: Option<&str>) -> Result<Target, Reason> {
-    match (rule.when.target_kind(), token) {
+    match (rule.kind.target_kind(), token) {
         (TargetKind::None, None) => Ok(Target::Empty),
         (TargetKind::None, Some(_)) | (_, None) => Err(Reason::Schema),
         (kind, Some(id)) => Ok(Target::new(kind, id)),

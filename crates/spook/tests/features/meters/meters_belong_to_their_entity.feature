@@ -38,7 +38,7 @@ Feature: Meters belong to their entity
     And story/vigil.yaml has a rule that adds -1 to meter dawn of "world"
     And story/vigil.yaml has a change rule that watches dawn cross "<=0" and adds 1 to meter morning of "world"
     When both rules run in one round, three rounds in a row
-    Then dawn is 0, held once by the world
+    Then dawn is 0, saved once on the world
     And no actor carries a dawn meter
     And the world's morning is 1
 

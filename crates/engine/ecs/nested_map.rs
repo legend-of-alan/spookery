@@ -1,33 +1,33 @@
-//! Maps keyed by an owner's id and an entry's id, written as a nested map by owner: the
-//! pair-keyed map `{(mira, vigor): meter}` is `mira: { vigor: meter }` in the save, and an owner
+//! Maps keyed by a parent's id and an entry's id, written as a nested map by parent: the
+//! pair-keyed map `{(mira, vigor): meter}` is `mira: { vigor: meter }` in the save, and a parent
 //! with no entries writes nothing.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-/// The key `id` has under `owner`. It clones both: std's maps look a key up by a borrowed
+/// The key `id` has under `parent`. It clones both: std's maps look a key up by a borrowed
 /// form only through `Borrow`, which a pair of owned strings cannot give to `(&Id, &str)`.
-fn key_of<Id: Clone>(owner: &Id, id: &str) -> (Id, String) {
-    (owner.clone(), id.to_string())
+fn key_of<Id: Clone>(parent: &Id, id: &str) -> (Id, String) {
+    (parent.clone(), id.to_string())
 }
 
-/// The entry `id` that `owner` holds in a map keyed by `(owner, id)`.
+/// The entry `id` that `parent` holds in a map keyed by `(parent, id)`.
 pub(crate) fn get<'a, Id: Ord + Clone, V>(
     map: &'a BTreeMap<(Id, String), V>,
-    owner: &Id,
+    parent: &Id,
     id: &str,
 ) -> Option<&'a V> {
-    map.get(&key_of(owner, id))
+    map.get(&key_of(parent, id))
 }
 
-/// The entries `owner` holds in a map keyed by `(owner, id)`, in id order.
+/// The entries `parent` holds in a map keyed by `(parent, id)`, in id order.
 pub(crate) fn entries_of<'a, Id: Ord + Clone, V>(
     map: &'a BTreeMap<(Id, String), V>,
-    owner: &'a Id,
+    parent: &'a Id,
 ) -> impl Iterator<Item = (&'a str, &'a V)> {
-    map.range(key_of(owner, "")..)
-        .take_while(move |((held_by, _), _)| held_by == owner)
+    map.range(key_of(parent, "")..)
+        .take_while(move |((held_by, _), _)| held_by == parent)
         .map(|((_, id), value)| (id.as_str(), value))
 }
 
@@ -41,8 +41,8 @@ where
     V: Serialize,
 {
     let mut grouped: BTreeMap<&Id, BTreeMap<&str, &V>> = BTreeMap::new();
-    for ((owner, id), value) in map {
-        grouped.entry(owner).or_default().insert(id, value);
+    for ((parent, id), value) in map {
+        grouped.entry(parent).or_default().insert(id, value);
     }
     grouped.serialize(serializer)
 }
@@ -56,16 +56,16 @@ where
     T: From<BTreeMap<(Id, String), V>>,
 {
     let grouped = BTreeMap::<Id, BTreeMap<String, V>>::deserialize(deserializer)?;
-    let pairs = grouped.into_iter().flat_map(|(owner, entries)| {
+    let pairs = grouped.into_iter().flat_map(|(parent, entries)| {
         entries
             .into_iter()
-            .map(move |(id, value)| ((owner.clone(), id), value))
+            .map(move |(id, value)| ((parent.clone(), id), value))
     });
     Ok(pairs.collect::<BTreeMap<_, _>>().into())
 }
 
-/// The ids set on each owner in a map of `(owner, id)` to `()`, such as the flags set on each
-/// actor, written as each owner's list of ids: `mira: [calm, wary]`.
+/// The ids set on each parent in a map of `(parent, id)` to `()`, such as the flags set on each
+/// actor, written as each parent's list of ids: `mira: [calm, wary]`.
 pub(crate) mod lists {
     use super::*;
 
@@ -78,8 +78,8 @@ pub(crate) mod lists {
         Id: Serialize + Ord,
     {
         let mut grouped: BTreeMap<&Id, Vec<&str>> = BTreeMap::new();
-        for (owner, id) in set.keys() {
-            grouped.entry(owner).or_default().push(id);
+        for (parent, id) in set.keys() {
+            grouped.entry(parent).or_default().push(id);
         }
         grouped.serialize(serializer)
     }
@@ -93,12 +93,12 @@ pub(crate) mod lists {
         let grouped = BTreeMap::<Id, Vec<String>>::deserialize(deserializer)?;
         let pairs = grouped
             .into_iter()
-            .flat_map(|(owner, ids)| ids.into_iter().map(move |id| ((owner.clone(), id), ())));
+            .flat_map(|(parent, ids)| ids.into_iter().map(move |id| ((parent.clone(), id), ())));
         Ok(pairs.collect::<BTreeMap<_, _>>().into())
     }
 }
 
-/// A pair-keyed map whose one owner the save leaves out, such as the world's meters:
+/// A pair-keyed map whose one parent the save leaves out, such as the world's meters:
 /// `{(world, tide): meter}` is `tide: meter`.
 pub(crate) mod flat {
     use super::*;
@@ -128,7 +128,7 @@ pub(crate) mod flat {
         Ok(pairs.collect::<BTreeMap<_, _>>().into())
     }
 
-    /// The ids set on that one owner, written as a list: `[calm, wary]`.
+    /// The ids set on that one parent, written as a list: `[calm, wary]`.
     pub(crate) mod lists {
         use super::*;
 

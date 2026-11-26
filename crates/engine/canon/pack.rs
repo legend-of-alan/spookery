@@ -2,17 +2,24 @@
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_tagged, FileText, Locator, PACK_SCHEMA};
-use crate::diagnostic::{schema_error, Diagnostic};
+use crate::canon::refusal::{FileText, Locator};
+use crate::diagnostic::{parse_tagged, schema_error, Diagnostic};
 
-pub(super) fn load_pack_yaml(text: &str) -> Result<PackDoc, Vec<Diagnostic>> {
-    let doc: PackDoc = load_tagged("pack.yaml", text, PACK_SCHEMA)?;
-    let empty = ("id is empty", "set id to a short pack id");
-    let refused = FileText::named("pack.yaml").refuse_empty(&doc.id, "id", Locator::Nowhere, empty);
-    refused.map_or(Ok(doc), |diag| Err(vec![diag]))
+const SCHEMA: &str = "pack";
+
+pub(super) fn load(text: &str) -> Result<Yaml, Vec<Diagnostic>> {
+    let yaml: Yaml = parse_tagged("pack.yaml", text, SCHEMA, false)?;
+    let empty_words = ("id is empty", "set id to a short pack id");
+    let diagnostic = FileText::without_text("pack.yaml").refuse_empty(
+        &yaml.id,
+        "id",
+        Locator::Nowhere,
+        empty_words,
+    );
+    diagnostic.map_or(Ok(yaml), |diagnostic| Err(vec![diagnostic]))
 }
 
-impl PackDoc {
+impl Yaml {
     /// Rounds between checkpoints: 100 when unset, refused when 0.
     pub(super) fn checkpoint_every(&self) -> Result<u64, Vec<Diagnostic>> {
         match self.checkpoint_every {
@@ -30,8 +37,7 @@ impl PackDoc {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct PackDoc {
-    // repeats module: every file shape in canon ends in Doc
+pub(super) struct Yaml {
     #[serde(rename = "schema")]
     _schema: String,
     pub(super) id: String,

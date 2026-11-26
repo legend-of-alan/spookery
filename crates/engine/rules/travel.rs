@@ -1,6 +1,7 @@
 //! Exits, admission, and the journeys that follow them.
 
-use crate::canon::{Canon, Exit, PathDef, OPEN};
+use crate::canon::map::{Exit, PathDef, OPEN};
+use crate::canon::Canon;
 use crate::ecs::id::{ActorId, GlobalId, PathId, PlaceId};
 use crate::ecs::{self, component, entity, PendingAction, Presence};
 use crate::intent::{Intent, Source, Target};
@@ -97,12 +98,12 @@ fn is_revealed(world: &ecs::World, actor_id: &ActorId, exit: Exit<'_>) -> bool {
 }
 
 /// Locked: the path has an `if` and its `open` flag is not set.
-fn is_locked(world: &ecs::World, path: &PathDef) -> bool {
+fn is_locked(world: &ecs::World, path_def: &PathDef) -> bool {
     let open = world
         .paths()
-        .get::<component::Flag>(&path.id)
+        .get::<component::Flag>(&path_def.id)
         .contains(OPEN);
-    path.is_conditional() && !open
+    path_def.is_conditional() && !open
 }
 
 /// Open each locked path whose `if` an actor at an end it leaves from meets, with a flag effect
@@ -161,7 +162,7 @@ pub(crate) fn exits_at(
     actor_id: &ActorId,
     place: &str,
 ) -> Vec<ExitView> {
-    (canon.exits(place))
+    (canon.paths.exits(place))
         .filter(|exit| is_revealed(world, actor_id, *exit))
         .map(|exit| exit_view(canon, world, actor_id, exit))
         .collect()

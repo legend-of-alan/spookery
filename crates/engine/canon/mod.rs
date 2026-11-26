@@ -3,132 +3,91 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use serde::Deserialize;
-
-use crate::canon;
 use crate::diagnostic::Diagnostic;
 use crate::ecs::component::meter;
 use crate::ecs::component::modifier;
 use crate::ecs::id::{ActorId, PlaceId, StoryId};
 use crate::entity;
 use crate::hash::blake2s_tagged;
-use crate::rules::rule::{self, Owner, TargetKind, When};
+use crate::rules::rule::{self, RuleKind, Scope, TargetKind};
 use crate::Reason;
-pub(crate) use spookery_protocol::{ControlType, MenuRow, PackSummary};
+use spookery_protocol::{MenuRow, PackSummary};
 
-mod budget;
+pub(crate) mod budget;
 mod cast;
-mod item;
-mod lint;
-mod map;
+pub(crate) mod item;
+pub(crate) mod lint;
+pub(crate) mod map;
 mod meters;
 mod modifiers;
 mod pack;
+mod pack_files;
 mod place;
+mod refusal;
 mod rule_list;
-mod source;
-mod story;
+pub(crate) mod story;
+mod verbs;
 
-pub(crate) use budget::Budget;
-pub(crate) use lint::{check_canon, unknown_item};
-use lint::{
-    check_carriers, check_meter_reads, check_modifiers, check_paths, check_rule_items, EntityScope,
-};
-use map::MAP_FILE;
-pub(crate) use map::{Exit, PathDef, Paths, OPEN};
-use modifiers::MODIFIERS_FILE;
-use pack::load_pack_yaml;
-use rule_list::load_verbs;
-use source::{collect_files, collect_markdown_files, read_text, Diags, FileText, Locator};
-use story::load_stories;
+use budget::Budget;
+use lint::entity_defs::{find_missing_components, find_unknown_meter_reads, EntityDefs};
+use lint::{find_unknown_modifiers, find_unknown_path_ids, find_unknown_rule_items};
+use map::Paths;
+use pack_files::{collect_files, collect_markdown_files, read_text};
+use refusal::{Diagnostics, FileText, Locator};
 
 #[derive(Clone, Debug)]
 pub struct Canon {
     pub pack_id: String,
     pub title: String,
     pub system: String,
-    pub start_place: String,
-    pub places: BTreeMap<PlaceId, PlaceDef>,
-    /// Every line under `paths:` in `world/map.yaml`, in file order, and the index of each
+    start_place: String,
+    pub places: BTreeMap<PlaceId, place::Def>,
+    /// Every entry under `paths:` in `world/map.yaml`, in file order, and the index of each
     /// place's exits.
     pub paths: Paths,
-    pub cast: BTreeMap<ActorId, CastDef>,
-    pub stories: BTreeMap<StoryId, StoryDef>,
+    pub cast: BTreeMap<ActorId, cast::Def>,
+    pub(crate) stories: BTreeMap<StoryId, story::Def>,
     pub rules: rule::Table,
     /// The meters `rules/meters.yaml` gives every actor, and those one cast, place or story
     /// file gives its entity. An id is listed once.
-    pub meters: BTreeMap<String, meter::Descriptor>,
+    pub meters: BTreeMap<String, meter::Def>,
     /// The meters `world/meters.yaml` gives the world. An id here may also be an actor meter.
-    pub world_meters: BTreeMap<String, meter::Descriptor>,
+    pub(crate) world_meters: BTreeMap<String, meter::Def>,
     /// The modifiers `rules/modifiers.yaml` defines. Each one modifies an actor meter.
-    pub modifiers: BTreeMap<String, modifier::Descriptor>,
-    pub items: BTreeMap<String, ItemDef>,
-    pub budget: Budget,
+    pub modifiers: BTreeMap<String, modifier::Def>,
+    pub items: BTreeMap<String, item::Def>,
+    pub(crate) budget: Budget,
     /// Rounds between journal checkpoints. `save.yaml` is rewritten then.
-    pub checkpoint_every: u64,
+    pub(crate) checkpoint_every: u64,
     /// `gm_notes` in `pack.yaml`: tone and flavor for the GM, empty when the pack has none.
-    pub gm_notes: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct ItemDef {
-    /// The name a player reads, the id when the pack gives none.
-    pub name: String,
-    pub tags: Vec<String>,
-    pub body: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct PlaceDef {
-    /// The name a player reads, the id when the pack gives none.
-    pub name: String,
-    pub body: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct StoryDef {
-    /// The name a player reads, the id when the pack gives none.
-    pub name: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct CastDef {
-    pub control_type: canon::ControlType,
-    /// The name a player reads, the id when the pack gives none.
-    pub name: String,
-    pub body: String,
-    pub idle: Option<IdleProfile>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct IdleProfile {
-    pub eligible: bool,
+    gm_notes: String,
 }
 
 impl Canon {
     /// Every verb some rule names, sorted, once each.
-    pub fn verbs(&self) -> Vec<String> {
+    pub(crate) fn verbs(&self) -> Vec<String> {
         let verbs: std::collections::BTreeSet<&str> = self
             .rules
             .iter()
-            .filter_map(|rule| match &rule.when {
-                When::Verb { verb_id, .. } => Some(verb_id.as_str()),
+            .filter_map(|rule| match &rule.kind {
+                RuleKind::Verb { verb_id, .. } => Some(verb_id.as_str()),
                 _ => None,
             })
             .collect();
         verbs.into_iter().map(str::to_string).collect()
     }
 
-    pub fn to_pack_summary(&self) -> PackSummary {
+    pub(crate) fn to_pack_summary(&self) -> PackSummary {
         let menu = self
             .rules
             .iter()
-            .filter_map(|rule| match &rule.when {
-                When::Verb { verb_id, target } if matches!(rule.owner, Owner::Verb) => {
+            .filter_map(|rule| match &rule.kind {
+                RuleKind::Verb { verb_id, target } if matches!(rule.scope, Scope::Verb) => {
                     Some((verb_id.clone(), "verb", target.as_str()))
                 }
-                When::Habit => Some((rule.local_id.clone(), "habit", TargetKind::None.as_str())),
+                RuleKind::Habit => {
+                    Some((rule.local_id.clone(), "habit", TargetKind::None.as_str()))
+                }
                 _ => None,
             })
             .map(|(id, audience, token)| MenuRow {
@@ -162,20 +121,15 @@ impl Canon {
         }
     }
 
-    /// The descriptor of meter `key` on `id`, when that entity carries it.
-    pub fn meter_desc(&self, id: entity::IdRef<'_>, key: &str) -> Option<&meter::Descriptor> {
+    /// The `meter::Def` of meter `key` on `id`, when that entity carries it.
+    pub(crate) fn meter_def(&self, id: entity::IdRef<'_>, key: &str) -> Option<&meter::Def> {
         match id {
             entity::IdRef::Global => self.world_meters.get(key),
-            _ => self.meters.get(key).filter(|desc| desc.is_on(id)),
+            _ => self.meters.get(key).filter(|def| def.is_on(id)),
         }
     }
 
-    /// The exits of `from_place_id`, in the file order of their paths.
-    pub(crate) fn exits(&self, from_place_id: &str) -> impl Iterator<Item = Exit<'_>> {
-        self.paths.exits(from_place_id)
-    }
-
-    pub fn idle_profile(&self, actor_id: &ActorId) -> Option<&IdleProfile> {
+    pub(crate) fn idle_profile(&self, actor_id: &ActorId) -> Option<&cast::IdleProfile> {
         self.cast.get(actor_id).and_then(|cast| cast.idle.as_ref())
     }
 
@@ -200,8 +154,8 @@ pub fn pack_rev(root: &Path) -> Result<String, Reason> {
     }
     files.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
     let mut preimage = Vec::new();
-    for (rel, bytes) in files {
-        preimage.extend(rel.as_bytes());
+    for (file, bytes) in files {
+        preimage.extend(file.as_bytes());
         preimage.push(0);
         preimage.extend((bytes.len() as u64).to_be_bytes());
         preimage.extend(bytes);
@@ -216,76 +170,98 @@ pub fn pack_rev(root: &Path) -> Result<String, Reason> {
 /// the budget; lints across files; and `checkpoint_every`.
 pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     // repeats module: re-exported at the crate root
-    let mut diags = Diags::default();
+    let mut diagnostics = Diagnostics::default();
     let mut places = BTreeMap::new();
     let mut cast = BTreeMap::new();
     let mut items = BTreeMap::new();
     let mut place_meters = Vec::new();
-    let mut loaded = Vec::new();
-    let pack = diags.keep(read_text(root, "pack.yaml").and_then(|text| load_pack_yaml(&text)));
+    let mut unsorted_rules = Vec::new();
+    let pack = diagnostics.keep(read_text(root, "pack.yaml").and_then(|text| pack::load(&text)));
     for page in collect_markdown_files(root, "world") {
-        let Some(page) = diags.keep(page) else {
+        let Some(page) = diagnostics.keep(page) else {
             continue;
         };
         let rules = if page.file.starts_with("world/items/") {
-            item::add(page, &mut items, &mut diags)
+            item::add(page, &mut items, &mut diagnostics)
         } else if page.file.starts_with("world/places/") {
-            place::add(page, &mut places, &mut place_meters, &mut diags)
+            place::add(page, &mut places, &mut place_meters, &mut diagnostics)
         } else {
             None
         };
-        loaded.extend(rules.unwrap_or_default());
+        unsorted_rules.extend(rules.unwrap_or_default());
     }
-    let path_lines = diags.keep(read_text(root, MAP_FILE).and_then(|text| map::load(&text)));
-    let paths = (path_lines.as_ref()).and_then(|lines| diags.keep(Paths::new(lines.clone())));
+    let path_defs = diagnostics.keep(read_text(root, map::FILE).and_then(|text| map::load(&text)));
+    let paths =
+        (path_defs.as_ref()).and_then(|path_defs| diagnostics.keep(Paths::new(path_defs.clone())));
     let world_meters = if root.join("world/meters.yaml").is_file() {
-        let rel = "world/meters.yaml";
-        diags.keep(
-            read_text(root, rel)
-                .and_then(|text| meters::load(rel, &text, Some(entity::Id::Global))),
+        let file = "world/meters.yaml";
+        diagnostics.keep(
+            read_text(root, file)
+                .and_then(|text| meters::load(file, &text, Some(entity::Id::Global))),
         )
     } else {
         Some(BTreeMap::new())
     };
-    let rel = "rules/meters.yaml";
+    let file = "rules/meters.yaml";
     let mut meters =
-        diags.keep(read_text(root, rel).and_then(|text| meters::load(rel, &text, None)));
+        diagnostics.keep(read_text(root, file).and_then(|text| meters::load(file, &text, None)));
     for page in collect_markdown_files(root, "cast") {
-        let Some(page) = diags.keep(page) else {
+        let Some(page) = diagnostics.keep(page) else {
             continue;
         };
-        let rules = cast::add(page, &mut cast, meters.as_mut(), &mut diags);
-        loaded.extend(rules.unwrap_or_default());
+        let rules = cast::add(page, &mut cast, meters.as_mut(), &mut diagnostics);
+        unsorted_rules.extend(rules.unwrap_or_default());
     }
     for (file, own) in place_meters {
         if let Some(meters) = meters.as_mut() {
-            meters::add_own(meters, own, None, &FileText::named(&file), &mut diags);
+            meters::add_own(
+                meters,
+                own,
+                None,
+                &FileText::without_text(&file),
+                &mut diagnostics,
+            );
         }
     }
     let modifiers = match &meters {
-        Some(meters) if root.join(MODIFIERS_FILE).is_file() => diags
-            .keep(read_text(root, MODIFIERS_FILE).and_then(|text| modifiers::load(&text, meters))),
+        Some(meters) if root.join(modifiers::FILE).is_file() => diagnostics
+            .keep(read_text(root, modifiers::FILE).and_then(|text| modifiers::load(&text, meters))),
         _ => Some(BTreeMap::new()),
     };
-    let [verbs, budget] = ["rules/verbs.yaml", "rules/budget.yaml"]
-        .map(|rel| diags.keep(read_text(root, rel)).map(|text| (rel, text)));
-    if let Some((rel, text)) = &verbs {
-        loaded.extend(diags.keep(load_verbs(rel, text)).unwrap_or_default());
+    let [verbs, budget] = ["rules/verbs.yaml", "rules/budget.yaml"].map(|file| {
+        diagnostics
+            .keep(read_text(root, file))
+            .map(|text| (file, text))
+    });
+    if let Some((file, text)) = &verbs {
+        unsorted_rules.extend(
+            diagnostics
+                .keep(verbs::load(file, text))
+                .unwrap_or_default(),
+        );
     }
-    let (story_rules, stories) =
-        load_stories(root, meters.as_mut(), world_meters.as_ref(), &mut diags);
-    loaded.extend(story_rules);
+    let (story_rules, stories) = story::load_dir(
+        root,
+        meters.as_mut(),
+        world_meters.as_ref(),
+        &mut diagnostics,
+    );
+    unsorted_rules.extend(story_rules);
     let mut seen_ids = BTreeSet::new();
-    for rule in &loaded {
-        let twice = ("rule", "is already defined", "keep one rule with this id");
-        let taken = !seen_ids.insert(rule.id.clone());
-        let source = FileText::named(&rule.file);
-        diags.extend(taken.then(|| source.refuse_duplicate(&rule.id, "", Locator::Nowhere, twice)));
+    for rule in &unsorted_rules {
+        let duplicate_words = ("rule", "is already defined", "keep one rule with this id");
+        let is_duplicate = !seen_ids.insert(rule.id.clone());
+        let file_text = FileText::without_text(&rule.file);
+        diagnostics.extend(
+            is_duplicate.then(|| {
+                file_text.refuse_duplicate(&rule.id, "", Locator::Nowhere, duplicate_words)
+            }),
+        );
     }
-    let rules = rule::Table::new(loaded);
-    let budget = budget.and_then(|(rel, text)| diags.keep(budget::load(rel, &text)));
+    let rules = rule::Table::new(unsorted_rules);
+    let budget = budget.and_then(|(file, text)| diagnostics.keep(budget::load(file, &text)));
     if let (Some(meters), Some(world_meters), Some(paths)) = (&meters, &world_meters, &paths) {
-        let scope = EntityScope {
+        let entity_defs = EntityDefs {
             meters,
             world_meters,
             cast: &cast,
@@ -293,20 +269,20 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
             paths,
             stories: &stories,
         };
-        diags.extend(check_meter_reads(&scope, &rules));
-        diags.extend(check_carriers(&scope, &rules));
+        diagnostics.extend(find_unknown_meter_reads(&entity_defs, &rules));
+        diagnostics.extend(find_missing_components(&entity_defs, &rules));
     }
     if let Some(modifiers) = &modifiers {
-        diags.extend(check_modifiers(&rules, modifiers));
+        diagnostics.extend(find_unknown_modifiers(&rules, modifiers));
     }
-    diags.extend(check_rule_items(&rules, &items));
-    if let Some(path_lines) = &path_lines {
-        diags.extend(check_paths(path_lines, &places, &items));
+    diagnostics.extend(find_unknown_rule_items(&rules, &items));
+    if let Some(path_defs) = &path_defs {
+        diagnostics.extend(find_unknown_path_ids(path_defs, &places, &items));
     }
     let checkpoint_every = pack
         .as_ref()
-        .and_then(|pack| diags.keep(pack.checkpoint_every()));
-    diags.into_result(())?;
+        .and_then(|pack| diagnostics.keep(pack.checkpoint_every()));
+    diagnostics.into_result(())?;
     let (
         Some(pack),
         Some(paths),
@@ -368,11 +344,11 @@ mod tests {
             .any(|row| row.id == "restock_lamp_oil" && row.kind == "habit"));
         assert_eq!(
             summary.control_types.get("mira"),
-            Some(&canon::ControlType::Npc)
+            Some(&spookery_protocol::ControlType::Npc)
         );
         assert_eq!(
             summary.control_types.get("rowan"),
-            Some(&canon::ControlType::PcTemplate)
+            Some(&spookery_protocol::ControlType::PcTemplate)
         );
         let rendered = format!("{:?}{:?}", summary.menu, summary.control_types);
         assert!(!rendered.contains("CAST-BODY-SENTINEL"));

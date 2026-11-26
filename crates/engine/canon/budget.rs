@@ -4,8 +4,10 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_tagged, FileText, Locator, Problem, BUDGET_SCHEMA};
-use crate::diagnostic::Diagnostic;
+use crate::canon::refusal::{Diagnostics, FileText, Locator};
+use crate::diagnostic::{parse_tagged, Diagnostic};
+
+const SCHEMA: &str = "budget";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Budget {
@@ -20,7 +22,7 @@ pub struct Budget {
     pub live_acts_per_window: u64,
     /// Ticks in one live act window. `live_acts_per_window` resets when a window ends.
     pub live_act_window_ticks: u64,
-    /// Each cycle's length in ticks, by its id. `cycle` conditions read it.
+    /// Each cycle's length in ticks, by its id. `cycle` conds read it.
     pub cycles: BTreeMap<String, u64>,
     pub round_every_real_seconds: u64,
     /// Empty-table wakes. `false` leaves an empty table still.
@@ -60,14 +62,14 @@ impl Default for Budget {
     }
 }
 
-pub(crate) fn load(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    let doc: BudgetDoc = load_tagged(rel, text, BUDGET_SCHEMA)?;
-    let source = FileText { file: rel, text };
-    let mut diags = Vec::new();
+pub(super) fn load(file: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
+    let yaml: Yaml = parse_tagged(file, text, SCHEMA, false)?;
+    let file_text = FileText { file, text };
+    let mut diagnostics = Diagnostics::default();
     let mut budget = Budget::default();
     macro_rules! set_numbers {
         ($($key:ident >= $least:literal),* $(,)?) => {$(
-            set_number(&source, stringify!($key), doc.$key, &mut budget.$key, $least, &mut diags);
+            set_number(&file_text, stringify!($key), yaml.$key, &mut budget.$key, $least, &mut diagnostics);
         )*};
     }
     set_numbers!(
@@ -82,24 +84,20 @@ pub(crate) fn load(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
         live_act_window_ticks >= 1,
         round_every_real_seconds >= 1,
     );
-    for (id, length) in doc.cycles.unwrap_or_default() {
+    for (id, length) in yaml.cycles.unwrap_or_default() {
         match u64::try_from(length) {
             Ok(ticks) if ticks > 0 => {
                 budget.cycles.insert(id, ticks);
             }
-            _ => diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("cycles.{id}"),
-                    at: Locator::Key(&format!("{id}:")),
-                    message: format!("cycle {id} is {length}, which is not a positive length"),
-                    hint: "give the cycle a length of one tick or more",
-                }
-                .into_diagnostic(),
-            ),
+            _ => diagnostics.push(file_text.refuse_at(
+                &format!("cycles.{id}"),
+                Locator::Key(&format!("{id}:")),
+                format!("cycle {id} is {length}, which is not a positive length"),
+                "give the cycle a length of one tick or more",
+            )),
         }
     }
-    budget.idle_rounds = parse_idle(&source, doc.idle, &mut diags);
+    budget.idle_rounds = parse_idle(&file_text, yaml.idle, &mut diagnostics);
     set_numbers!(
         idle_ticks_per_round >= 1,
         live_ticks_per_round >= 0,
@@ -108,27 +106,24 @@ pub(crate) fn load(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
         max_fastforward_rounds >= 0,
         max_trigger_depth >= 0,
     );
-    if !diags.is_empty() {
-        return Err(diags);
-    }
-    Ok(budget)
+    diagnostics.into_result(budget)
 }
 
 /// `value` into `slot` when it is at least `least`; otherwise `slot` keeps its default.
 fn set_number(
-    source: &FileText,
+    file_text: &FileText,
     key: &str,
     value: Option<i64>,
     slot: &mut u64,
     least: i64,
-    diags: &mut Vec<Diagnostic>,
+    diagnostics: &mut Diagnostics,
 ) {
     let Some(n) = value else { return };
     if n >= least {
         *slot = n as u64;
         return;
     }
-    let problem = if n < 0 {
+    let message = if n < 0 {
         format!("{key} is {n}, which is below zero")
     } else {
         format!("{key} is 0, which is not a positive interval")
@@ -137,33 +132,20 @@ fn set_number(
         0 => "use a number that is zero or greater",
         _ => "use a number greater than zero",
     };
-    diags.push(
-        Problem {
-            source,
-            path: key,
-            at: Locator::Key(&format!("{key}:")),
-            message: problem,
-            hint,
-        }
-        .into_diagnostic(),
-    );
+    diagnostics.push(file_text.refuse_at(key, Locator::Key(&format!("{key}:")), message, hint));
 }
 
-fn parse_idle(source: &FileText, value: Option<String>, diags: &mut Vec<Diagnostic>) -> bool {
+fn parse_idle(file_text: &FileText, value: Option<String>, diagnostics: &mut Diagnostics) -> bool {
     match value.as_deref() {
         None | Some("on") => true,
         Some("off") => false,
         Some(other) => {
-            diags.push(
-                Problem {
-                    source,
-                    path: "idle",
-                    at: Locator::Key("idle:"),
-                    message: format!("idle is '{other}', which is not on or off"),
-                    hint: "write idle: on or idle: off",
-                }
-                .into_diagnostic(),
-            );
+            diagnostics.push(file_text.refuse_at(
+                "idle",
+                Locator::Key("idle:"),
+                format!("idle is '{other}', which is not on or off"),
+                "write idle: on or idle: off",
+            ));
             true
         }
     }
@@ -171,8 +153,7 @@ fn parse_idle(source: &FileText, value: Option<String>, diags: &mut Vec<Diagnost
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct BudgetDoc {
-    // repeats module: every file shape in canon ends in Doc
+struct Yaml {
     #[serde(rename = "schema")]
     _schema: String,
     max_intents_applied: Option<i64>,
@@ -186,7 +167,7 @@ struct BudgetDoc {
     live_act_window_ticks: Option<i64>,
     cycles: Option<BTreeMap<String, i64>>,
     round_every_real_seconds: Option<i64>,
-    #[serde(default, deserialize_with = "read_idle_word")]
+    #[serde(default, deserialize_with = "deserialize_idle_word")]
     idle: Option<String>,
     idle_ticks_per_round: Option<i64>,
     live_ticks_per_round: Option<i64>,
@@ -196,7 +177,7 @@ struct BudgetDoc {
     max_trigger_depth: Option<i64>,
 }
 
-fn read_idle_word<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+fn deserialize_idle_word<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -224,10 +205,11 @@ mod tests {
         let err = load(text).unwrap_err();
         assert!(err
             .iter()
-            .any(|diag| diag.message.contains("max_npcs_acting") && diag.line.is_some()));
+            .any(|diagnostic| diagnostic.message.contains("max_npcs_acting")
+                && diagnostic.line.is_some()));
         assert!(err
             .iter()
-            .any(|diag| diag.message.contains("idle_catchup_max_rounds")));
+            .any(|diagnostic| diagnostic.message.contains("idle_catchup_max_rounds")));
     }
 
     #[test]

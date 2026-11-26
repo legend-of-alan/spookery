@@ -158,10 +158,10 @@ fn capped_restock() -> u32 {
             .unwrap();
         let entry = ("docks_shop".into(), "lamp_oil".to_string());
         let stock = world.places().get::<component::Item>(&entry.0);
-        let held = i64::from(stock.get(&entry.1).copied().unwrap_or(0));
+        let count = i64::from(stock.get(&entry.1).copied().unwrap_or(0));
         let mut places = world.places_mut();
         let mut shop = places.get_mut::<component::Item>(&entry.0);
-        shop.shift("lamp_oil", 6 - held, None).unwrap();
+        shop.shift("lamp_oil", 6 - count, None).unwrap();
         write_save(&pack, &world);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));

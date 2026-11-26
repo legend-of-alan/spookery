@@ -93,9 +93,9 @@ fn assert_triggers_stop(
             records.len()
         )));
     }
-    let mut held = BTreeSet::new();
+    let mut flags = BTreeSet::new();
     for record in records {
-        held = check_round(record, rules, max, held, rowan_oil_gains(record))?;
+        flags = check_round(record, rules, max, flags, rowan_oil_gains(record))?;
     }
     assert_replay_matches(pack)
 }
@@ -133,7 +133,7 @@ fn check_round(
     record: &RoundRecord,
     rules: &[RuleSpec],
     max: u64,
-    mut held: BTreeSet<String>,
+    mut flags: BTreeSet<String>,
     starts: usize,
 ) -> Result<BTreeSet<String>, TestCaseError> {
     let logged: Vec<&str> = record
@@ -147,8 +147,8 @@ fn check_round(
     let mut index = 0usize;
     let mut capped = false;
     for _ in 0..starts {
-        let (next_held, hit) = check_chain(record, rules, max, held, &logged, &mut index)?;
-        held = next_held;
+        let (next_flags, hit) = check_chain(record, rules, max, flags, &logged, &mut index)?;
+        flags = next_flags;
         capped |= hit;
     }
     if index != logged.len() {
@@ -166,16 +166,16 @@ fn check_round(
             record.round_index, record.extra_steps
         )));
     }
-    Ok(held)
+    Ok(flags)
 }
 
 /// One chain, from the oil gain that lights it, read off `logged` from `index`. Returns the
-/// flags held after it and whether it hit the cap.
+/// the flags after it and whether it hit the cap.
 fn check_chain(
     record: &RoundRecord,
     rules: &[RuleSpec],
     max: u64,
-    mut held: BTreeSet<String>,
+    mut flags: BTreeSet<String>,
     logged: &[&str],
     index: &mut usize,
 ) -> Result<(BTreeSet<String>, bool), TestCaseError> {
@@ -185,13 +185,13 @@ fn check_chain(
     loop {
         let ready = ready_rules(rules, oil, &armed);
         if ready.is_empty() {
-            return Ok((held, false));
+            return Ok((flags, false));
         }
         if passes >= max {
-            return Ok((held, true));
+            return Ok((flags, true));
         }
         oil = false;
-        let mut next_held = held.clone();
+        let mut next_flags = flags.clone();
         let mut next_armed = BTreeSet::new();
         for rule in ready {
             let Some(got) = logged.get(*index) else {
@@ -211,9 +211,9 @@ fn check_chain(
                 )));
             }
             *index += 1;
-            apply_effects(&mut next_held, &mut next_armed, &rule.effects);
+            apply_effects(&mut next_flags, &mut next_armed, &rule.effects);
         }
-        held = next_held;
+        flags = next_flags;
         armed = next_armed;
         passes += 1;
     }
@@ -234,16 +234,16 @@ fn ready_rules<'a>(
 }
 
 fn apply_effects(
-    held: &mut BTreeSet<String>,
+    flags: &mut BTreeSet<String>,
     armed: &mut BTreeSet<String>,
     effects: &[(String, bool)],
 ) {
     for (flag, value) in effects {
         if *value {
-            if held.insert(flag.clone()) {
+            if flags.insert(flag.clone()) {
                 armed.insert(flag.clone());
             }
-        } else if held.remove(flag) {
+        } else if flags.remove(flag) {
             armed.remove(flag);
         }
     }

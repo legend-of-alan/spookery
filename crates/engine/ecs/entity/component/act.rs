@@ -73,9 +73,9 @@ impl Mut<'_, entity::Actors, Act> {
         edit: impl FnOnce(&mut Act),
     ) -> Result<(), Reason> {
         self.check_exists()?;
-        let held = self.store().get(self.id).unwrap_or(&NOT_ACTED);
-        let before = read(held);
-        let mut next = held.clone();
+        let act = self.store().get(self.id).unwrap_or(&NOT_ACTED);
+        let before = read(act);
+        let mut next = act.clone();
         edit(&mut next);
         let key = change::Key::new(component_id, self.id.as_id_ref(), None);
         let change = Change::new(key, before, read(&next));

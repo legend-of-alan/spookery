@@ -349,12 +349,12 @@ fn rowans_vigor(world: &World) -> i64 {
 fn vigor_of(world: &World, actor: &str) -> i64 {
     let now = world_of(host::pack(world));
     let id = actor.into();
-    let live = now
+    let meter = now
         .actors()
         .get::<component::Meter>(&id)
         .get_or_base("vigor")
         .unwrap_or_else(|| panic!("{actor}'s vigor missing"));
-    live.base + live.offset
+    meter.base + meter.offset
 }
 
 /// The first dice line in the GM's commit reply.

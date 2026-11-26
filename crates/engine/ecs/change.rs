@@ -1,4 +1,4 @@
-//! Change keys a commit watches, and the values they held.
+//! Change keys a commit watches, and their previous values.
 
 use std::fmt;
 

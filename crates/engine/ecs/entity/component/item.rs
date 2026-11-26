@@ -40,7 +40,7 @@ impl Mut<'_, entity::Actors, Item> {
         self.shift_held(entry_id, delta, max)?;
         let actors = Reader::new(&*self.writer.components, self.writer.canon);
         let wielded = actors.get::<WieldedItem>(self.id).get();
-        if wielded.is_some_and(|held| !actors.get::<Item>(self.id).contains(held)) {
+        if wielded.is_some_and(|item_id| !actors.get::<Item>(self.id).contains(item_id)) {
             (self.writer.get_mut::<WieldedItem>(self.id)).set(None)?;
         }
         Ok(())

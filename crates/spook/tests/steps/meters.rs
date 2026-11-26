@@ -351,7 +351,7 @@ fn both_rules_run_three_rounds(world: &mut World) {
     }
 }
 
-#[then(expr = "dawn is 0, held once by the world")]
+#[then(expr = "dawn is 0, saved once on the world")]
 fn dawn_is_zero(world: &mut World) {
     assert_eq!(value_on(pack(world), &entity::Id::Global, "dawn"), Some(0));
 }

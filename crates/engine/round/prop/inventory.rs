@@ -9,7 +9,7 @@
 //!     Then no count is negative
 //!     And a refused effect leaves the save unchanged
 //!     And a positive add never leaves a count above that effect's max
-//!     And taking away more than is held is refused
+//!     And taking away more than the count is refused
 //! ```
 //!
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
@@ -30,7 +30,7 @@ use proptest::test_runner::{TestCaseError, TestRunner};
 
 #[derive(Clone, Debug)]
 struct ItemChange {
-    carrier: entity::Id,
+    entity_id: entity::Id,
     id: String,
     delta: i64,
     max: Option<i64>,
@@ -68,8 +68,8 @@ fn apply_changes(
     let intent = npc_intent();
     for step in steps {
         let before = world.clone();
-        let known = is_known_entity(canon, &world, &step.carrier);
-        let held = count_of(&world, &step.carrier, &step.id);
+        let known = is_known_entity(canon, &world, &step.entity_id);
+        let count = count_of(&world, &step.entity_id, &step.id);
         let outcome = item_effect(step).apply(canon, &mut world, &nobody, &intent);
         assert_no_stored_zero(&world)?;
         if !known {
@@ -83,10 +83,10 @@ fn apply_changes(
             assert_same_save(&world, &before)?;
             continue;
         }
-        let got = count_of(&world, &step.carrier, &step.id);
-        if takes_more_than_held(held, step.delta) {
+        let got = count_of(&world, &step.entity_id, &step.id);
+        if takes_more_than_count(count, step.delta) {
             return fail(format!(
-                "taking {} from {held} of {} was accepted and the count is {got}",
+                "taking {} from {count} of {} was accepted and the count is {got}",
                 step.delta, step.id
             ));
         }
@@ -116,13 +116,13 @@ fn assert_same_save(world: &ecs::World, before: &ecs::World) -> Result<(), TestC
 /// A stored count is a `u32`, so it cannot be negative. A count of 0 is omitted.
 fn assert_no_stored_zero(world: &ecs::World) -> Result<(), TestCaseError> {
     let actor_items = world.actors().query::<&component::Item>();
-    for (actor_id, item_id, count) in actor_items.iter().flat_map(|held| held.iter_with_id()) {
+    for (actor_id, item_id, count) in actor_items.iter().flat_map(|entry| entry.iter_with_id()) {
         if *count == 0 {
             return fail(format!("{actor_id} stores a zero count of {item_id}"));
         }
     }
     let place_items = world.places().query::<&component::Item>();
-    for (place_id, item_id, count) in place_items.iter().flat_map(|held| held.iter_with_id()) {
+    for (place_id, item_id, count) in place_items.iter().flat_map(|entry| entry.iter_with_id()) {
         if *count == 0 {
             return fail(format!("{place_id} stores a zero count of {item_id}"));
         }
@@ -130,16 +130,16 @@ fn assert_no_stored_zero(world: &ecs::World) -> Result<(), TestCaseError> {
     Ok(())
 }
 
-fn is_known_entity(canon: &Canon, world: &ecs::World, carrier: &entity::Id) -> bool {
-    match carrier {
+fn is_known_entity(canon: &Canon, world: &ecs::World, entity_id: &entity::Id) -> bool {
+    match entity_id {
         entity::Id::Actor(id) => world.actors().contains(id),
         entity::Id::Place(id) => canon.places.contains_key(id),
         entity::Id::Path(_) | entity::Id::Story(_) | entity::Id::Global => false,
     }
 }
 
-fn count_of(world: &ecs::World, carrier: &entity::Id, id: &str) -> u32 {
-    match carrier {
+fn count_of(world: &ecs::World, entity_id: &entity::Id, id: &str) -> u32 {
+    match entity_id {
         entity::Id::Actor(actor_id) => world
             .actors()
             .get::<component::Item>(actor_id)
@@ -156,9 +156,9 @@ fn count_of(world: &ecs::World, carrier: &entity::Id, id: &str) -> u32 {
     }
 }
 
-fn takes_more_than_held(held: u32, delta: i64) -> bool {
+fn takes_more_than_count(count: u32, delta: i64) -> bool {
     delta < 0
-        && i64::from(held)
+        && i64::from(count)
             .checked_add(delta)
             .is_some_and(|next| next < 0)
 }
@@ -177,7 +177,7 @@ fn npc_intent() -> Intent {
 }
 
 fn item_effect(step: &ItemChange) -> Effect {
-    let (actor_id, place) = match &step.carrier {
+    let (actor_id, place) = match &step.entity_id {
         entity::Id::Actor(id) => (Some(id.clone()), None),
         entity::Id::Place(id) => (None, Some(id.clone())),
         entity::Id::Path(_) | entity::Id::Story(_) | entity::Id::Global => (None, None),
@@ -205,8 +205,8 @@ fn pick_changes(actors: &[ActorId], places: &[PlaceId]) -> impl Strategy<Value =
             pick_delta(),
             pick_max(),
         )
-            .prop_map(|(carrier, id, delta, max)| ItemChange {
-                carrier,
+            .prop_map(|(entity_id, id, delta, max)| ItemChange {
+                entity_id,
                 id,
                 delta,
                 max,

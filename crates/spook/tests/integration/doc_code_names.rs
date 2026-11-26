@@ -61,9 +61,9 @@ fn named_code_exists() {
         for (number, line) in text.lines().enumerate() {
             in_fence ^= line.trim_start().starts_with("```");
             for code in line.split('`').skip(1).step_by(2).filter(|_| !in_fence) {
-                if let Some(problem) = describe_missing(code, &paths, &declared) {
+                if let Some(message) = describe_missing(code, &paths, &declared) {
                     let doc = doc.strip_prefix(&root).unwrap_or(&doc).display();
-                    missing.push(format!("{doc}:{}: `{code}` {problem}", number + 1));
+                    missing.push(format!("{doc}:{}: `{code}` {message}", number + 1));
                 }
             }
         }

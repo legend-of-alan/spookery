@@ -158,6 +158,6 @@ where
 }
 
 /// A component's text as a change value, `None` when there is none.
-fn text_value(held: Option<impl AsRef<str>>) -> Option<ChangeValue> {
-    held.map(|held| ChangeValue::Text(held.as_ref().to_string()))
+fn text_value(value: Option<impl AsRef<str>>) -> Option<ChangeValue> {
+    value.map(|value| ChangeValue::Text(value.as_ref().to_string()))
 }

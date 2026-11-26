@@ -366,7 +366,7 @@ fn play_an_empty_round(pack: &Path) {
                 err.as_str(),
                 spookery_engine::check_pack(pack)
                     .iter()
-                    .map(|diag| diag.to_string())
+                    .map(|diagnostic| diagnostic.to_string())
                     .collect::<Vec<_>>()
                     .join("\n")
             )
@@ -948,7 +948,7 @@ pub(super) fn open(pack: &Path) -> spookery_engine::Session {
             err.as_str(),
             spookery_engine::check_pack(pack)
                 .iter()
-                .map(|diag| diag.to_string())
+                .map(|diagnostic| diagnostic.to_string())
                 .collect::<Vec<_>>()
                 .join("\n")
         )

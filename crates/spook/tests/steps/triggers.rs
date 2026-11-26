@@ -129,9 +129,9 @@ fn nell_found_the_ledger(world: &mut World, tide: i64) {
     let flags = now.actors().get::<component::Flag>(&nell);
     assert!(flags.contains("found_ledger"), "nell has no found_ledger");
     let world_meters = now.globals().query::<&component::Meter>();
-    let tide_meter = world_meters.iter().find_map(|held| held.get("tide"));
-    let live = tide_meter.expect("the world's tide");
-    assert_eq!(live.base + live.offset, tide, "{live:?}");
+    let tide_meter = world_meters.iter().find_map(|meters| meters.get("tide"));
+    let meter = tide_meter.expect("the world's tide");
+    assert_eq!(meter.base + meter.offset, tide, "{meter:?}");
 }
 
 #[given(expr = "two rules that set each other's watched flag")]
@@ -362,11 +362,11 @@ fn the_viewer_is_told(world: &mut World, viewer: String, text: String) {
 }
 
 /// A trapdoor from the street to a cellar that `found_trapdoor` reveals, and an `uncover` verb
-/// that sets that flag on `carrier`, `self` or `world`.
+/// that sets that flag on `entity`, `self` or `world`.
 #[given(
     expr = "the street has an exit revealed by the found_trapdoor flag, which uncover sets on {word}"
 )]
-fn the_street_has_a_trapdoor(world: &mut World, carrier: String) {
+fn the_street_has_a_trapdoor(world: &mut World, entity: String) {
     let pack = copy_pack("docks", "trigger-uncover");
     support::append(
         &pack.join("world/map.yaml"),
@@ -379,7 +379,7 @@ fn the_street_has_a_trapdoor(world: &mut World, carrier: String) {
     .unwrap();
     add_verb(
         &pack,
-        &format!("\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - flag:\n          of: {carrier}\n          key: found_trapdoor\n          value: true\n"),
+        &format!("\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - flag:\n          of: {entity}\n          key: found_trapdoor\n          value: true\n"),
     );
     write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
@@ -479,7 +479,7 @@ fn nell_sets_the_tide(world: &mut World) {
 /// The flags the world holds, in name order, for a failure message.
 pub(crate) fn world_flags(world: &ecs::World) -> Vec<String> {
     let globals = world.globals().query::<&component::Flag>();
-    let flags = globals.iter().flat_map(|held| held.iter_with_id());
+    let flags = globals.iter().flat_map(|entry| entry.iter_with_id());
     flags.map(|(_, flag, ())| flag.to_string()).collect()
 }
 
@@ -612,7 +612,7 @@ fn an_empty_round_passes(world: &mut World) {
 fn no_place_has_the_meter(world: &mut World, meter: String) {
     let now = world_of(world.pack.as_ref().unwrap());
     let places = now.places().query::<&component::Meter>();
-    assert!(!places.iter().any(|held| held.contains(&meter)));
+    assert!(!places.iter().any(|meters| meters.contains(&meter)));
 }
 
 #[when(expr = "nell travels from docks_street into docks_shop")]

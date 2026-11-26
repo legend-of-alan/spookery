@@ -27,7 +27,7 @@ fn find_tip_pack_rev<'rec>(live: &'rec [Record], save: &'rec Save) -> &'rec str 
 fn find_pack_rev_mismatch(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagnostic> {
     match pack_rev(root) {
         Ok(rev) if tip != rev => {
-            let mut diag = error(
+            let mut diagnostic = error(
                 "state/save.yaml",
                 Reason::PackRevMismatch,
                 "pack_rev does not match the canon hash",
@@ -35,11 +35,9 @@ fn find_pack_rev_mismatch(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagno
             )
             .at_path("pack_rev");
             if let Ok(text) = std::str::from_utf8(bytes) {
-                if let Some((line, column)) = locate_nth(text, "pack_rev:", 0) {
-                    diag = diag.at_line(line, Some(column));
-                }
+                diagnostic = diagnostic.at_file_location(locate_nth(text, "pack_rev:", 0));
             }
-            Some(diag)
+            Some(diagnostic)
         }
         Ok(_) => None,
         Err(_) => Some(
@@ -62,7 +60,7 @@ fn journal_continues(live: &[Record], save: &Save) -> bool {
     })
 }
 
-/// The save in `bytes`, or every problem with it. A hand edit is refused unless a later
+/// The save in `bytes`, or every diagnostic for it. A hand edit is refused unless a later
 /// migrate record accepted it. A checkpoint save is not the tip, so only a save that no
 /// record continues is checked against `canon`.
 pub(crate) fn load_save_file(
@@ -80,21 +78,21 @@ pub(crate) fn load_save_file(
     })?;
     let save = save::parse(text)?;
     let live = journal::read_live_records(root).unwrap_or_default();
-    let mut problems = find_save_text_problems(&save, bytes);
-    if let Some(diag) = find_pack_rev_mismatch(root, find_tip_pack_rev(&live, &save), bytes) {
-        problems.insert(0, diag);
+    let mut diagnostics = find_save_text_diagnostics(&save, bytes);
+    if let Some(diagnostic) = find_pack_rev_mismatch(root, find_tip_pack_rev(&live, &save), bytes) {
+        diagnostics.insert(0, diagnostic);
     }
     let migrate_follows = live.iter().any(|entry| {
         matches!(entry, Record::Migrate(_)) && entry.state_rev_after() > save.state_rev
     });
     let continues = journal_continues(&live, &save);
-    let is_hand_edit = |diag: &Diagnostic| diag.code == Code::Error(Reason::HandEdit);
+    let is_hand_edit = |diagnostic: &Diagnostic| diagnostic.code == Code::Error(Reason::HandEdit);
     if migrate_follows {
-        problems.retain(|diag| !is_hand_edit(diag));
-    } else if !problems.iter().any(is_hand_edit) {
+        diagnostics.retain(|diagnostic| !is_hand_edit(diagnostic));
+    } else if !diagnostics.iter().any(is_hand_edit) {
         match journal::edits_head(root, save.state_rev, bytes) {
             Ok(false) => {}
-            Ok(true) => problems.push(
+            Ok(true) => diagnostics.push(
                 error(
                     "state/save.yaml",
                     Reason::HandEdit,
@@ -103,10 +101,10 @@ pub(crate) fn load_save_file(
                 )
                 .at_path("save"),
             ),
-            Err(fault) => problems.push(
+            Err(err) => diagnostics.push(
                 error(
                     "state/journal/head.json",
-                    fault.reason,
+                    err.reason,
                     "the checkpoint head could not be read",
                     "check that state/journal/head.json is readable",
                 )
@@ -116,24 +114,24 @@ pub(crate) fn load_save_file(
     }
     if let Some(canon) = canon.filter(|_| !continues) {
         if let Err(more) = save::check(&ecs::World::new(save.clone(), Arc::clone(canon))) {
-            problems.extend(more);
+            diagnostics.extend(more);
         }
     }
-    if problems.is_empty() {
+    if diagnostics.is_empty() {
         Ok(save)
     } else {
-        Err(problems)
+        Err(diagnostics)
     }
 }
 
-/// Read the pack and report every loader and lint problem. Writes nothing.
+/// Read the pack and report every loader and lint diagnostic. Writes nothing.
 pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     // repeats module: re-exported at the crate root
-    let mut diags = Vec::new();
+    let mut diagnostics = Vec::new();
     let canon = match load_canon(root) {
         Ok(canon) => Some(Arc::new(canon)),
         Err(more) => {
-            diags.extend(more);
+            diagnostics.extend(more);
             None
         }
     };
@@ -141,10 +139,10 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     match journal::read_save(&journal::save_path(root)) {
         Ok(bytes) => match load_save_file(root, canon.as_ref(), &bytes) {
             Ok(loaded) => save = Some(loaded),
-            Err(more) => diags.extend(more),
+            Err(more) => diagnostics.extend(more),
         },
         Err(Reason::NotInSpec) => {}
-        Err(reason) => diags.push(
+        Err(reason) => diagnostics.push(
             error(
                 "state/save.yaml",
                 reason,
@@ -156,46 +154,46 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     }
     if let Some(canon) = &canon {
         let world = save.map(|save| ecs::World::new(save, Arc::clone(canon)));
-        let held_flags = world
+        let saved_flags = world
             .as_ref()
-            .map(save::find_held_flags)
+            .map(save::find_saved_flags)
             .unwrap_or_default();
-        diags.extend(crate::canon::check_canon(canon, &held_flags));
+        diagnostics.extend(crate::canon::lint::run(canon, &saved_flags));
     }
-    diags
+    diagnostics
 }
 
 /// The reserved actor id `world` in the save, and a save that is not its own canonical text.
-fn find_save_text_problems(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
+fn find_save_text_diagnostics(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
     let saved = serde_json::to_value(save).unwrap_or_default();
     if saved["actors"]["control_type"].get("world").is_some() {
-        let diag = schema_error(
+        let diagnostic = schema_error(
             "state/save.yaml",
             "actor id world is reserved",
             "rename that actor",
         );
-        diags.push(diag.at_path("actors.world"));
+        diagnostics.push(diagnostic.at_path("actors.world"));
     }
     match save::emit(save) {
         Ok(emitted) if emitted.as_bytes() != bytes => {
             let line = std::str::from_utf8(bytes)
                 .ok()
                 .and_then(|live| first_diff_line(live, &emitted).map(|(line_no, _)| line_no));
-            let mut diag = error(
+            let mut diagnostic = error(
                 "state/save.yaml",
                 Reason::HandEdit,
                 "this save does not match the canonical text",
                 "run spook migrate to keep the edit, or restore the file",
             );
-            diag = match line {
-                Some(line) => diag.at_line(line, None),
-                None => diag.at_path("save"),
+            diagnostic = match line {
+                Some(line) => diagnostic.at_line(line, None),
+                None => diagnostic.at_path("save"),
             };
-            diags.push(diag);
+            diagnostics.push(diagnostic);
         }
         Ok(_) => {}
-        Err(_) => diags.push(
+        Err(_) => diagnostics.push(
             error(
                 "state/save.yaml",
                 Reason::Schema,
@@ -205,7 +203,7 @@ fn find_save_text_problems(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
             .at_path("save"),
         ),
     }
-    diags
+    diagnostics
 }
 
 /// First 1-based line number and line text from `live` that differs from `expected`.

@@ -186,29 +186,29 @@ impl Parser<'_> {
         while self.peek().is_ascii_alphanumeric() || matches!(self.peek(), '_' | ':' | '.') {
             self.pos += 1;
         }
-        let owner_and_key = &self.src[start..self.pos];
-        if owner_and_key == word {
+        let entity_and_key = &self.src[start..self.pos];
+        if entity_and_key == word {
             return Ok(Expr::Let {
                 id: word,
                 keep: None,
             });
         }
-        let Some((owner, key)) = owner_and_key.rsplit_once('.') else {
+        let Some((entity, key)) = entity_and_key.rsplit_once('.') else {
             return Err(self.not_a_number());
         };
         if !key.starts_with(|ch: char| ch.is_ascii_alphabetic() || ch == '_') || key.contains(':') {
             return Err(self.not_a_number());
         }
-        let of = match grammar::Object::parse(owner)? {
+        let of = match grammar::Object::parse(entity)? {
             grammar::Object::Path(_) => {
-                return Err(format!("'{owner}' is a path, which has no meters"))
+                return Err(format!("'{entity}' is a path, which has no meters"))
             }
             of => of,
         };
         Ok(Expr::Meter {
             of,
             key: key.to_string(),
-            spot: None,
+            file_location: None,
         })
     }
 

@@ -87,7 +87,7 @@ async fn the_player_reconnects(world: &mut World) {
 
 #[then(expr = "it holds rowan again and receives the messages after its last seq")]
 async fn it_holds_rowan_and_catches_up(world: &mut World) {
-    let missed = held_again(world, false);
+    let missed = claimed_again(world, false);
     let texts: Vec<String> = (1..=100).map(|index| format!("line {index}")).collect();
     assert_eq!(texts_in(&missed), texts);
     let player = host::player_client(world, "rowan");
@@ -119,7 +119,7 @@ fn each_claim_said_the_clock(
 
 #[then(expr = "it holds rowan again with a gap and the newest 256 messages")]
 fn it_holds_rowan_with_a_gap(world: &mut World) {
-    let missed = held_again(world, true);
+    let missed = claimed_again(world, true);
     let texts: Vec<String> = (45..=300).map(|index| format!("line {index}")).collect();
     assert_eq!(texts_in(&missed), texts);
 }
@@ -149,7 +149,7 @@ fn the_reconnect_is_refused(world: &mut World, code: String) {
 
 /// The reconnect's `claimed` reply holds Rowan under the same token, with `is_missed_truncated`
 /// equal to `is_truncated`. Returns its `missed_messages`, each after the old connection's last `seq`.
-fn held_again(world: &World, is_truncated: bool) -> Vec<Value> {
+fn claimed_again(world: &World, is_truncated: bool) -> Vec<Value> {
     let reply = parse(&world.player_added);
     let body = &reply["body"];
     assert_eq!(body["kind"], "claimed", "{reply}");

@@ -284,8 +284,8 @@ fn a_rule_gives_lamp_oil(world: &mut World, of: String) {
 fn the_attic_holds_lamp_oil(world: &mut World) {
     let now = world_of(world.pack.as_deref().unwrap());
     let attic = "attic".into();
-    let held = now.places().get::<component::Item>(&attic).get("lamp_oil");
-    assert_eq!(held, Some(&1));
+    let oil = now.places().get::<component::Item>(&attic).get("lamp_oil");
+    assert_eq!(oil, Some(&1));
 }
 
 #[when(expr = "a rule leaves a note in the attic")]

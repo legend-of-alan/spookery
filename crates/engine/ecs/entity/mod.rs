@@ -69,7 +69,7 @@ macro_rules! has {
         impl entity::QueryData<$entities> for &$component {
             type Item<'a> = &'a <$component as component::Component>::Value;
 
-            fn carriers<'a>(entities: Reader<'a, $entities>) -> Option<entity::query::Ids<'a, $entities>> {
+            fn entity_ids<'a>(entities: Reader<'a, $entities>) -> Option<entity::query::Ids<'a, $entities>> {
                 Some(Box::new(entities.components.$store.keys()))
             }
 

@@ -8,13 +8,13 @@ use crate::ecs::{self, component, Presence};
 use crate::intent::Target;
 use crate::rules::cond;
 use crate::rules::gate::{list_ids, verb_for, NamedId};
-use crate::rules::rule::{Owner, TargetKind};
+use crate::rules::rule::{Scope, TargetKind};
 use crate::rules::travel::{exit_view, exits_at};
 use crate::Reason;
 
 /// `help`: the built-in player commands but `claim`, then each pack verb `verb_for` reaches
 /// now and whose `if` holds. A cast member's or item's verb is reached by naming them
-/// (`list_ids`), so it carries that owner as its one name. Each name is the one the
+/// (`list_ids`), so it carries that entity as its one name. Each name is the one the
 /// player reads. Cost is not checked.
 pub(crate) fn help(
     canon: &Canon,
@@ -48,12 +48,12 @@ pub(crate) fn help(
             let Some(rule) = verb_for(canon, world, actor_id, &verb_id, hint) else {
                 continue;
             };
-            let (owner, target) = match (&rule.owner, hint) {
+            let (owner, target) = match (&rule.scope, hint) {
                 (_, None) => (None, Target::Empty),
-                (Owner::Cast(id), Some(hint)) if id == hint => {
+                (Scope::Cast(id), Some(hint)) if id == hint => {
                     (Some(id), Target::Actor(id.clone().into()))
                 }
-                (Owner::Item(id), Some(hint)) if id == hint => (Some(id), Target::Item(id.clone())),
+                (Scope::Item(id), Some(hint)) if id == hint => (Some(id), Target::Item(id.clone())),
                 _ => continue,
             };
             if !cond::if_holds(
@@ -61,7 +61,7 @@ pub(crate) fn help(
             ) {
                 continue;
             }
-            let kind = rule.when.target_kind();
+            let kind = rule.kind.target_kind();
             let target_ids = match owner {
                 Some(owner) => vec![owner.clone()],
                 None => list_target_ids(canon, world, actor_id, kind, &ids),
@@ -144,7 +144,7 @@ pub(crate) fn map(
         Ok(PlaceView {
             place_id: place_id.to_string(),
             name: find_place_name(canon, place_id).ok_or(Reason::UnknownId)?,
-            exits: (canon.exits(place_id))
+            exits: (canon.paths.exits(place_id))
                 .filter(|exit| {
                     seen_path_ids
                         .iter()

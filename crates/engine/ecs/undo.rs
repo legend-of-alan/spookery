@@ -24,12 +24,12 @@ pub trait Entries {
     type Key: Ord + Clone + Debug;
     type Value: PartialEq + Debug;
     fn get(&self, key: &Self::Key) -> Option<&Self::Value>;
-    /// Put `value` under `key`, `None` taking the entry off. What the entry held before. The key
+    /// Put `value` under `key`, `None` taking the entry off. The previous value. The key
     /// is cloned only for an entry that is new.
     fn put(&mut self, key: &Self::Key, value: Option<Self::Value>) -> Option<Self::Value>;
 }
 
-/// What one entry held before a write: `None` when it was not there.
+/// The previous value of one entry: `None` when it was not there.
 #[derive(Debug)]
 pub struct EntryInverse<K, V> {
     key: K,
@@ -51,7 +51,7 @@ impl<K: Ord + Clone + Debug, V: PartialEq + Debug> Entries for BTreeMap<K, V> {
     }
     fn put(&mut self, key: &K, value: Option<V>) -> Option<V> {
         match (value, self.get_mut(key)) {
-            (Some(value), Some(held)) => Some(std::mem::replace(held, value)),
+            (Some(value), Some(previous)) => Some(std::mem::replace(previous, value)),
             (Some(value), None) => self.insert(key.clone(), value),
             (None, _) => self.remove(key),
         }
@@ -158,8 +158,8 @@ impl<T: Entries> Store<T> {
         if self.value.get(&key) == value.as_ref() {
             return Ok(());
         }
-        let undo = |held: &mut T| EntryInverse {
-            previous: held.put(&key, value),
+        let undo = |store: &mut T| EntryInverse {
+            previous: store.put(&key, value),
             key,
         };
         self.record(transaction, undo, reports)

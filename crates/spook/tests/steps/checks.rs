@@ -251,7 +251,7 @@ async fn hp_is(world: &mut World, actor: String, expected: i64) {
         let now = world_of(&pack);
         match now.entities().get::<component::Meter>(&id).value("hp") {
             Ok(hp) if hp == expected => Ok(()),
-            held => Err(format!("hp {held:?}")),
+            got => Err(format!("hp {got:?}")),
         }
     })
     .await;

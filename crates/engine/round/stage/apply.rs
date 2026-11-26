@@ -1,6 +1,7 @@
 //! Start each action: gate it again, pay for it, and finish it now or leave it pending.
 
-use crate::canon::{Canon, Exit};
+use crate::canon::map::Exit;
+use crate::canon::Canon;
 use crate::ecs::{self, component, PendingAction, Presence};
 use crate::intent::Intent;
 use crate::rules::context::Context;

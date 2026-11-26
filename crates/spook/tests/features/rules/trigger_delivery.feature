@@ -6,15 +6,15 @@ Feature: Trigger delivery
     And "wren" is not told "The bell rings."
     And spook verify passes on this pack
 
-  Scenario Outline: A flag on <carrier> uncovers an exit
-    Given the street has an exit revealed by the found_trapdoor flag, which uncover sets on <carrier>
+  Scenario Outline: A flag on <entity> uncovers an exit
+    Given the street has an exit revealed by the found_trapdoor flag, which uncover sets on <entity>
     When nell uncovers the trapdoor
     Then nell can see the trapdoor
     And wren <wren_can> see the trapdoor
     And spook verify passes on this pack
 
     Examples:
-      | carrier | wren_can |
+      | entity | wren_can |
       | self    | cannot   |
       | world   | can      |
 

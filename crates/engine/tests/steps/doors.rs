@@ -146,8 +146,8 @@ fn mira_drops_the_key(world: &mut World) {
     plays(world, "mira", "drop", Some("brass_key"));
     let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     let mira = "mira".into();
-    let held = saved.world().actors().get::<component::Item>(&mira);
-    assert!(!held.contains("brass_key"));
+    let items = saved.world().actors().get::<component::Item>(&mira);
+    assert!(!items.contains("brass_key"));
 }
 
 #[then(expr = "Mira can still take the stairs")]
@@ -173,8 +173,8 @@ fn the_door_is_open_from_the_rooms(world: &mut World) {
 fn aldric_takes_the_stairs(world: &mut World) {
     let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     let aldric = "aldric".into();
-    let held = saved.world().actors().get::<component::Item>(&aldric);
-    assert!(!held.contains("brass_key"));
+    let items = saved.world().actors().get::<component::Item>(&aldric);
+    assert!(!items.contains("brass_key"));
     drop(saved);
     plays(world, "aldric", "travel", Some("stairs"));
 }

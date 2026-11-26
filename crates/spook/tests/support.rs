@@ -15,8 +15,8 @@ pub(crate) fn edit_meter(
     edit: impl FnOnce(&mut Meter),
 ) {
     let actor = ActorId::from(actor);
-    let held = now.actors().get::<Meter>(&actor).get_or_base(key);
-    let mut meter = held.unwrap_or_else(|| panic!("{actor} has no {key}"));
+    let meter = now.actors().get::<Meter>(&actor).get_or_base(key);
+    let mut meter = meter.unwrap_or_else(|| panic!("{actor} has no {key}"));
     edit(&mut meter);
     let mut actors = now.actors_mut();
     actors
@@ -49,7 +49,7 @@ pub(crate) fn edit_as_saved(now: &mut ecs::World, edit: impl FnOnce(&mut serde_j
 
 /// Leave `id`, an actor or a place, holding `count` of `item`, through the writer.
 pub(crate) fn put_items(now: &mut ecs::World, id: &entity::Id, item: &str, count: u32) {
-    let to_count = |held: Option<&u32>| i64::from(count) - i64::from(held.copied().unwrap_or(0));
+    let to_count = |have: Option<&u32>| i64::from(count) - i64::from(have.copied().unwrap_or(0));
     let put = match id {
         entity::Id::Actor(actor) => {
             let delta = to_count(now.actors().get::<component::Item>(actor).get(item));

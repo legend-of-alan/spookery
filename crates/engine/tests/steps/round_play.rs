@@ -332,8 +332,8 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
 fn rest_is(world: &mut World, actor: String, rest: i64) {
     let now = support::world_of(world.pack());
     let actor = spookery_engine::entity::Id::Actor(resolve_id(now.canon(), &actor).into());
-    let held = now.entities().get::<component::Meter>(&actor).value("rest");
-    assert_eq!(held, Ok(rest), "{}", world.scratch);
+    let rest_now = now.entities().get::<component::Meter>(&actor).value("rest");
+    assert_eq!(rest_now, Ok(rest), "{}", world.scratch);
 }
 
 #[given(
@@ -742,15 +742,15 @@ fn strike_line(scratch: &str, actor: &str) -> (i64, i64) {
 /// The total of `actor_id`'s first strike key this round: the docks strike's `1d20 + self.might`.
 fn derive_first_strike(pack: &Path, actor_id: &str) -> i64 {
     let session = spookery_engine::Session::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
-    let desc = session.canon().meters.get("might").unwrap();
+    let def = session.canon().meters.get("might").unwrap();
     let actor = actor_id.into();
-    let live = session
+    let meter = session
         .world()
         .actors()
         .get::<component::Meter>(&actor)
         .get("might")
         .unwrap_or_else(|| panic!("missing {actor_id}'s might"));
-    let stat = (live.base + live.offset).clamp(desc.min, desc.max);
+    let stat = (meter.base + meter.offset).clamp(def.min, def.max);
     let rolled = roll::faces(
         &roll::Key {
             seed: session.world().seed.clone(),
