@@ -11,7 +11,7 @@ use crate::rules::context::Context;
 use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
 use crate::rules::grammar;
-use crate::rules::rule::{ChangeWatch, Op, Rule, RuleKind};
+use crate::rules::rule::{ChangeWatch, Rule, RuleKind};
 use crate::store::records::Step;
 
 use crate::round::stage::apply;
@@ -182,7 +182,12 @@ fn matches_subject(world: &ecs::World, subject: &grammar::Subject, actor: &Actor
     }
 }
 
-fn crosses(before: Option<&ChangeValue>, after: Option<&ChangeValue>, op: Op, bound: i64) -> bool {
+fn crosses(
+    before: Option<&ChangeValue>,
+    after: Option<&ChangeValue>,
+    op: cond::Op,
+    bound: i64,
+) -> bool {
     let (Some(before), Some(after)) = (as_number(before), as_number(after)) else {
         return false;
     };

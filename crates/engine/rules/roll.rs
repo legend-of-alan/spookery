@@ -1,7 +1,9 @@
-//! Roll keys, the faces a key rolls, and the band a check's total lands in.
+//! Roll keys, the faces a key rolls, a check, and the band its total lands in.
 
 use crate::ecs::id::ActorId;
 use crate::hash::blake2s_256;
+use crate::rules::context::Context;
+use crate::rules::expr::{eval, Expr};
 use crate::rules::gate;
 use crate::Reason;
 
@@ -23,6 +25,43 @@ pub(crate) fn classify(total: i64, success_at: i64, partial_at: Option<i64>) -> 
 /// One check's total, the bar it met or missed, and its band. The save does not store it, and
 /// the journal keeps only the round's dice lines.
 pub(crate) use spookery_protocol::Roll;
+
+/// A `check:`, a rule's or a nested one: `total` against `success_at`, with an optional lower
+/// `partial_at` band.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Check {
+    pub total: Expr,
+    pub success_at: Expr,
+    pub partial_at: Option<Expr>,
+}
+
+impl Check {
+    /// The total, the success bar, then the partial band.
+    pub(crate) fn exprs(&self) -> impl Iterator<Item = &Expr> {
+        [&self.total, &self.success_at]
+            .into_iter()
+            .chain(&self.partial_at)
+    }
+
+    /// Evaluate `total`, then `success_at`, then `partial_at` on `dice`, each writing its own
+    /// dice line, and classify the total.
+    pub(crate) fn roll(
+        &self,
+        context: &Context,
+        dice: &mut dyn eval::Dice,
+    ) -> Result<Roll, Reason> {
+        let total = eval::roll_number(context, &self.total, dice)?;
+        let success_at = eval::roll_number(context, &self.success_at, dice)?;
+        let partial_at = (self.partial_at.as_ref())
+            .map(|expr| eval::roll_number(context, expr, dice))
+            .transpose()?;
+        Ok(Roll {
+            total,
+            success_at,
+            outcome: classify(total, success_at, partial_at),
+        })
+    }
+}
 
 /// What the round did with a verb: the roll, or a refusal and its reason. Returned from the
 /// engine's round to the host table, which turns it into check frames. Neither the save nor
