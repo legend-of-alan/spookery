@@ -81,7 +81,7 @@ fn write_dagger(pack: &Path, rules: &str) {
 const DAGGER_ATTACK: &str = "
   - id: attack
     when:
-      verb: attack
+      verb_id: attack
       target: actor
     if:
       - wielding:
@@ -93,26 +93,26 @@ const DAGGER_ATTACK: &str = "
     success:
       - meter:
           of: target
-          key: hp
+          id: hp
           add: -3
 ";
 
 const DAGGER_STRIKE: &str = "
   - id: strike
     when:
-      verb: strike
+      verb_id: strike
       target: actor
     do:
       - meter:
           of: target
-          key: hp
+          id: hp
           add: -4
 ";
 
 const BARE_HANDS_ATTACK: &str = "
   - id: attack
     when:
-      verb: attack
+      verb_id: attack
       target: actor
     check:
       total: 1d20 + self.might
@@ -120,7 +120,7 @@ const BARE_HANDS_ATTACK: &str = "
     success:
       - meter:
           of: target
-          key: hp
+          id: hp
           add: -1
 ";
 
@@ -445,7 +445,7 @@ fn wren_rolls_a_nested_check_on_a_seeded_roll(world: &mut World) {
         "
   - id: attack
     when:
-      verb: attack
+      verb_id: attack
       target: actor
     if:
       - wielding:
@@ -457,7 +457,7 @@ fn wren_rolls_a_nested_check_on_a_seeded_roll(world: &mut World) {
     success:
       - meter:
           of: target
-          key: hp
+          id: hp
           add: -3
       - check:
           by: target
@@ -470,11 +470,11 @@ fn wren_rolls_a_nested_check_on_a_seeded_roll(world: &mut World) {
           miss:
             - meter:
                 of: target
-                key: hp
+                id: hp
                 add: -2
             - flag:
                 of: target
-                key: poisoned
+                id: poisoned
                 value: true
 ",
     );

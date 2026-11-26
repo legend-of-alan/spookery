@@ -4,12 +4,12 @@ rules:
   - id: lane_clear
     when:
       change:
-        arrive: mill_lane
+        arrive_place_id: mill_lane
         subject: pc
     do:
       - flag:
           of: world
-          key: finished
+          id: finished
           value: true
       - narrate:
           to: self

@@ -36,7 +36,7 @@ fn append_story_rule(pack: &Path, story: &str, effect: &str) {
         format!("schema: story\nid: {story}\nrules:\n")
     });
     text.push_str(&format!(
-        "  - id: on_oil\n    when:\n      change:\n        item: lamp_oil\n        gained: true\n    do:\n{effect}"
+        "  - id: on_oil\n    when:\n      change:\n        item_id: lamp_oil\n        gained: true\n    do:\n{effect}"
     ));
     fs::write(path, text).unwrap();
 }
@@ -51,19 +51,19 @@ fn write_attic(world: &mut World, keys: &str) {
     crate::support::append(&pack(world).join("world/map.yaml"), ladder);
 }
 
-fn meter_effect(of: &str, key: &str) -> String {
-    format!("      - meter:\n          of: {of}\n          key: {key}\n          add: 1\n")
+fn meter_effect(of: &str, id: &str) -> String {
+    format!("      - meter:\n          of: {of}\n          id: {id}\n          add: 1\n")
 }
 
-fn flag_effect(of: &str, key: &str) -> String {
-    format!("      - flag:\n          of: {of}\n          key: {key}\n          value: true\n")
+fn flag_effect(of: &str, id: &str) -> String {
+    format!("      - flag:\n          of: {of}\n          id: {id}\n          value: true\n")
 }
 
-/// Add verb `verb` to `rules/verbs.yaml` with these effects.
-fn add_verb_doing(pack: &Path, verb: &str, effects: &str) {
+/// Add verb `verb_id` to `rules/verbs.yaml` with these effects.
+fn add_verb_doing(pack: &Path, verb_id: &str, effects: &str) {
     add_verb(
         pack,
-        &format!("\n  - id: {verb}\n    when:\n      verb: {verb}\n    do:\n{effects}"),
+        &format!("\n  - id: {verb_id}\n    when:\n      verb_id: {verb_id}\n    do:\n{effects}"),
     );
 }
 
@@ -129,20 +129,20 @@ fn the_gm_sees_light_and_draft(world: &mut World) {
 }
 
 #[given(expr = "a rule in story\\/{word}.yaml adds 1 to meter {word} of {string}")]
-fn a_story_rule_adds(world: &mut World, story: String, key: String, of: String) {
-    append_story_rule(pack(world), &story, &meter_effect(&of, &key));
+fn a_story_rule_adds(world: &mut World, story: String, id: String, of: String) {
+    append_story_rule(pack(world), &story, &meter_effect(&of, &id));
 }
 
 #[given(expr = "a rule in story\\/{word}.yaml sets flag {word} of {string} to true")]
-fn a_story_rule_sets(world: &mut World, story: String, key: String, of: String) {
-    append_story_rule(pack(world), &story, &flag_effect(&of, &key));
+fn a_story_rule_sets(world: &mut World, story: String, id: String, of: String) {
+    append_story_rule(pack(world), &story, &flag_effect(&of, &id));
 }
 
 #[given(expr = "a rule sets flag {word} of {string} to true")]
-fn a_shared_rule_sets(world: &mut World, key: String, of: String) {
+fn a_shared_rule_sets(world: &mut World, id: String, of: String) {
     let rule = format!(
-        "\n  - id: on_oil\n    when:\n      change:\n        item: lamp_oil\n        gained: true\n    do:\n{}",
-        flag_effect(&of, &key)
+        "\n  - id: on_oil\n    when:\n      change:\n        item_id: lamp_oil\n        gained: true\n    do:\n{}",
+        flag_effect(&of, &id)
     );
     add_verb(pack(world), &rule);
 }
@@ -176,12 +176,12 @@ fn no_view_lists_dread(world: &mut World) {
 }
 
 #[then(expr = "a rule testing flag {word} of {string} is true sees it as set")]
-fn a_rule_tests_the_flag(world: &mut World, key: String, of: String) {
+fn a_rule_tests_the_flag(world: &mut World, id: String, of: String) {
     let pack = world.pack.clone().unwrap();
     add_verb(
         &pack,
         &format!(
-            "\n  - id: test_mark\n    when:\n      verb: test_mark\n    if:\n      - flag:\n          of: {of}\n          key: {key}\n          is: true\n    do:\n{}",
+            "\n  - id: test_mark\n    when:\n      verb_id: test_mark\n    if:\n      - flag:\n          of: {of}\n          id: {id}\n          is: true\n    do:\n{}",
             flag_effect("world", "mark_seen")
         ),
     );
@@ -230,9 +230,9 @@ fn a_rule_adds_light_and_draft(world: &mut World, of: String) {
 }
 
 #[when(expr = "a rule sets flag {word} of {string} to true")]
-fn a_verb_sets_and_runs(world: &mut World, key: String, of: String) {
+fn a_verb_sets_and_runs(world: &mut World, id: String, of: String) {
     let pack = world.pack.clone().unwrap();
-    add_verb_doing(&pack, "light_lamp", &flag_effect(&of, &key));
+    add_verb_doing(&pack, "light_lamp", &flag_effect(&of, &id));
     edit_table(world, &pack, |_, seated| set_present(seated, &["rowan"]));
     migrate_and_play(world, vec![intent("light", "rowan", "light_lamp", None)]);
 }

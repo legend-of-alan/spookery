@@ -5,31 +5,31 @@ rules:
   - id: through_the_gate
     when:
       change:
-        leave: yard
+        leave_place_id: yard
         subject: pc
     if:
       - at:
           subject: self
-          place: path:gate
+          place_id: path:gate
     do:
       - flag:
           of: world
-          key: via_gate
+          id: via_gate
           value: true
   - id: gate_after_a_fight
     when:
       change:
-        arrive: lane
+        arrive_place_id: lane
         subject: pc
     if:
       - flag:
           of: world
-          key: via_gate
+          id: via_gate
           is: true
     do:
       - flag:
           of: world
-          key: finished
+          id: finished
           value: true
       - narrate:
           to: self
@@ -37,13 +37,13 @@ rules:
   - id: cart_warded
     when:
       change:
-        arrive: lane
+        arrive_place_id: lane
         subject: pc
     if:
       - not:
           flag:
             of: world
-            key: via_gate
+            id: via_gate
             is: true
       - not:
           has_item:
@@ -52,7 +52,7 @@ rules:
     do:
       - flag:
           of: world
-          key: finished
+          id: finished
           value: true
       - narrate:
           to: self
@@ -60,13 +60,13 @@ rules:
   - id: cart_braced
     when:
       change:
-        arrive: lane
+        arrive_place_id: lane
         subject: pc
     if:
       - not:
           flag:
             of: world
-            key: via_gate
+            id: via_gate
             is: true
       - has_item:
           subject: self
@@ -74,7 +74,7 @@ rules:
     do:
       - flag:
           of: world
-          key: finished
+          id: finished
           value: true
       - narrate:
           to: self
@@ -82,22 +82,22 @@ rules:
   - id: knocked_out
     when:
       change:
-        meter: hp
+        meter_id: hp
         crosses: "<=0"
     if:
       - flag:
           of: self
-          key: carter
+          id: carter
           is: true
       - not:
           flag:
             of: world
-            key: finished
+            id: finished
             is: true
     do:
       - flag:
           of: world
-          key: lost
+          id: lost
           value: true
       - narrate:
           to: self
@@ -105,36 +105,36 @@ rules:
   - id: dusk
     when:
       change:
-        meter: daylight
+        meter_id: daylight
         crosses: "<=0"
     if:
       - not:
           flag:
             of: world
-            key: finished
+            id: finished
             is: true
     do:
       - flag:
           of: world
-          key: lost
+          id: lost
           value: true
       - narrate:
           text: The lamps are lit. Briar bars the gate, and the cart won't move in the dark. The end.
   - id: lane_shut
     when:
       change:
-        flag: lost
+        flag_id: lost
         becomes: true
     do:
       - flag:
           of: world
-          key: finished
+          id: finished
           value: true
       - flag:
           of: path:gate
-          key: open
+          id: open
           value: false
       - flag:
           of: path:cart
-          key: open
+          id: open
           value: false

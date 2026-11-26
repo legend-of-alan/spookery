@@ -53,7 +53,7 @@ fn add_knife_and_mark_rule(pack: &Path) {
     .unwrap();
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push_str(
-        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          subject: self\n          id: knife\n    check:\n      total: 2d6 + self.vigor\n      success_at: 0\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n",
+        "\n  - id: mark\n    when:\n      verb_id: mark\n      target: actor\n    if:\n      - has_item:\n          subject: self\n          id: knife\n    check:\n      total: 2d6 + self.vigor\n      success_at: 0\n    success:\n      - flag:\n          of: target\n          id: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          id: missed\n          value: true\n",
     );
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
 }

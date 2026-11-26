@@ -26,7 +26,7 @@ pub(crate) struct Rule {
     /// Paid when the action finishes.
     pub finish: Phase,
     /// Ticks the actor stays busy after the finish.
-    pub cooldown: u64,
+    pub cooldown_ticks: u64,
     /// Whether the actor may cancel the action while it is under way.
     pub cancellable: bool,
     pub do_: Vec<EffectTemplate>,
@@ -38,13 +38,13 @@ pub(crate) struct Rule {
 }
 
 impl Rule {
-    pub(crate) fn watched_place<'a>(&'a self, place: &'a str) -> &'a str {
-        if place == "here" {
+    pub(crate) fn watched_place_id<'a>(&'a self, place_id: &'a str) -> &'a str {
+        if place_id == "here" {
             if let Scope::Place(id) = &self.scope {
                 return id;
             }
         }
-        place
+        place_id
     }
 
     /// The start cost, then the finish cost.
@@ -294,20 +294,20 @@ impl TargetKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ChangeWatch {
     Arrive {
-        place: String,
+        place_id: String,
         subject: grammar::Subject,
     },
     Leave {
-        place: String,
+        place_id: String,
         subject: grammar::Subject,
     },
     Meter {
-        key: String,
+        id: String,
         op: Op,
         bound: i64,
     },
     Flag {
-        key: String,
+        id: String,
         becomes: bool,
     },
     Item {
@@ -377,18 +377,18 @@ pub enum Cond {
     },
     Meter {
         of: grammar::Object,
-        key: String,
+        id: String,
         op: Op,
         value: Expr,
     },
     Flag {
         of: grammar::Object,
-        key: String,
+        id: String,
         is: bool,
     },
     At {
         subject: grammar::Actor,
-        place: String,
+        place_id: String,
     },
     /// A tick of cycle `id` in `from..to`, wrapping past the cycle's end when `from > to`.
     Cycle {
@@ -478,13 +478,13 @@ impl Op {
 pub(crate) enum EffectTemplate {
     Meter {
         of: grammar::Object,
-        key: String,
+        id: String,
         add: Option<Expr>,
         set: Option<Expr>,
     },
     Flag {
         of: grammar::Object,
-        key: String,
+        id: String,
         value: bool,
     },
     /// One application of modifier `id` to an actor, with magnitude `add`, lasting `ticks`.

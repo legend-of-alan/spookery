@@ -137,12 +137,12 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
         let timed = cost.is_some()
             || entry.start.is_some()
             || entry.finish.is_some()
-            || entry.cooldown > 0
+            || entry.cooldown_ticks > 0
             || entry.cancellable;
         if matches!(kind, RuleKind::Change(_)) && timed {
             diagnostics.push(schema_error(
                 file,
-                "a change rule has a cost, start, finish, cooldown, or cancellable",
+                "a change rule has a cost, start, finish, cooldown_ticks, or cancellable",
                 "remove them; a change is a consequence, not an action",
             ));
         }
@@ -193,7 +193,7 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
                 .as_ref()
                 .is_some_and(|finish| finish.counts_as_act),
         },
-        cooldown: entry.cooldown,
+        cooldown_ticks: entry.cooldown_ticks,
         cancellable: entry.cancellable,
         do_,
         success,
@@ -274,14 +274,14 @@ fn rule_kind(yaml: &WhenYaml) -> Result<RuleKind, String> {
     match yaml {
         WhenYaml::Word(word) if word == "habit" => Ok(RuleKind::Habit),
         WhenYaml::Word(word) => Err(format!("when '{word}' is not habit")),
-        WhenYaml::Map(map) => match (&map.verb, &map.change) {
-            (Some(verb), None) => {
-                if verb.is_empty() {
-                    return Err("verb is empty".to_string());
+        WhenYaml::Map(map) => match (&map.verb_id, &map.change) {
+            (Some(verb_id), None) => {
+                if verb_id.is_empty() {
+                    return Err("verb_id is empty".to_string());
                 }
-                if is_built_in(Seat::Player, verb) {
+                if is_built_in(Seat::Player, verb_id) {
                     return Err(format!(
-                        "verb '{verb}' is a built-in command; give the rule another verb"
+                        "verb '{verb_id}' is a built-in command; give the rule another verb"
                     ));
                 }
                 let target = match map.target.as_deref() {
@@ -293,12 +293,12 @@ fn rule_kind(yaml: &WhenYaml) -> Result<RuleKind, String> {
                     Some(other) => return Err(format!("target '{other}' is not a target kind")),
                 };
                 Ok(RuleKind::Verb {
-                    verb_id: verb.clone(),
+                    verb_id: verb_id.clone(),
                     target,
                 })
             }
             (None, Some(change)) => compile::change_watch(change).map(RuleKind::Change),
-            _ => Err("when needs one of verb or change".to_string()),
+            _ => Err("when needs one of verb_id or change".to_string()),
         },
     }
 }
@@ -308,53 +308,53 @@ fn change_watch(yaml: &ChangeYaml) -> Result<ChangeWatch, String> {
         None | Some("any") => grammar::Subject::Any,
         Some("pc") => grammar::Subject::Pc,
         Some("npc") => grammar::Subject::Npc,
-        Some(actor) => grammar::Subject::Id(actor.to_string()),
+        Some(actor_id) => grammar::Subject::Id(actor_id.to_string()),
     };
-    if let Some(place) = &yaml.arrive {
+    if let Some(place_id) = &yaml.arrive_place_id {
         return Ok(ChangeWatch::Arrive {
-            place: place.clone(),
+            place_id: place_id.clone(),
             subject,
         });
     }
-    if let Some(place) = &yaml.leave {
+    if let Some(place_id) = &yaml.leave_place_id {
         return Ok(ChangeWatch::Leave {
-            place: place.clone(),
+            place_id: place_id.clone(),
             subject,
         });
     }
-    if let Some(key) = &yaml.meter {
+    if let Some(id) = &yaml.meter_id {
         let crosses = yaml
             .crosses
             .as_deref()
-            .ok_or_else(|| "a meter change needs crosses".to_string())?;
+            .ok_or_else(|| "a change with meter_id needs crosses".to_string())?;
         let (op, bound) = parse_crosses(crosses)?;
         return Ok(ChangeWatch::Meter {
-            key: key.clone(),
+            id: id.clone(),
             op,
             bound,
         });
     }
-    if let Some(key) = &yaml.flag {
+    if let Some(id) = &yaml.flag_id {
         let becomes = yaml
             .becomes
-            .ok_or_else(|| "a flag change needs becomes".to_string())?;
+            .ok_or_else(|| "a change with flag_id needs becomes".to_string())?;
         return Ok(ChangeWatch::Flag {
-            key: key.clone(),
+            id: id.clone(),
             becomes,
         });
     }
-    if let Some(id) = &yaml.item {
+    if let Some(id) = &yaml.item_id {
         let gained = match (yaml.gained, yaml.lost) {
             (Some(true), _) => true,
             (_, Some(true)) => false,
-            _ => return Err("an item change needs gained or lost".to_string()),
+            _ => return Err("a change with item_id needs gained or lost".to_string()),
         };
         return Ok(ChangeWatch::Item {
             id: id.clone(),
             gained,
         });
     }
-    Err("a change needs arrive, leave, meter, flag, or item".to_string())
+    Err("a change needs arrive_place_id, leave_place_id, meter_id, flag_id, or item_id".to_string())
 }
 
 fn conds(yaml: &IfYaml) -> Result<Vec<Cond>, CompileError> {
@@ -373,18 +373,18 @@ pub(in crate::canon) fn cond(yaml: &CondYaml) -> Result<Cond, CompileError> {
         },
         CondYaml::Meter(meter) => Cond::Meter {
             of: parse_object(&meter.of)?,
-            key: meter.id.clone(),
+            id: meter.id.clone(),
             op: parse_op(&meter.op)?,
             value: compile::expr_without_dice(&meter.value)?,
         },
         CondYaml::Flag(flag) => Cond::Flag {
             of: parse_object(&flag.of)?,
-            key: flag.key.clone(),
+            id: flag.id.clone(),
             is: flag.is_,
         },
         CondYaml::At(at) => Cond::At {
             subject: parse_actor(&at.subject)?,
-            place: at.place.clone(),
+            place_id: at.place_id.clone(),
         },
         CondYaml::Cycle(cycle) => {
             let from = compile::expr_without_dice(&cycle.from)?;
@@ -505,16 +505,16 @@ fn effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
         }
         EffectYaml::Meter(meter) => EffectTemplate::Meter {
             of: parse_object(&meter.of)?,
-            key: meter.key.clone(),
+            id: meter.id.clone(),
             add: meter.add.as_ref().map(compile::expr).transpose()?,
             set: meter.set.as_ref().map(compile::expr).transpose()?,
         },
-        EffectYaml::Flag(flag) if flag.key == "busy" => {
-            return Err("flag key busy is not a flag".into());
+        EffectYaml::Flag(flag) if flag.id == "busy" => {
+            return Err("flag id busy is not a flag".into());
         }
         EffectYaml::Flag(flag) => EffectTemplate::Flag {
             of: parse_object(&flag.of)?,
-            key: flag.key.clone(),
+            id: flag.id.clone(),
             value: flag.value,
         },
         EffectYaml::Modifier(modifier) => {

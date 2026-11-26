@@ -12,7 +12,7 @@ rules:
       - not:
           at:
             subject: corin
-            place: shed
+            place_id: shed
       - not:
           note_exists: note_oden_hint
     do:

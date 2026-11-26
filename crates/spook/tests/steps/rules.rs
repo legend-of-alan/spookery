@@ -132,7 +132,7 @@ fn a_place_rule_and_a_story_rule(world: &mut World) {
 rules:
   - id: bell
     when:
-      verb: bell
+      verb_id: bell
     do: []
 ",
     );
@@ -147,7 +147,7 @@ tags: []
 rules:
   - id: use
     when:
-      verb: use
+      verb_id: use
     do: []
 ---
 A small bottle.
@@ -161,7 +161,7 @@ id: smuggler
 rules:
   - id: bell
     when:
-      verb: bell
+      verb_id: bell
     do: []
 ",
     );
@@ -204,12 +204,12 @@ name: Ferry Dock
 rules:
   - id: travel
     when:
-      verb: travel
+      verb_id: travel
       target: place
     do:
       - flag:
           of: self
-          key: took_the_ferry
+          id: took_the_ferry
           value: true
 ---
 The ferry waits at the dock.
@@ -452,7 +452,7 @@ fn attack_targets_defense(world: &mut World) {
         r#"
   - id: attack
     when:
-      verb: attack
+      verb_id: attack
       target: actor
     check:
       total: 1d20 + self.might
@@ -460,12 +460,12 @@ fn attack_targets_defense(world: &mut World) {
     success:
       - flag:
           of: target
-          key: hit
+          id: hit
           value: true
     miss:
       - flag:
           of: target
-          key: missed
+          id: missed
           value: true
 "#,
     );
@@ -552,7 +552,7 @@ fn bogus_appears_in_earlier_text(world: &mut World) {
         r#"
   - id: tale
     when:
-      verb: tale
+      verb_id: tale
     do:
       - narrate:
           to: self
@@ -613,7 +613,7 @@ fn two_keys_in_one_line(world: &mut World, field: String, form: String) {
         ("", "")
     };
     let rule = format!(
-        "\n  - id: both\n    when:\n      verb: both\n    {field}:\n      {dash}{first}\n      {indent}{SECOND_KEY}, {second}\n"
+        "\n  - id: both\n    when:\n      verb_id: both\n    {field}:\n      {dash}{first}\n      {indent}{SECOND_KEY}, {second}\n"
     );
     append(&pack.join("rules/verbs.yaml"), &rule);
     stamp_pack_rev(&pack);
@@ -640,7 +640,7 @@ fn steady_costs_five_vigor(world: &mut World) {
         r#"
   - id: steady
     when:
-      verb: steady
+      verb_id: steady
     cost:
       meters:
         vigor: 5
@@ -688,12 +688,12 @@ fn a_far_place_rule_while_the_pc_stays(world: &mut World) {
 rules:
   - id: travel
     when:
-      verb: travel
+      verb_id: travel
       target: place
     do:
       - flag:
           of: self
-          key: took_the_street
+          id: took_the_street
           value: true
 ",
     );
@@ -760,7 +760,7 @@ tags: []
 rules:
   - id: use
     when:
-      verb: use
+      verb_id: use
       target: item
     do: []
 ---
@@ -772,7 +772,7 @@ A small bottle.
         "
   - id: use
     when:
-      verb: use
+      verb_id: use
     do: []
 ",
     );
@@ -818,7 +818,7 @@ fn a_verb_with_time_and_a_nested_check(world: &mut World) {
         r#"
   - id: linger
     when:
-      verb: linger
+      verb_id: linger
     cost:
       ticks: 10
     do:
@@ -828,7 +828,7 @@ fn a_verb_with_time_and_a_nested_check(world: &mut World) {
           success:
             - meter:
                 of: self
-                key: vigor
+                id: vigor
                 add: 1
 "#,
     );

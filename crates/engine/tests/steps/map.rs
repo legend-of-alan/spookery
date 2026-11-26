@@ -66,9 +66,9 @@ fn the_shop_has_a_trapdoor(world: &mut World) {
     )
     .unwrap();
     let dig = "  - id: dig
-    when: { verb: dig }
+    when: { verb_id: dig }
     do:
-      - flag: { of: self, key: found_trapdoor, value: true }";
+      - flag: { of: self, id: found_trapdoor, value: true }";
     for place in ["docks_shop", "docks_street"] {
         super::round_play::add_place_rules(&pack, place, dig);
     }

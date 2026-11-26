@@ -20,7 +20,7 @@ fn nell_travels_via_door(world: &mut World) {
     add_bell(&pack);
     add_verb(
         &pack,
-        "\n  - id: blink\n    when:\n      verb: blink\n    do:\n      - location:\n          to: docks_shop\n          teleport: true\n",
+        "\n  - id: blink\n    when:\n      verb_id: blink\n    do:\n      - location:\n          to: docks_shop\n          teleport: true\n",
     );
     write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
@@ -85,21 +85,21 @@ rules:
   - id: ledger
     when:
       change:
-        arrive: mira_rooms
+        arrive_place_id: mira_rooms
         subject: pc
     if:
       - flag:
           of: self
-          key: found_key
+          id: found_key
           is: true
     do:
       - flag:
           of: self
-          key: found_ledger
+          id: found_ledger
           value: true
       - meter:
           of: world
-          key: tide
+          id: tide
           add: 1
 ",
     )
@@ -140,7 +140,7 @@ fn two_rules_set_each_others_flag(world: &mut World) {
     write_nell(&pack);
     add_verb(
         &pack,
-        "\n  - id: raise\n    when:\n      verb: raise\n    do:\n      - flag:\n          of: self\n          key: sun\n          value: true\n",
+        "\n  - id: raise\n    when:\n      verb_id: raise\n    do:\n      - flag:\n          of: self\n          id: sun\n          value: true\n",
     );
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(
@@ -152,38 +152,38 @@ rules:
   - id: sun_to_moon
     when:
       change:
-        flag: sun
+        flag_id: sun
         becomes: true
     do:
       - flag:
           of: self
-          key: moon
+          id: moon
           value: true
       - flag:
           of: self
-          key: sun
+          id: sun
           value: false
       - meter:
           of: self
-          key: vigor
+          id: vigor
           add: 1
   - id: moon_to_sun
     when:
       change:
-        flag: moon
+        flag_id: moon
         becomes: true
     do:
       - flag:
           of: self
-          key: sun
+          id: sun
           value: true
       - flag:
           of: self
-          key: moon
+          id: moon
           value: false
       - meter:
           of: self
-          key: vigor
+          id: vigor
           add: 1
 ",
     )
@@ -229,7 +229,7 @@ rules:
   - id: tell
     when:
       change:
-        arrive: docks_shop
+        arrive_place_id: docks_shop
     do:
       - narrate:
           to: self
@@ -259,7 +259,7 @@ rules:
   - id: sink
     when:
       change:
-        arrive: here
+        arrive_place_id: here
         subject: pc
     check:
       total: 1d6 + self.vigor
@@ -267,12 +267,12 @@ rules:
     success:
       - meter:
           of: self
-          key: vigor
+          id: vigor
           add: 0
     miss:
       - meter:
           of: self
-          key: vigor
+          id: vigor
           add: -1
 ---
 The ground gives.
@@ -379,7 +379,7 @@ fn the_street_has_a_trapdoor(world: &mut World, entity: String) {
     .unwrap();
     add_verb(
         &pack,
-        &format!("\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - flag:\n          of: {entity}\n          key: found_trapdoor\n          value: true\n"),
+        &format!("\n  - id: uncover\n    when:\n      verb_id: uncover\n    do:\n      - flag:\n          of: {entity}\n          id: found_trapdoor\n          value: true\n"),
     );
     write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
@@ -424,11 +424,11 @@ fn a_verb_sets_the_tide(world: &mut World) {
         "
   - id: turn_tide
     when:
-      verb: turn_tide
+      verb_id: turn_tide
     do:
       - flag:
           of: world
-          key: tide_turned
+          id: tide_turned
           value: true
 ",
     );
@@ -447,7 +447,7 @@ fn a_rule_counts_tides(world: &mut World, of: String) {
             "    do:
       - meter:
           of: {of}
-          key: tides
+          id: tides
           add: 1
 "
         ),
@@ -580,7 +580,7 @@ fn mira_has_a_place_meter_habit(world: &mut World, meter: String) {
     replace_in_file(
         &pack.join("cast/mira.md"),
         "rules:\n  - id: leave_door_note\n",
-        &format!("rules:\n  - id: mark_restock\n    when: habit\n    do:\n      - meter:\n          of: here\n          key: {meter}\n          add: 1\n  - id: leave_door_note\n"),
+        &format!("rules:\n  - id: mark_restock\n    when: habit\n    do:\n      - meter:\n          of: here\n          id: {meter}\n          add: 1\n  - id: leave_door_note\n"),
     );
     edit_table(world, &pack, |_, _| {});
     world.pack = Some(pack);
@@ -641,7 +641,7 @@ fn a_message_hidden_from_wren_is_written(world: &mut World) {
     let pack = copy_pack("docks", "trigger-message");
     add_verb(
         &pack,
-        "\n  - id: pass_word\n    when:\n      verb: pass_word\n    do:\n      - note:\n          id: note_private\n          to:\n            - nell\n          text: The tide turns at dusk.\n",
+        "\n  - id: pass_word\n    when:\n      verb_id: pass_word\n    do:\n      - note:\n          id: note_private\n          to:\n            - nell\n          text: The tide turns at dusk.\n",
     );
     write_nell(&pack);
     edit_table(world, &pack, |now, seated| {
@@ -667,7 +667,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
     let pack = copy_pack("docks", "trigger-idle-narrate");
     add_verb(
         &pack,
-        "\n  - id: quiet\n    when:\n      verb: quiet\n    do:\n      - narrate:\n          to: rowan\n          text: The shop is quiet.\n  - id: back\n    when:\n      verb: back\n    do:\n      - narrate:\n          to: self\n          text: You are back.\n",
+        "\n  - id: quiet\n    when:\n      verb_id: quiet\n    do:\n      - narrate:\n          to: rowan\n          text: The shop is quiet.\n  - id: back\n    when:\n      verb_id: back\n    do:\n      - narrate:\n          to: self\n          text: You are back.\n",
     );
     edit_table(world, &pack, |_, _| {});
     let mut session = spookery_engine::testing::resume(&pack);
@@ -739,7 +739,7 @@ pub(crate) fn set_present(presence: &mut Presence, ids: &[&str]) {
 fn add_bell_narrate(pack: &Path) {
     support::insert_before_fence(
         &pack.join("world/places/docks_shop.md"),
-        "rules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          key: heard_bell\n          value: true\n      - narrate:\n          to: here\n          text: The bell rings.\n",
+        "rules:\n  - id: bell\n    when:\n      change:\n        arrive_place_id: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          id: heard_bell\n          value: true\n      - narrate:\n          to: here\n          text: The bell rings.\n",
     );
 }
 
@@ -747,7 +747,7 @@ fn downed_pack(world: &mut World, hp: i64, crosses: &str) -> std::path::PathBuf 
     let pack = copy_pack("docks", "trigger-downed");
     add_verb(
         &pack,
-        "\n  - id: hit\n    when:\n      verb: hit\n      target: actor\n    do:\n      - meter:\n          of: target\n          key: hp\n          add: -4\n  - id: nick\n    when:\n      verb: nick\n      target: actor\n    do:\n      - meter:\n          of: target\n          key: hp\n          add: -1\n",
+        "\n  - id: hit\n    when:\n      verb_id: hit\n      target: actor\n    do:\n      - meter:\n          of: target\n          id: hp\n          add: -4\n  - id: nick\n    when:\n      verb_id: nick\n      target: actor\n    do:\n      - meter:\n          of: target\n          id: hp\n          add: -1\n",
     );
     fs::write(
         pack.join("story/injury.yaml"),
@@ -759,12 +759,12 @@ rules:
   - id: downed
     when:
       change:
-        meter: hp
+        meter_id: hp
         crosses: \"{crosses}\"
     do:
       - flag:
           of: self
-          key: downed
+          id: downed
           value: true
 "
         ),
@@ -793,7 +793,7 @@ fn add_rooms(pack: &Path) {
 fn add_bell(pack: &Path) {
     support::insert_before_fence(
         &pack.join("world/places/docks_shop.md"),
-        "rules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          key: heard_bell\n          value: true\n",
+        "rules:\n  - id: bell\n    when:\n      change:\n        arrive_place_id: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          id: heard_bell\n          value: true\n",
     );
 }
 

@@ -62,7 +62,7 @@ Append a yield to `rules/verbs.yaml`. A yield commits a round and changes no num
 ```yaml path=rules/verbs.yaml mode=append
   - id: listen
     when:
-      verb: listen
+      verb_id: listen
     do: []
 ```
 
@@ -75,7 +75,7 @@ Append a yield to `rules/verbs.yaml`. A yield commits a round and changes no num
 ```yaml path=rules/verbs.yaml mode=append
   - id: press
     when:
-      verb: press
+      verb_id: press
     check:
       total: 2d6 + self.nerve
       success_at: 8

@@ -51,10 +51,10 @@ Feature: A rule stores a roll in let
 
     Examples:
       | let                   | number       | field             | phrase                                                                                       | line      |
-      | dmg: 2d8              | dmgg         | its vigor add     | rule 'hit' reads 'dmgg', which its let: does not hold                                        | id: hit   |
-      | soon: late, late: 2d6 | soon         | its vigor add     | rule 'hit' reads 'late' in let: at or above the line that holds it                           | id: hit   |
-      | attack: 1d20 + 2      | high(attack) | its vigor add     | rule 'hit' reads high or low of 'attack', which is not one dice group with no keep          | id: hit   |
-      | adv: 2d20kh1          | low(adv)     | its vigor add     | rule 'hit' reads high or low of 'adv', which is not one dice group with no keep             | id: hit   |
+      | dmg: 2d8              | dmgg         | its vigor add     | rule 'hit' reads 'dmgg', which its let: does not hold                                        | - id: hit |
+      | soon: late, late: 2d6 | soon         | its vigor add     | rule 'hit' reads 'late' in let: at or above the line that holds it                           | - id: hit |
+      | attack: 1d20 + 2      | high(attack) | its vigor add     | rule 'hit' reads high or low of 'attack', which is not one dice group with no keep          | - id: hit |
+      | adv: 2d20kh1          | low(adv)     | its vigor add     | rule 'hit' reads high or low of 'adv', which is not one dice group with no keep             | - id: hit |
       | a: 1d4, a: 1d6        | a            | its vigor add     | 'a' is listed twice; keep one                                                                | a: 1d6    |
       | a: 1d4                | b: 1d6       | a second let      | 'let' is listed twice; keep one                                                              | b: 1d6    |
       | a.b: 1d4              | 1            | its vigor add     | let: id 'a.b' is not a word a number can read                                              | a.b: 1d4  |

@@ -49,7 +49,7 @@ rules:
     do:
       - flag:
           of: self
-          key: grabbed
+          id: grabbed
           value: true
       - item:
           of: here
@@ -88,7 +88,7 @@ fn push_and_shove_cost_vigor(world: &mut World) {
         "\
 \n  - id: push
     when:
-      verb: push
+      verb_id: push
     cost:
       meters:
         vigor: 1
@@ -96,7 +96,7 @@ fn push_and_shove_cost_vigor(world: &mut World) {
 
   - id: shove
     when:
-      verb: shove
+      verb_id: shove
     cost:
       meters:
         vigor: 1
@@ -118,11 +118,11 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read yard: {err}"));
     let drop = "rules:
   - id: drop
-    when: { verb: drop, target: item }
+    when: { verb_id: drop, target: item }
     do:
       - item: { of: self, id: target, add: -1 }
       - item: { of: here, id: target, add: 1 }
-      - flag: { of: \"path:gate_yard.loft\", key: open, value: false }
+      - flag: { of: \"path:gate_yard.loft\", id: open, value: false }
 ";
     let next = text.replacen("rules:\n", drop, 1);
     assert_ne!(text, next, "the loft exit was not locked");
@@ -182,11 +182,11 @@ async fn one_effect_is_over_budget(world: &mut World) {
         "\
 \n  - id: tap
     when:
-      verb: tap
+      verb_id: tap
     do:
       - flag:
           of: self
-          key: tapped
+          id: tapped
           value: true
 ",
     );
@@ -280,7 +280,7 @@ rules:
     do:
       - flag:
           of: self
-          key: heaved
+          id: heaved
           value: true
 ",
     );
@@ -290,11 +290,11 @@ rules:
         "\
 \n  - id: sap
     when:
-      verb: sap
+      verb_id: sap
     do:
       - meter:
           of: bram
-          key: vigor
+          id: vigor
           add: -1
 ",
     );

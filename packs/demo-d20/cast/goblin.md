@@ -17,7 +17,7 @@ rules:
     if:
       - at:
           subject: corin
-          place: loft
+          place_id: loft
       - meter:
           of: goblin
           id: nerve
@@ -29,7 +29,7 @@ rules:
     success:
       - meter:
           of: corin
-          key: hp
+          id: hp
           add: -2
       - narrate:
           to: corin
@@ -40,7 +40,7 @@ rules:
           text: The goblin snaps at your ankle and misses.
   - id: banish
     when:
-      verb: banish
+      verb_id: banish
       target: actor
     if:
       - meter:
@@ -55,7 +55,7 @@ rules:
     success:
       - meter:
           of: target
-          key: nerve
+          id: nerve
           add: -1
       - narrate:
           to: self
@@ -63,7 +63,7 @@ rules:
     partial:
       - meter:
           of: self
-          key: hp
+          id: hp
           add: -2
       - narrate:
           to: self
@@ -71,7 +71,7 @@ rules:
     miss:
       - meter:
           of: self
-          key: hp
+          id: hp
           add: -3
       - modifier:
           to: self
@@ -84,7 +84,7 @@ rules:
   - id: flee
     when:
       change:
-        meter: nerve
+        meter_id: nerve
         crosses: "<=0"
     do:
       - item:

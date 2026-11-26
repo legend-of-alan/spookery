@@ -115,10 +115,10 @@ fn push_effects(
 ) -> Result<(), Reason> {
     let (world, intent) = (context.world, context.intent);
     match template {
-        EffectTemplate::Flag { of, key, value } => {
+        EffectTemplate::Flag { of, id, value } => {
             let kind = EffectKind::Flag {
                 entity: of.entity_id(context)?,
-                key: key.clone(),
+                key: id.clone(),
                 value: *value,
             };
             effects.push(Effect::new(intent.actor_id.as_ref(), &intent.id, kind));
@@ -152,15 +152,15 @@ fn push_effects(
             };
             effects.push(location_effect(context, ActorLocation::Place(place_id))?);
         }
-        EffectTemplate::Meter { of, key, add, set } => {
+        EffectTemplate::Meter { of, id, add, set } => {
             let entity = of.entity_id(context)?;
-            let write = meter_offset(context, &entity, key, add.as_ref(), set.as_ref(), dice)?;
+            let write = meter_offset(context, &entity, id, add.as_ref(), set.as_ref(), dice)?;
             effects.push(Effect::new(
                 intent.actor_id.as_ref(),
                 &intent.id,
                 EffectKind::Meter {
                     entity,
-                    key: key.clone(),
+                    key: id.clone(),
                     write,
                 },
             ));

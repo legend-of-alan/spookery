@@ -207,7 +207,7 @@ impl Parser<'_> {
         };
         Ok(Expr::Meter {
             of,
-            key: key.to_string(),
+            id: key.to_string(),
             file_location: None,
         })
     }

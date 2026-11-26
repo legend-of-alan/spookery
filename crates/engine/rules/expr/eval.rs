@@ -126,7 +126,7 @@ fn roll_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Show
                 faces,
             })
         }
-        Expr::Meter { of, key, .. } => Ok(ShownValue::from(read_meter(context, of, key)?)),
+        Expr::Meter { of, id, .. } => Ok(ShownValue::from(read_meter(context, of, id)?)),
         Expr::Let { id, keep } => {
             let stored = (context.lets.iter())
                 .find(|stored| stored.id == *id)

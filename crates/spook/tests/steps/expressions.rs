@@ -37,7 +37,7 @@ fn insert_miras_habit(world: &World, lets: &str, add: &str) {
     let next = text.replacen(
         "rules:\n  - id: leave_door_note\n",
         &format!(
-            "rules:\n  - id: toss\n    when: habit\n{lets}    do:\n      - meter:\n          of: self\n          key: vigor\n          add: \"{add}\"\n  - id: leave_door_note\n"
+            "rules:\n  - id: toss\n    when: habit\n{lets}    do:\n      - meter:\n          of: self\n          id: vigor\n          add: \"{add}\"\n  - id: leave_door_note\n"
         ),
         1,
     );
@@ -67,7 +67,7 @@ fn the_packs_hit_stores_and_adds_twice(world: &mut World, lets: String, add: Str
     append_rule(
         world,
         &format!(
-            "\n  - id: hit\n    when: {{ verb: hit }}\n    let: {{ {lets} }}\n    do:\n      - meter: {{ of: self, key: vigor, add: {add} }}\n      - meter: {{ of: mira, key: vigor, add: {add} }}\n"
+            "\n  - id: hit\n    when: {{ verb_id: hit }}\n    let: {{ {lets} }}\n    do:\n      - meter: {{ of: self, id: vigor, add: {add} }}\n      - meter: {{ of: mira, id: vigor, add: {add} }}\n"
         ),
     );
 }
@@ -85,7 +85,7 @@ fn the_packs_hit_stores_and_checks(
     append_rule(
         world,
         &format!(
-            "\n  - id: hit\n    when: {{ verb: hit }}\n    let: {{ {lets} }}\n    check: {{ total: {total}, success_at: {success_at} }}\n    success:\n      - meter: {{ of: self, key: vigor, add: {add} }}\n"
+            "\n  - id: hit\n    when: {{ verb_id: hit }}\n    let: {{ {lets} }}\n    check: {{ total: {total}, success_at: {success_at} }}\n    success:\n      - meter: {{ of: self, id: vigor, add: {add} }}\n"
         ),
     );
 }
@@ -95,7 +95,7 @@ fn the_packs_timed_hit_stores(world: &mut World, lets: String, ticks: u64, add: 
     append_rule(
         world,
         &format!(
-            "\n  - id: hit\n    when: {{ verb: hit }}\n    let: {{ {lets} }}\n    cost: {{ ticks: {ticks} }}\n    do:\n      - meter: {{ of: self, key: vigor, add: {add} }}\n"
+            "\n  - id: hit\n    when: {{ verb_id: hit }}\n    let: {{ {lets} }}\n    cost: {{ ticks: {ticks} }}\n    do:\n      - meter: {{ of: self, id: vigor, add: {add} }}\n"
         ),
     );
 }
@@ -105,7 +105,7 @@ fn miras_rouse(world: &mut World, ticks: u64, add: i64) {
     append_rule(
         world,
         &format!(
-            "\n  - id: rouse\n    when: {{ verb: rouse }}\n    cost: {{ ticks: {ticks} }}\n    do:\n      - meter: {{ of: rowan, key: rest, add: {add} }}\n"
+            "\n  - id: rouse\n    when: {{ verb_id: rouse }}\n    cost: {{ ticks: {ticks} }}\n    do:\n      - meter: {{ of: rowan, id: rest, add: {add} }}\n"
         ),
     );
 }
@@ -118,7 +118,7 @@ fn stock_reads_rest(world: &mut World) {
         &pack.join("rules/verbs.yaml"),
         r#"
   - id: stock
-    when: { verb: stock }
+    when: { verb_id: stock }
     if:
       - has_item: { subject: self, id: lamp_oil, count: "self.rest - 3" }
       - players: { op: ">=", value: "self.rest - 1" }
@@ -138,7 +138,7 @@ fn stock_reads_rest(world: &mut World) {
 fn the_pack_has(world: &mut World, number: String, field: String) {
     let pack = world.pack.clone().unwrap();
     let verbs = pack.join("rules/verbs.yaml");
-    let strain = "\n  - id: strain\n    when: { verb: strain }\n";
+    let strain = "\n  - id: strain\n    when: { verb_id: strain }\n";
     if let Some(hit_field) = field.strip_prefix("the hit's ") {
         return append_hit_line(world, "", &number, hit_field);
     }
@@ -314,15 +314,15 @@ fn append_hit_line(world: &World, lets: &str, number: &str, field: &str) {
         "cost ticks" => format!("cost: {{ ticks: \"{number}\" }}\n    do: []"),
         "second let" => format!("let: {{ {number} }}\n    do: []"),
         "nested check's vigor add" => format!(
-            "do: [check: {{ by: target, total: \"{number}\", success_at: \"{number}\", success: [meter: {{ of: self, key: vigor, add: \"{number}\" }}] }}]"
+            "do: [check: {{ by: target, total: \"{number}\", success_at: \"{number}\", success: [meter: {{ of: self, id: vigor, add: \"{number}\" }}] }}]"
         ),
-        _ => format!("do: [meter: {{ of: self, key: vigor, add: \"{number}\" }}]"),
+        _ => format!("do: [meter: {{ of: self, id: vigor, add: \"{number}\" }}]"),
     };
     let target = match field {
         "nested check's vigor add" => ", target: actor",
         _ => "",
     };
-    let rule = format!("\n  - id: hit\n    when: {{ verb: hit{target} }}\n    {lets}{lines}\n");
+    let rule = format!("\n  - id: hit\n    when: {{ verb_id: hit{target} }}\n    {lets}{lines}\n");
     append_rule(world, &rule);
 }
 
@@ -337,7 +337,7 @@ fn append_hit(world: &World, of: &str, add: &str) {
     append_rule(
         world,
         &format!(
-            "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          of: {of}\n          key: vigor\n          add: {add}\n"
+            "\n  - id: hit\n    when:\n      verb_id: hit\n    do:\n      - meter:\n          of: {of}\n          id: vigor\n          add: {add}\n"
         ),
     );
 }

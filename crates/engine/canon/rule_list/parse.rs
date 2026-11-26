@@ -20,7 +20,7 @@ pub(in crate::canon) struct RuleYaml {
     pub(super) finish: Option<ActionFinishYaml>,
     /// Ticks the actor stays busy after the finish.
     #[serde(default)]
-    pub(super) cooldown: u64,
+    pub(super) cooldown_ticks: u64,
     /// Whether the actor may cancel the action while it is under way.
     #[serde(default)]
     pub(super) cancellable: bool,
@@ -49,7 +49,7 @@ pub(super) enum WhenYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct WhenMapYaml {
-    pub verb: Option<String>,
+    pub verb_id: Option<String>,
     pub target: Option<String>,
     pub change: Option<ChangeYaml>,
 }
@@ -57,14 +57,14 @@ pub(super) struct WhenMapYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct ChangeYaml {
-    pub arrive: Option<String>,
-    pub leave: Option<String>,
+    pub arrive_place_id: Option<String>,
+    pub leave_place_id: Option<String>,
     pub subject: Option<String>,
-    pub meter: Option<String>,
+    pub meter_id: Option<String>,
     pub crosses: Option<String>,
-    pub flag: Option<String>,
+    pub flag_id: Option<String>,
     pub becomes: Option<bool>,
-    pub item: Option<String>,
+    pub item_id: Option<String>,
     pub gained: Option<bool>,
     pub lost: Option<bool>,
 }
@@ -159,7 +159,7 @@ pub(in crate::canon) struct MeterCondYaml {
 #[serde(deny_unknown_fields)]
 pub(in crate::canon) struct FlagCondYaml {
     pub(super) of: Spanned<String>,
-    pub(super) key: String,
+    pub(super) id: String,
     #[serde(rename = "is")]
     pub(super) is_: bool,
 }
@@ -168,7 +168,7 @@ pub(in crate::canon) struct FlagCondYaml {
 #[serde(deny_unknown_fields)]
 pub(in crate::canon) struct AtYaml {
     pub(super) subject: Spanned<String>,
-    pub(super) place: String,
+    pub(super) place_id: String,
 }
 
 #[derive(Deserialize)]
@@ -252,7 +252,7 @@ pub(super) enum EffectYaml {
 #[serde(deny_unknown_fields)]
 pub(super) struct MeterEffectYaml {
     pub of: Spanned<String>,
-    pub key: String,
+    pub id: String,
     pub add: Option<Spanned<ExprYaml>>,
     pub set: Option<Spanned<ExprYaml>>,
 }
@@ -261,7 +261,7 @@ pub(super) struct MeterEffectYaml {
 #[serde(deny_unknown_fields)]
 pub(super) struct FlagEffectYaml {
     pub of: Spanned<String>,
-    pub key: String,
+    pub id: String,
     pub value: bool,
 }
 

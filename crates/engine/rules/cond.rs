@@ -58,32 +58,32 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
     let world = context.world;
     match cond {
         Cond::HasItem { subject, id, count } => {
-            let actor = subject.actor_id(context)?;
+            let actor_id = subject.actor_id(context)?;
             let id = context.item_id(id)?;
-            let items = world.actors().get::<component::Item>(actor);
+            let items = world.actors().get::<component::Item>(actor_id);
             Ok(i64::from(items.get(&id).copied().unwrap_or(0)) >= eval::eval(context, count)?)
         }
         Cond::Wielding { subject, id } => {
-            let actor = subject.actor_id(context)?;
+            let actor_id = subject.actor_id(context)?;
             let id = context.item_id(id)?;
-            let wielded = world.actors().get::<component::WieldedItem>(actor).get();
+            let wielded = world.actors().get::<component::WieldedItem>(actor_id).get();
             Ok(wielded.is_some_and(|wielded| wielded == id))
         }
-        Cond::Meter { of, key, op, value } => {
+        Cond::Meter { of, id, op, value } => {
             let entity = of.entity_id(context)?;
-            let current = (world.entities().get::<component::Meter>(&entity)).value(key)?;
+            let current = (world.entities().get::<component::Meter>(&entity)).value(id)?;
             let right = eval::eval(context, value)?;
             Ok(op.holds(current, right))
         }
-        Cond::Flag { of, key, is } => {
+        Cond::Flag { of, id, is } => {
             let entity = of.entity_id(context)?;
             let flag = world.entities().get::<component::Flag>(&entity);
-            Ok(flag.contains(key) == *is)
+            Ok(flag.contains(id) == *is)
         }
-        Cond::At { subject, place } => {
-            let actor = subject.actor_id(context)?;
-            let at = world.actors().get::<component::Place>(actor).get();
-            Ok(at.is_some_and(|at| at.is_at(place)))
+        Cond::At { subject, place_id } => {
+            let actor_id = subject.actor_id(context)?;
+            let at = world.actors().get::<component::Place>(actor_id).get();
+            Ok(at.is_some_and(|at| at.is_at(place_id)))
         }
         Cond::Cycle { id, from, to } => {
             let cycles = &context.canon.budget.cycles;

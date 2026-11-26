@@ -8,7 +8,7 @@ tags:
 rules:
   - id: use
     when:
-      verb: use
+      verb_id: use
       target: item
     if:
       - has_item:
@@ -20,7 +20,7 @@ rules:
     do:
       - meter:
           of: self
-          key: hp
+          id: hp
           add: 4
 ---
 

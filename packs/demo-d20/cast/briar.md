@@ -20,7 +20,7 @@ rules:
           text: The yard stays watched.
   - id: strike
     when:
-      verb: strike
+      verb_id: strike
       target: actor
     if:
       - wielding:
@@ -38,7 +38,7 @@ rules:
     success:
       - meter:
           of: target
-          key: hp
+          id: hp
           add: -4
       - narrate:
           to: self
@@ -46,11 +46,11 @@ rules:
     partial:
       - meter:
           of: target
-          key: hp
+          id: hp
           add: -2
       - meter:
           of: self
-          key: hp
+          id: hp
           add: -2
       - narrate:
           to: self
@@ -58,7 +58,7 @@ rules:
     miss:
       - meter:
           of: self
-          key: hp
+          id: hp
           add: -3
       - narrate:
           to: self
@@ -66,24 +66,24 @@ rules:
   - id: yield_the_gate
     when:
       change:
-        meter: hp
+        meter_id: hp
         crosses: "<=0"
     if:
       - flag:
           of: self
-          key: warden
+          id: warden
           is: true
     do:
       - flag:
           of: world
-          key: passage
+          id: passage
           value: true
       - narrate:
           to: here
           text: Briar drops his staff and steps back from the gate.
   - id: ask
     when:
-      verb: ask
+      verb_id: ask
       target: actor
     do:
       - narrate:

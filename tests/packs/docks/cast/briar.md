@@ -8,12 +8,12 @@ idle:
 rules:
   - id: ask
     when:
-      verb: ask
+      verb_id: ask
       target: actor
     do:
       - flag:
           of: world
-          key: passage
+          id: passage
           value: true
       - narrate:
           to: self

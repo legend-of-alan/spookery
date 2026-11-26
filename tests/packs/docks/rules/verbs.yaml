@@ -2,12 +2,12 @@ schema: verbs
 rules:
   - id: wait
     when:
-      verb: wait
+      verb_id: wait
     do: []
 
   - id: travel
     when:
-      verb: travel
+      verb_id: travel
       target: path
     do:
       - location:
@@ -15,7 +15,7 @@ rules:
 
   - id: exert
     when:
-      verb: exert
+      verb_id: exert
     check:
       total: 2d6 + self.vigor
       success_at: 0
@@ -23,7 +23,7 @@ rules:
 
   - id: strike
     when:
-      verb: strike
+      verb_id: strike
       target: actor
     check:
       total: 1d20 + self.might
@@ -32,17 +32,17 @@ rules:
     success:
       - meter:
           of: target
-          key: hp
+          id: hp
           add: "-(self.might / 10)"
     partial:
       - meter:
           of: target
-          key: hp
+          id: hp
           add: -1
 
   - id: take
     when:
-      verb: take
+      verb_id: take
       target: item
     do:
       - item:
@@ -56,7 +56,7 @@ rules:
 
   - id: drop
     when:
-      verb: drop
+      verb_id: drop
       target: item
     do:
       - item:
@@ -70,7 +70,7 @@ rules:
 
   - id: wield
     when:
-      verb: wield
+      verb_id: wield
       target: item
     do:
       - wield:
@@ -79,7 +79,7 @@ rules:
 
   - id: unwield
     when:
-      verb: unwield
+      verb_id: unwield
     do:
       - unwield:
           subject: self

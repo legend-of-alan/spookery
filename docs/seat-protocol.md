@@ -200,7 +200,7 @@ The host's state for a GM. `world_time` is the game clock in ticks. `pack_rev` i
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:7752a49435cdc789f6d7b8bae7124251063e841ce5da20535cd3e957d986dffd",
+    "pack_rev": "blake2s:77c202b717ad6caf4f45ff634b00e1f442ef3f8761594ca0dbebccb904010679",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {

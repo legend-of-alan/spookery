@@ -269,7 +269,7 @@ fn a_spill_leaves_briar_a_note(world: &mut World) {
     let pack = host::pack(world).to_path_buf();
     add_verb(
         &pack,
-        "  - id: spill\n    when:\n      verb: spill\n    do:\n      - note:\n          id: note_sealed_name\n          to:\n            - briar\n          text: the sealed name\n      - flag:\n          of: world\n          key: sealed_name_spilled\n          value: true\n      - meter:\n          of: briar\n          key: hp\n          add: -1\n",
+        "  - id: spill\n    when:\n      verb_id: spill\n    do:\n      - note:\n          id: note_sealed_name\n          to:\n            - briar\n          text: the sealed name\n      - flag:\n          of: world\n          id: sealed_name_spilled\n          value: true\n      - meter:\n          of: briar\n          id: hp\n          add: -1\n",
     );
     stamp_pack_rev(&pack);
 }
@@ -280,7 +280,7 @@ fn a_sip_gives_bram_a_tonic(world: &mut World) {
     let pack = host::pack(world).to_path_buf();
     add_verb(
         &pack,
-        "  - id: sip\n    when:\n      verb: sip\n    cost:\n      items:\n        tonic: 1\n    do:\n      - item:\n          of: bram\n          id: tonic\n          add: 1\n",
+        "  - id: sip\n    when:\n      verb_id: sip\n    cost:\n      items:\n        tonic: 1\n    do:\n      - item:\n          of: bram\n          id: tonic\n          add: 1\n",
     );
     stamp_pack_rev(&pack);
 }
@@ -291,7 +291,7 @@ fn a_juggle_gives_the_tonic_back(world: &mut World) {
     let pack = host::pack(world).to_path_buf();
     add_verb(
         &pack,
-        "  - id: juggle\n    when:\n      verb: juggle\n    do:\n      - item:\n          of: harbormouse\n          id: tonic\n          add: 1\n      - item:\n          of: harbormouse\n          id: tonic\n          add: -1\n",
+        "  - id: juggle\n    when:\n      verb_id: juggle\n    do:\n      - item:\n          of: harbormouse\n          id: tonic\n          add: 1\n      - item:\n          of: harbormouse\n          id: tonic\n          add: -1\n",
     );
     stamp_pack_rev(&pack);
 }

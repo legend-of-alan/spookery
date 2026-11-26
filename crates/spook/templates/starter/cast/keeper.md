@@ -11,7 +11,7 @@ rules:
     do:
       - flag:
           of: self
-          key: tended
+          id: tended
           value: true
   # more-habits
 ---

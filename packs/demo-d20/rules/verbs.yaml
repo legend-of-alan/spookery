@@ -2,24 +2,24 @@ schema: verbs
 rules:
   - id: wait
     when:
-      verb: wait
+      verb_id: wait
     do: []
 
   - id: travel
     when:
-      verb: travel
+      verb_id: travel
       target: path
     do:
       - location:
           via: target
       - meter:
           of: world
-          key: daylight
+          id: daylight
           add: -1
 
   - id: take
     when:
-      verb: take
+      verb_id: take
       target: item
     do:
       - item:
@@ -33,7 +33,7 @@ rules:
 
   - id: drop
     when:
-      verb: drop
+      verb_id: drop
       target: item
     do:
       - item:
@@ -47,7 +47,7 @@ rules:
 
   - id: wield
     when:
-      verb: wield
+      verb_id: wield
       target: item
     do:
       - wield:
@@ -56,18 +56,18 @@ rules:
 
   - id: unwield
     when:
-      verb: unwield
+      verb_id: unwield
     do:
       - unwield:
           subject: self
 
   - id: ward
     when:
-      verb: ward
+      verb_id: ward
     if:
       - at:
           subject: self
-          place: yard
+          place_id: yard
       - has_item:
           subject: self
           id: nail
@@ -77,7 +77,7 @@ rules:
     do:
       - flag:
           of: world
-          key: wheel_set
+          id: wheel_set
           value: true
       - narrate:
           to: self
@@ -85,14 +85,14 @@ rules:
 
   - id: brace
     when:
-      verb: brace
+      verb_id: brace
     if:
       - at:
           subject: self
-          place: shed
+          place_id: shed
       - at:
           subject: oden
-          place: shed
+          place_id: shed
       - has_item:
           subject: self
           id: nail
@@ -101,11 +101,11 @@ rules:
     do:
       - flag:
           of: world
-          key: wheel_set
+          id: wheel_set
           value: true
       - meter:
           of: world
-          key: daylight
+          id: daylight
           add: -3
       - narrate:
           to: self

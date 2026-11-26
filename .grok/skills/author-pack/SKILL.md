@@ -37,7 +37,7 @@ On a copy of `tests/packs/docks`, append this rule to the `rules` list in `rules
 ```yaml
   - id: scan_the_street
     when:
-      verb: scan_the_street
+      verb_id: scan_the_street
     do: []
 ```
 

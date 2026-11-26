@@ -116,7 +116,7 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
             "
   - id: overreach
     when:
-      verb: overreach
+      verb_id: overreach
     do:
       - item:
           of: place:docks_shop
@@ -143,7 +143,7 @@ fn a_docks_row_spilled(world: &mut World, remove: i64) {
             "
   - id: spilled
     when:
-      verb: spilled
+      verb_id: spilled
     check:
       total: 2d6 + self.vigor
       success_at: 0
@@ -246,7 +246,7 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
         "
   - id: two_stock
     when:
-      verb: two_stock
+      verb_id: two_stock
     do:
       - item:
           of: place:docks_shop
@@ -291,9 +291,9 @@ fn a_docks_pack_where_aldric_holds_a_timed_verb(world: &mut World) {
     let rule = "  eligible: false
 rules:
   - id: ask
-    when: { verb: ask, target: actor }
+    when: { verb_id: ask, target: actor }
     cost: { ticks: 10 }
-    do: [meter: { of: target, key: rest, add: -1 }]
+    do: [meter: { of: target, id: rest, add: -1 }]
 ---";
     let next = text.replacen("  eligible: false\n---", rule, 1);
     assert_ne!(next, text, "aldric's front matter moved");
@@ -346,7 +346,7 @@ fn a_docks_pack_with_a_timed_haul(world: &mut World, oil: i64) {
         &format!(
             "
   - id: haul
-    when: {{ verb: haul }}
+    when: {{ verb_id: haul }}
     cost: {{ ticks: 10 }}
     do: [item: {{ of: self, id: lamp_oil, add: -{oil} }}]
 "
@@ -405,7 +405,7 @@ fn a_docks_pack_with_a_broken_pick(world: &mut World) {
         &pack.join("rules/verbs.yaml"),
         "
   - id: pick
-    when: { verb: pick }
+    when: { verb_id: pick }
     check: { total: 2d6 + self.vigor, success_at: \"10 / (self.vigor - 1)\" }
     do: []
 ",
@@ -458,7 +458,7 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
     let pack = support::copy_pack("docks", "rummage");
     let rule = format!(
         "  - id: rummage
-    when: {{ verb: rummage }}
+    when: {{ verb_id: rummage }}
     cost: {{ meters: {{ rest: {shop} }} }}
     check: {{ total: 2d6 + self.vigor, success_at: self.rest }}
     do: []"
@@ -467,7 +467,7 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
     let rule = format!(
         "
   - id: rummage
-    when: {{ verb: rummage }}
+    when: {{ verb_id: rummage }}
     cost: {{ meters: {{ rest: {shared} }} }}
     do: []
 "
@@ -520,10 +520,10 @@ fn a_street_rule_over_the_cap(world: &mut World) {
     let pack = support::copy_pack("docks", "trigger-cap");
     set_budget(&pack, "max_effects_per_intent", 1);
     let rule = "  - id: greeted
-    when: { change: { arrive: here, subject: rowan } }
+    when: { change: { arrive_place_id: here, subject: rowan } }
     do:
-      - flag: { of: self, key: greeted, value: true }
-      - flag: { of: self, key: welcomed, value: true }";
+      - flag: { of: self, id: greeted, value: true }
+      - flag: { of: self, id: welcomed, value: true }";
     add_place_rules(&pack, "docks_street", rule);
     support::stamp_pack_rev(&pack);
     make_mira_ineligible(&pack);
@@ -643,10 +643,10 @@ fn the_docks_pack_allows_keys(world: &mut World, limit: u64) {
         &pack.join("rules/verbs.yaml"),
         "
   - id: overset
-    when: { verb: overset }
+    when: { verb_id: overset }
     do:
-      - flag: { of: world, key: greeted, value: true }
-      - flag: { of: world, key: welcomed, value: true }
+      - flag: { of: world, id: greeted, value: true }
+      - flag: { of: world, id: welcomed, value: true }
 ",
     );
     make_mira_ineligible(&pack);
@@ -860,7 +860,7 @@ fn the_docks_pack_allows_keys_and_braces(world: &mut World, limit: u64, add: i64
         &format!(
             "
   - id: brace
-    when: {{ verb: brace }}
+    when: {{ verb_id: brace }}
     do:
       - modifier: {{ to: self, id: brace, add: {add}, ticks: 10 }}
 "
@@ -886,9 +886,9 @@ fn a_cast_member_the_save_does_not_list(world: &mut World, row: String) {
         &format!(
             "
   - id: {row}
-    when: {{ verb: {row} }}
+    when: {{ verb_id: {row} }}
     do:
-      - flag: {{ of: nell, key: marked, value: true }}
+      - flag: {{ of: nell, id: marked, value: true }}
 "
         ),
     );

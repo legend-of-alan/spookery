@@ -221,11 +221,11 @@ pub(crate) fn finish(
     if rule.finish.counts_as_act {
         finished = finished.and_then(|()| count_act(world, presence, intent));
     }
-    if rule.cooldown > 0 {
+    if rule.cooldown_ticks > 0 {
         finished = finished.and_then(|()| {
             let actor_id = intent.actor_id.as_ref().ok_or(Reason::UnknownId)?;
             let mut actors = world.actors_mut();
-            (actors.get_mut::<component::Act>(actor_id)).set_busy(at + rule.cooldown, None)
+            (actors.get_mut::<component::Act>(actor_id)).set_busy(at + rule.cooldown_ticks, None)
         });
     }
     if let Err(code) = finished {

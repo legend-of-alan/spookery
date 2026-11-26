@@ -56,22 +56,22 @@ pub(in crate::canon) fn find_missing_components(
         let mut named = Vec::new();
         for cond in &rule.if_ {
             cond.visit(|cond| match cond {
-                Cond::Meter { of, key, .. } => named.push(("meter", of, key.as_str())),
-                Cond::Flag { of, key, .. } => named.push(("flag", of, key.as_str())),
+                Cond::Meter { of, id, .. } => named.push(("meter", of, id.as_str())),
+                Cond::Flag { of, id, .. } => named.push(("flag", of, id.as_str())),
                 _ => {}
             });
         }
         rule.visit_templates(|effect| match effect {
-            EffectTemplate::Meter { of, key, .. } => named.push(("meter", of, key.as_str())),
-            EffectTemplate::Flag { of, key, .. } => named.push(("flag", of, key.as_str())),
+            EffectTemplate::Meter { of, id, .. } => named.push(("meter", of, id.as_str())),
+            EffectTemplate::Flag { of, id, .. } => named.push(("flag", of, id.as_str())),
             _ => {}
         });
-        let fixed = fixed_self_id(rule);
-        let target = rule.kind.target_kind();
-        for (kind, of, key) in named {
-            let reason = match kind {
-                "meter" => entity_defs.meter_not_carried_reason(fixed, of, key),
-                _ => entity_defs.path_lacks_flag_reason(of, key, target),
+        let fixed_self_id = fixed_self_id(rule);
+        let target_kind = rule.kind.target_kind();
+        for (component, of, id) in named {
+            let reason = match component {
+                "meter" => entity_defs.meter_not_carried_reason(fixed_self_id, of, id),
+                _ => entity_defs.path_lacks_flag_reason(of, id, target_kind),
             };
             let Some(reason) = reason else {
                 continue;
@@ -80,7 +80,7 @@ pub(in crate::canon) fn find_missing_components(
                 schema_error(
                     &rule.file,
                     &format!(
-                        "rule '{}' names {kind} '{key}', but {reason}",
+                        "rule '{}' names {component} '{id}', but {reason}",
                         rule.local_id
                     ),
                     "declare it on that entity, or name an entity that has it",
@@ -132,13 +132,13 @@ impl EntityDefs<'_> {
         }
     }
 
-    /// The reason flag `key` of the path `of` names can never be set or tested, or `None` when it
-    /// may be or `of` names no path. `target` is what the rule's move targets, so `of: target`
-    /// names a path only on a move that targets one.
+    /// The reason flag `flag_id` of the path `of` names can never be set or tested, or `None`
+    /// when it may be or `of` names no path. `target` is what the rule's move targets, so
+    /// `of: target` names a path only on a move that targets one.
     fn path_lacks_flag_reason(
         &self,
         of: &grammar::Object,
-        key: &str,
+        flag_id: &str,
         target: TargetKind,
     ) -> Option<String> {
         let path_def = match of {
@@ -149,7 +149,7 @@ impl EntityDefs<'_> {
             grammar::Object::Actor(grammar::Actor::Target) if target == TargetKind::Path => None,
             _ => return None,
         };
-        if key != OPEN {
+        if flag_id != OPEN {
             return Some(format!("a path carries only the flag '{OPEN}'"));
         }
         let always_open_path = path_def.filter(|path_def| !path_def.is_conditional());
@@ -157,29 +157,29 @@ impl EntityDefs<'_> {
             .map(|path_def| format!("path:{} has no if, so it is always open", path_def.id))
     }
 
-    /// The reason meter `key` of the entity `of` names can never be read or written, or `None`
-    /// when it may be.
-    /// An entity known only at play time is not guessed: only its key is checked.
+    /// The reason meter `meter_id` of the entity `of` names can never be read or written, or
+    /// `None` when it may be.
+    /// An entity known only at play time is not guessed: only its meter id is checked.
     fn meter_not_carried_reason(
         &self,
         fixed_self_id: Option<&str>,
         of: &grammar::Object,
-        key: &str,
+        meter_id: &str,
     ) -> Option<String> {
-        let def = self.meters.get(key);
+        let def = self.meters.get(meter_id);
         if let grammar::Object::Path(id) = of {
-            return Some(format!("path:{id} carries no meter '{key}'"));
+            return Some(format!("path:{id} carries no meter '{meter_id}'"));
         }
         match self.fixed_entity_id(fixed_self_id, of) {
-            Some(entity::Id::Global) if self.world_meters.contains_key(key) => None,
-            Some(entity::Id::Global) => Some(format!("the world carries no meter '{key}'")),
+            Some(entity::Id::Global) if self.world_meters.contains_key(meter_id) => None,
+            Some(entity::Id::Global) => Some(format!("the world carries no meter '{meter_id}'")),
             Some(id) if !def.is_some_and(|def| def.is_on(id.as_ref())) => {
                 Some(match def.and_then(|def| def.entity_id.as_ref()) {
-                    Some(entity_id) => format!("only {entity_id} carries meter '{key}'"),
-                    None => format!("{id} carries no meter '{key}'"),
+                    Some(entity_id) => format!("only {entity_id} carries meter '{meter_id}'"),
+                    None => format!("{id} carries no meter '{meter_id}'"),
                 })
             }
-            None if def.is_none() => Some(format!("no file declares meter '{key}'")),
+            None if def.is_none() => Some(format!("no file declares meter '{meter_id}'")),
             _ => None,
         }
     }
@@ -215,7 +215,7 @@ impl EntityDefs<'_> {
             for read in expr.reads() {
                 let Expr::Meter {
                     of,
-                    key,
+                    id: meter_id,
                     file_location,
                 } = read
                 else {
@@ -223,9 +223,9 @@ impl EntityDefs<'_> {
                 };
                 let at = Locator::FileLocation(*file_location);
                 let refuse = |message, hint| file_text.refuse_at(key_path, at, message, hint);
-                if let Some(reason) = self.meter_not_carried_reason(fixed_self_id, of, key) {
+                if let Some(reason) = self.meter_not_carried_reason(fixed_self_id, of, meter_id) {
                     diagnostics.push(refuse(
-                        format!("expression reads meter '{key}', but {reason}"),
+                        format!("expression reads meter '{meter_id}', but {reason}"),
                         "declare the meter on that entity, or read one that exists",
                     ));
                 }
