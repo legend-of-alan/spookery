@@ -158,9 +158,9 @@ impl<M: Model, Conn: Connection> Agent<M, Conn> {
         }
     }
 
-    /// Commits the queued moves with their round: the reply, or `None` when no move is queued.
-    async fn commit_queued_moves(&self) -> graph_flow::Result<Option<ServerBody>> {
-        if self.state().queued_moves.is_empty() {
+    /// Commits the queued verbs with their round: the reply, or `None` when no verb is queued.
+    async fn commit_queued_verbs(&self) -> graph_flow::Result<Option<ServerBody>> {
+        if self.state().queued_verbs.is_empty() {
             return Ok(None);
         }
         let args = json!(CommitArgs {

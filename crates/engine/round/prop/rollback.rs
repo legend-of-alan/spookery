@@ -325,7 +325,7 @@ fn mira_intent() -> Intent {
         round_index: 0,
         actor_id: Some("mira".into()),
         source: Source::Engine,
-        move_id: "rollback".to_string(),
+        verb_id: "rollback".to_string(),
         target: Target::Empty,
         args: IntentArgs::default(),
         rationale_code: String::new(),

@@ -314,7 +314,7 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
         actors_present: vec!["rowan".into()],
     };
     session
-        .queue_player_move(&rowan, &"rowan".into(), "ask", Some("aldric"))
+        .queue_player_verb(&rowan, &"rowan".into(), "ask", Some("aldric"))
         .unwrap_or_else(|refusal| panic!("ask aldric: {refusal:?}"));
     let wall = session.world().last_round_at.clone();
     for round in 1..=6 {
@@ -366,7 +366,7 @@ fn rowan_hauls_until_it_finishes(world: &mut World) {
         actors_present: vec!["rowan".into()],
     };
     session
-        .queue_player_move(&rowan, &"rowan".into(), "haul", None)
+        .queue_player_verb(&rowan, &"rowan".into(), "haul", None)
         .unwrap_or_else(|refusal| panic!("haul: {refusal:?}"));
     let wall = session.world().last_round_at.clone();
     world.scratch.clear();
@@ -834,7 +834,7 @@ fn intent(
         id: Some(id.to_string()),
         round_index: None,
         actor_id: Some(actor_id.to_string()),
-        move_id: Some(verb.to_string()),
+        verb_id: Some(verb.to_string()),
         target: target.map(str::to_string),
         message_to: None,
         rationale_code: "test".to_string(),
@@ -918,7 +918,7 @@ fn rowan_plays(world: &mut World, verb: String) {
 }
 
 #[then(expr = "Rowan's move is refused {word}")]
-fn rowans_move_is_refused(world: &mut World, code: String) {
+fn rowans_verb_is_refused(world: &mut World, code: String) {
     assert_eq!(world.scratch, format!("rowan {code}"));
 }
 

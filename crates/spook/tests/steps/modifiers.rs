@@ -52,10 +52,10 @@ fn add_timed_verb(pack: &Path, verb: &str, to: &str, applies: &[(&str, i64)], ti
     stamp_pack_rev(pack);
 }
 
-/// Play one round of these `(actor, verb)` moves, each aimed at rowan.
-fn hit_rowan(world: &mut World, moves: &[(&str, &str)]) {
+/// Play one round of these `(actor, verb)` pairs, each aimed at rowan.
+fn hit_rowan(world: &mut World, verbs: &[(&str, &str)]) {
     let pack = world.pack.clone().unwrap();
-    let intents = moves
+    let intents = verbs
         .iter()
         .enumerate()
         .map(|(n, (actor, verb))| intent(&format!("hit-{n}"), actor, verb, Some("rowan")))

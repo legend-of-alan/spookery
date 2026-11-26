@@ -938,7 +938,7 @@ pub(crate) fn intent(
         id: Some(id.to_string()),
         round_index: None,
         actor_id: Some(actor_id.to_string()),
-        move_id: Some(verb.to_string()),
+        verb_id: Some(verb.to_string()),
         target: target.map(str::to_string),
         message_to: None,
         rationale_code: "test".to_string(),
