@@ -160,9 +160,13 @@ fn mira_takes_the_stairs(world: &mut World) {
 fn the_door_is_open_from_the_rooms(world: &mut World) {
     let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     let view = saved.perceive(&Presence::default(), "mira").unwrap();
-    assert_eq!(view.place, "mira_rooms");
-    let stairs = view.exits.iter().find(|exit| exit.path_id == "stairs");
-    assert!(!stairs.unwrap().locked, "{:?}", view.exits);
+    assert_eq!(view.place.place_id, "mira_rooms");
+    let stairs = view
+        .place
+        .exits
+        .iter()
+        .find(|exit| exit.path_id == "stairs");
+    assert!(!stairs.unwrap().locked, "{:?}", view.place.exits);
 }
 
 #[when(expr = "Aldric, who has no key, takes the stairs")]

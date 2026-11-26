@@ -60,3 +60,8 @@ Feature: Travel follows the map
     Given rowan visited the shop and mira_rooms in an earlier session
     When play joins the table again
     Then play's map lists the shop and mira_rooms and not the trapdoor
+
+  Scenario: After a move, the view carries the places past its exits that the map knows
+    Given rowan visited the shop and mira_rooms in an earlier session
+    When rowan is seated and travels to Docks Street
+    Then the Docks Street view carries the shop nearby, with its stairs, and not Gate Yard

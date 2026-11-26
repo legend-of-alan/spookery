@@ -94,7 +94,6 @@ pub(super) fn build_view(view: &engine::View) -> ServerBody {
     ServerBody::View(Box::new(protocol::View {
         viewer: view.viewer_id.to_string(),
         place: view.place.clone(),
-        place_name: view.place_name.clone(),
         body: view.place_prose.clone(),
         actor_names: view.actor_names.clone(),
         cant_act: String::new(),
@@ -107,7 +106,7 @@ pub(super) fn build_view(view: &engine::View) -> ServerBody {
         meters: view.meters.clone(),
         world_meters: view.world_meters.clone(),
         habits: view.habits.clone(),
-        exits: view.exits.clone(),
+        nearby: view.nearby.clone(),
     }))
 }
 

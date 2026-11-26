@@ -177,8 +177,7 @@ fn render_resume(notes: &[NoteView]) -> String {
 pub fn render_view(view: &protocol::View) -> String {
     let protocol::View {
         viewer,
-        place: _,
-        place_name,
+        place,
         body,
         actor_names: _,
         cant_act,
@@ -190,12 +189,12 @@ pub fn render_view(view: &protocol::View) -> String {
         wielded_item_id,
         meters,
         world_meters,
-        exits,
+        nearby: _,
         habits: _,
     } = view;
     let mut sections = Vec::new();
-    if !place_name.is_empty() {
-        sections.push(format!("You are in {place_name}."));
+    if !place.name.is_empty() {
+        sections.push(format!("You are in {}.", place.name));
     }
     for line in [cant_act, busy] {
         if !line.is_empty() {
@@ -233,7 +232,7 @@ pub fn render_view(view: &protocol::View) -> String {
             sections.push(format!("{title}\n{}", lines.join("\n")));
         }
     }
-    sections.push(render_exit_section(exits));
+    sections.push(render_exit_section(&place.exits));
     sections.join("\n\n")
 }
 

@@ -72,14 +72,6 @@ impl Terminal {
         }
     }
 
-    /// Takes the request id play sent the last line from `next_line` under, so the window knows
-    /// the reply to its own request.
-    pub(crate) fn record_request_id(&mut self, request_id: String) {
-        if let Surface::Window(window) = &mut self.surface {
-            window.record_request_id(request_id);
-        }
-    }
-
     /// Whether refusals show as their bare code.
     pub(crate) fn is_raw(&self) -> bool {
         matches!(&self.surface, Surface::Plain(plain) if plain.is_raw)
