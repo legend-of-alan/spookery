@@ -60,7 +60,7 @@ fn journal_continues(live: &[Record], save: &Save) -> bool {
     })
 }
 
-/// The save in `bytes`, or every diagnostic on it. A hand edit is refused unless a later
+/// The save in `bytes`, or every diagnostic for it. A hand edit is refused unless a later
 /// migrate record accepted it. A checkpoint save is not the tip, so only a save that no
 /// record continues is checked against `canon`.
 pub(crate) fn load_save_file(
