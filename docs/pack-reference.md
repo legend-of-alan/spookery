@@ -27,7 +27,7 @@ A place, item, cast member or story may have `name`, the name a player sees. Wit
 
 A rule's owner is the file it lives in. The full id is `verb:<id>`, `place:<place>/<id>`, `item:<item>/<id>`, `cast:<actor>/<id>`, or `story:<story>/<id>`. `spook check --rules <pack>` prints those ids when the pack has no problems.
 
-A verb uses the wielded item's rule for it, then the target item's rule, then the target actor's, then the rule on the current place, then `rules/verbs.yaml`. A cast member's verb rule is picked by naming them while they share the actor's place, and a bare verb never reaches it. A player's `help` lists a verb only where this order reaches a rule for it and that rule's `if` holds now. When no rule matches, the move is refused before the round with `NOT_IN_SPEC`, and the turn is not spent. A word is a verb only when some rule in the pack names it, so `use` is a verb only in a pack where some rule says `verb_id: use`. A habit runs only for the NPC whose cast file holds it.
+A verb uses the wielded item's rule for it, then the target item's rule, then the target actor's, then the rule on the current place, then `rules/verbs.yaml`. A cast member's verb rule is picked by naming them while they share the actor's place, and a bare verb never reaches it. A player's `help` lists a verb only where this order reaches a rule for it and that rule's `if` holds now. When no rule matches, the move is refused before the round with `NOT_IN_SPEC`, and the turn is not spent. A word is a verb only when some rule in the pack names it, so `use` is a verb only in a pack where some rule says `verb: use`. A habit runs only for the NPC whose cast file holds it.
 
 `pack_rev` in the save is the hash of `world/`, `cast/`, and `rules/`. After those files change, `spook migrate <pack>` stores the new hash. What migrate promises is in `docs/engine-guarantees.md`. Migrate does not fix a shape error.
 
@@ -64,7 +64,7 @@ A path is an entity. Its `id` is one word with no dot, and left out it is `<firs
 
 A path with an `if` carries one flag, `open`: a rule names it with `of: path:<id>` and `id: open`, or with `of: target` on a rule with `target: path`, which is the path of the exit it names. It sets it to `false` to lock the path again, and may watch it like any flag. A path with no `if` has no flag and is always open, and no path carries a meter. The `bar` rule below locks the cellar path again.
 
-A walk that takes ticks puts the traveller on the path as soon as it starts. The save writes their place as `{path: <id>, to: <place>}`, since a two-way path alone does not say which way they go, and a condition or a change names it `path:<id>`. They are in neither room, so nobody in either room sees them, and they arrive at the end they head for when the walk finishes. `at: { place_id: path:<id> }` holds for anyone walking that path. The busy time is the rule's ticks plus the exit's ticks. A walk of no ticks goes straight to the other side.
+A walk that takes ticks puts the traveller on the path as soon as it starts. The save writes their place as `{path: <id>, to: <place>}`, since a two-way path alone does not say which way they go, and a condition or a change names it `path:<id>`. They are in neither room, so nobody in either room sees them, and they arrive at the end they head for when the walk finishes. `at: { place: path:<id> }` holds for anyone walking that path. The busy time is the rule's ticks plus the exit's ticks. A walk of no ticks goes straight to the other side.
 
 ```yaml file=world/places/yard.md
 ---
@@ -74,20 +74,20 @@ name: Yard
 rules:
   - id: bell
     when:
-      verb_id: bell
+      verb: bell
     cost:
       ticks: 1440
     do: []
   - id: step_through
     when:
-      verb_id: step_through
+      verb: step_through
     do:
       - location:
           to: lane
           teleport: true
   - id: bar
     when:
-      verb_id: bar
+      verb: bar
     do:
       - flag:
           of: path:yard.cellar
@@ -164,7 +164,7 @@ tags: []
 rules:
   - id: use
     when:
-      verb_id: use
+      verb: use
       target: item
     do:
       - item:
@@ -276,7 +276,7 @@ rules:
           id: knife
       - at:
           subject: self
-          place_id: yard
+          place: yard
       - meter:
           of: self
           id: shop_day
@@ -321,12 +321,12 @@ meters:
 rules:
   - id: mark
     when:
-      verb_id: mark
+      verb: mark
     do: []
   - id: spent
     when:
       change:
-        meter_id: nerve
+        meter: nerve
         crosses: "<=0"
     do:
       - flag:
@@ -368,7 +368,7 @@ The arrival in `tests/packs/docks/story/ending.yaml`:
 ```
     when:
       change:
-        arrive_place_id: mill_lane
+        arrive: mill_lane
         subject: pc
     do:
       - flag:
@@ -380,13 +380,13 @@ The arrival in `tests/packs/docks/story/ending.yaml`:
           text: The cart rolls out onto the lane. That is the end.
 ```
 
-reads as *when a PC (the subject) arrives at mill_lane, set the flag finished of the world to true, and narrate to self.* `arrive_place_id` is the place whose arrivals the rule watches. `subject` is the actor whose arrival the rule watches; omitted, it is `any`.
+reads as *when a PC (the subject) arrives at mill_lane, set the flag finished of the world to true, and narrate to self.* `arrive` is the place whose arrivals the rule watches. `subject` is the actor whose arrival the rule watches; omitted, it is `any`.
 
 The strike in `tests/packs/docks/rules/verbs.yaml`:
 
 ```
     when:
-      verb_id: strike
+      verb: strike
       target: actor
     check:
       total: 1d20 + self.might
@@ -449,23 +449,23 @@ The check rolls when the move lands, after the gate admits it, its start cost is
 
 A rule has `id`, `when`, and `do`. It may have `if`, `cost`, `start`, `finish`, `cooldown_ticks`, `cancellable`, `let`, `check`, `success`, `partial`, and `miss`.
 
-`when` is `habit`, a map with `verb_id` and `target`, or a map with `change`. `target` is `none`, `actor`, `place`, `path`, or `item`. An omitted `target` means `none`. `say` is speech, so that id is not a rule. A built-in player command, such as `say` or `look`, cannot be a verb. `when` has one of `verb_id` or `change`, not both.
+`when` is `habit`, a map with `verb` and `target`, or a map with `change`. `target` is `none`, `actor`, `place`, `path`, or `item`. An omitted `target` means `none`. `say` is speech, so that id is not a rule. A built-in player command, such as `say` or `look`, cannot be a verb. `when` has one of `verb` or `change`, not both.
 
 A change rule fires when its watch becomes true. It does not fire again while the watch stays true. What the engine does with that firing is in [Engine guarantees](engine-guarantees.md). `story/samples.yaml` has a meter watch. The other watches are:
 
 | Watch | Fields |
 |---|---|
-| Arrive | `arrive_place_id` is a place id, or `here` on a place rule. `subject` is `any` (the default), `pc`, `npc`, or an actor id. |
-| Leave | `leave_place_id` and `subject`, same as arrive. |
-| Meter | `meter_id` is a meter id, on any entity that carries it. `crosses` is an operator and a number, such as `<=0`. |
-| Flag | `flag_id` is the flag id. `becomes` is `true` or `false`. |
-| Item | `item_id` is an item id, with `gained: true` or `lost: true`. |
+| Arrive | `arrive` is a place id, or `here` on a place rule. `subject` is `any` (the default), `pc`, `npc`, or an actor id. |
+| Leave | `leave` and `subject`, same as arrive. |
+| Meter | `meter` is a meter id, on any entity that carries it. `crosses` is an operator and a number, such as `<=0`. |
+| Flag | `flag` is the flag id. `becomes` is `true` or `false`. |
+| Item | `item` is an item id, with `gained: true` or `lost: true`. |
 
 A change rule has no `cost`, `start`, `finish`, `cooldown_ticks`, or `cancellable`. Check rejects them. It may have `if`, `check`, and the outcome lists. `if` is read after the change.
 
-Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. The subject is the actor whose value changed. A flag or meter of the world, a place, a story or an exit has no subject, so a rule watching one runs once per change, whoever is seated, and check refuses `self`, `here`, `location`, and `check` in it: name the actor, or `world`. A flag counts as the world's when a rule sets it on the world, a place, a story or an exit; a flag only the save sets is not checked, and a `self` there is refused when the rule runs. A flag or meter id the world and an actor both carry fires the rule for each, and `TRIGGER_LEAK` reads it as an actor's change. Change rules run right after each action starts and right after each one finishes, so a rule sees every action's change and can change the world before the next action in the round. A walk fires a `leave_place_id` watch at its start and an `arrive_place_id` watch at its finish. Two changes to one key inside one action count as one. They run once more at the end of the round, after locked exits open. `max_trigger_depth` in `rules/budget.yaml` caps the passes each time they run. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
+Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. The subject is the actor whose value changed. A flag or meter of the world, a place, a story or an exit has no subject, so a rule watching one runs once per change, whoever is seated, and check refuses `self`, `here`, `location`, and `check` in it: name the actor, or `world`. A flag counts as the world's when a rule sets it on the world, a place, a story or an exit; a flag only the save sets is not checked, and a `self` there is refused when the rule runs. A flag or meter id the world and an actor both carry fires the rule for each, and `TRIGGER_LEAK` reads it as an actor's change. Change rules run right after each action starts and right after each one finishes, so a rule sees every action's change and can change the world before the next action in the round. A walk fires a `leave` watch at its start and an `arrive` watch at its finish. Two changes to one key inside one action count as one. They run once more at the end of the round, after locked exits open. `max_trigger_depth` in `rules/budget.yaml` caps the passes each time they run. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
 
-`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `subject` on `has_item`, `at`, and `wielding` is the subject of that verb: `has_item: { subject: self, id: key }` reads as *self has the key*. It is an actor: `self`, `target`, or an actor id; check refuses any other owner on that word's line. `place_id` on `at` is a place id, or `path:<id>` for anyone walking that path. `of` on a meter, flag, or item is the owner whose value or count the line reads or changes: `self`, `target`, `here`, `world`, `place:<id>`, `path:<id>`, `story:<id>`, or an actor id. A path holds only its flag `open`. An owner `target`, in a slot or a number such as `target.hp`, is the move's target, and check refuses it unless the rule targets an actor, or, on a flag, an exit, whose path it then names. On `has_item`, `wielding`, an item effect, `wield`, and a cost's `items`, `id: target` is the intent's target, and check refuses it unless the rule targets an item. A habit and a change rule target nothing, and a path's `if` and `cost` cannot say `target`. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `id`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are ticks below the cycle's length and they differ; check compares them when they are integers, and a bound read from a meter that falls outside the cycle refuses the move `OUT_OF_RANGE`.
+`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `subject` on `has_item`, `at`, and `wielding` is the subject of that verb: `has_item: { subject: self, id: key }` reads as *self has the key*. It is an actor: `self`, `target`, or an actor id; check refuses any other owner on that word's line. `place` on `at` is a place id, or `path:<id>` for anyone walking that path. `of` on a meter, flag, or item is the owner whose value or count the line reads or changes: `self`, `target`, `here`, `world`, `place:<id>`, `path:<id>`, `story:<id>`, or an actor id. A path holds only its flag `open`. An owner `target`, in a slot or a number such as `target.hp`, is the move's target, and check refuses it unless the rule targets an actor, or, on a flag, an exit, whose path it then names. On `has_item`, `wielding`, an item effect, `wield`, and a cost's `items`, `id: target` is the intent's target, and check refuses it unless the rule targets an item. A habit and a change rule target nothing, and a path's `if` and `cost` cannot say `target`. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `id`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are ticks below the cycle's length and they differ; check compares them when they are integers, and a bound read from a meter that falls outside the cycle refuses the move `OUT_OF_RANGE`.
 
 Every move but `say` is an action that starts and finishes. `cost` is what the start costs, and it may name `ticks`, `meters`, and `items`. `cost.ticks` is how long the action takes, read for the acting actor; omitted, it finishes in the round it starts. A count below 0 refuses the move `OUT_OF_RANGE`. An exit's ticks in a view and on `map` are read for the viewer, and show 0 when they cannot be read. A cost the actor cannot pay is refused when the move is played, and the world stays as it was. The start is checked again when the round runs it, since an earlier move may have changed the world.
 
@@ -484,13 +484,13 @@ schema: verbs
 rules:
   - id: wait
     when:
-      verb_id: wait
+      verb: wait
       target: none
     do: []
 
   - id: travel
     when:
-      verb_id: travel
+      verb: travel
       target: path
     cost:
       ticks: 120
@@ -500,19 +500,19 @@ rules:
 
   - id: greet
     when:
-      verb_id: greet
+      verb: greet
       target: actor
     do: []
 
   - id: visit
     when:
-      verb_id: visit
+      verb: visit
       target: place
     do: []
 
   - id: take
     when:
-      verb_id: take
+      verb: take
       target: item
     do:
       - item:
@@ -526,7 +526,7 @@ rules:
 
   - id: press
     when:
-      verb_id: press
+      verb: press
     cost:
       ticks: 1
       meters:
@@ -558,7 +558,7 @@ rules:
 
   - id: meter_add
     when:
-      verb_id: meter_add
+      verb: meter_add
     do:
       - meter:
           of: self
@@ -567,7 +567,7 @@ rules:
 
   - id: meter_set
     when:
-      verb_id: meter_set
+      verb: meter_set
       target: actor
     do:
       - meter:
@@ -577,7 +577,7 @@ rules:
 
   - id: chant
     when:
-      verb_id: chant
+      verb: chant
     cost:
       ticks: 5
     start:
@@ -593,7 +593,7 @@ rules:
 
   - id: shrug
     when:
-      verb_id: shrug
+      verb: shrug
       target: actor
     do:
       - check:
@@ -616,7 +616,7 @@ rules:
 
   - id: lunge
     when:
-      verb_id: lunge
+      verb: lunge
       target: actor
     let:
       attack: 2d6 + self.nerve
@@ -639,7 +639,7 @@ rules:
 
   - id: leave_note
     when:
-      verb_id: leave_note
+      verb: leave_note
     do:
       - note:
           id: note_lane
@@ -650,7 +650,7 @@ rules:
 
   - id: ring_bell
     when:
-      verb_id: ring_bell
+      verb: ring_bell
     do:
       - narrate:
           to: here
@@ -658,7 +658,7 @@ rules:
 
   - id: advance_day
     when:
-      verb_id: advance_day
+      verb: advance_day
     do:
       - meter:
           of: keeper
@@ -667,7 +667,7 @@ rules:
 
   - id: dawn_nears
     when:
-      verb_id: dawn_nears
+      verb: dawn_nears
     do:
       - meter:
           of: world
@@ -676,7 +676,7 @@ rules:
 
   - id: remember
     when:
-      verb_id: remember
+      verb: remember
     do:
       - memory:
           to: self
@@ -684,7 +684,7 @@ rules:
 
   - id: give_oil
     when:
-      verb_id: give_oil
+      verb: give_oil
     do:
       - check:
           total: 2d6 + self.nerve
@@ -698,7 +698,7 @@ rules:
 
   - id: show_stair
     when:
-      verb_id: show_stair
+      verb: show_stair
     do:
       - flag:
           of: self
@@ -707,7 +707,7 @@ rules:
 
   - id: scorch
     when:
-      verb_id: scorch
+      verb: scorch
       target: actor
     do:
       - modifier:
@@ -718,7 +718,7 @@ rules:
 
   - id: arm
     when:
-      verb_id: arm
+      verb: arm
     do:
       - wield:
           subject: self
@@ -726,7 +726,7 @@ rules:
 
   - id: disarm
     when:
-      verb_id: disarm
+      verb: disarm
     do:
       - unwield:
           subject: keeper

@@ -5,7 +5,7 @@ name: Gate Yard
 rules:
   - id: chock
     when:
-      verb_id: chock
+      verb: chock
     if:
       - has_item:
           subject: self

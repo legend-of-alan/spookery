@@ -39,50 +39,17 @@ pub(in crate::canon) struct RuleYaml {
     pub(super) miss: Vec<EffectYaml>,
 }
 
+#[derive(Deserialize)]
+#[serde(untagged)]
 pub(super) enum WhenYaml {
     Word(String),
     Map(Box<WhenMapYaml>),
 }
 
-/// Not `untagged`, which would drop a map's own error, such as an unknown field.
-impl<'de> Deserialize<'de> for WhenYaml {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct WhenVisitor;
-
-        impl<'de> Visitor<'de> for WhenVisitor {
-            type Value = WhenYaml;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("habit or a map with verb_id or change")
-            }
-
-            fn visit_str<E>(self, word: &str) -> Result<WhenYaml, E>
-            where
-                E: de::Error,
-            {
-                Ok(WhenYaml::Word(word.to_string()))
-            }
-
-            fn visit_map<A>(self, map: A) -> Result<WhenYaml, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                let when_map =
-                    WhenMapYaml::deserialize(de::value::MapAccessDeserializer::new(map))?;
-                Ok(WhenYaml::Map(Box::new(when_map)))
-            }
-        }
-
-        deserializer.deserialize_any(WhenVisitor)
-    }
-}
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct WhenMapYaml {
+    #[serde(rename = "verb")]
     pub verb_id: Option<String>,
     pub target: Option<String>,
     pub change: Option<ChangeYaml>,
@@ -91,13 +58,18 @@ pub(super) struct WhenMapYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct ChangeYaml {
+    #[serde(rename = "arrive")]
     pub arrive_place_id: Option<String>,
+    #[serde(rename = "leave")]
     pub leave_place_id: Option<String>,
     pub subject: Option<String>,
+    #[serde(rename = "meter")]
     pub meter_id: Option<String>,
     pub crosses: Option<String>,
+    #[serde(rename = "flag")]
     pub flag_id: Option<String>,
     pub becomes: Option<bool>,
+    #[serde(rename = "item")]
     pub item_id: Option<String>,
     pub gained: Option<bool>,
     pub lost: Option<bool>,
@@ -202,6 +174,7 @@ pub(in crate::canon) struct FlagCondYaml {
 #[serde(deny_unknown_fields)]
 pub(in crate::canon) struct AtYaml {
     pub(super) subject: Spanned<String>,
+    #[serde(rename = "place")]
     pub(super) place_id: String,
 }
 

@@ -4,7 +4,7 @@ rules:
   - id: lane_clear
     when:
       change:
-        arrive_place_id: mill_lane
+        arrive: mill_lane
         subject: pc
     do:
       - flag:

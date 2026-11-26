@@ -8,7 +8,7 @@ idle:
 rules:
   - id: ask
     when:
-      verb_id: ask
+      verb: ask
       target: actor
     do:
       - flag:

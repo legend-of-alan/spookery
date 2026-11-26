@@ -8,7 +8,7 @@ tags:
 rules:
   - id: use
     when:
-      verb_id: use
+      verb: use
       target: item
     if:
       - has_item:

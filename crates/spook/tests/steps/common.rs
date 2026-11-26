@@ -247,11 +247,6 @@ fn break_pack(pack: &Path, fault: &str) {
             "      verb_id: wait\n",
             "      verb_id: say\n",
         ),
-        "a when with the old key verb" => replace_in_file(
-            &pack.join("rules/verbs.yaml"),
-            "      verb_id: wait\n",
-            "      verb: wait\n",
-        ),
         "a cast role named kind" => replace_in_file(
             &pack.join("cast/pc-rowan.md"),
             "control_type: pc_template\n",
