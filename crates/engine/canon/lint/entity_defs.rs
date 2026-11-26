@@ -85,7 +85,7 @@ pub(in crate::canon) fn find_missing_components(
                     ),
                     "declare it on that entity, or name an entity that has it",
                 )
-                .at_path(format!("rules[{}]", rule.index)),
+                .at_key_path(format!("rules[{}]", rule.index)),
             );
         }
     }

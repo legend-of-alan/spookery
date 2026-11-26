@@ -35,7 +35,7 @@ pub(super) fn collect_markdown_files(root: &Path, dir: &str) -> Vec<Result<Page,
                 "this file is not UTF-8 text",
                 "save it as UTF-8",
             )
-            .at_path("schema")]));
+            .at_key_path("schema")]));
             continue;
         };
         let split = split_frontmatter(&file, &text)
@@ -68,7 +68,7 @@ pub(super) fn read_text(root: &Path, file: &str) -> Result<String, Vec<Diagnosti
             &format!("{file} is missing"),
             &format!("add {file}"),
         )
-        .at_path("schema")]);
+        .at_key_path("schema")]);
     }
     fs::read_to_string(&file_path).map_err(|_| {
         vec![error(
@@ -77,7 +77,7 @@ pub(super) fn read_text(root: &Path, file: &str) -> Result<String, Vec<Diagnosti
             "this file could not be read as UTF-8 text",
             "save it as UTF-8",
         )
-        .at_path("schema")]
+        .at_key_path("schema")]
     })
 }
 

@@ -29,7 +29,7 @@ pub(super) fn find_unknown_path_ids(
         );
         let mut refuse = |field: &str, message: String, hint: &str| {
             let key_path = format!("paths[{index}]{field}");
-            diagnostics.push(schema_error(map::FILE, &message, hint).at_path(key_path));
+            diagnostics.push(schema_error(map::FILE, &message, hint).at_key_path(key_path));
         };
         for end_place_id in (path_def.end_place_ids.iter()).filter(|id| !places.contains_key(*id)) {
             let message = format!("path '{line}' names '{end_place_id}', which is not a place");
@@ -83,7 +83,7 @@ pub(super) fn find_unknown_modifiers(
                         ),
                         "add the modifier or name one that exists",
                     )
-                    .at_path(format!("rules[{}]", rule.index)),
+                    .at_key_path(format!("rules[{}]", rule.index)),
                 );
             }
             _ => {}
@@ -98,7 +98,7 @@ pub(crate) fn refuse_unknown_item(file: &str, id: &str, key_path: &str) -> Diagn
         &format!("unknown item '{id}'"),
         &format!("add world/items/{id}.md"),
     )
-    .at_path(key_path)
+    .at_key_path(key_path)
 }
 
 /// Static warnings and trigger-reach errors on a loaded `Canon`, whose save lists the flag keys in
@@ -149,7 +149,8 @@ fn find_unset_flags(canon: &Canon, saved_flags: &BTreeSet<&str>) -> Vec<Diagnost
                 if id == OPEN || is_ever_set(id.as_str()) {
                     return;
                 }
-                diagnostics.push(warning(file, &unset_message(id), hint).at_path(key_path.clone()));
+                diagnostics
+                    .push(warning(file, &unset_message(id), hint).at_key_path(key_path.clone()));
             });
         }
     }
@@ -159,7 +160,7 @@ fn find_unset_flags(canon: &Canon, saved_flags: &BTreeSet<&str>) -> Vec<Diagnost
         };
         if id != OPEN && !is_ever_set(id) {
             let key_path = format!("rules[{}].when", rule.index);
-            diagnostics.push(warning(&rule.file, &unset_message(id), hint).at_path(key_path));
+            diagnostics.push(warning(&rule.file, &unset_message(id), hint).at_key_path(key_path));
         }
     }
     for (index, path_def) in canon.paths.iter().enumerate() {
@@ -171,7 +172,7 @@ fn find_unset_flags(canon: &Canon, saved_flags: &BTreeSet<&str>) -> Vec<Diagnost
             continue;
         };
         let key_path = format!("paths[{index}].revealed_by");
-        diagnostics.push(warning(map::FILE, &unset_message(id), hint).at_path(key_path));
+        diagnostics.push(warning(map::FILE, &unset_message(id), hint).at_key_path(key_path));
     }
     diagnostics
 }
@@ -192,7 +193,7 @@ fn find_long_gm_notes(canon: &Canon) -> Option<Diagnostic> {
             ),
             "cut it to the pack's tone, narrative style and story goal",
         )
-        .at_path("gm_notes")
+        .at_key_path("gm_notes")
     })
 }
 
@@ -217,7 +218,7 @@ fn find_bad_cycle_conds(canon: &Canon) -> Vec<Diagnostic> {
                         &format!("there is no cycle {id}"),
                         "name a cycle from cycles in rules/budget.yaml, or add it there",
                     )
-                    .at_path(key_path.clone()),
+                    .at_key_path(key_path.clone()),
                 );
                 continue;
             };
@@ -229,7 +230,7 @@ fn find_bad_cycle_conds(canon: &Canon) -> Vec<Diagnostic> {
                         &format!("cycle bound is not below cycle {id}, which is {length} ticks"),
                         "set from and to to ticks of the cycle, below its length",
                     )
-                    .at_path(key_path.clone()),
+                    .at_key_path(key_path.clone()),
                 );
             }
         }
@@ -259,7 +260,7 @@ fn find_unreachable_places(canon: &Canon) -> Vec<Diagnostic> {
                 &format!("place '{id}' has no path from {}", canon.start_place),
                 "add a path in world/map.yaml that reaches it",
             )
-            .at_path(id.clone()),
+            .at_key_path(id.clone()),
         );
     }
     diagnostics
@@ -283,7 +284,7 @@ fn find_teleport_verbs(canon: &Canon) -> Vec<Diagnostic> {
                 &format!("verb '{}' teleports", rule.local_id),
                 "teleport belongs on an author rule, not in verbs.yaml",
             )
-            .at_path(format!("rules[{}]", rule.index))
+            .at_key_path(format!("rules[{}]", rule.index))
         })
         .collect()
 }

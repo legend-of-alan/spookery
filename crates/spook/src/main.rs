@@ -250,7 +250,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                     left.file
                         .cmp(&right.file)
                         .then(left.line.cmp(&right.line))
-                        .then(left.path.cmp(&right.path))
+                        .then(left.key_path.cmp(&right.key_path))
                 });
                 println!(
                     "{}",

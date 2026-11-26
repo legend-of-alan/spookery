@@ -49,7 +49,7 @@ pub(super) fn find_cycles(canon: &Canon) -> Vec<Diagnostic> {
                 &format!("rule '{}' is in a trigger cycle", rule.local_id),
                 "stop one rule in the cycle from setting the next watched value",
             )
-            .at_path(format!("rules[{}]", rule.index))
+            .at_key_path(format!("rules[{}]", rule.index))
         })
         .collect()
 }
@@ -81,7 +81,7 @@ pub(super) fn find_leaks(canon: &Canon) -> Vec<Diagnostic> {
                 ),
                 "address that output to self, or to here when the room can see the change",
             )
-            .at_path(format!("rules[{}]", rule.index)),
+            .at_key_path(format!("rules[{}]", rule.index)),
         );
     }
     diagnostics
@@ -249,7 +249,7 @@ pub(super) fn find_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
                 &format!("rule '{}' {message}", rule.local_id),
                 hint,
             )
-            .at_path(format!("rules[{}]", rule.index)),
+            .at_key_path(format!("rules[{}]", rule.index)),
         );
     }
     diagnostics

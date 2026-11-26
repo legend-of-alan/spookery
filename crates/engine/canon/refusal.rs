@@ -99,7 +99,7 @@ impl<'a> FileText<'a> {
         let code = Code::Error(Reason::Schema);
         let mut diagnostic = Diagnostic::new(self.file, code, &message, hint);
         if !key_path.is_empty() {
-            diagnostic = diagnostic.at_path(key_path);
+            diagnostic = diagnostic.at_key_path(key_path);
         }
         match at {
             Locator::Nowhere | Locator::FileLocation(None) => diagnostic,

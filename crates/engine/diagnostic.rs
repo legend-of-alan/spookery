@@ -83,7 +83,8 @@ pub struct Diagnostic {
     pub line: Option<u32>,
     pub column: Option<u32>,
     /// Key path such as `rules[0].when`.
-    pub path: Option<String>,
+    #[serde(rename = "path")]
+    pub key_path: Option<String>,
     pub code: Code,
     pub message: String,
     pub hint: Option<String>,
@@ -100,7 +101,7 @@ impl Diagnostic {
             file: file.replace('\\', "/"),
             line: None,
             column: None,
-            path: None,
+            key_path: None,
             code,
             message,
             hint,
@@ -125,18 +126,18 @@ impl Diagnostic {
         }
     }
 
-    pub(crate) fn at_path(mut self, path: impl Into<String>) -> Self {
-        self.path = Some(path.into());
+    pub(crate) fn at_key_path(mut self, key_path: impl Into<String>) -> Self {
+        self.key_path = Some(key_path.into());
         self
     }
 }
 
-/// `file:line: message (CODE)`, or `file: path: message (CODE)` when there is no line.
+/// `file:line: message (CODE)`, or `file: key_path: message (CODE)` when there is no line.
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match (self.line, self.path.as_deref()) {
+        match (self.line, self.key_path.as_deref()) {
             (Some(line), _) => write!(f, "{}:{line}", self.file)?,
-            (None, Some(path)) => write!(f, "{}: {path}", self.file)?,
+            (None, Some(key_path)) => write!(f, "{}: {key_path}", self.file)?,
             (None, None) => f.write_str(&self.file)?,
         }
         write!(f, ": {} ({})", self.message, self.code.as_str())
@@ -192,7 +193,7 @@ pub(crate) fn diagnose_schema_tag(text: &str, expected: &str, file: &str) -> Opt
     let Some(found) = find_schema(text) else {
         return Some(
             schema_error(file, "the schema tag is missing", &hint)
-                .at_path("schema")
+                .at_key_path("schema")
                 .at_line(1, Some(1)),
         );
     };
@@ -202,7 +203,7 @@ pub(crate) fn diagnose_schema_tag(text: &str, expected: &str, file: &str) -> Opt
     let message = format!("schema is '{}', which this file does not use", found.value);
     Some(
         schema_error(file, &message, &hint)
-            .at_path("schema")
+            .at_key_path("schema")
             .at_line(found.line, Some(1)),
     )
 }
@@ -222,7 +223,7 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool)
             .filter(|column| *column > 0);
         Some((line, column))
     });
-    let (path, message, hint) = match err {
+    let (key_path, message, hint) = match err {
         YamlError::SerdeUnknownField { field, .. } => (
             Some(field.clone()),
             format!("unknown field '{field}'"),
@@ -306,8 +307,8 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool)
         ),
     };
     let mut diagnostic = schema_error(file, &message, &hint);
-    if let Some(path) = path {
-        diagnostic = diagnostic.at_path(path);
+    if let Some(key_path) = key_path {
+        diagnostic = diagnostic.at_key_path(key_path);
     }
     if let Some((line, column)) = file_location {
         diagnostic = diagnostic.at_line(line, column);
@@ -346,7 +347,7 @@ mod tests {
             "rule 'exert' is missing when",
             "add when",
         )
-        .at_path("rules[0].when")
+        .at_key_path("rules[0].when")
         .at_line(14, Some(5));
         assert_eq!(
             diagnostic.to_string(),
@@ -370,7 +371,7 @@ mod tests {
             "pack_rev does not match the canon hash",
             "run spook migrate to store the current hash",
         )
-        .at_path("pack_rev");
+        .at_key_path("pack_rev");
         assert_eq!(
             diagnostic.to_string(),
             "state/save.yaml: pack_rev: pack_rev does not match the canon hash; run spook migrate to store the current hash (PACK_REV_MISMATCH)"
