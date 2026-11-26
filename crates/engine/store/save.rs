@@ -212,10 +212,10 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
             diagnostics.push(meter_error(&entity_id, key, &message, hint));
         }
     }
-    for (id, key, live) in find_stale_modifiers(world) {
+    for (id, key, modifier) in find_stale_modifiers(world) {
         let message = format!(
             "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
-            live.meter
+            modifier.meter
         );
         let diagnostic = schema_error(FILE, &message, "run spook migrate to drop the modifier");
         diagnostics.push(diagnostic.at_path(format!("actors.modifiers.{id}.{key}")));

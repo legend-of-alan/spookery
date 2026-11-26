@@ -69,10 +69,10 @@ pub(crate) fn is_storable(def: &Def, base: i64, offset: i64) -> bool {
 }
 
 /// `base + offset`, plus what the entity's modifiers add to this meter, clamped to the bounds.
-pub(crate) fn value(def: &Def, live: &Meter, modifiers: i64) -> Result<i64, Reason> {
-    let sum = live
+pub(crate) fn value(def: &Def, meter: &Meter, modifiers: i64) -> Result<i64, Reason> {
+    let sum = meter
         .base
-        .checked_add(live.offset)
+        .checked_add(meter.offset)
         .and_then(|sum| sum.checked_add(modifiers))
         .ok_or(Reason::OutOfRange)?;
     Ok(sum.clamp(def.min, def.max))
@@ -202,12 +202,12 @@ mod tests {
     fn stored_accepts_a_sum_past_max_and_current_clamps() {
         let def = vigor();
         assert!(is_storable(&def, 100, 20));
-        let live = Meter {
+        let meter = Meter {
             base: 100,
             offset: 20,
         };
-        assert_eq!(value(&def, &live, 0).unwrap(), 110);
-        assert_eq!(value(&def, &live, -15).unwrap(), 105);
+        assert_eq!(value(&def, &meter, 0).unwrap(), 110);
+        assert_eq!(value(&def, &meter, -15).unwrap(), 105);
     }
 
     #[test]

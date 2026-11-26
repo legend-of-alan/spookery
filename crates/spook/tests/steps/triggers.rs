@@ -130,8 +130,8 @@ fn nell_found_the_ledger(world: &mut World, tide: i64) {
     assert!(flags.contains("found_ledger"), "nell has no found_ledger");
     let world_meters = now.globals().query::<&component::Meter>();
     let tide_meter = world_meters.iter().find_map(|meters| meters.get("tide"));
-    let live = tide_meter.expect("the world's tide");
-    assert_eq!(live.base + live.offset, tide, "{live:?}");
+    let meter = tide_meter.expect("the world's tide");
+    assert_eq!(meter.base + meter.offset, tide, "{meter:?}");
 }
 
 #[given(expr = "two rules that set each other's watched flag")]

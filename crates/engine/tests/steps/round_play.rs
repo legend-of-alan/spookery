@@ -744,13 +744,13 @@ fn derive_first_strike(pack: &Path, actor_id: &str) -> i64 {
     let session = spookery_engine::Session::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let def = session.canon().meters.get("might").unwrap();
     let actor = actor_id.into();
-    let live = session
+    let meter = session
         .world()
         .actors()
         .get::<component::Meter>(&actor)
         .get("might")
         .unwrap_or_else(|| panic!("missing {actor_id}'s might"));
-    let stat = (live.base + live.offset).clamp(def.min, def.max);
+    let stat = (meter.base + meter.offset).clamp(def.min, def.max);
     let rolled = roll::faces(
         &roll::Key {
             seed: session.world().seed.clone(),
