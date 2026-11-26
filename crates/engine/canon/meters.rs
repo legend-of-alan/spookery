@@ -12,30 +12,30 @@ use crate::entity;
 
 const SCHEMA: &str = "meters";
 
-/// A meters file, whose meters `carrier` carries.
+/// A meters file, whose meters `entity_id` carries.
 pub(super) fn load(
-    rel: &str,
+    file: &str,
     text: &str,
-    carrier: Option<entity::Id>,
+    entity_id: Option<entity::Id>,
 ) -> Result<BTreeMap<String, meter::Def>, Vec<Diagnostic>> {
-    let doc: Yaml = parse_tagged(rel, text, SCHEMA, false)?;
-    let source = FileText { file: rel, text };
-    compile(&source, doc.meters, carrier)
+    let yaml: Yaml = parse_tagged(file, text, SCHEMA, false)?;
+    let file_text = FileText { file, text };
+    compile(&file_text, yaml.meters, entity_id)
 }
 
-/// The meter rows of one file. A meter no actor carries is hidden unless its row says
+/// The meter entries of one file. A meter no actor carries is hidden unless its entry says
 /// `hidden: false`.
 pub(super) fn compile(
-    source: &FileText,
-    rows: Vec<MeterYaml>,
-    carrier: Option<entity::Id>,
+    file_text: &FileText,
+    entries: Vec<MeterYaml>,
+    entity_id: Option<entity::Id>,
 ) -> Result<BTreeMap<String, meter::Def>, Vec<Diagnostic>> {
-    let hidden_by_default = !matches!(carrier, None | Some(entity::Id::Actor(_)));
-    let mut diags = Diagnostics::default();
+    let hidden_by_default = !matches!(entity_id, None | Some(entity::Id::Actor(_)));
+    let mut diagnostics = Diagnostics::default();
     let mut meters = BTreeMap::new();
-    for (row, entry) in rows.into_iter().enumerate() {
+    for (index, entry) in entries.into_iter().enumerate() {
         let id = &entry.id;
-        let rules = [
+        let constraints = [
             (
                 entry.min > entry.base_cap,
                 "min",
@@ -55,9 +55,10 @@ pub(super) fn compile(
                 "set base between min and base_cap",
             ),
         ];
-        let found = source.refuse_entry("meter", row, id, meters.contains_key(id), rules);
-        if !found.is_empty() {
-            diags.extend(found);
+        let entry_diagnostics =
+            file_text.refuse_entry("meter", index, id, meters.contains_key(id), constraints);
+        if !entry_diagnostics.is_empty() {
+            diagnostics.extend(entry_diagnostics);
             continue;
         }
         meters.insert(
@@ -69,32 +70,35 @@ pub(super) fn compile(
                 max: entry.max,
                 base: entry.base,
                 hidden: entry.hidden.unwrap_or(hidden_by_default),
-                carrier: carrier.clone(),
+                carrier: entity_id.clone(),
             },
         );
     }
-    diags.into_result(meters)
+    diagnostics.into_result(meters)
 }
 
 /// Add the meters one cast, place or story file declares to `meters`. An id that
-/// `rules/meters.yaml`, another file or, when given, `world` has already is refused.
+/// `rules/meters.yaml`, another file or, when given, `world_meters` has already is refused.
 pub(super) fn add_own(
     meters: &mut BTreeMap<String, meter::Def>,
     own: BTreeMap<String, meter::Def>,
-    world: Option<&BTreeMap<String, meter::Def>>,
-    source: &FileText,
-    diags: &mut Diagnostics,
+    world_meters: Option<&BTreeMap<String, meter::Def>>,
+    file_text: &FileText,
+    diagnostics: &mut Diagnostics,
 ) {
     const KEEP_ONE: &str = "keep one meter with this id";
-    for (key, desc) in own {
-        let taken = if world.is_some_and(|world| world.contains_key(&key)) {
-            Some(Some(entity::Id::Global))
-        } else {
-            meters.get(&key).map(|taken| taken.carrier.clone())
-        };
-        let (after, hint) = match taken {
+    for (key, def) in own {
+        let duplicate_entity_id =
+            if world_meters.is_some_and(|world_meters| world_meters.contains_key(&key)) {
+                Some(Some(entity::Id::Global))
+            } else {
+                meters
+                    .get(&key)
+                    .map(|earlier_def| earlier_def.carrier.clone())
+            };
+        let (after, hint) = match duplicate_entity_id {
             None => {
-                meters.insert(key, desc);
+                meters.insert(key, def);
                 continue;
             }
             Some(None) => (
@@ -107,9 +111,14 @@ pub(super) fn add_own(
                 KEEP_ONE,
             ),
         };
-        let twice: DuplicateWords = ("meter", after, hint);
-        let path = format!("meters.{key}");
-        diags.push(source.refuse_duplicate(&key, &path, Locator::Nowhere, twice));
+        let duplicate_words: DuplicateWords = ("meter", after, hint);
+        let key_path = format!("meters.{key}");
+        diagnostics.push(file_text.refuse_duplicate(
+            &key,
+            &key_path,
+            Locator::Nowhere,
+            duplicate_words,
+        ));
     }
 }
 

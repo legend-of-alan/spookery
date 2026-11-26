@@ -149,23 +149,22 @@ fn build_item_stacks<'a>(
 
 /// The meters `carrier` carries that are not hidden, in id order.
 fn shown_meters(canon: &Canon, world: &ecs::World, carrier: &entity::Id) -> Vec<MeterView> {
-    let descs = if *carrier == entity::Id::Global {
+    let defs = if *carrier == entity::Id::Global {
         &canon.world_meters
     } else {
         &canon.meters
     };
-    descs
-        .keys()
+    defs.keys()
         .filter_map(|id| {
-            let desc = canon
+            let def = canon
                 .meter_def(carrier.as_ref(), id)
-                .filter(|desc| !desc.hidden)?;
+                .filter(|def| !def.hidden)?;
             let value = world.entities().get::<Meter>(carrier).value(id).ok()?;
             Some(MeterView {
                 id: id.to_string(),
-                name: desc.name.clone(),
+                name: def.name.clone(),
                 value,
-                max: desc.max,
+                max: def.max,
             })
         })
         .collect()

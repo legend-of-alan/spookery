@@ -37,59 +37,62 @@ pub(super) fn add(
     page: Page,
     cast: &mut BTreeMap<ActorId, Def>,
     meters: Option<&mut BTreeMap<String, meter::Def>>,
-    diags: &mut Diagnostics,
+    diagnostics: &mut Diagnostics,
 ) -> Option<Vec<Rule>> {
-    let file = diags.keep(parse(&page.file, &page.yaml))?;
-    let whole = FileText {
+    let yaml = diagnostics.keep(parse(&page.file, &page.frontmatter))?;
+    let page_text = FileText {
         file: &page.file,
         text: &page.text,
     };
-    let control_type = if file.control_type == "npc" {
+    let control_type = if yaml.control_type == "npc" {
         canon::ControlType::Npc
     } else {
         canon::ControlType::PcTemplate
     };
     let hint = "keep one cast file with this id";
-    let twice = ("cast id", "is already defined", hint);
-    let taken = cast.contains_key(file.id.as_str());
-    if let Some(diag) =
-        taken.then(|| whole.refuse_duplicate(&file.id, "id", Locator::Nowhere, twice))
+    let duplicate_words = ("cast id", "is already defined", hint);
+    let is_duplicate = cast.contains_key(yaml.id.as_str());
+    if let Some(diagnostic) = is_duplicate
+        .then(|| page_text.refuse_duplicate(&yaml.id, "id", Locator::Nowhere, duplicate_words))
     {
-        diags.push(diag);
+        diagnostics.push(diagnostic);
         return None;
     }
-    let id: ActorId = file.id.clone().into();
-    let carrier = Some(entity::Id::Actor(id.clone()));
-    let own = diags.keep(meters::compile(&whole, file.meters, carrier));
+    let id: ActorId = yaml.id.clone().into();
+    let entity_id = Some(entity::Id::Actor(id.clone()));
+    let own = diagnostics.keep(meters::compile(&page_text, yaml.meters, entity_id));
     if let (Some(meters), Some(own)) = (meters, own) {
-        meters::add_own(meters, own, None, &whole, diags);
+        meters::add_own(meters, own, None, &page_text, diagnostics);
     }
     cast.insert(
         id.clone(),
         Def {
             control_type,
-            name: file.name.unwrap_or(file.id),
+            name: yaml.name.unwrap_or(yaml.id),
             body: page.body,
-            idle: file.idle,
+            idle: yaml.idle,
         },
     );
-    diags.keep(rule_list::compile(
+    diagnostics.keep(rule_list::compile(
         &page.file,
-        file.rules,
+        yaml.rules,
         &Owner::Cast(id.into()),
     ))
 }
 
-fn parse(file: &str, yaml: &str) -> Result<Yaml, Vec<Diagnostic>> {
-    let parsed: Yaml = parse_tagged(file, yaml, SCHEMA, true)?;
-    let source = FileText { file, text: yaml };
-    let mut diags = Diagnostics::default();
-    let empty = ("id is empty", "set id to a short cast id");
-    diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));
-    if parsed.id == "world" {
-        diags.push(
+fn parse(file: &str, frontmatter: &str) -> Result<Yaml, Vec<Diagnostic>> {
+    let yaml: Yaml = parse_tagged(file, frontmatter, SCHEMA, true)?;
+    let file_text = FileText {
+        file,
+        text: frontmatter,
+    };
+    let mut diagnostics = Diagnostics::default();
+    let empty_words = ("id is empty", "set id to a short cast id");
+    diagnostics.extend(file_text.refuse_empty(&yaml.id, "id", Locator::Key("id:"), empty_words));
+    if yaml.id == "world" {
+        diagnostics.push(
             Problem {
-                source: &source,
+                source: &file_text,
                 path: "id",
                 at: Locator::Key("id:"),
                 message: "id world is reserved".into(),
@@ -98,22 +101,22 @@ fn parse(file: &str, yaml: &str) -> Result<Yaml, Vec<Diagnostic>> {
             .into_diagnostic(),
         );
     }
-    if parsed.control_type != "npc" && parsed.control_type != "pc_template" {
-        diags.push(
+    if yaml.control_type != "npc" && yaml.control_type != "pc_template" {
+        diagnostics.push(
             Problem {
-                source: &source,
+                source: &file_text,
                 path: "control_type",
                 at: Locator::Key("control_type:"),
                 message: format!(
                     "control_type is '{}', which is not npc or pc_template",
-                    parsed.control_type
+                    yaml.control_type
                 ),
                 hint: "set control_type to npc or pc_template",
             }
             .into_diagnostic(),
         );
     }
-    diags.into_result(parsed)
+    diagnostics.into_result(yaml)
 }
 
 #[derive(Deserialize)]

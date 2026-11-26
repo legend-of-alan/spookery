@@ -19,41 +19,41 @@ impl<'a> FileText<'a> {
         Self { file, text: "" }
     }
 
-    /// The refusal at `path` when `id` is empty.
+    /// The refusal at `key_path` when `id` is empty.
     pub(super) fn refuse_empty(
         &self,
         id: &str,
-        path: &str,
+        key_path: &str,
         at: Locator,
         words: EmptyWords,
     ) -> Option<Diagnostic> {
-        let (problem, hint) = words;
+        let (message, hint) = words;
         id.is_empty()
-            .then(|| self.refuse_at(path, at, problem.into(), hint))
+            .then(|| self.refuse_at(key_path, at, message.into(), hint))
     }
 
-    /// The refusal at `path` for an `id` the caller found a second time.
+    /// The refusal at `key_path` for an `id` the caller found a second time.
     pub(super) fn refuse_duplicate(
         &self,
         id: &str,
-        path: &str,
+        key_path: &str,
         at: Locator,
         words: DuplicateWords,
     ) -> Diagnostic {
         let (before, after, hint) = words;
-        self.refuse_at(path, at, format!("{before} '{id}' {after}"), hint)
+        self.refuse_at(key_path, at, format!("{before} '{id}' {after}"), hint)
     }
 
-    /// The refusals for the `row`th item of the top-level `{noun}s:` list, whose id is
-    /// `id`: an empty id, then each rule the row breaks, then, when nothing else is wrong
-    /// and `taken` says an earlier row has this id, the repeat.
+    /// The refusals for the `index`th entry of the top-level `{noun}s:` list, whose id is
+    /// `id`: an empty id, then each constraint the entry breaks, then, when nothing else is
+    /// wrong and `is_duplicate` says an earlier entry has this id, the duplicate.
     pub(super) fn refuse_entry(
         &self,
         noun: &str,
-        row: usize,
+        index: usize,
         id: &str,
-        taken: bool,
-        rules: impl IntoIterator<Item = EntryConstraint>,
+        is_duplicate: bool,
+        constraints: impl IntoIterator<Item = EntryConstraint>,
     ) -> Vec<Diagnostic> {
         let list = format!("{noun}s:");
         let refuse = |field: &str, message: String, hint: &str| {
@@ -63,37 +63,38 @@ impl<'a> FileText<'a> {
             );
             let at = Locator::Entry {
                 list: &list,
-                row,
+                index,
                 key: &key,
             };
-            self.refuse_at(&format!("{noun}s[{row}].{field}"), at, message, hint)
+            self.refuse_at(&format!("{noun}s[{index}].{field}"), at, message, hint)
         };
-        let empty = format!("a {noun} id is empty");
-        let broken = rules.into_iter().filter(|(broken, ..)| *broken);
-        let mut found: Vec<Diagnostic> = id
+        let empty_message = format!("a {noun} id is empty");
+        let broken = constraints.into_iter().filter(|(broken, ..)| *broken);
+        let mut diagnostics: Vec<Diagnostic> = id
             .is_empty()
-            .then(|| refuse("id", empty, &format!("set id to a short {noun} id")))
+            .then(|| refuse("id", empty_message, &format!("set id to a short {noun} id")))
             .into_iter()
             .chain(broken.map(|(_, field, message, hint)| refuse(field, message, hint)))
             .collect();
-        if found.is_empty() && taken {
-            let twice = format!("{noun} '{id}' is listed twice");
-            found.push(refuse("id", twice, &format!("keep one {noun}")));
+        if diagnostics.is_empty() && is_duplicate {
+            let duplicate_message = format!("{noun} '{id}' is listed twice");
+            diagnostics.push(refuse("id", duplicate_message, &format!("keep one {noun}")));
         }
-        found
+        diagnostics
     }
 
-    /// A `CompileError` at the spot it recorded, refused as a schema error.
-    pub(super) fn refuse_error(&self, path: &str, fault: CompileError) -> Diagnostic {
-        self.refuse_at(path, Locator::FileLocation(fault.spot), fault.message, "")
+    /// A `CompileError` at the file location it recorded, refused as a schema error.
+    pub(super) fn refuse_error(&self, key_path: &str, error: CompileError) -> Diagnostic {
+        let at = Locator::FileLocation(error.file_location);
+        self.refuse_at(key_path, at, error.message, "")
     }
 
-    fn refuse_at(&self, path: &str, at: Locator, problem: String, hint: &str) -> Diagnostic {
+    fn refuse_at(&self, key_path: &str, at: Locator, message: String, hint: &str) -> Diagnostic {
         Problem {
             source: self,
-            path,
+            path: key_path,
             at,
-            message: problem,
+            message,
             hint,
         }
         .into_diagnostic()
@@ -104,24 +105,24 @@ impl<'a> FileText<'a> {
 /// (such as `dice.count`), the message and the hint.
 pub(super) type EntryConstraint = (bool, &'static str, String, &'static str);
 
-/// How an empty id is refused: the sentence and the hint, worded per kind.
+/// How an empty id is refused: the message and the hint, worded per kind.
 pub(super) type EmptyWords = (&'static str, &'static str);
 
-/// How a repeated id is refused: the words before and after the quoted id, and the hint.
+/// How a duplicate id is refused: the words before and after the quoted id, and the hint.
 pub(super) type DuplicateWords = (&'static str, &'static str, &'static str);
 
-/// Where a problem is.
+/// Where in its file a diagnostic is.
 #[derive(Clone, Copy)]
 pub(super) enum Locator<'a> {
-    /// No line; the path alone says where.
+    /// No line; the key path alone says where.
     Nowhere,
     /// The first `key` in the text.
     Key(&'a str),
-    /// `key` inside the `row`th item of the top-level `list` (such as `meters:`), counted
-    /// in the text. Each item starts at its `id:` key.
+    /// `key` inside the `index`th entry of the top-level `list` (such as `meters:`), counted
+    /// in the text. Each entry starts at its `id:` key.
     Entry {
         list: &'a str,
-        row: usize,
+        index: usize,
         key: &'a str,
     },
     /// A line and column serde recorded, already counted from the file's first line.
@@ -139,37 +140,38 @@ pub(super) struct Problem<'a> {
 
 impl Problem<'_> {
     pub(super) fn into_diagnostic(self) -> Diagnostic {
-        let source = self.source;
+        let file_text = self.source;
         let code = Code::Error(Reason::Schema);
-        let mut diag = Diagnostic::new(source.file, code, &self.message, self.hint);
+        let mut diagnostic = Diagnostic::new(file_text.file, code, &self.message, self.hint);
         if !self.path.is_empty() {
-            diag = diag.at_path(self.path);
+            diagnostic = diagnostic.at_path(self.path);
         }
         match self.at {
-            Locator::Nowhere | Locator::FileLocation(None) => diag,
-            Locator::Key(key) => diag.at_spot(locate_nth(source.text, key, 0)),
-            Locator::Entry { list, row, key } => {
-                diag.at_spot(locate_entry_field(source.text, list, row, key))
+            Locator::Nowhere | Locator::FileLocation(None) => diagnostic,
+            Locator::Key(key) => diagnostic.at_spot(locate_nth(file_text.text, key, 0)),
+            Locator::Entry { list, index, key } => {
+                diagnostic.at_spot(locate_entry_field(file_text.text, list, index, key))
             }
-            Locator::FileLocation(Some(spot)) => {
-                diag.at_line(spot.line, Some(spot.column).filter(|column| *column > 0))
+            Locator::FileLocation(Some(file_location)) => {
+                let column = Some(file_location.column).filter(|column| *column > 0);
+                diagnostic.at_line(file_location.line, column)
             }
         }
     }
 }
 
-/// A message and its line from a `compile_*` step that does not know its file yet.
+/// A message and its file location from a `compile_*` step that does not know its file yet.
 #[derive(Debug)]
 pub(super) struct CompileError {
     pub message: String,
-    pub spot: Option<LineColumn>,
+    pub file_location: Option<LineColumn>,
 }
 
 impl From<String> for CompileError {
     fn from(message: String) -> Self {
         Self {
             message,
-            spot: None,
+            file_location: None,
         }
     }
 }
@@ -190,8 +192,8 @@ impl Diagnostics {
         result.map_err(|more| self.0.extend(more)).ok()
     }
 
-    pub(super) fn push(&mut self, diag: Diagnostic) {
-        self.0.push(diag);
+    pub(super) fn push(&mut self, diagnostic: Diagnostic) {
+        self.0.push(diagnostic);
     }
 
     /// `value` when nothing was found, else every diagnostic.
@@ -217,9 +219,9 @@ pub(super) fn file_location_of<T>(span: &Spanned<T>) -> Option<LineColumn> {
     (line > 0).then_some(LineColumn { line, column })
 }
 
-/// `field` inside the `row`th item of the top-level `list`. An item starts at a line whose
-/// key is `id:`, so an `id:` inside a value, or the file's own `id:`, is not a row.
-fn locate_entry_field(text: &str, list: &str, row: usize, field: &str) -> Option<(u32, u32)> {
+/// `field` inside the `index`th entry of the top-level `list`. An entry starts at a line
+/// whose key is `id:`, so an `id:` inside a value, or the file's own `id:`, starts none.
+fn locate_entry_field(text: &str, list: &str, index: usize, field: &str) -> Option<(u32, u32)> {
     let lines: Vec<&str> = text.lines().collect();
     let first = lines.iter().position(|line| line.starts_with(list))? + 1;
     let last = lines[first..]
@@ -227,13 +229,13 @@ fn locate_entry_field(text: &str, list: &str, row: usize, field: &str) -> Option
         .position(|line| ends_list(line))
         .map_or(lines.len(), |end| first + end);
     let marks: Vec<usize> = (first..last)
-        .filter(|&index| is_id_key(lines[index]))
+        .filter(|&line_index| is_id_key(lines[line_index]))
         .collect();
-    let start = *marks.get(row)?;
-    let end = marks.get(row + 1).copied().unwrap_or(last);
-    (start..end).find_map(|index| {
-        let column = lines[index].find(field)?;
-        Some((index as u32 + 1, column as u32 + 1))
+    let start = *marks.get(index)?;
+    let end = marks.get(index + 1).copied().unwrap_or(last);
+    (start..end).find_map(|line_index| {
+        let column = lines[line_index].find(field)?;
+        Some((line_index as u32 + 1, column as u32 + 1))
     })
 }
 

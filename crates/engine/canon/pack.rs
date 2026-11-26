@@ -8,11 +8,15 @@ use crate::diagnostic::{parse_tagged, schema_error, Diagnostic};
 const SCHEMA: &str = "pack";
 
 pub(super) fn load(text: &str) -> Result<Yaml, Vec<Diagnostic>> {
-    let doc: Yaml = parse_tagged("pack.yaml", text, SCHEMA, false)?;
-    let empty = ("id is empty", "set id to a short pack id");
-    let refused =
-        FileText::without_text("pack.yaml").refuse_empty(&doc.id, "id", Locator::Nowhere, empty);
-    refused.map_or(Ok(doc), |diag| Err(vec![diag]))
+    let yaml: Yaml = parse_tagged("pack.yaml", text, SCHEMA, false)?;
+    let empty_words = ("id is empty", "set id to a short pack id");
+    let diagnostic = FileText::without_text("pack.yaml").refuse_empty(
+        &yaml.id,
+        "id",
+        Locator::Nowhere,
+        empty_words,
+    );
+    diagnostic.map_or(Ok(yaml), |diagnostic| Err(vec![diagnostic]))
 }
 
 impl Yaml {

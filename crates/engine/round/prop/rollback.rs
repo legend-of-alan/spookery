@@ -91,7 +91,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         (entity::Id::Global, "tide"),
     ];
     for (carrier, key) in &carried {
-        let desc = meter::Def {
+        let def = meter::Def {
             name: String::new(),
             min: 0,
             base_cap: 10,
@@ -101,14 +101,14 @@ fn nested_rollbacks_put_the_save_back_exactly() {
             carrier: Some(carrier.clone()),
         };
         match carrier {
-            entity::Id::Global => canon.world_meters.insert(key.to_string(), desc),
-            _ => canon.meters.insert(key.to_string(), desc),
+            entity::Id::Global => canon.world_meters.insert(key.to_string(), def),
+            _ => canon.meters.insert(key.to_string(), def),
         };
     }
     let mut world = ecs::World::new(Save::clone(opened.world()), Arc::new(canon));
     for (carrier, key) in &carried {
-        let desc = world.canon().meter_def(carrier.as_ref(), key);
-        let base = Meter::at_base(desc.expect("the meter's def"));
+        let def = world.canon().meter_def(carrier.as_ref(), key);
+        let base = Meter::at_base(def.expect("the meter's def"));
         let put = (world.entities_mut().get_mut::<Meter>(carrier)).set(key, Some(base));
         put.expect("the meter goes on");
     }

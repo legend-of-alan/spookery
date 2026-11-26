@@ -45,7 +45,7 @@ pub struct Canon {
     pub system: String,
     pub start_place: String,
     pub places: BTreeMap<PlaceId, place::Def>,
-    /// Every line under `paths:` in `world/map.yaml`, in file order, and the index of each
+    /// Every entry under `paths:` in `world/map.yaml`, in file order, and the index of each
     /// place's exits.
     pub paths: Paths,
     pub cast: BTreeMap<ActorId, cast::Def>,
@@ -126,7 +126,7 @@ impl Canon {
     pub fn meter_def(&self, id: entity::IdRef<'_>, key: &str) -> Option<&meter::Def> {
         match id {
             entity::IdRef::Global => self.world_meters.get(key),
-            _ => self.meters.get(key).filter(|desc| desc.is_on(id)),
+            _ => self.meters.get(key).filter(|def| def.is_on(id)),
         }
     }
 
@@ -160,8 +160,8 @@ pub fn pack_rev(root: &Path) -> Result<String, Reason> {
     }
     files.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
     let mut preimage = Vec::new();
-    for (rel, bytes) in files {
-        preimage.extend(rel.as_bytes());
+    for (file, bytes) in files {
+        preimage.extend(file.as_bytes());
         preimage.push(0);
         preimage.extend((bytes.len() as u64).to_be_bytes());
         preimage.extend(bytes);
@@ -176,46 +176,47 @@ pub fn pack_rev(root: &Path) -> Result<String, Reason> {
 /// the budget; lints across files; and `checkpoint_every`.
 pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     // repeats module: re-exported at the crate root
-    let mut diags = Diagnostics::default();
+    let mut diagnostics = Diagnostics::default();
     let mut places = BTreeMap::new();
     let mut cast = BTreeMap::new();
     let mut items = BTreeMap::new();
     let mut place_meters = Vec::new();
-    let mut loaded = Vec::new();
-    let pack = diags.keep(read_text(root, "pack.yaml").and_then(|text| pack::load(&text)));
+    let mut unsorted_rules = Vec::new();
+    let pack = diagnostics.keep(read_text(root, "pack.yaml").and_then(|text| pack::load(&text)));
     for page in collect_markdown_files(root, "world") {
-        let Some(page) = diags.keep(page) else {
+        let Some(page) = diagnostics.keep(page) else {
             continue;
         };
         let rules = if page.file.starts_with("world/items/") {
-            item::add(page, &mut items, &mut diags)
+            item::add(page, &mut items, &mut diagnostics)
         } else if page.file.starts_with("world/places/") {
-            place::add(page, &mut places, &mut place_meters, &mut diags)
+            place::add(page, &mut places, &mut place_meters, &mut diagnostics)
         } else {
             None
         };
-        loaded.extend(rules.unwrap_or_default());
+        unsorted_rules.extend(rules.unwrap_or_default());
     }
-    let path_lines = diags.keep(read_text(root, map::FILE).and_then(|text| map::load(&text)));
-    let paths = (path_lines.as_ref()).and_then(|lines| diags.keep(Paths::new(lines.clone())));
+    let path_defs = diagnostics.keep(read_text(root, map::FILE).and_then(|text| map::load(&text)));
+    let paths =
+        (path_defs.as_ref()).and_then(|path_defs| diagnostics.keep(Paths::new(path_defs.clone())));
     let world_meters = if root.join("world/meters.yaml").is_file() {
-        let rel = "world/meters.yaml";
-        diags.keep(
-            read_text(root, rel)
-                .and_then(|text| meters::load(rel, &text, Some(entity::Id::Global))),
+        let file = "world/meters.yaml";
+        diagnostics.keep(
+            read_text(root, file)
+                .and_then(|text| meters::load(file, &text, Some(entity::Id::Global))),
         )
     } else {
         Some(BTreeMap::new())
     };
-    let rel = "rules/meters.yaml";
+    let file = "rules/meters.yaml";
     let mut meters =
-        diags.keep(read_text(root, rel).and_then(|text| meters::load(rel, &text, None)));
+        diagnostics.keep(read_text(root, file).and_then(|text| meters::load(file, &text, None)));
     for page in collect_markdown_files(root, "cast") {
-        let Some(page) = diags.keep(page) else {
+        let Some(page) = diagnostics.keep(page) else {
             continue;
         };
-        let rules = cast::add(page, &mut cast, meters.as_mut(), &mut diags);
-        loaded.extend(rules.unwrap_or_default());
+        let rules = cast::add(page, &mut cast, meters.as_mut(), &mut diagnostics);
+        unsorted_rules.extend(rules.unwrap_or_default());
     }
     for (file, own) in place_meters {
         if let Some(meters) = meters.as_mut() {
@@ -224,34 +225,49 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
                 own,
                 None,
                 &FileText::without_text(&file),
-                &mut diags,
+                &mut diagnostics,
             );
         }
     }
     let modifiers = match &meters {
-        Some(meters) if root.join(modifiers::FILE).is_file() => diags
+        Some(meters) if root.join(modifiers::FILE).is_file() => diagnostics
             .keep(read_text(root, modifiers::FILE).and_then(|text| modifiers::load(&text, meters))),
         _ => Some(BTreeMap::new()),
     };
-    let [verbs, budget] = ["rules/verbs.yaml", "rules/budget.yaml"]
-        .map(|rel| diags.keep(read_text(root, rel)).map(|text| (rel, text)));
-    if let Some((rel, text)) = &verbs {
-        loaded.extend(diags.keep(verbs::load(rel, text)).unwrap_or_default());
+    let [verbs, budget] = ["rules/verbs.yaml", "rules/budget.yaml"].map(|file| {
+        diagnostics
+            .keep(read_text(root, file))
+            .map(|text| (file, text))
+    });
+    if let Some((file, text)) = &verbs {
+        unsorted_rules.extend(
+            diagnostics
+                .keep(verbs::load(file, text))
+                .unwrap_or_default(),
+        );
     }
-    let (story_rules, stories) =
-        story::load_dir(root, meters.as_mut(), world_meters.as_ref(), &mut diags);
-    loaded.extend(story_rules);
+    let (story_rules, stories) = story::load_dir(
+        root,
+        meters.as_mut(),
+        world_meters.as_ref(),
+        &mut diagnostics,
+    );
+    unsorted_rules.extend(story_rules);
     let mut seen_ids = BTreeSet::new();
-    for rule in &loaded {
-        let twice = ("rule", "is already defined", "keep one rule with this id");
-        let taken = !seen_ids.insert(rule.id.clone());
-        let source = FileText::without_text(&rule.file);
-        diags.extend(taken.then(|| source.refuse_duplicate(&rule.id, "", Locator::Nowhere, twice)));
+    for rule in &unsorted_rules {
+        let duplicate_words = ("rule", "is already defined", "keep one rule with this id");
+        let is_duplicate = !seen_ids.insert(rule.id.clone());
+        let file_text = FileText::without_text(&rule.file);
+        diagnostics.extend(
+            is_duplicate.then(|| {
+                file_text.refuse_duplicate(&rule.id, "", Locator::Nowhere, duplicate_words)
+            }),
+        );
     }
-    let rules = rule::Table::new(loaded);
-    let budget = budget.and_then(|(rel, text)| diags.keep(budget::load(rel, &text)));
+    let rules = rule::Table::new(unsorted_rules);
+    let budget = budget.and_then(|(file, text)| diagnostics.keep(budget::load(file, &text)));
     if let (Some(meters), Some(world_meters), Some(paths)) = (&meters, &world_meters, &paths) {
-        let scope = EntityDefs {
+        let entity_defs = EntityDefs {
             meters,
             world_meters,
             cast: &cast,
@@ -259,20 +275,20 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
             paths,
             stories: &stories,
         };
-        diags.extend(find_unknown_meter_reads(&scope, &rules));
-        diags.extend(find_missing_components(&scope, &rules));
+        diagnostics.extend(find_unknown_meter_reads(&entity_defs, &rules));
+        diagnostics.extend(find_missing_components(&entity_defs, &rules));
     }
     if let Some(modifiers) = &modifiers {
-        diags.extend(find_unknown_modifiers(&rules, modifiers));
+        diagnostics.extend(find_unknown_modifiers(&rules, modifiers));
     }
-    diags.extend(find_unknown_rule_items(&rules, &items));
-    if let Some(path_lines) = &path_lines {
-        diags.extend(find_unknown_path_ids(path_lines, &places, &items));
+    diagnostics.extend(find_unknown_rule_items(&rules, &items));
+    if let Some(path_defs) = &path_defs {
+        diagnostics.extend(find_unknown_path_ids(path_defs, &places, &items));
     }
     let checkpoint_every = pack
         .as_ref()
-        .and_then(|pack| diags.keep(pack.checkpoint_every()));
-    diags.into_result(())?;
+        .and_then(|pack| diagnostics.keep(pack.checkpoint_every()));
+    diagnostics.into_result(())?;
     let (
         Some(pack),
         Some(paths),

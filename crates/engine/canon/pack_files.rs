@@ -7,12 +7,12 @@ use crate::canon::refusal::{FileText, Locator, Problem};
 use crate::diagnostic::{error, schema_error, Diagnostic};
 use crate::Reason;
 
-/// A Markdown file split at its frontmatter fence. `text` is the whole file, and `yaml` is
-/// the frontmatter from the opening fence, so its line numbers are the file's.
+/// A Markdown file split at its frontmatter fence. `text` is the whole file, and
+/// `frontmatter` starts at the opening fence, so its line numbers are the file's.
 pub(super) struct Page {
     pub file: String,
     pub text: String,
-    pub yaml: String,
+    pub frontmatter: String,
     pub body: String,
 }
 
@@ -39,11 +39,11 @@ pub(super) fn collect_markdown_files(root: &Path, dir: &str) -> Vec<Result<Page,
             continue;
         };
         let split = split_frontmatter(&file, &text)
-            .map(|(yaml, body)| (yaml.to_string(), body.to_string()));
-        pages.push(split.map(|(yaml, body)| Page {
+            .map(|(frontmatter, body)| (frontmatter.to_string(), body.to_string()));
+        pages.push(split.map(|(frontmatter, body)| Page {
             file,
             text,
-            yaml,
+            frontmatter,
             body,
         }));
     }
@@ -61,20 +61,20 @@ pub(super) fn refuse_unreadable_dir(dir: &str) -> Diagnostic {
     .into_diagnostic()
 }
 
-pub(super) fn read_text(root: &Path, rel: &str) -> Result<String, Vec<Diagnostic>> {
-    let path = root.join(rel);
-    if !path.is_file() {
+pub(super) fn read_text(root: &Path, file: &str) -> Result<String, Vec<Diagnostic>> {
+    let file_path = root.join(file);
+    if !file_path.is_file() {
         return Err(vec![error(
-            rel,
+            file,
             Reason::NotInSpec,
-            &format!("{rel} is missing"),
-            &format!("add {rel}"),
+            &format!("{file} is missing"),
+            &format!("add {file}"),
         )
         .at_path("schema")]);
     }
-    fs::read_to_string(&path).map_err(|_| {
+    fs::read_to_string(&file_path).map_err(|_| {
         vec![error(
-            rel,
+            file,
             Reason::Schema,
             "this file could not be read as UTF-8 text",
             "save it as UTF-8",
@@ -97,19 +97,19 @@ pub(super) fn collect_files(
         .map_err(|_| Reason::Schema)?;
     entries.sort_by_key(|entry| entry.file_name());
     for entry in entries {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_files(&path, root, out)?;
+        let file_path = entry.path();
+        if file_path.is_dir() {
+            collect_files(&file_path, root, out)?;
             continue;
         }
-        let rel = path.strip_prefix(root).map_err(|_| Reason::Schema)?;
-        let rel = rel
+        let file = file_path.strip_prefix(root).map_err(|_| Reason::Schema)?;
+        let file = file
             .components()
             .map(|component| component.as_os_str().to_string_lossy())
             .collect::<Vec<_>>()
             .join("/");
-        let bytes = fs::read(&path).map_err(|_| Reason::Schema)?;
-        out.push((rel, bytes));
+        let bytes = fs::read(&file_path).map_err(|_| Reason::Schema)?;
+        out.push((file, bytes));
     }
     Ok(())
 }

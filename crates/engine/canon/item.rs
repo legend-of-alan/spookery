@@ -25,30 +25,34 @@ pub struct Def {
 pub(super) fn add(
     page: Page,
     items: &mut BTreeMap<String, Def>,
-    diags: &mut Diagnostics,
+    diagnostics: &mut Diagnostics,
 ) -> Option<Vec<Rule>> {
-    let item: Yaml = diags.keep(parse_tagged(&page.file, &page.yaml, SCHEMA, true))?;
-    let source = FileText::without_text(&page.file);
-    let empty = ("an item id is empty", "set id to a short item id");
-    let twice = ("item", "is already defined", "keep one item with this id");
-    let taken = items.contains_key(&item.id);
-    let refused = source
-        .refuse_empty(&item.id, "", Locator::Nowhere, empty)
-        .or_else(|| taken.then(|| source.refuse_duplicate(&item.id, "", Locator::Nowhere, twice)));
-    if let Some(diag) = refused {
-        diags.push(diag);
+    let yaml: Yaml = diagnostics.keep(parse_tagged(&page.file, &page.frontmatter, SCHEMA, true))?;
+    let file_text = FileText::without_text(&page.file);
+    let empty_words = ("an item id is empty", "set id to a short item id");
+    let duplicate_words = ("item", "is already defined", "keep one item with this id");
+    let is_duplicate = items.contains_key(&yaml.id);
+    let diagnostic = file_text
+        .refuse_empty(&yaml.id, "", Locator::Nowhere, empty_words)
+        .or_else(|| {
+            is_duplicate.then(|| {
+                file_text.refuse_duplicate(&yaml.id, "", Locator::Nowhere, duplicate_words)
+            })
+        });
+    if let Some(diagnostic) = diagnostic {
+        diagnostics.push(diagnostic);
         return None;
     }
-    let rules = rule_list::compile(&page.file, item.rules, &Owner::Item(item.id.clone()));
+    let rules = rule_list::compile(&page.file, yaml.rules, &Owner::Item(yaml.id.clone()));
     items.insert(
-        item.id.clone(),
+        yaml.id.clone(),
         Def {
-            name: item.name.unwrap_or(item.id),
-            tags: item.tags,
+            name: yaml.name.unwrap_or(yaml.id),
+            tags: yaml.tags,
             body: page.body.trim().to_string(),
         },
     );
-    diags.keep(rules)
+    diagnostics.keep(rules)
 }
 
 #[derive(Deserialize)]

@@ -55,7 +55,7 @@ pub(super) fn find_trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
 
 /// Narrate and note on a change rule that can reach a viewer who cannot see the change.
 pub(super) fn find_trigger_leaks(canon: &Canon) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
+    let mut diagnostics = Vec::new();
     for rule in canon.rules.iter() {
         let When::Change(watch) = &rule.when else {
             continue;
@@ -70,7 +70,7 @@ pub(super) fn find_trigger_leaks(canon: &Canon) -> Vec<Diagnostic> {
         if !leak {
             continue;
         }
-        diags.push(
+        diagnostics.push(
             error(
                 &rule.file,
                 Reason::TriggerLeak,
@@ -83,7 +83,7 @@ pub(super) fn find_trigger_leaks(canon: &Canon) -> Vec<Diagnostic> {
             .at_path(format!("rules[{}]", rule.index)),
         );
     }
-    diags
+    diagnostics
 }
 
 /// A value an effect writes, as a change watch matches it.
@@ -113,8 +113,8 @@ enum Sight {
 fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<EffectWrite>) {
     match effect {
         EffectTemplate::Modifier { id, .. } => {
-            if let Some(desc) = canon.modifiers.get(id) {
-                out.push(EffectWrite::Meter(desc.meter.clone()));
+            if let Some(def) = canon.modifiers.get(id) {
+                out.push(EffectWrite::Meter(def.meter.clone()));
             }
         }
         EffectTemplate::Flag { key, value, .. } => {
@@ -204,7 +204,7 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
                 || canon
                     .meters
                     .get(key)
-                    .is_some_and(|desc| !desc.is_actor_meter())
+                    .is_some_and(|def| !def.is_actor_meter())
         }
         ChangeWatch::Flag { key, .. } => {
             (key == OPEN && canon.paths.iter().any(PathDef::is_conditional))
@@ -233,7 +233,7 @@ fn watches_actor_key(canon: &Canon, watch: &ChangeWatch) -> bool {
 /// A change rule on a world change runs once, for no one, so it has no `self` and no `here`.
 /// Every other rule has a subject, so its `narrate` names who hears it.
 pub(super) fn find_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
+    let mut diagnostics = Vec::new();
     for rule in canon.rules.iter() {
         let on_world = matches!(&rule.when, When::Change(watch) if watches_world(canon, watch));
         let (message, hint) = if on_world && needs_subject(rule) {
@@ -249,7 +249,7 @@ pub(super) fn find_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
         } else {
             continue;
         };
-        diags.push(
+        diagnostics.push(
             schema_error(
                 &rule.file,
                 &format!("rule '{}' {message}", rule.local_id),
@@ -258,7 +258,7 @@ pub(super) fn find_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
             .at_path(format!("rules[{}]", rule.index)),
         );
     }
-    diags
+    diagnostics
 }
 
 fn narrates_to_present(rule: &Rule) -> bool {

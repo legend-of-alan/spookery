@@ -1,4 +1,4 @@
-//! Typed YAML for a rule. Serde picks the effect and condition variants.
+//! Typed YAML for a rule. Serde picks the effect and cond variants.
 
 use std::fmt;
 
@@ -112,7 +112,7 @@ impl<'de> Deserialize<'de> for IfYaml {
     }
 }
 
-/// One condition; its one key names the condition.
+/// One cond; its one key names the cond.
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)]

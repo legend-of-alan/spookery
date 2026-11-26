@@ -742,7 +742,7 @@ fn strike_line(scratch: &str, actor: &str) -> (i64, i64) {
 /// The total of `actor_id`'s first strike key this round: the docks strike's `1d20 + self.might`.
 fn derive_first_strike(pack: &Path, actor_id: &str) -> i64 {
     let session = spookery_engine::Session::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
-    let desc = session.canon().meters.get("might").unwrap();
+    let def = session.canon().meters.get("might").unwrap();
     let actor = actor_id.into();
     let live = session
         .world()
@@ -750,7 +750,7 @@ fn derive_first_strike(pack: &Path, actor_id: &str) -> i64 {
         .get::<component::Meter>(&actor)
         .get("might")
         .unwrap_or_else(|| panic!("missing {actor_id}'s might"));
-    let stat = (live.base + live.offset).clamp(desc.min, desc.max);
+    let stat = (live.base + live.offset).clamp(def.min, def.max);
     let rolled = roll::faces(
         &roll::Key {
             seed: session.world().seed.clone(),

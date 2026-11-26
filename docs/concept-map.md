@@ -16,7 +16,7 @@ A short guide to the word each concept gets, and the synonyms to avoid for it. N
 | --- | --- |
 | entity: a game object with components, as in Bevy. component: plain data on an entity. | owner, carrier, holder, bearer, held |
 | parent: any other composition | owner, holder, carrier, bearer |
-| file: the pack file a rule lives in | owner |
+| file: the pack file a rule lives in | owner, rel |
 | Scope: what a rule is attached to (verb, place, item, cast, story) | owner |
 | RuleKind and kind: whether a rule fires on a verb, a habit or a change | when (past the pack edge) |
 | actor | character, creature, person |
@@ -55,6 +55,6 @@ A short guide to the word each concept gets, and the synonyms to avoid for it. N
 | Def: what the pack says about one thing | Descriptor |
 | get: one value by key. find: a search by predicate. resolve: a name into an id. | lookup, search |
 
-A bare path is a map link, and a file on disk ends in _path, _file or _dir. The MCP session is mcp_session. A token says which, such as claim_token.
+A bare path is a map link, and a file on disk ends in _path, _file or _dir. A key path inside a pack file, such as rules[0].when, is key_path. The MCP session is mcp_session. A token says which, such as claim_token.
 
 Entity and component keep Bevy's meaning: [Entity](https://docs.rs/bevy_ecs/0.20.1/bevy_ecs/entity/struct.Entity.html) is only an id, and [Component](https://docs.rs/bevy_ecs/0.20.1/bevy_ecs/component/trait.Component.html) is plain data, one value of each kind per entity.

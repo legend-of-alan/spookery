@@ -476,7 +476,7 @@ impl<Lock> Session<Lock> {
             .canon()
             .meters
             .iter()
-            .filter_map(|(id, desc)| Some((desc.carrier.clone()?, id)));
+            .filter_map(|(id, def)| Some((def.carrier.clone()?, id)));
         let world_meters = self
             .canon()
             .world_meters

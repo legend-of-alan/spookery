@@ -192,7 +192,7 @@ impl ecs::World {
     ) -> Change {
         let (canon, save) = (&*self.canon, &self.save);
         let (id, entry_id) = (&key.entity_id, key.entry_id.as_deref().unwrap_or_default());
-        let desc = canon.meter_def(id.as_ref(), entry_id);
+        let def = canon.meter_def(id.as_ref(), entry_id);
         let now = entity::in_collection!(id, [&save], |entities, id| {
             Reader::new(entities, canon)
                 .get::<Meter>(id)
@@ -203,8 +203,8 @@ impl ecs::World {
             _ => Ok(0),
         };
         let reading = |held: Option<&Meter>, sum: Result<i64, Reason>| {
-            let value = (desc.zip(held).ok_or(Reason::UnknownId))
-                .and_then(|(desc, held)| meter::value(desc, held, sum?));
+            let value = (def.zip(held).ok_or(Reason::UnknownId))
+                .and_then(|(def, held)| meter::value(def, held, sum?));
             value.ok().map(ChangeValue::Number)
         };
         let before = reading(held.unwrap_or(now.as_ref()), sum.unwrap_or(sum_now));

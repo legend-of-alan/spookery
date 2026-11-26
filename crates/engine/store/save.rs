@@ -204,8 +204,8 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
         diags.push(meter_error(&meter.carrier, &meter.id, &problem, hint));
     }
     for (carrier, key, held) in held_meters(world) {
-        let desc = canon.meter_def(carrier.as_ref(), key);
-        if desc.is_some_and(|desc| !meter::is_storable(desc, held.base, held.offset)) {
+        let def = canon.meter_def(carrier.as_ref(), key);
+        if def.is_some_and(|def| !meter::is_storable(def, held.base, held.offset)) {
             let problem = format!("meter '{key}' is outside the rules");
             let hint = "set base and offset so the stored pair fits the meter";
             diags.push(meter_error(&carrier, key, &problem, hint));

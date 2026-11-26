@@ -25,31 +25,31 @@ pub(in crate::canon) fn compile(
     entries: Vec<RuleYaml>,
     owner: &Owner,
 ) -> Result<Vec<Rule>, Vec<Diagnostic>> {
-    let source = FileText::without_text(file);
-    let mut diags = Diagnostics::default();
+    let file_text = FileText::without_text(file);
+    let mut diagnostics = Diagnostics::default();
     let mut rules: Vec<Rule> = Vec::new();
     let mut verb_ids = Vec::new();
     for (index, entry) in entries.into_iter().enumerate() {
-        let Some(rule) = diags.keep(compile_rule(file, index, entry, owner)) else {
+        let Some(rule) = diagnostics.keep(compile_rule(file, index, entry, owner)) else {
             continue;
         };
         if let When::Verb { verb_id, .. } = &rule.when {
             let hint = "keep one rule for that verb in this file";
-            let twice = ("two verb rules for", "at the same level", hint);
-            let taken = verb_ids.contains(verb_id);
-            diags.extend(
-                taken.then(|| source.refuse_duplicate(verb_id, "", Locator::Nowhere, twice)),
-            );
+            let duplicate_words = ("two verb rules for", "at the same level", hint);
+            let is_duplicate = verb_ids.contains(verb_id);
+            diagnostics.extend(is_duplicate.then(|| {
+                file_text.refuse_duplicate(verb_id, "", Locator::Nowhere, duplicate_words)
+            }));
             verb_ids.push(verb_id.clone());
         }
-        let twice = ("rule", "is listed twice", "keep one rule with this id");
-        let taken = rules.iter().any(|earlier| earlier.id == rule.id);
-        diags.extend(
-            taken.then(|| source.refuse_duplicate(&rule.local_id, "", Locator::Nowhere, twice)),
-        );
+        let duplicate_words = ("rule", "is listed twice", "keep one rule with this id");
+        let is_duplicate = rules.iter().any(|earlier| earlier.id == rule.id);
+        diagnostics.extend(is_duplicate.then(|| {
+            file_text.refuse_duplicate(&rule.local_id, "", Locator::Nowhere, duplicate_words)
+        }));
         rules.push(rule);
     }
-    diags.into_result(rules)
+    diagnostics.into_result(rules)
 }
 
 fn compile_rule(
@@ -58,13 +58,13 @@ fn compile_rule(
     entry: RuleYaml,
     owner: &Owner,
 ) -> Result<Rule, Vec<Diagnostic>> {
-    let source = FileText::without_text(file);
-    let mut diags = Vec::new();
+    let file_text = FileText::without_text(file);
+    let mut diagnostics = Vec::new();
     let local_id = entry.id.value.clone();
     if local_id.is_empty() || local_id == "say" {
-        diags.push(
+        diagnostics.push(
             Problem {
-                source: &source,
+                source: &file_text,
                 path: &format!("rules[{index}].id"),
                 at: Locator::FileLocation(file_location_of(&entry.id)),
                 message: "a rule id is empty or is say".into(),
@@ -75,13 +75,13 @@ fn compile_rule(
     }
     let when = match compile_rule_kind(&entry.when.value) {
         Ok(when) => Some(when),
-        Err(problem) => {
-            diags.push(
+        Err(message) => {
+            diagnostics.push(
                 Problem {
-                    source: &source,
+                    source: &file_text,
                     path: &format!("rules[{index}].when"),
                     at: Locator::FileLocation(file_location_of(&entry.when)),
-                    message: problem,
+                    message,
                     hint: "set when to habit, a verb, or a change",
                 }
                 .into_diagnostic(),
@@ -91,15 +91,15 @@ fn compile_rule(
     };
     let if_ = match entry.if_.as_ref().map(compile_conds).transpose() {
         Ok(list) => list.unwrap_or_default(),
-        Err(fault) => {
-            diags.push(source.refuse_error("", fault));
+        Err(error) => {
+            diagnostics.push(file_text.refuse_error("", error));
             Vec::new()
         }
     };
     let cost = match entry.cost.as_ref().map(compile_cost).transpose() {
         Ok(cost) => cost,
-        Err(fault) => {
-            diags.push(source.refuse_error("", fault));
+        Err(error) => {
+            diagnostics.push(file_text.refuse_error("", error));
             None
         }
     };
@@ -109,7 +109,7 @@ fn compile_rule(
         .and_then(|finish| finish.cost.as_ref());
     let finish_cost = match finish_cost_yaml.map(compile_cost).transpose() {
         Ok(Some(_)) if finish_cost_yaml.is_some_and(|cost| cost.ticks.is_some()) => {
-            diags.push(schema_error(
+            diagnostics.push(schema_error(
                 file,
                 &format!("rule '{local_id}' has ticks in its finish cost"),
                 "put the action's ticks in cost; the finish takes no time",
@@ -117,8 +117,8 @@ fn compile_rule(
             None
         }
         Ok(cost) => cost,
-        Err(fault) => {
-            diags.push(source.refuse_error("", fault));
+        Err(error) => {
+            diagnostics.push(file_text.refuse_error("", error));
             None
         }
     };
@@ -129,8 +129,8 @@ fn compile_rule(
         .collect::<Result<Vec<_>, CompileError>>();
     let lets = match lets {
         Ok(lets) => lets,
-        Err(fault) => {
-            diags.push(source.refuse_error("", fault));
+        Err(error) => {
+            diagnostics.push(file_text.refuse_error("", error));
             Vec::new()
         }
     };
@@ -139,8 +139,8 @@ fn compile_rule(
         .transpose()
     {
         Ok(check) => check,
-        Err(fault) => {
-            diags.push(source.refuse_error("", fault));
+        Err(error) => {
+            diagnostics.push(file_text.refuse_error("", error));
             None
         }
     };
@@ -155,21 +155,21 @@ fn compile_rule(
             || entry.cooldown > 0
             || entry.cancellable;
         if matches!(when, When::Change(_)) && timed {
-            diags.push(schema_error(
+            diagnostics.push(schema_error(
                 file,
                 "a change rule has a cost, start, finish, cooldown, or cancellable",
                 "remove them; a change is a consequence, not an action",
             ));
         }
         if check.is_none() && (!success.is_empty() || !partial.is_empty() || !miss.is_empty()) {
-            diags.push(schema_error(
+            diagnostics.push(schema_error(
                 file,
                 &format!("rule '{local_id}' lists an outcome without a check"),
                 "add check or move those effects to do",
             ));
         }
         if check.is_some() && success.is_empty() && (!partial.is_empty() || !miss.is_empty()) {
-            diags.push(schema_error(
+            diagnostics.push(schema_error(
                 file,
                 &format!("rule '{local_id}' has a check without a success list"),
                 "add success",
@@ -183,23 +183,23 @@ fn compile_rule(
                 }
             });
         }
-        let band_problem = (checks.into_iter())
+        let band_message = (checks.into_iter())
             .find_map(|(check, partial)| find_partial_band_message(check, partial));
-        if let Some((problem, hint)) = band_problem {
-            diags.push(
+        if let Some((message, hint)) = band_message {
+            diagnostics.push(
                 Problem {
-                    source: &source,
+                    source: &file_text,
                     path: &format!("rules[{index}].id"),
                     at: Locator::FileLocation(file_location_of(&entry.id)),
-                    message: format!("rule '{local_id}' {problem}"),
+                    message: format!("rule '{local_id}' {message}"),
                     hint,
                 }
                 .into_diagnostic(),
             );
         }
     }
-    if !diags.is_empty() {
-        return Err(diags);
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
     }
     let when = when.expect("when checked");
     let rule = Rule {
@@ -236,19 +236,19 @@ fn compile_rule(
     };
     let target_kind = rule.when.target_kind();
     let misplaced_target = rule.mentions().find_misplaced_target(target_kind);
-    let misplaced_problem = misplaced_target.map(|(key, needs)| {
+    let misplaced_message = misplaced_target.map(|(key, needs)| {
         let (needs, target) = (needs.as_str(), target_kind.as_str());
         (
             format!("says target in {key}, but its target is {target}"),
             format!("give the verb target: {needs}, or name the {needs} by its id"),
         )
     });
-    if let Some((problem, hint)) = misplaced_problem.or_else(|| find_let_read_message(&rule)) {
+    if let Some((message, hint)) = misplaced_message.or_else(|| find_let_read_message(&rule)) {
         return Err(vec![Problem {
-            source: &source,
+            source: &file_text,
             path: &format!("rules[{index}].id"),
             at: Locator::FileLocation(file_location_of(&entry.id)),
-            message: format!("rule '{}' {problem}", rule.local_id),
+            message: format!("rule '{}' {message}", rule.local_id),
             hint: &hint,
         }
         .into_diagnostic()]);
@@ -256,7 +256,7 @@ fn compile_rule(
     Ok(rule)
 }
 
-/// The first `let:` read in `rule` that fails, as the problem and the hint: an id its `let:`
+/// The first `let:` read in `rule` that fails, as the message and the hint: an id its `let:`
 /// does not hold, an id a `let:` number reads at or above the line that holds it, or `high` or
 /// `low` of an id whose number is not one dice group with no keep. The `let:` numbers come
 /// first in `Rule::exprs`, so the one at `index` reads only the ids above it.
@@ -268,7 +268,7 @@ fn find_let_read_message(rule: &Rule) -> Option<(String, String)> {
             let Expr::Let { id, keep } = read else {
                 continue;
             };
-            let (problem, hint) = match (readable.iter().find(|(held, _)| held == id), keep) {
+            let (message, hint) = match (readable.iter().find(|(held, _)| held == id), keep) {
                 (Some((_, Expr::Dice { keep: None, .. })), _) | (Some(_), None) => continue,
                 (Some(_), Some(_)) => (
                     format!("reads high or low of '{id}', which is not one dice group with no keep"),
@@ -283,7 +283,7 @@ fn find_let_read_message(rule: &Rule) -> Option<(String, String)> {
                     "add the id to let:, or read an id that is there",
                 ),
             };
-            return Some((problem, hint.to_string()));
+            return Some((message, hint.to_string()));
         }
     }
     None
@@ -458,13 +458,13 @@ fn compile_check(
     })
 }
 
-/// A number in a condition or a cost, refused on its line when it rolls dice.
+/// A number in a cond or a cost, refused on its line when it rolls dice.
 fn compile_expr_without_dice(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileError> {
     let expr = compile_expr(yaml)?;
     if expr.needs_dice() {
         return Err(CompileError {
             message: "a condition or a cost cannot roll dice".into(),
-            spot: file_location_of(yaml),
+            file_location: file_location_of(yaml),
         });
     }
     Ok(expr)
@@ -478,19 +478,22 @@ fn compile_let(id: &str, number: &Spanned<ExprYaml>) -> Result<(String, Expr), C
                 "let: id '{id}' is not a word a number can read; use letters, digits and _, \
                  not starting with a digit, and not an owner word or min, max, high or low"
             ),
-            spot: file_location_of(number),
+            file_location: file_location_of(number),
         });
     }
     Ok((id.to_string(), compile_expr(number)?))
 }
 
 fn compile_expr(yaml: &Spanned<ExprYaml>) -> Result<Expr, CompileError> {
-    let spot = file_location_of(yaml);
+    let file_location = file_location_of(yaml);
     match &yaml.value {
         ExprYaml::Literal(n) => Ok(Expr::Num(*n)),
         ExprYaml::Text(text) => {
-            let mut expr = Expr::parse(text).map_err(|message| CompileError { message, spot })?;
-            if let Some(LineColumn { line, column }) = spot {
+            let mut expr = Expr::parse(text).map_err(|message| CompileError {
+                message,
+                file_location,
+            })?;
+            if let Some(LineColumn { line, column }) = file_location {
                 stamp_spots(&mut expr, line, column);
             }
             Ok(expr)
@@ -506,8 +509,8 @@ fn compile_effects(
     for effect in list {
         match compile_effect(effect) {
             Ok(effect) => out.push(effect),
-            Err(fault) => {
-                return Err(vec![FileText::without_text(file).refuse_error("", fault)]);
+            Err(error) => {
+                return Err(vec![FileText::without_text(file).refuse_error("", error)]);
             }
         }
     }
@@ -651,7 +654,7 @@ fn find_partial_band_message(
 fn parse_object(yaml: &Spanned<String>) -> Result<grammar::Object, CompileError> {
     grammar::Object::parse(&yaml.value).map_err(|message| CompileError {
         message,
-        spot: file_location_of(yaml),
+        file_location: file_location_of(yaml),
     })
 }
 
@@ -659,7 +662,7 @@ fn parse_object(yaml: &Spanned<String>) -> Result<grammar::Object, CompileError>
 fn parse_actor(yaml: &Spanned<String>) -> Result<grammar::Actor, CompileError> {
     grammar::Actor::parse(&yaml.value).map_err(|message| CompileError {
         message,
-        spot: file_location_of(yaml),
+        file_location: file_location_of(yaml),
     })
 }
 

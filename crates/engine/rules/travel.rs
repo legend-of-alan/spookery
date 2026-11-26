@@ -97,12 +97,12 @@ fn is_revealed(world: &ecs::World, actor_id: &ActorId, exit: Exit<'_>) -> bool {
 }
 
 /// Locked: the path has an `if` and its `open` flag is not set.
-fn is_locked(world: &ecs::World, path: &PathDef) -> bool {
+fn is_locked(world: &ecs::World, path_def: &PathDef) -> bool {
     let open = world
         .paths()
-        .get::<component::Flag>(&path.id)
+        .get::<component::Flag>(&path_def.id)
         .contains(OPEN);
-    path.is_conditional() && !open
+    path_def.is_conditional() && !open
 }
 
 /// Open each locked path whose `if` an actor at an end it leaves from meets, with a flag effect

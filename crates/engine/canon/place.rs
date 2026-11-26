@@ -32,47 +32,50 @@ pub(super) fn add(
     page: Page,
     places: &mut BTreeMap<PlaceId, Def>,
     meters: &mut MetersByFile,
-    diags: &mut Diagnostics,
+    diagnostics: &mut Diagnostics,
 ) -> Option<Vec<Rule>> {
-    let file = diags.keep(parse(&page.file, &page.yaml))?;
-    let whole = FileText {
+    let yaml = diagnostics.keep(parse(&page.file, &page.frontmatter))?;
+    let page_text = FileText {
         file: &page.file,
         text: &page.text,
     };
-    let twice = ("place", "is already defined", "keep one place with this id");
-    let taken = places.contains_key(file.id.as_str());
-    if let Some(diag) =
-        taken.then(|| whole.refuse_duplicate(&file.id, "id", Locator::Nowhere, twice))
+    let duplicate_words = ("place", "is already defined", "keep one place with this id");
+    let is_duplicate = places.contains_key(yaml.id.as_str());
+    if let Some(diagnostic) = is_duplicate
+        .then(|| page_text.refuse_duplicate(&yaml.id, "id", Locator::Nowhere, duplicate_words))
     {
-        diags.push(diag);
+        diagnostics.push(diagnostic);
         return None;
     }
-    let id: PlaceId = file.id.clone().into();
-    let carrier = Some(entity::Id::Place(id.clone()));
-    if let Some(own) = diags.keep(meters::compile(&whole, file.meters, carrier)) {
+    let id: PlaceId = yaml.id.clone().into();
+    let entity_id = Some(entity::Id::Place(id.clone()));
+    if let Some(own) = diagnostics.keep(meters::compile(&page_text, yaml.meters, entity_id)) {
         meters.push((page.file.clone(), own));
     }
     places.insert(
         id,
         Def {
-            name: file.name.unwrap_or_else(|| file.id.clone()),
+            name: yaml.name.unwrap_or_else(|| yaml.id.clone()),
             body: page.body,
         },
     );
-    diags.keep(rule_list::compile(
+    diagnostics.keep(rule_list::compile(
         &page.file,
-        file.rules,
-        &Owner::Place(file.id),
+        yaml.rules,
+        &Owner::Place(yaml.id),
     ))
 }
 
-fn parse(file: &str, yaml: &str) -> Result<Yaml, Vec<Diagnostic>> {
-    let parsed: Yaml = parse_tagged(file, yaml, SCHEMA, true)?;
-    let source = FileText { file, text: yaml };
-    let mut diags = Diagnostics::default();
-    let empty = ("id is empty", "set id to a short place id");
-    diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));
-    diags.into_result(parsed)
+fn parse(file: &str, frontmatter: &str) -> Result<Yaml, Vec<Diagnostic>> {
+    let yaml: Yaml = parse_tagged(file, frontmatter, SCHEMA, true)?;
+    let file_text = FileText {
+        file,
+        text: frontmatter,
+    };
+    let mut diagnostics = Diagnostics::default();
+    let empty_words = ("id is empty", "set id to a short place id");
+    diagnostics.extend(file_text.refuse_empty(&yaml.id, "id", Locator::Key("id:"), empty_words));
+    diagnostics.into_result(yaml)
 }
 
 #[derive(Deserialize)]

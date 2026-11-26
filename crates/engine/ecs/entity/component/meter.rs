@@ -46,10 +46,10 @@ pub struct Meter {
 }
 
 impl Meter {
-    /// The meter a carrier with no save row reads: `desc`'s base, with no offset.
-    pub fn at_base(desc: &Def) -> Meter {
+    /// The meter a carrier with no save row reads: `def`'s base, with no offset.
+    pub fn at_base(def: &Def) -> Meter {
         Meter {
-            base: desc.base,
+            base: def.base,
             offset: 0,
         }
     }
@@ -64,24 +64,24 @@ pub enum Write {
 
 /// `base` is inside `[min, base_cap]`, and `base + offset` fits in `i64`.
 /// A sum outside `[min, max]` still returns true. `value` clamps that.
-pub(crate) fn is_storable(desc: &Def, base: i64, offset: i64) -> bool {
-    (desc.min..=desc.base_cap).contains(&base) && base.checked_add(offset).is_some()
+pub(crate) fn is_storable(def: &Def, base: i64, offset: i64) -> bool {
+    (def.min..=def.base_cap).contains(&base) && base.checked_add(offset).is_some()
 }
 
 /// `base + offset`, plus what the entity's modifiers add to this meter, clamped to the bounds.
-pub(crate) fn value(desc: &Def, live: &Meter, modifiers: i64) -> Result<i64, Reason> {
+pub(crate) fn value(def: &Def, live: &Meter, modifiers: i64) -> Result<i64, Reason> {
     let sum = live
         .base
         .checked_add(live.offset)
         .and_then(|sum| sum.checked_add(modifiers))
         .ok_or(Reason::OutOfRange)?;
-    Ok(sum.clamp(desc.min, desc.max))
+    Ok(sum.clamp(def.min, def.max))
 }
 
-/// `held` with its offset moved by `delta` inside `desc`'s bounds.
-fn shift(held: Meter, desc: &Def, delta: i64) -> Result<Meter, Reason> {
+/// `held` with its offset moved by `delta` inside `def`'s bounds.
+fn shift(held: Meter, def: &Def, delta: i64) -> Result<Meter, Reason> {
     let offset = held.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
-    if !is_storable(desc, held.base, offset) {
+    if !is_storable(def, held.base, offset) {
         return Err(Reason::OutOfRange);
     }
     Ok(Meter { offset, ..held })
@@ -96,9 +96,9 @@ impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Ref<'_, E, Meter
     /// Meter `entry_id` as the entity holds it: its save row, or `Meter::at_base` when it has
     /// none. `None` when the entity does not carry the meter.
     pub fn get_or_base(&self, entry_id: &str) -> Option<Meter> {
-        let desc = (self.entities.canon).meter_def(self.id.as_id_ref(), entry_id)?;
+        let def = (self.entities.canon).meter_def(self.id.as_id_ref(), entry_id)?;
         let held = self.get(entry_id).copied();
-        (self.entities.contains(self.id)).then(|| held.unwrap_or(Meter::at_base(desc)))
+        (self.entities.contains(self.id)).then(|| held.unwrap_or(Meter::at_base(def)))
     }
 }
 
@@ -109,11 +109,11 @@ impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter
     pub fn shift(&mut self, entry_id: &str, delta: i64) -> Result<(), Reason> {
         self.check_exists()?;
         let id = self.id.as_id_ref();
-        let desc = (self.writer.canon.meter_def(id, entry_id)).ok_or(Reason::UnknownId)?;
-        let pack_base = Meter::at_base(desc);
+        let def = (self.writer.canon.meter_def(id, entry_id)).ok_or(Reason::UnknownId)?;
+        let pack_base = Meter::at_base(def);
         let entry = (self.id.clone(), entry_id.to_string());
         let held = self.store().get(&entry).copied().unwrap_or(pack_base);
-        let next = shift(held, desc, delta)?;
+        let next = shift(held, def, delta)?;
         let report = change::Report::Meter(self.key(Some(entry_id)), Some(held));
         let next = (next != pack_base).then_some(next);
         let (store, transaction) = self.store_mut();
@@ -146,7 +146,7 @@ impl Ref<'_, Save, Meter> {
                 modifier::value(Reader::new(&save.actors, canon), actor_id, entry_id)
             }
             id => {
-                let desc = canon
+                let def = canon
                     .meter_def(id.as_ref(), entry_id)
                     .ok_or(Reason::UnknownId);
                 let held = in_collection!(id, [&save], |entities, id| {
@@ -154,7 +154,7 @@ impl Ref<'_, Save, Meter> {
                         .get::<Meter>(id)
                         .get_or_base(entry_id)
                 });
-                value(desc?, &held.ok_or(Reason::UnknownId)?, 0)
+                value(def?, &held.ok_or(Reason::UnknownId)?, 0)
             }
         }
     }
@@ -200,14 +200,14 @@ mod tests {
 
     #[test]
     fn stored_accepts_a_sum_past_max_and_current_clamps() {
-        let desc = vigor();
-        assert!(is_storable(&desc, 100, 20));
+        let def = vigor();
+        assert!(is_storable(&def, 100, 20));
         let live = Meter {
             base: 100,
             offset: 20,
         };
-        assert_eq!(value(&desc, &live, 0).unwrap(), 110);
-        assert_eq!(value(&desc, &live, -15).unwrap(), 105);
+        assert_eq!(value(&def, &live, 0).unwrap(), 110);
+        assert_eq!(value(&def, &live, -15).unwrap(), 105);
     }
 
     #[test]
