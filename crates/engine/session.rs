@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use spookery_protocol::{CommandView, PlaceView};
 
-use crate::canon::Budget;
+use crate::canon::budget::Budget;
 use crate::canon::{load_canon, Canon};
 use crate::diagnostic::first_reason;
 use crate::ecs::id::{ActorId, PlaceId};

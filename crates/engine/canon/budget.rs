@@ -62,7 +62,7 @@ impl Default for Budget {
     }
 }
 
-pub(crate) fn load(file: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
+pub(super) fn load(file: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
     let yaml: Yaml = parse_tagged(file, text, SCHEMA, false)?;
     let file_text = FileText { file, text };
     let mut diagnostics = Vec::new();

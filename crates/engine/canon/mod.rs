@@ -11,13 +11,13 @@ use crate::entity;
 use crate::hash::blake2s_tagged;
 use crate::rules::rule::{self, Owner, TargetKind, When};
 use crate::Reason;
-pub(crate) use spookery_protocol::{ControlType, MenuRow, PackSummary};
+use spookery_protocol::{MenuRow, PackSummary};
 
-mod budget;
+pub(crate) mod budget;
 mod cast;
 pub(crate) mod item;
-mod lint;
-mod map;
+pub(crate) mod lint;
+pub(crate) mod map;
 mod meters;
 mod modifiers;
 mod pack;
@@ -28,13 +28,10 @@ mod rule_list;
 pub(crate) mod story;
 mod verbs;
 
-pub(crate) use budget::Budget;
-use lint::{
-    find_missing_components, find_unknown_meter_reads, find_unknown_modifiers,
-    find_unknown_path_ids, find_unknown_rule_items, EntityDefs,
-};
-pub(crate) use lint::{refuse_unknown_item, run};
-pub(crate) use map::{Exit, PathDef, Paths, OPEN};
+use budget::Budget;
+use lint::entity_defs::{find_missing_components, find_unknown_meter_reads, EntityDefs};
+use lint::{find_unknown_modifiers, find_unknown_path_ids, find_unknown_rule_items};
+use map::{Exit, Paths};
 use pack_files::{collect_files, collect_markdown_files, read_text};
 use refusal::{Diagnostics, FileText, Locator};
 
@@ -43,32 +40,32 @@ pub struct Canon {
     pub pack_id: String,
     pub title: String,
     pub system: String,
-    pub start_place: String,
+    start_place: String,
     pub places: BTreeMap<PlaceId, place::Def>,
     /// Every entry under `paths:` in `world/map.yaml`, in file order, and the index of each
     /// place's exits.
     pub paths: Paths,
     pub cast: BTreeMap<ActorId, cast::Def>,
-    pub stories: BTreeMap<StoryId, story::Def>,
+    pub(crate) stories: BTreeMap<StoryId, story::Def>,
     pub rules: rule::Table,
     /// The meters `rules/meters.yaml` gives every actor, and those one cast, place or story
     /// file gives its entity. An id is listed once.
     pub meters: BTreeMap<String, meter::Def>,
     /// The meters `world/meters.yaml` gives the world. An id here may also be an actor meter.
-    pub world_meters: BTreeMap<String, meter::Def>,
+    pub(crate) world_meters: BTreeMap<String, meter::Def>,
     /// The modifiers `rules/modifiers.yaml` defines. Each one modifies an actor meter.
     pub modifiers: BTreeMap<String, modifier::Def>,
     pub items: BTreeMap<String, item::Def>,
-    pub budget: Budget,
+    pub(crate) budget: Budget,
     /// Rounds between journal checkpoints. `save.yaml` is rewritten then.
-    pub checkpoint_every: u64,
+    pub(crate) checkpoint_every: u64,
     /// `gm_notes` in `pack.yaml`: tone and flavor for the GM, empty when the pack has none.
-    pub gm_notes: String,
+    gm_notes: String,
 }
 
 impl Canon {
     /// Every verb some rule names, sorted, once each.
-    pub fn verbs(&self) -> Vec<String> {
+    pub(crate) fn verbs(&self) -> Vec<String> {
         let verbs: std::collections::BTreeSet<&str> = self
             .rules
             .iter()
@@ -80,7 +77,7 @@ impl Canon {
         verbs.into_iter().map(str::to_string).collect()
     }
 
-    pub fn to_pack_summary(&self) -> PackSummary {
+    pub(crate) fn to_pack_summary(&self) -> PackSummary {
         let menu = self
             .rules
             .iter()
@@ -123,7 +120,7 @@ impl Canon {
     }
 
     /// The `meter::Def` of meter `key` on `id`, when that entity carries it.
-    pub fn meter_def(&self, id: entity::IdRef<'_>, key: &str) -> Option<&meter::Def> {
+    pub(crate) fn meter_def(&self, id: entity::IdRef<'_>, key: &str) -> Option<&meter::Def> {
         match id {
             entity::IdRef::Global => self.world_meters.get(key),
             _ => self.meters.get(key).filter(|def| def.is_on(id)),
@@ -135,7 +132,7 @@ impl Canon {
         self.paths.exits(from_place_id)
     }
 
-    pub fn idle_profile(&self, actor_id: &ActorId) -> Option<&cast::IdleProfile> {
+    pub(crate) fn idle_profile(&self, actor_id: &ActorId) -> Option<&cast::IdleProfile> {
         self.cast.get(actor_id).and_then(|cast| cast.idle.as_ref())
     }
 
@@ -348,10 +345,13 @@ mod tests {
             .menu
             .iter()
             .any(|row| row.id == "restock_lamp_oil" && row.kind == "habit"));
-        assert_eq!(summary.control_types.get("mira"), Some(&ControlType::Npc));
+        assert_eq!(
+            summary.control_types.get("mira"),
+            Some(&spookery_protocol::ControlType::Npc)
+        );
         assert_eq!(
             summary.control_types.get("rowan"),
-            Some(&ControlType::PcTemplate)
+            Some(&spookery_protocol::ControlType::PcTemplate)
         );
         let rendered = format!("{:?}{:?}", summary.menu, summary.control_types);
         assert!(!rendered.contains("CAST-BODY-SENTINEL"));

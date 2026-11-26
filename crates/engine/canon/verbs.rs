@@ -8,7 +8,7 @@ use crate::rules::rule::{Owner, Rule};
 
 const SCHEMA: &str = "verbs";
 
-pub(in crate::canon) fn load(file: &str, text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
+pub(super) fn load(file: &str, text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
     let yaml: Yaml = parse_tagged(file, text, SCHEMA, true)?;
     rule_list::compile(file, yaml.rules, &Owner::Verb)
 }

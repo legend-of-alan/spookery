@@ -1,6 +1,7 @@
 //! Exits, admission, and the journeys that follow them.
 
-use crate::canon::{Canon, Exit, PathDef, OPEN};
+use crate::canon::map::{Exit, PathDef, OPEN};
+use crate::canon::Canon;
 use crate::ecs::id::{ActorId, GlobalId, PathId, PlaceId};
 use crate::ecs::{self, component, entity, PendingAction, Presence};
 use crate::intent::{Intent, Source, Target};

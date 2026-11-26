@@ -3,7 +3,8 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::canon::{Budget, Canon};
+use crate::canon::budget::Budget;
+use crate::canon::Canon;
 use crate::ecs::{self, component, Presence};
 use crate::intent::Intent;
 use crate::rules::effect::Effect;

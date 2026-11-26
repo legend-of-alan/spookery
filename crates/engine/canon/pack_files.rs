@@ -115,10 +115,7 @@ pub(super) fn collect_files(
 }
 
 /// The frontmatter, opening fence included and closing fence left out, and the body after it.
-pub(super) fn split_frontmatter<'a>(
-    file: &str,
-    text: &'a str,
-) -> Result<(&'a str, &'a str), Vec<Diagnostic>> {
+fn split_frontmatter<'a>(file: &str, text: &'a str) -> Result<(&'a str, &'a str), Vec<Diagnostic>> {
     let rest = match text
         .strip_prefix("---\n")
         .or_else(|| text.strip_prefix("---\r\n"))

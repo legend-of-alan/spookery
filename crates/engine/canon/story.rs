@@ -19,7 +19,7 @@ use crate::rules::rule::{Owner, Rule};
 const SCHEMA: &str = "story";
 
 #[derive(Clone, Debug)]
-pub struct Def {
+pub(crate) struct Def {
     /// The name a player reads, the id when the pack gives none.
     pub name: String,
 }

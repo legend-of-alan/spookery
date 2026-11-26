@@ -20,7 +20,7 @@ use parse::{
 
 pub(super) mod parse;
 
-pub(in crate::canon) fn compile(
+pub(super) fn compile(
     file: &str,
     entries: Vec<RuleYaml>,
     owner: &Owner,
@@ -383,7 +383,7 @@ fn compile_conds(yaml: &IfYaml) -> Result<Vec<Cond>, CompileError> {
     }
 }
 
-pub(in crate::canon) fn compile_cond(yaml: &CondYaml) -> Result<Cond, CompileError> {
+pub(super) fn compile_cond(yaml: &CondYaml) -> Result<Cond, CompileError> {
     Ok(match yaml {
         CondYaml::HasItem(item) => Cond::HasItem {
             subject: parse_actor(&item.subject)?,
@@ -432,7 +432,7 @@ pub(in crate::canon) fn compile_cond(yaml: &CondYaml) -> Result<Cond, CompileErr
     })
 }
 
-pub(in crate::canon) fn compile_cost(yaml: &CostYaml) -> Result<Cost, CompileError> {
+pub(super) fn compile_cost(yaml: &CostYaml) -> Result<Cost, CompileError> {
     Ok(Cost {
         ticks: (yaml.ticks.as_ref()).map_or(Ok(Expr::Num(0)), compile_expr_without_dice)?,
         meters: compile_counts(&yaml.meters)?,

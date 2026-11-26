@@ -4,7 +4,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::canon::{Canon, Exit};
+use crate::canon::map::Exit;
+use crate::canon::Canon;
 use crate::ecs::entity;
 use crate::ecs::id::{PathId, PlaceId};
 use crate::rules::grammar;

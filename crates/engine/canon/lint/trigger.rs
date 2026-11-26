@@ -1,6 +1,7 @@
 //! Which change rules set each other's watched values, and who their narrates and notes reach.
 
-use crate::canon::{Canon, PathDef, OPEN};
+use crate::canon::map::{PathDef, OPEN};
+use crate::canon::Canon;
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::ecs::component::meter;
 use crate::rules::grammar;

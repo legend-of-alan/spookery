@@ -1,6 +1,7 @@
 //! Move world time forward.
 
-use crate::canon::{Budget, Canon};
+use crate::canon::budget::Budget;
+use crate::canon::Canon;
 use crate::ecs::{self, Presence, WindowCount};
 use crate::Reason;
 

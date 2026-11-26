@@ -1,19 +1,18 @@
 //! Lints across files: rules, paths, meters, items, and triggers.
 
-mod entity_defs;
+pub(super) mod entity_defs;
 mod trigger;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::canon::{item, map, place, Canon, PathDef, OPEN};
+use crate::canon::map::{self, PathDef, OPEN};
+use crate::canon::{item, place, Canon};
 use crate::diagnostic::{schema_error, warning, Diagnostic};
 use crate::ecs::component::modifier;
 use crate::ecs::id::PlaceId;
 use crate::rules::cond;
 use crate::rules::grammar;
 use crate::rules::rule::{self, ChangeWatch, Cond, EffectTemplate, Owner, When};
-
-pub(super) use entity_defs::{find_missing_components, find_unknown_meter_reads, EntityDefs};
 
 /// Paths whose ends are not places, and items a path names but the pack does not.
 pub(super) fn find_unknown_path_ids(

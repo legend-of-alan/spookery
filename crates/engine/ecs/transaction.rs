@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::change::{self, Change, ChangeValue};
 use super::component::{meter, Meter, Modifier};
 use super::{entity, undo, MemoryLine, Reader};
-use crate::canon::Budget;
+use crate::canon::budget::Budget;
 use crate::ecs;
 use crate::Reason;
 

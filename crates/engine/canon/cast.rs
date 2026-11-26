@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon;
 use crate::canon::meters::{self, MeterYaml};
 use crate::canon::pack_files::Page;
 use crate::canon::refusal::{Diagnostics, FileText, Locator, Problem};
@@ -19,7 +18,7 @@ const SCHEMA: &str = "cast";
 
 #[derive(Clone, Debug)]
 pub struct Def {
-    pub control_type: canon::ControlType,
+    pub control_type: spookery_protocol::ControlType,
     /// The name a player reads, the id when the pack gives none.
     pub name: String,
     pub body: String,
@@ -45,9 +44,9 @@ pub(super) fn add(
         text: &page.text,
     };
     let control_type = if yaml.control_type == "npc" {
-        canon::ControlType::Npc
+        spookery_protocol::ControlType::Npc
     } else {
-        canon::ControlType::PcTemplate
+        spookery_protocol::ControlType::PcTemplate
     };
     let hint = "keep one cast file with this id";
     let duplicate_words = ("cast id", "is already defined", hint);

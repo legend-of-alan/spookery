@@ -163,13 +163,13 @@ impl PathDef {
     }
 
     /// Every number the path holds: its cost's, then its conds'.
-    pub(crate) fn exprs(&self) -> Vec<&Expr> {
+    pub(super) fn exprs(&self) -> Vec<&Expr> {
         let cond_numbers = self.if_.iter().flat_map(Cond::exprs);
         self.cost.exprs().chain(cond_numbers).collect()
     }
 
     /// The owners, item ids and `target`s the path's conds, cost and numbers name.
-    pub(crate) fn mentions(&self) -> rule::Mentions<'_> {
+    pub(super) fn mentions(&self) -> rule::Mentions<'_> {
         rule::Mentions::of_lines(&self.if_, [&self.cost], self.exprs())
     }
 

@@ -2,8 +2,9 @@
 
 use std::collections::BTreeMap;
 
+use crate::canon::map::{self, OPEN};
 use crate::canon::refusal::{FileText, Locator, Problem};
-use crate::canon::{self, cast, map, place, story, OPEN};
+use crate::canon::{cast, place, story};
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::{ActorId, PlaceId, StoryId};
@@ -105,7 +106,7 @@ pub(in crate::canon) struct EntityDefs<'c> {
     pub world_meters: &'c BTreeMap<String, meter::Def>,
     pub cast: &'c BTreeMap<ActorId, cast::Def>,
     pub places: &'c BTreeMap<PlaceId, place::Def>,
-    pub paths: &'c canon::Paths,
+    pub paths: &'c map::Paths,
     pub stories: &'c BTreeMap<StoryId, story::Def>,
 }
 

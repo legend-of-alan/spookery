@@ -5,7 +5,8 @@ use std::collections::BTreeSet;
 use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 
-use crate::canon::{item, refuse_unknown_item};
+use crate::canon::item;
+use crate::canon::lint::refuse_unknown_item;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::ecs::component::meter::{self, Meter};
 use crate::ecs::component::modifier::{self, Modifier};
