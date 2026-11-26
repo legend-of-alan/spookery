@@ -139,7 +139,7 @@ impl fmt::Display for Diagnostic {
 pub fn first_reason(diagnostics: &[Diagnostic]) -> Reason {
     diagnostics
         .iter()
-        .find_map(|diag| match diag.code {
+        .find_map(|diagnostic| match diagnostic.code {
             Code::Error(reason) => Some(reason),
             Code::Warning => None,
         })
@@ -295,14 +295,14 @@ pub(crate) fn diagnose_yaml(file: &str, err: &YamlError, holds_rule_lines: bool)
             "fix the syntax at this spot and try again".to_string(),
         ),
     };
-    let mut diag = schema_error(file, &problem, &hint);
+    let mut diagnostic = schema_error(file, &problem, &hint);
     if let Some(path) = path {
-        diag = diag.at_path(path);
+        diagnostic = diagnostic.at_path(path);
     }
     if let Some((line, column)) = file_location {
-        diag = diag.at_line(line, column);
+        diagnostic = diagnostic.at_line(line, column);
     }
-    diag
+    diagnostic
 }
 
 pub(crate) fn parse_file<T: serde::de::DeserializeOwned>(
@@ -331,7 +331,7 @@ mod tests {
 
     #[test]
     fn a_diagnostic_serializes_and_prints_the_line_form() {
-        let diag = schema_error(
+        let diagnostic = schema_error(
             "rules/verbs.yaml",
             "rule 'exert' is missing when",
             "add when",
@@ -339,22 +339,22 @@ mod tests {
         .at_path("rules[0].when")
         .at_line(14, Some(5));
         assert_eq!(
-            diag.to_string(),
+            diagnostic.to_string(),
             "rules/verbs.yaml:14: rule 'exert' is missing when; add when (SCHEMA)"
         );
-        let json = serde_json::to_value(&diag).unwrap();
+        let json = serde_json::to_value(&diagnostic).unwrap();
         assert_eq!(json["file"], "rules/verbs.yaml");
         assert_eq!(json["line"], 14);
         assert_eq!(json["column"], 5);
         assert_eq!(json["path"], "rules[0].when");
         assert_eq!(json["code"], "SCHEMA");
         assert!(json["hint"].as_str().unwrap().contains("add when"));
-        assert_eq!(first_reason(&[diag]), Reason::Schema);
+        assert_eq!(first_reason(&[diagnostic]), Reason::Schema);
     }
 
     #[test]
     fn a_path_is_the_location_when_the_line_is_unknown() {
-        let diag = error(
+        let diagnostic = error(
             "state/save.yaml",
             Reason::PackRevMismatch,
             "pack_rev does not match the canon hash",
@@ -362,7 +362,7 @@ mod tests {
         )
         .at_path("pack_rev");
         assert_eq!(
-            diag.to_string(),
+            diagnostic.to_string(),
             "state/save.yaml: pack_rev: pack_rev does not match the canon hash; run spook migrate to store the current hash (PACK_REV_MISMATCH)"
         );
     }

@@ -117,7 +117,7 @@ fn a_drifted_example_fails_spook_check() {
     assert!(
         found
             .iter()
-            .any(|diag| diag.code == Code::Error(Reason::Schema)),
+            .any(|diagnostic| diagnostic.code == Code::Error(Reason::Schema)),
         "{}",
         report(&found)
     );

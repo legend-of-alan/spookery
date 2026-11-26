@@ -35,8 +35,8 @@ pub(crate) fn emit_options() -> SerializerOptions {
 /// Reads a save. A save from older rules, even one with a field these rules dropped, such as
 /// `presence`, is refused as `RULES_REV_MISMATCH`.
 pub fn parse(text: &str) -> Result<Save, Vec<Diagnostic>> {
-    if let Some(diag) = check_tag(text, crate::diagnostic::SAVE_SCHEMA, FILE) {
-        return Err(vec![diag]);
+    if let Some(diagnostic) = check_tag(text, crate::diagnostic::SAVE_SCHEMA, FILE) {
+        return Err(vec![diagnostic]);
     }
     #[derive(Deserialize)]
     struct RulesProbe {
@@ -61,7 +61,7 @@ pub fn emit(save: &Save) -> Result<String, Reason> {
 }
 
 fn rules_rev_diagnostic(text: &str) -> Diagnostic {
-    let mut diag = error(
+    let mut diagnostic = error(
         FILE,
         Reason::RulesRevMismatch,
         "this save was written by different rules",
@@ -69,9 +69,9 @@ fn rules_rev_diagnostic(text: &str) -> Diagnostic {
     )
     .at_path("rules_rev");
     if let Some((line, column)) = locate_nth(text, "rules_rev:", 0) {
-        diag = diag.at_line(line, Some(column));
+        diagnostic = diagnostic.at_line(line, Some(column));
     }
-    diag
+    diagnostic
 }
 
 fn one_trailing_lf(mut text: String) -> String {
@@ -164,36 +164,36 @@ pub(crate) fn migrate(mut world: ecs::World, record: &MigrateRecord) -> Result<e
 /// empty id or zero count.
 pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
     let canon = world.canon();
-    let mut diags = Vec::new();
+    let mut diagnostics = Vec::new();
     let actors = world.actors();
     let held = actors.carriers_by_store();
     let lacking = held.iter().filter(|(_, id)| !actors.contains(id));
     for (store, id) in lacking {
         let problem = format!("actor '{id}' has {store} but no control type");
         let hint = "give the actor a control type under actors.control_type";
-        let diag = schema_error(FILE, &problem, hint);
-        diags.push(diag.at_path(format!("actors.{store}.{id}")));
+        let diagnostic = schema_error(FILE, &problem, hint);
+        diagnostics.push(diagnostic.at_path(format!("actors.{store}.{id}")));
     }
     for id in actors.query::<ActorId>().iter() {
         if !canon.cast.contains_key(id) {
             let problem = format!("actor '{id}' is not a cast member");
             let hint = "add a cast file with this id, or remove the actor from the save";
-            diags.push(
+            diagnostics.push(
                 schema_error(FILE, &problem, hint).at_path(format!("actors.control_type.{id}")),
             );
         }
         if !held.contains(&("place", id)) {
             let problem = format!("actor '{id}' has a control type but no place");
-            let diag = schema_error(FILE, &problem, "give every actor a place");
-            diags.push(diag.at_path(format!("actors.place.{id}")));
+            let diagnostic = schema_error(FILE, &problem, "give every actor a place");
+            diagnostics.push(diagnostic.at_path(format!("actors.place.{id}")));
         }
     }
     for (id, location) in actors.query::<(ActorId, &component::Place)>().iter() {
         if !location.is_known(canon) {
             let problem =
                 format!("actor '{id}' is at '{location}', which the pack does not define");
-            let diag = schema_error(FILE, &problem, "move the actor to a place");
-            diags.push(diag.at_path(format!("actors.place.{id}")));
+            let diagnostic = schema_error(FILE, &problem, "move the actor to a place");
+            diagnostics.push(diagnostic.at_path(format!("actors.place.{id}")));
         }
     }
     for meter in find_stale_meters(world) {
@@ -202,14 +202,14 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
             meter.id
         );
         let hint = "run spook migrate to drop the meter";
-        diags.push(meter_error(&meter.entity_id, &meter.id, &problem, hint));
+        diagnostics.push(meter_error(&meter.entity_id, &meter.id, &problem, hint));
     }
     for (entity_id, key, held) in held_meters(world) {
         let def = canon.meter_def(entity_id.as_ref(), key);
         if def.is_some_and(|def| !meter::is_storable(def, held.base, held.offset)) {
             let problem = format!("meter '{key}' is outside the rules");
             let hint = "set base and offset so the stored pair fits the meter";
-            diags.push(meter_error(&entity_id, key, &problem, hint));
+            diagnostics.push(meter_error(&entity_id, key, &problem, hint));
         }
     }
     for (id, key, live) in find_stale_modifiers(world) {
@@ -217,14 +217,14 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
             "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
             live.meter
         );
-        let diag = schema_error(FILE, &problem, "run spook migrate to drop the modifier");
-        diags.push(diag.at_path(format!("actors.modifiers.{id}.{key}")));
+        let diagnostic = schema_error(FILE, &problem, "run spook migrate to drop the modifier");
+        diagnostics.push(diagnostic.at_path(format!("actors.modifiers.{id}.{key}")));
     }
     let held = actors.query::<&component::Item>();
     let actor_items: Vec<_> = held.iter().flat_map(|held| held.iter_with_id()).collect();
     for &(id, item, count) in &actor_items {
         if item.is_empty() {
-            diags.push(
+            diagnostics.push(
                 schema_error(
                     FILE,
                     &format!("actor '{id}' lists an empty item id"),
@@ -234,7 +234,7 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
             );
         }
         if *count == 0 {
-            diags.push(
+            diagnostics.push(
                 schema_error(
                     FILE,
                     &format!("actor '{id}' lists item '{item}' with a count of 0"),
@@ -248,7 +248,7 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
     let place_items: Vec<_> = held.iter().flat_map(|held| held.iter_with_id()).collect();
     for &(place, item, count) in &place_items {
         if *count == 0 {
-            diags.push(
+            diagnostics.push(
                 schema_error(
                     FILE,
                     &format!("place '{place}' lists item '{item}' with a count of 0"),
@@ -261,12 +261,12 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
     for (actor_id, item, _) in actor_items {
         if !canon.items.contains_key(item) {
             let path = format!("actors.items.{actor_id}.{item}");
-            diags.push(refuse_unknown_item(FILE, item, &path));
+            diagnostics.push(refuse_unknown_item(FILE, item, &path));
         }
     }
     for (actor_id, wielded) in actors.query::<(ActorId, &component::WieldedItem)>().iter() {
         if !canon.items.contains_key(wielded) {
-            diags.push(refuse_unknown_item(
+            diagnostics.push(refuse_unknown_item(
                 FILE,
                 wielded,
                 &format!("actors.wielded.{actor_id}"),
@@ -276,7 +276,7 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
             .get(wielded)
             .is_some_and(|item: &item::Def| item.tags.iter().any(|tag| tag == "weapon"))
         {
-            diags.push(
+            diagnostics.push(
                 schema_error(
                     FILE,
                     &format!("actor '{actor_id}' wields '{wielded}', which is not a weapon"),
@@ -285,7 +285,7 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
                 .at_path(format!("actors.wielded.{actor_id}")),
             );
         } else if !actors.get::<component::Item>(actor_id).contains(wielded) {
-            diags.push(
+            diagnostics.push(
                 schema_error(
                     FILE,
                     &format!("actor '{actor_id}' wields '{wielded}' without holding it"),
@@ -298,13 +298,13 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
     for (place, item, _) in place_items {
         if !canon.items.contains_key(item) {
             let path = format!("places.items.{place}.{item}");
-            diags.push(refuse_unknown_item(FILE, item, &path));
+            diagnostics.push(refuse_unknown_item(FILE, item, &path));
         }
     }
-    if diags.is_empty() {
+    if diagnostics.is_empty() {
         Ok(())
     } else {
-        Err(diags)
+        Err(diagnostics)
     }
 }
 
@@ -318,8 +318,8 @@ fn meter_error(entity_id: &entity::Id, key: &str, problem: &str, hint: &str) -> 
         entity::Id::Story(id) => (entity_id.to_string(), format!("stories.meters.{id}")),
         entity::Id::Global => ("the world".to_string(), "world.meters".to_string()),
     };
-    let diag = schema_error(FILE, &format!("{who} {problem}"), hint);
-    diag.at_path(format!("{path}.{key}"))
+    let diagnostic = schema_error(FILE, &format!("{who} {problem}"), hint);
+    diagnostic.at_path(format!("{path}.{key}"))
 }
 
 #[cfg(test)]
