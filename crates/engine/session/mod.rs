@@ -559,9 +559,9 @@ impl Session<()> {
             return Err(Reason::NotInSpec);
         }
         let now_bytes = journal::read_save(&journal::save_path(root))?;
-        let canon = Arc::new(load_canon(root).map_err(|diags| first_reason(&diags))?);
+        let canon = Arc::new(load_canon(root).map_err(|diagnostics| first_reason(&diagnostics))?);
         let save = crate::check::load_save_file(root, Some(&canon), &now_bytes)
-            .map_err(|diags| first_reason(&diags))?;
+            .map_err(|diagnostics| first_reason(&diagnostics))?;
         Ok(Self {
             root: root.to_path_buf(),
             world: ecs::World::new(save, canon),

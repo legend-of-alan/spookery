@@ -123,7 +123,7 @@ pub(crate) fn seal_migrate(
         chain: String::new(),
     };
     let world = save::migrate(world, &record)?;
-    save::check(&world).map_err(|diags| first_reason(&diags))?;
+    save::check(&world).map_err(|diagnostics| first_reason(&diagnostics))?;
     let emitted = save::emit(&world)?.into_bytes();
     record.state_hash = blake2s_tagged(&emitted);
     let entry = Record::Migrate(record);

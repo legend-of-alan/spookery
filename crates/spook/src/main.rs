@@ -237,8 +237,9 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         Command::Check { pack, json, rules } => {
             let mut found = spookery_engine::check_pack(&pack);
             if rules && found.is_empty() {
-                let canon = spookery_engine::load_canon(&pack)
-                    .map_err(|diags| spookery_engine::first_reason(&diags).to_string())?;
+                let canon = spookery_engine::load_canon(&pack).map_err(|diagnostics| {
+                    spookery_engine::first_reason(&diagnostics).to_string()
+                })?;
                 for id in canon.rules.ids_in_order() {
                     println!("{id}");
                 }

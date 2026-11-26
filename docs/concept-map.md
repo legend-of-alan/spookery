@@ -34,7 +34,7 @@ A short guide to the word each concept gets, and the synonyms to avoid for it. N
 | effect, change | mutation, modification, update |
 | Cond | condition |
 | refusal, with Refusal.message | reject, deny, fail, detail |
-| diagnostic | problem, fault, diag |
+| diagnostic | problem, fault, diag, diags |
 | Reason: why something was refused or flagged. code: a number or an enum, never a string. | code as a string |
 | Severity: error or warning | error (as a severity) |
 | check: a dice roll. lint: a pack rule. verify: a journal test. | validate |
