@@ -160,13 +160,14 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
                 "add success",
             ));
         }
-        let lists = [&do_[..], &success, &partial, &miss];
-        diagnostics.extend(lint::rule::find_bad_partial_band(
+        let own_check = check.as_ref().map(|check| (check, &partial[..]));
+        let effect_lists = [&do_[..], &success, &partial, &miss];
+        diagnostics.extend(lint::rule::find_broken_partial_band(
             &file_text,
             index,
             &entry.id,
-            check.as_ref(),
-            lists,
+            own_check,
+            effect_lists,
         ));
     }
     let kind = diagnostics.into_result(kind)?.expect("kind checked");
@@ -204,7 +205,7 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
     };
     let mut refusals = lint::rule::find_misplaced_target(&rule, &entry.id);
     if refusals.is_empty() {
-        refusals = lint::rule::find_bad_let_read(&rule, &entry.id);
+        refusals = lint::rule::find_failing_let_read(&rule, &entry.id);
     }
     if refusals.is_empty() {
         Ok(rule)

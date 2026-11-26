@@ -1,5 +1,5 @@
-//! Lints on a pack: lints across files on rules, paths, meters, items, and triggers, and the
-//! per-rule lints the compile step runs on each rule.
+//! Lints on a pack: cross-file lints on rules, paths, meters, items and triggers, and the
+//! per-rule lints that compile runs (`rule`).
 
 pub(super) mod entity_defs;
 pub(super) mod rule;

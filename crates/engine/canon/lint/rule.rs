@@ -1,4 +1,5 @@
-//! The per-rule lints that compile runs on a rule, before it is built and after.
+//! Lints that compile runs on one rule: a misplaced target, a `let:` read that fails, and a
+//! broken partial band.
 
 use serde_saphyr::Spanned;
 
@@ -18,21 +19,18 @@ pub(in crate::canon) fn find_misplaced_target(
     let Some((key, needs)) = rule.mentions().find_misplaced_target(target_kind) else {
         return Vec::new();
     };
-    let (needs, target) = (needs.as_str(), target_kind.as_str());
-    let message = format!(
-        "rule '{}' says target in {key}, but its target is {target}",
-        rule.local_id
-    );
+    let (needs, rule_target) = (needs.as_str(), target_kind.as_str());
+    let message = format!("says target in {key}, but its target is {rule_target}");
     let hint = format!("give the verb target: {needs}, or name the {needs} by its id");
     let file_text = FileText::without_text(&rule.file);
-    vec![file_text.refuse_at_rule_id(rule.index, rule_id, message, &hint)]
+    refuse(&file_text, rule.index, rule_id, &message, &hint)
 }
 
 /// The first `let:` read in `rule` that fails, refused on the line of `rule_id`: an id its
 /// `let:` does not hold, an id a `let:` number reads at or above the line that holds it, or
 /// `high` or `low` of an id whose number is not one dice group with no keep. The `let:`
 /// numbers come first in `Rule::exprs`, so the one at `expr_index` reads only the ids above it.
-pub(in crate::canon) fn find_bad_let_read(
+pub(in crate::canon) fn find_failing_let_read(
     rule: &Rule,
     rule_id: &Spanned<String>,
 ) -> Vec<Diagnostic> {
@@ -59,26 +57,24 @@ pub(in crate::canon) fn find_bad_let_read(
                     "add the id to let:, or read an id that is there",
                 ),
             };
-            let message = format!("rule '{}' {message}", rule.local_id);
-            return vec![file_text.refuse_at_rule_id(rule.index, rule_id, message, hint)];
+            return refuse(&file_text, rule.index, rule_id, &message, hint);
         }
     }
     Vec::new()
 }
 
-/// The first check in rule `index`, its own or one nested in its `do`, `success`, `partial`
-/// or `miss` list, whose partial band `find_partial_band_message` refuses, refused on the line
-/// of `rule_id`.
-pub(in crate::canon) fn find_bad_partial_band(
+/// The first broken partial band in rule `rule_index`, refused on the line of `rule_id`: in
+/// `own_check`, the rule's own check with its partial list, or in a check nested in one of
+/// `effect_lists`.
+pub(in crate::canon) fn find_broken_partial_band(
     file_text: &FileText,
-    index: usize,
+    rule_index: usize,
     rule_id: &Spanned<String>,
-    check: Option<&roll::Check>,
-    lists: [&[EffectTemplate]; 4],
+    own_check: Option<(&roll::Check, &[EffectTemplate])>,
+    effect_lists: [&[EffectTemplate]; 4],
 ) -> Vec<Diagnostic> {
-    let [do_, success, partial, miss] = lists;
-    let mut checks: Vec<_> = check.into_iter().map(|check| (check, partial)).collect();
-    for effect in [do_, success, partial, miss].into_iter().flatten() {
+    let mut checks: Vec<_> = own_check.into_iter().collect();
+    for effect in effect_lists.into_iter().flatten() {
         effect.visit(|effect| {
             if let EffectTemplate::Check { check, partial, .. } = effect {
                 checks.push((check, &partial[..]));
@@ -86,18 +82,29 @@ pub(in crate::canon) fn find_bad_partial_band(
         });
     }
     let band_message =
-        (checks.into_iter()).find_map(|(check, partial)| find_partial_band_message(check, partial));
+        (checks.into_iter()).find_map(|(check, partial)| partial_band_message(check, partial));
     let Some((message, hint)) = band_message else {
         return Vec::new();
     };
+    refuse(file_text, rule_index, rule_id, message, hint)
+}
+
+/// The refusal of rule `rule_index`, on the line of `rule_id`, with the words after its id.
+fn refuse(
+    file_text: &FileText,
+    rule_index: usize,
+    rule_id: &Spanned<String>,
+    message: &str,
+    hint: &str,
+) -> Vec<Diagnostic> {
     let message = format!("rule '{}' {message}", rule_id.value);
-    vec![file_text.refuse_at_rule_id(index, rule_id, message, hint)]
+    vec![file_text.refuse_at_rule_id(rule_index, rule_id, message, hint)]
 }
 
 /// What is wrong with `check`'s partial band, given `partial`, the list its partial outcome
 /// runs, as the words after the rule's id and the hint: a `partial_at` with no list, a list
 /// with no `partial_at`, or a constant `partial_at` at or above a constant `success_at`.
-fn find_partial_band_message(
+fn partial_band_message(
     check: &roll::Check,
     partial: &[EffectTemplate],
 ) -> Option<(&'static str, &'static str)> {
