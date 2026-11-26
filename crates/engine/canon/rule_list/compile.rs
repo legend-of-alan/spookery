@@ -305,9 +305,9 @@ fn rule_kind(yaml: &WhenYaml, scope: &Scope) -> Result<RuleKind, String> {
 
 /// The watch in `yaml`, with `here` on a place rule read as that place's id.
 fn change_watch(yaml: &ChangeYaml, scope: &Scope) -> Result<ChangeWatch, String> {
-    let parse_place_id = |place_id: &str| match scope {
-        Scope::Place(id) if place_id == "here" => id.to_string(),
-        _ => place_id.to_string(),
+    let here_id = match scope {
+        Scope::Place(id) => id.as_str(),
+        _ => "here",
     };
     let subject = match yaml.subject.as_deref() {
         None | Some("any") => grammar::Subject::Any,
@@ -317,13 +317,23 @@ fn change_watch(yaml: &ChangeYaml, scope: &Scope) -> Result<ChangeWatch, String>
     };
     if let Some(place_id) = &yaml.arrive_place_id {
         return Ok(ChangeWatch::Arrive {
-            place_id: parse_place_id(place_id),
+            place_id: if place_id == "here" {
+                here_id
+            } else {
+                place_id
+            }
+            .to_string(),
             subject,
         });
     }
     if let Some(place_id) = &yaml.leave_place_id {
         return Ok(ChangeWatch::Leave {
-            place_id: parse_place_id(place_id),
+            place_id: if place_id == "here" {
+                here_id
+            } else {
+                place_id
+            }
+            .to_string(),
             subject,
         });
     }
