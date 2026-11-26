@@ -32,7 +32,7 @@ pub(super) fn find_cycles(canon: &Canon) -> Vec<Diagnostic> {
             let RuleKind::Change(watch) = &rule.kind else {
                 continue;
             };
-            if writes.iter().any(|write| sets_watch(watch, rule, write)) {
+            if writes.iter().any(|write| sets_watch(watch, write)) {
                 next[from].push(to);
             }
         }
@@ -144,7 +144,7 @@ fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<EffectWrite
     }
 }
 
-fn sets_watch(watch: &ChangeWatch, rule: &Rule, write: &EffectWrite) -> bool {
+fn sets_watch(watch: &ChangeWatch, write: &EffectWrite) -> bool {
     match (watch, write) {
         (ChangeWatch::Flag { id, becomes }, EffectWrite::Flag { id: written, value }) => {
             id == written && becomes == value
@@ -157,9 +157,7 @@ fn sets_watch(watch: &ChangeWatch, rule: &Rule, write: &EffectWrite) -> bool {
                 gained: written_gained,
             },
         ) => id == written && gained == written_gained,
-        (ChangeWatch::Arrive { place_id, .. }, EffectWrite::Arrive(written)) => {
-            rule.watched_place_id(place_id) == written
-        }
+        (ChangeWatch::Arrive { place_id, .. }, EffectWrite::Arrive(written)) => place_id == written,
         _ => false,
     }
 }

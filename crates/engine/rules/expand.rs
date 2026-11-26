@@ -275,8 +275,8 @@ fn push_effects(
 
 fn meter_offset(
     context: &Context,
-    id: &entity::Id,
-    key: &str,
+    entity_id: &entity::Id,
+    meter_id: &str,
     add: Option<&Expr>,
     set: Option<&Expr>,
     dice: &mut dyn Dice,
@@ -287,7 +287,7 @@ fn meter_offset(
         )?));
     }
     let desired = eval::roll_number(context, set.ok_or(Reason::Schema)?, dice)?;
-    let current = (context.world.entities().get::<component::Meter>(id)).value(key)?;
+    let current = (context.world.entities().get::<component::Meter>(entity_id)).value(meter_id)?;
     Ok(meter::Write::Offset(
         desired.checked_sub(current).ok_or(Reason::OutOfRange)?,
     ))

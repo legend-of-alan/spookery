@@ -38,15 +38,6 @@ pub(crate) struct Rule {
 }
 
 impl Rule {
-    pub(crate) fn watched_place_id<'a>(&'a self, place_id: &'a str) -> &'a str {
-        if place_id == "here" {
-            if let Scope::Place(id) = &self.scope {
-                return id;
-            }
-        }
-        place_id
-    }
-
     /// The start cost, then the finish cost.
     pub(crate) fn costs(&self) -> impl Iterator<Item = &Cost> {
         self.start.cost.iter().chain(&self.finish.cost)

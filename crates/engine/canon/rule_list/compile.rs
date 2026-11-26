@@ -62,7 +62,7 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
             "set id to a short rule id; say is speech",
         ));
     }
-    let kind = match compile::rule_kind(&entry.when.value) {
+    let kind = match compile::rule_kind(&entry.when.value, scope) {
         Ok(kind) => Some(kind),
         Err(message) => {
             diagnostics.push(file_text.refuse_at(
@@ -270,7 +270,7 @@ fn find_let_read_message(rule: &Rule) -> Option<(String, String)> {
     None
 }
 
-fn rule_kind(yaml: &WhenYaml) -> Result<RuleKind, String> {
+fn rule_kind(yaml: &WhenYaml, scope: &Scope) -> Result<RuleKind, String> {
     match yaml {
         WhenYaml::Word(word) if word == "habit" => Ok(RuleKind::Habit),
         WhenYaml::Word(word) => Err(format!("when '{word}' is not habit")),
@@ -297,13 +297,18 @@ fn rule_kind(yaml: &WhenYaml) -> Result<RuleKind, String> {
                     target,
                 })
             }
-            (None, Some(change)) => compile::change_watch(change).map(RuleKind::Change),
+            (None, Some(change)) => compile::change_watch(change, scope).map(RuleKind::Change),
             _ => Err("when needs one of verb_id or change".to_string()),
         },
     }
 }
 
-fn change_watch(yaml: &ChangeYaml) -> Result<ChangeWatch, String> {
+/// The watch in `yaml`, with `here` on a place rule read as that place's id.
+fn change_watch(yaml: &ChangeYaml, scope: &Scope) -> Result<ChangeWatch, String> {
+    let parse_place_id = |place_id: &str| match scope {
+        Scope::Place(id) if place_id == "here" => id.to_string(),
+        _ => place_id.to_string(),
+    };
     let subject = match yaml.subject.as_deref() {
         None | Some("any") => grammar::Subject::Any,
         Some("pc") => grammar::Subject::Pc,
@@ -312,13 +317,13 @@ fn change_watch(yaml: &ChangeYaml) -> Result<ChangeWatch, String> {
     };
     if let Some(place_id) = &yaml.arrive_place_id {
         return Ok(ChangeWatch::Arrive {
-            place_id: place_id.clone(),
+            place_id: parse_place_id(place_id),
             subject,
         });
     }
     if let Some(place_id) = &yaml.leave_place_id {
         return Ok(ChangeWatch::Leave {
-            place_id: place_id.clone(),
+            place_id: parse_place_id(place_id),
             subject,
         });
     }

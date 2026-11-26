@@ -67,11 +67,11 @@ pub(in crate::canon) fn find_missing_components(
             _ => {}
         });
         let fixed_self_id = fixed_self_id(rule);
-        let target_kind = rule.kind.target_kind();
+        let target = rule.kind.target_kind();
         for (component, of, id) in named {
             let reason = match component {
                 "meter" => entity_defs.meter_not_carried_reason(fixed_self_id, of, id),
-                _ => entity_defs.path_lacks_flag_reason(of, id, target_kind),
+                _ => entity_defs.path_lacks_flag_reason(of, id, target),
             };
             let Some(reason) = reason else {
                 continue;

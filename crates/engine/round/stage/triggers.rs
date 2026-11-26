@@ -82,7 +82,7 @@ fn match_rules<'a>(world: &ecs::World, rules: &[&'a Rule], changes: &[Change]) -
         };
         let mut subject_ids = Vec::new();
         for change in changes {
-            if !matches_watch(world, rule, watch, change) {
+            if !matches_watch(world, watch, change) {
                 continue;
             }
             let subject = match &change.key.entity_id {
@@ -128,20 +128,18 @@ fn fire(
     }
 }
 
-fn matches_watch(world: &ecs::World, rule: &Rule, watch: &ChangeWatch, change: &Change) -> bool {
+fn matches_watch(world: &ecs::World, watch: &ChangeWatch, change: &Change) -> bool {
     let changed = &change.key;
     let (before, after) = (change.before.as_ref(), change.after.as_ref());
     match (watch, changed.component_id, &changed.entity_id) {
         (ChangeWatch::Arrive { place_id, subject }, Place::ID, entity::Id::Actor(actor_id)) => {
-            let place_id = rule.watched_place_id(place_id);
-            before.and_then(ChangeValue::as_text) != Some(place_id)
-                && after.and_then(ChangeValue::as_text) == Some(place_id)
+            before.and_then(ChangeValue::as_text) != Some(place_id.as_str())
+                && after.and_then(ChangeValue::as_text) == Some(place_id.as_str())
                 && matches_subject(world, subject, actor_id)
         }
         (ChangeWatch::Leave { place_id, subject }, Place::ID, entity::Id::Actor(actor_id)) => {
-            let place_id = rule.watched_place_id(place_id);
-            before.and_then(ChangeValue::as_text) == Some(place_id)
-                && after.and_then(ChangeValue::as_text) != Some(place_id)
+            before.and_then(ChangeValue::as_text) == Some(place_id.as_str())
+                && after.and_then(ChangeValue::as_text) != Some(place_id.as_str())
                 && matches_subject(world, subject, actor_id)
         }
         (ChangeWatch::Meter { id, op, bound }, Meter::ID, _)
