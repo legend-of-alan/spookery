@@ -127,18 +127,20 @@ fn list_target_ids(
     unique
 }
 
-/// `map`: each place in the actor's `visited`, with the exits they saw there last. Where an
-/// exit goes, its ticks and whether it is locked are read now.
+/// `map`: each place in the actor's `visited` that `is_kept` keeps by id, with the exits they saw
+/// there last. Where an exit goes, its ticks and whether it is locked are read now.
 pub(crate) fn map(
     canon: &Canon,
     world: &ecs::World,
     actor_id: &ActorId,
+    is_kept: impl Fn(&str) -> bool,
 ) -> Result<Vec<PlaceView>, Reason> {
     if !world.actors().contains(actor_id) {
         return Err(Reason::UnknownId);
     }
     let visits = world.actors().get::<component::Visit>(actor_id);
-    let places = visits.iter().map(|(place_id, seen_path_ids)| {
+    let kept_visits = visits.iter().filter(|(place_id, _)| is_kept(place_id));
+    let places = kept_visits.map(|(place_id, seen_path_ids)| {
         Ok(PlaceView {
             place_id: place_id.to_string(),
             name: find_place_name(canon, place_id).ok_or(Reason::UnknownId)?,

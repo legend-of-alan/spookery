@@ -247,7 +247,7 @@ fn the_shop_lists_the_oil(world: &mut World) {
     let pack = host::pack(world);
     let opened = spookery_engine::Session::peek(pack).unwrap();
     let shop = opened.perceive(&Presence::default(), "rowan").unwrap();
-    assert_eq!(shop.place, "docks_shop");
+    assert_eq!(shop.place.place_id, "docks_shop");
     assert_eq!(
         shop.items,
         vec![ItemStack {
@@ -257,6 +257,6 @@ fn the_shop_lists_the_oil(world: &mut World) {
         }]
     );
     let rooms = opened.perceive(&Presence::default(), "mira").unwrap();
-    assert_eq!(rooms.place, "mira_rooms");
+    assert_eq!(rooms.place.place_id, "mira_rooms");
     assert!(rooms.items.iter().all(|item| item.id != "lamp_oil"));
 }

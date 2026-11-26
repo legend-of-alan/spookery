@@ -92,9 +92,13 @@ fn render_result(pack: &PackSummary, body: ServerBody) -> String {
         .collect();
     let npc = pack.control_types.get(&view.viewer) != Some(&protocol::ControlType::PcTemplate);
     let result = PerceiveResult {
-        place_body: pack.places.get(&view.place).map(cut).unwrap_or_default(),
+        place_body: pack
+            .places
+            .get(&view.place.place_id)
+            .map(cut)
+            .unwrap_or_default(),
         viewer: view.viewer,
-        place: view.place,
+        place_id: view.place.place_id,
         visible_actors: view.visible_actors,
         notes: npc.then_some(view.notes),
         meters: view.meters,
@@ -111,7 +115,8 @@ fn render_result(pack: &PackSummary, body: ServerBody) -> String {
 #[derive(Serialize)]
 struct PerceiveResult {
     viewer: String,
-    place: String,
+    #[serde(rename = "place")]
+    place_id: String,
     visible_actors: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     notes: Option<Vec<NoteView>>,
@@ -136,7 +141,7 @@ mod tests {
             ..PackSummary::default()
         };
         let view = serde_json::from_value(json!({
-            "viewer": "mira", "place": "docks_shop", "visible_actors": ["aldric", "mira"],
+            "viewer": "mira", "place": {"place_id": "docks_shop", "name": "Docks Shop"}, "visible_actors": ["aldric", "mira"],
             "notes": [], "items": [], "habits": []
         }))
         .unwrap();

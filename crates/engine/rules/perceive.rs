@@ -9,16 +9,16 @@ use crate::entity;
 use crate::rules::habits::list_whose_if_holds;
 use crate::session;
 use crate::Reason;
-use spookery_protocol::{ExitView, NoteView};
 pub(crate) use spookery_protocol::{ItemStack, MeterView};
+use spookery_protocol::{NoteView, PlaceView};
 
 /// What one viewer is shown. Returned from the engine to the host table, which renders it as
 /// a player or GM view.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct View {
     pub viewer_id: ActorId,
-    pub place: String,
-    pub place_name: String,
+    /// Where the viewer is, with the exits they see there.
+    pub place: PlaceView,
     pub place_prose: String,
     pub visible_actors: Vec<ActorId>,
     pub actor_names: Vec<String>,
@@ -33,7 +33,9 @@ pub struct View {
     /// The world's meters. A hidden one is not here.
     pub world_meters: Vec<MeterView>,
     pub habits: Vec<String>,
-    pub exits: Vec<ExitView>,
+    /// The places `place.exits` go to that the viewer's `map` knows, each with the exits the
+    /// viewer saw there.
+    pub nearby: Vec<PlaceView>,
     /// What keeps the viewer busy and until when, or empty when they are free.
     pub busy: String,
 }
@@ -64,10 +66,10 @@ pub(crate) fn build_view(
     presence: &Presence,
     viewer_id: &ActorId,
 ) -> Result<View, Reason> {
-    let location = world.actors().get::<component::Place>(viewer_id).get();
-    let location = location.ok_or(Reason::UnknownId)?;
-    let (location_text, place_id) = (location.to_string(), location.place_id());
-    let mut visible_actors: Vec<ActorId> = world.actors_at(&location_text);
+    let position = world.actors().get::<component::Place>(viewer_id).get();
+    let position = position.ok_or(Reason::UnknownId)?;
+    let (position_id, place_id) = (position.to_string(), position.place_id());
+    let mut visible_actors: Vec<ActorId> = world.actors_at(&position_id);
     visible_actors.sort();
 
     let mut notes = Vec::new();
@@ -103,19 +105,24 @@ pub(crate) fn build_view(
         list_whose_if_holds(canon, world, presence, viewer_id)
     };
     let exits = crate::rules::travel::visible_exits(canon, world, viewer_id);
+    let is_past_an_exit = |place_id: &str| exits.iter().any(|exit| exit.place_id == place_id);
+    let nearby = crate::rules::lines::map(canon, world, viewer_id, is_past_an_exit)?;
     let actor_names = visible_actors
         .iter()
         .map(|id| canon.name(id.as_str()).map(str::to_string))
         .collect::<Option<_>>()
         .ok_or(Reason::UnknownId)?;
-    let place_name = location.find_name(canon).ok_or(Reason::UnknownId)?;
+    let place_name = position.find_name(canon).ok_or(Reason::UnknownId)?;
     let place_prose = crate::rules::lines::place_prose(canon, world, viewer_id);
     let busy = crate::rules::lines::busy_line(canon, world, viewer_id).unwrap_or_default();
 
     Ok(View {
         viewer_id: viewer_id.clone(),
-        place: location_text,
-        place_name,
+        place: PlaceView {
+            place_id: position_id,
+            name: place_name,
+            exits,
+        },
         place_prose,
         visible_actors,
         actor_names,
@@ -126,7 +133,7 @@ pub(crate) fn build_view(
         meters,
         world_meters,
         habits,
-        exits,
+        nearby,
         busy,
     })
 }

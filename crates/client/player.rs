@@ -84,10 +84,7 @@ pub async fn play(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReaso
                     continue;
                 }
                 match connection.send(command, args.clone()).await {
-                    Ok(request_id) => {
-                        terminal.record_request_id(request_id);
-                        continue;
-                    }
+                    Ok(_) => continue,
                     Err(Error::Io(_)) => Some((command.to_string(), args)),
                     Err(err) => return Err(err),
                 }
@@ -97,8 +94,7 @@ pub async fn play(addr: SocketAddr, terminal: &mut Terminal) -> Result<ExitReaso
             return Ok(ExitReason::HostClosed);
         }
         if let Some((command, args)) = unsent {
-            let request_id = connection.send(&command, args).await?;
-            terminal.record_request_id(request_id);
+            connection.send(&command, args).await?;
         }
     }
     connection.release().await?;
@@ -192,7 +188,7 @@ fn parse_command<'l>(line: &'l str, view: &protocol::View) -> Option<(&'l str, V
     if command == "say" || command == "tell" {
         let (head, text) = rest.split_once(' ').unwrap_or((rest, ""));
         let args = if head == "place" && !text.is_empty() {
-            json!({ "to": { "place": view.place }, "text": text })
+            json!({ "to": { "place": view.place.place_id }, "text": text })
         } else if !text.is_empty() {
             json!({ "to": { "actor": head }, "text": text })
         } else {
