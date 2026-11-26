@@ -59,7 +59,7 @@ pub(super) fn add(
             body: page.body,
         },
     );
-    diagnostics.keep(rule_list::compile(
+    diagnostics.keep(rule_list::compile::compile(
         &page.file,
         yaml.rules,
         &Scope::Place(yaml.id),

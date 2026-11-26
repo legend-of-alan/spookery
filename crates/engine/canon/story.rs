@@ -78,7 +78,7 @@ pub(super) fn load_dir(
         }
         let name = yaml.name.unwrap_or_else(|| yaml.id.clone());
         stories.insert(id, Def { name });
-        let compiled = rule_list::compile(&file, yaml.rules, &Scope::Story(yaml.id));
+        let compiled = rule_list::compile::compile(&file, yaml.rules, &Scope::Story(yaml.id));
         rules.extend(diagnostics.keep(compiled).unwrap_or_default());
     }
     (rules, stories)
