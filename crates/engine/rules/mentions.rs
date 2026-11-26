@@ -6,9 +6,9 @@ use crate::rules::expr::Expr;
 use crate::rules::grammar;
 use crate::rules::rule::{Cond, Cost, EffectTemplate, MoveTo, Rule, TargetKind};
 
-/// What a rule's or exit's lines name, borrowed from those lines (`'l`) and sorted by kind. The
-/// word `target` stands for whatever the verb targets, so it is kept apart from the entities and
-/// items it could name.
+/// What a rule's or exit's lines name, borrowed from those lines (`'l`) and sorted into entities,
+/// item ids and `target` keys. The word `target` stands for whatever the verb targets, so it is
+/// kept apart from the entities and items it could name.
 #[derive(Default)]
 pub(crate) struct Mentions<'l> {
     /// The entities other than `target`, in the order written.
@@ -87,15 +87,15 @@ impl<'l> Mentions<'l> {
         self.target_keys.push((key, allowed));
     }
 
-    /// The first of the target keys where a verb that targets `targets` does not allow
+    /// The first of the target keys where a verb that targets `target_kind` does not allow
     /// `target`, as the key and what it needs the verb to target. A habit, a change rule and an
     /// exit target nothing.
     pub(crate) fn find_misplaced_target(
         self,
-        targets: TargetKind,
+        target_kind: TargetKind,
     ) -> Option<(&'static str, TargetKind)> {
         let misplaced =
-            (self.target_keys.into_iter()).find(|(_, allowed)| !allowed.contains(&targets));
+            (self.target_keys.into_iter()).find(|(_, allowed)| !allowed.contains(&target_kind));
         misplaced.map(|(key, allowed)| (key, allowed[0]))
     }
 }
