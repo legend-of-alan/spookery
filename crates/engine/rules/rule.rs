@@ -112,7 +112,7 @@ impl Rule {
 }
 
 /// What a rule's or exit's lines name, borrowed from those lines (`'l`) and sorted by kind. The
-/// word `target` stands for whatever the move targets, so it is kept apart from the entities and
+/// word `target` stands for whatever the verb targets, so it is kept apart from the entities and
 /// items it could name.
 #[derive(Default)]
 pub(crate) struct Mentions<'l> {
@@ -120,7 +120,7 @@ pub(crate) struct Mentions<'l> {
     pub(crate) entities: Vec<grammar::Object>,
     /// The item ids other than `target`, each once.
     pub(crate) item_ids: BTreeSet<&'l str>,
-    /// Each key that says `target`, as written and in the order written, with what the move
+    /// Each key that says `target`, as written and in the order written, with what the verb
     /// may target for it to name something. A refusal suggests the first.
     target_keys: Vec<(&'static str, &'static [TargetKind])>,
 }
@@ -192,8 +192,8 @@ impl<'l> Mentions<'l> {
         self.target_keys.push((key, allowed));
     }
 
-    /// The first of the target keys where a move that targets `targets` does not allow
-    /// `target`, as the key and what it needs the move to target. A habit, a change rule and an
+    /// The first of the target keys where a verb that targets `targets` does not allow
+    /// `target`, as the key and what it needs the verb to target. A habit, a change rule and an
     /// exit target nothing.
     pub(crate) fn find_misplaced_target(
         self,
@@ -252,7 +252,7 @@ pub(crate) enum RuleKind {
 }
 
 impl RuleKind {
-    /// What the rule's move targets. A habit and a change rule target nothing.
+    /// What the rule's verb targets. A habit and a change rule target nothing.
     pub(crate) fn target_kind(&self) -> TargetKind {
         match self {
             RuleKind::Verb { target, .. } => *target,

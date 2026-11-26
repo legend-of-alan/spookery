@@ -133,8 +133,8 @@ impl EntityDefs<'_> {
     }
 
     /// The reason flag `flag_id` of the path `of` names can never be set or tested, or `None`
-    /// when it may be or `of` names no path. `target` is what the rule's move targets, so
-    /// `of: target` names a path only on a move that targets one.
+    /// when it may be or `of` names no path. `target` is what the rule's verb targets, so
+    /// `of: target` names a path only on a verb that targets one.
     fn path_lacks_flag_reason(
         &self,
         of: &grammar::Object,
