@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::refusal::{FileText, Locator};
+use crate::canon::refusal::{Diagnostics, FileText, Locator};
 use crate::diagnostic::{parse_tagged, Diagnostic};
 
 const SCHEMA: &str = "budget";
@@ -65,7 +65,7 @@ impl Default for Budget {
 pub(super) fn load(file: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
     let yaml: Yaml = parse_tagged(file, text, SCHEMA, false)?;
     let file_text = FileText { file, text };
-    let mut diagnostics = Vec::new();
+    let mut diagnostics = Diagnostics::default();
     let mut budget = Budget::default();
     macro_rules! set_numbers {
         ($($key:ident >= $least:literal),* $(,)?) => {$(
@@ -106,10 +106,7 @@ pub(super) fn load(file: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
         max_fastforward_rounds >= 0,
         max_trigger_depth >= 0,
     );
-    if !diagnostics.is_empty() {
-        return Err(diagnostics);
-    }
-    Ok(budget)
+    diagnostics.into_result(budget)
 }
 
 /// `value` into `slot` when it is at least `least`; otherwise `slot` keeps its default.
@@ -119,7 +116,7 @@ fn set_number(
     value: Option<i64>,
     slot: &mut u64,
     least: i64,
-    diagnostics: &mut Vec<Diagnostic>,
+    diagnostics: &mut Diagnostics,
 ) {
     let Some(n) = value else { return };
     if n >= least {
@@ -138,11 +135,7 @@ fn set_number(
     diagnostics.push(file_text.refuse_at(key, Locator::Key(&format!("{key}:")), message, hint));
 }
 
-fn parse_idle(
-    file_text: &FileText,
-    value: Option<String>,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> bool {
+fn parse_idle(file_text: &FileText, value: Option<String>, diagnostics: &mut Diagnostics) -> bool {
     match value.as_deref() {
         None | Some("on") => true,
         Some("off") => false,

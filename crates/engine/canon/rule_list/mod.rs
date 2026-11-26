@@ -57,7 +57,7 @@ fn compile_rule(
     owner: &Owner,
 ) -> Result<Rule, Vec<Diagnostic>> {
     let file_text = FileText::without_text(file);
-    let mut diagnostics = Vec::new();
+    let mut diagnostics = Diagnostics::default();
     let local_id = entry.id.value.clone();
     if local_id.is_empty() || local_id == "say" {
         diagnostics.push(file_text.refuse_at(
@@ -184,10 +184,7 @@ fn compile_rule(
             ));
         }
     }
-    if !diagnostics.is_empty() {
-        return Err(diagnostics);
-    }
-    let when = when.expect("when checked");
+    let when = diagnostics.into_result(when)?.expect("when checked");
     let rule = Rule {
         id: owner.rule_id(&local_id),
         local_id,
