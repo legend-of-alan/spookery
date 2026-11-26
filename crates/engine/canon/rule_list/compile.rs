@@ -301,13 +301,13 @@ fn build_rule_kind(yaml: &WhenYaml) -> Result<RuleKind, String> {
                     target,
                 })
             }
-            (None, Some(change)) => build_change_kind(change),
+            (None, Some(change)) => build_change_watch(change).map(RuleKind::Change),
             _ => Err("when needs one of verb or change".to_string()),
         },
     }
 }
 
-fn build_change_kind(yaml: &ChangeYaml) -> Result<RuleKind, String> {
+fn build_change_watch(yaml: &ChangeYaml) -> Result<ChangeWatch, String> {
     let subject = match yaml.subject.as_deref() {
         None | Some("any") => grammar::Subject::Any,
         Some("pc") => grammar::Subject::Pc,
@@ -315,16 +315,16 @@ fn build_change_kind(yaml: &ChangeYaml) -> Result<RuleKind, String> {
         Some(actor) => grammar::Subject::Id(actor.to_string()),
     };
     if let Some(place) = &yaml.arrive {
-        return Ok(RuleKind::Change(ChangeWatch::Arrive {
+        return Ok(ChangeWatch::Arrive {
             place: place.clone(),
             subject,
-        }));
+        });
     }
     if let Some(place) = &yaml.leave {
-        return Ok(RuleKind::Change(ChangeWatch::Leave {
+        return Ok(ChangeWatch::Leave {
             place: place.clone(),
             subject,
-        }));
+        });
     }
     if let Some(key) = &yaml.meter {
         let crosses = yaml
@@ -332,20 +332,20 @@ fn build_change_kind(yaml: &ChangeYaml) -> Result<RuleKind, String> {
             .as_deref()
             .ok_or_else(|| "a meter change needs crosses".to_string())?;
         let (op, bound) = parse_crosses(crosses)?;
-        return Ok(RuleKind::Change(ChangeWatch::Meter {
+        return Ok(ChangeWatch::Meter {
             key: key.clone(),
             op,
             bound,
-        }));
+        });
     }
     if let Some(key) = &yaml.flag {
         let becomes = yaml
             .becomes
             .ok_or_else(|| "a flag change needs becomes".to_string())?;
-        return Ok(RuleKind::Change(ChangeWatch::Flag {
+        return Ok(ChangeWatch::Flag {
             key: key.clone(),
             becomes,
-        }));
+        });
     }
     if let Some(id) = &yaml.item {
         let gained = match (yaml.gained, yaml.lost) {
@@ -353,10 +353,10 @@ fn build_change_kind(yaml: &ChangeYaml) -> Result<RuleKind, String> {
             (_, Some(true)) => false,
             _ => return Err("an item change needs gained or lost".to_string()),
         };
-        return Ok(RuleKind::Change(ChangeWatch::Item {
+        return Ok(ChangeWatch::Item {
             id: id.clone(),
             gained,
-        }));
+        });
     }
     Err("a change needs arrive, leave, meter, flag, or item".to_string())
 }
