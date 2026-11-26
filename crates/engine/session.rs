@@ -487,7 +487,7 @@ impl<Lock> Session<Lock> {
             .filter_map(|(carrier, id)| {
                 let meter = self.world.entities().get::<component::Meter>(&carrier);
                 let value = meter.value(id).ok()?;
-                let max = self.canon().meter_desc(carrier.as_ref(), id)?.max;
+                let max = self.canon().meter_def(carrier.as_ref(), id)?.max;
                 Some(format!("meter {carrier} {id} {value} {max}"))
             })
             .collect()

@@ -4,11 +4,11 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::meters::{meter_descs, MeterYaml};
+use crate::canon::meters::{self, MeterYaml};
 use crate::canon::pack_files::Page;
 use crate::canon::refusal::{Diags, FileText, Locator};
 use crate::canon::rule_list::{self, parse::RuleYaml};
-use crate::diagnostic::{load_tagged, Diagnostic};
+use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::PlaceId;
 use crate::entity;
@@ -34,7 +34,7 @@ pub(super) fn add(
     meters: &mut Meters,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
-    let file = diags.keep(load(&page.file, &page.yaml))?;
+    let file = diags.keep(parse(&page.file, &page.yaml))?;
     let whole = FileText {
         file: &page.file,
         text: &page.text,
@@ -49,7 +49,7 @@ pub(super) fn add(
     }
     let id: PlaceId = file.id.clone().into();
     let carrier = Some(entity::Id::Place(id.clone()));
-    if let Some(own) = diags.keep(meter_descs(&whole, file.meters, carrier)) {
+    if let Some(own) = diags.keep(meters::compile(&whole, file.meters, carrier)) {
         meters.push((page.file.clone(), own));
     }
     places.insert(
@@ -66,8 +66,8 @@ pub(super) fn add(
     ))
 }
 
-fn load(file: &str, yaml: &str) -> Result<PlaceDoc, Vec<Diagnostic>> {
-    let parsed: PlaceDoc = load_tagged(file, yaml, SCHEMA, true)?;
+fn parse(file: &str, yaml: &str) -> Result<PlaceDoc, Vec<Diagnostic>> {
+    let parsed: PlaceDoc = parse_tagged(file, yaml, SCHEMA, true)?;
     let source = FileText { file, text: yaml };
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short place id");

@@ -6,11 +6,11 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::canon::meters::{self, meter_descs, MeterYaml};
-use crate::canon::pack_files::{collect_files, unreadable_dir};
+use crate::canon::meters::{self, MeterYaml};
+use crate::canon::pack_files::{collect_files, refuse_unreadable_dir};
 use crate::canon::refusal::{Diags, FileText, Locator};
 use crate::canon::rule_list::{self, parse::RuleYaml};
-use crate::diagnostic::{load_tagged, schema_error};
+use crate::diagnostic::{parse_tagged, schema_error};
 use crate::ecs::component::meter;
 use crate::ecs::id::StoryId;
 use crate::entity;
@@ -27,7 +27,7 @@ pub struct Def {
 /// Every `story/*.yaml` file in directory order: its rules compiled, and its meters added to
 /// `meters` when those loaded. A file with an empty id, or an id an earlier file has, is refused
 /// and skipped. A pack without `story/` has none.
-pub(super) fn load_stories(
+pub(super) fn load_dir(
     root: &Path,
     mut meters: Option<&mut BTreeMap<String, meter::Descriptor>>,
     world_meters: Option<&BTreeMap<String, meter::Descriptor>>,
@@ -36,7 +36,7 @@ pub(super) fn load_stories(
     let dir = root.join("story");
     let mut files = Vec::new();
     if dir.is_dir() && collect_files(&dir, root, &mut files).is_err() {
-        diags.push(unreadable_dir("story"));
+        diags.push(refuse_unreadable_dir("story"));
     }
     let mut rules = Vec::new();
     let mut stories = BTreeMap::new();
@@ -52,7 +52,7 @@ pub(super) fn load_stories(
             ));
             continue;
         };
-        let Some(story) = diags.keep(load_tagged::<StoryDoc>(&file, text, SCHEMA, true)) else {
+        let Some(story) = diags.keep(parse_tagged::<StoryDoc>(&file, text, SCHEMA, true)) else {
             continue;
         };
         let source = FileText { file: &file, text };
@@ -69,7 +69,7 @@ pub(super) fn load_stories(
         }
         let id: StoryId = story.id.clone().into();
         let carrier = Some(entity::Id::Story(id.clone()));
-        let own = diags.keep(meter_descs(&source, story.meters, carrier));
+        let own = diags.keep(meters::compile(&source, story.meters, carrier));
         if let (Some(meters), Some(own)) = (meters.as_deref_mut(), own) {
             meters::add_own(meters, own, world_meters, &source, diags);
         }

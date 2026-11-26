@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::canon::refusal::{Diags, DuplicateWords, FileText, Locator};
-use crate::diagnostic::{load_tagged, Diagnostic};
+use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::entity;
 
@@ -18,14 +18,14 @@ pub(super) fn load(
     text: &str,
     carrier: Option<entity::Id>,
 ) -> Result<BTreeMap<String, meter::Descriptor>, Vec<Diagnostic>> {
-    let doc: MetersDoc = load_tagged(rel, text, SCHEMA, false)?;
+    let doc: MetersDoc = parse_tagged(rel, text, SCHEMA, false)?;
     let source = FileText { file: rel, text };
-    meter_descs(&source, doc.meters, carrier)
+    compile(&source, doc.meters, carrier)
 }
 
 /// The meter rows of one file. A meter no actor carries is hidden unless its row says
 /// `hidden: false`.
-pub(super) fn meter_descs(
+pub(super) fn compile(
     source: &FileText,
     rows: Vec<MeterYaml>,
     carrier: Option<entity::Id>,
@@ -55,7 +55,7 @@ pub(super) fn meter_descs(
                 "set base between min and base_cap",
             ),
         ];
-        let found = source.refuse_row("meter", row, id, meters.contains_key(id), rules);
+        let found = source.refuse_entry("meter", row, id, meters.contains_key(id), rules);
         if !found.is_empty() {
             diags.extend(found);
             continue;

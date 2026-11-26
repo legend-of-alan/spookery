@@ -122,7 +122,7 @@ pub(in crate::ecs) fn value_with(
     key: &str,
     modifiers: Result<i64, Reason>,
 ) -> Result<i64, Reason> {
-    let desc = actors.canon.meter_desc(entity::IdRef::Actor(actor), key);
+    let desc = actors.canon.meter_def(entity::IdRef::Actor(actor), key);
     let held = actors.get::<Meter>(actor).get_or_base(key);
     let held = held.ok_or(Reason::UnknownId);
     meter::value(desc.ok_or(Reason::UnknownId)?, &held?, modifiers?)

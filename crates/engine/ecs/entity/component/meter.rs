@@ -96,7 +96,7 @@ impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Ref<'_, E, Meter
     /// Meter `entry_id` as the entity holds it: its save row, or `Meter::at_base` when it has
     /// none. `None` when the entity does not carry the meter.
     pub fn get_or_base(&self, entry_id: &str) -> Option<Meter> {
-        let desc = (self.entities.canon).meter_desc(self.id.as_id_ref(), entry_id)?;
+        let desc = (self.entities.canon).meter_def(self.id.as_id_ref(), entry_id)?;
         let held = self.get(entry_id).copied();
         (self.entities.contains(self.id)).then(|| held.unwrap_or(Meter::at_base(desc)))
     }
@@ -109,7 +109,7 @@ impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter
     pub fn shift(&mut self, entry_id: &str, delta: i64) -> Result<(), Reason> {
         self.check_exists()?;
         let id = self.id.as_id_ref();
-        let desc = (self.writer.canon.meter_desc(id, entry_id)).ok_or(Reason::UnknownId)?;
+        let desc = (self.writer.canon.meter_def(id, entry_id)).ok_or(Reason::UnknownId)?;
         let pack_base = Meter::at_base(desc);
         let entry = (self.id.clone(), entry_id.to_string());
         let held = self.store().get(&entry).copied().unwrap_or(pack_base);
@@ -147,7 +147,7 @@ impl Ref<'_, Save, Meter> {
             }
             id => {
                 let desc = canon
-                    .meter_desc(id.as_ref(), entry_id)
+                    .meter_def(id.as_ref(), entry_id)
                     .ok_or(Reason::UnknownId);
                 let held = in_collection!(id, [&save], |entities, id| {
                     Reader::new(entities, canon)

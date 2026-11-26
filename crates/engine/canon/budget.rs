@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::canon::refusal::{FileText, Locator, Problem};
-use crate::diagnostic::{load_tagged, Diagnostic};
+use crate::diagnostic::{parse_tagged, Diagnostic};
 
 const SCHEMA: &str = "budget";
 
@@ -63,7 +63,7 @@ impl Default for Budget {
 }
 
 pub(crate) fn load(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    let doc: BudgetDoc = load_tagged(rel, text, SCHEMA, false)?;
+    let doc: BudgetDoc = parse_tagged(rel, text, SCHEMA, false)?;
     let source = FileText { file: rel, text };
     let mut diags = Vec::new();
     let mut budget = Budget::default();
@@ -188,7 +188,7 @@ struct BudgetDoc {
     live_act_window_ticks: Option<i64>,
     cycles: Option<BTreeMap<String, i64>>,
     round_every_real_seconds: Option<i64>,
-    #[serde(default, deserialize_with = "read_idle_word")]
+    #[serde(default, deserialize_with = "deserialize_idle_word")]
     idle: Option<String>,
     idle_ticks_per_round: Option<i64>,
     live_ticks_per_round: Option<i64>,
@@ -198,7 +198,7 @@ struct BudgetDoc {
     max_trigger_depth: Option<i64>,
 }
 
-fn read_idle_word<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+fn deserialize_idle_word<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {

@@ -192,7 +192,7 @@ impl ecs::World {
     ) -> Change {
         let (canon, save) = (&*self.canon, &self.save);
         let (id, entry_id) = (&key.entity_id, key.entry_id.as_deref().unwrap_or_default());
-        let desc = canon.meter_desc(id.as_ref(), entry_id);
+        let desc = canon.meter_def(id.as_ref(), entry_id);
         let now = entity::in_collection!(id, [&save], |entities, id| {
             Reader::new(entities, canon)
                 .get::<Meter>(id)

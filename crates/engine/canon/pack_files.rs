@@ -23,7 +23,7 @@ pub(super) fn collect_markdown_files(root: &Path, dir: &str) -> Vec<Result<Page,
     let mut files = Vec::new();
     let mut pages = Vec::new();
     if collect_files(&root.join(dir), root, &mut files).is_err() {
-        pages.push(Err(vec![unreadable_dir(dir)]));
+        pages.push(Err(vec![refuse_unreadable_dir(dir)]));
     }
     for (file, bytes) in files {
         if !file.ends_with(".md") {
@@ -50,9 +50,9 @@ pub(super) fn collect_markdown_files(root: &Path, dir: &str) -> Vec<Result<Page,
     pages
 }
 
-pub(super) fn unreadable_dir(dir: &str) -> Diagnostic {
+pub(super) fn refuse_unreadable_dir(dir: &str) -> Diagnostic {
     Problem {
-        source: &FileText::named(dir),
+        source: &FileText::without_text(dir),
         path: dir,
         at: Locator::Nowhere,
         message: format!("could not read {dir}/"),

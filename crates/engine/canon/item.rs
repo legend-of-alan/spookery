@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::canon::pack_files::Page;
 use crate::canon::refusal::{Diags, FileText, Locator};
 use crate::canon::rule_list::{self, parse::RuleYaml};
-use crate::diagnostic::load_tagged;
+use crate::diagnostic::parse_tagged;
 use crate::rules::rule::{Owner, Rule};
 
 const SCHEMA: &str = "item";
@@ -27,8 +27,8 @@ pub(super) fn add(
     items: &mut BTreeMap<String, Def>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
-    let item: ItemDoc = diags.keep(load_tagged(&page.file, &page.yaml, SCHEMA, true))?;
-    let source = FileText::named(&page.file);
+    let item: ItemDoc = diags.keep(parse_tagged(&page.file, &page.yaml, SCHEMA, true))?;
+    let source = FileText::without_text(&page.file);
     let empty = ("an item id is empty", "set id to a short item id");
     let twice = ("item", "is already defined", "keep one item with this id");
     let taken = items.contains_key(&item.id);

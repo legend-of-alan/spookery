@@ -5,11 +5,11 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::canon;
-use crate::canon::meters::{self, meter_descs, MeterYaml};
+use crate::canon::meters::{self, MeterYaml};
 use crate::canon::pack_files::Page;
 use crate::canon::refusal::{Diags, FileText, Locator, Problem};
 use crate::canon::rule_list::{self, parse::RuleYaml};
-use crate::diagnostic::{load_tagged, Diagnostic};
+use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::ActorId;
 use crate::entity;
@@ -39,7 +39,7 @@ pub(super) fn add(
     meters: Option<&mut BTreeMap<String, meter::Descriptor>>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
-    let file = diags.keep(load(&page.file, &page.yaml))?;
+    let file = diags.keep(parse(&page.file, &page.yaml))?;
     let whole = FileText {
         file: &page.file,
         text: &page.text,
@@ -60,7 +60,7 @@ pub(super) fn add(
     }
     let id: ActorId = file.id.clone().into();
     let carrier = Some(entity::Id::Actor(id.clone()));
-    let own = diags.keep(meter_descs(&whole, file.meters, carrier));
+    let own = diags.keep(meters::compile(&whole, file.meters, carrier));
     if let (Some(meters), Some(own)) = (meters, own) {
         meters::add_own(meters, own, None, &whole, diags);
     }
@@ -80,8 +80,8 @@ pub(super) fn add(
     ))
 }
 
-fn load(file: &str, yaml: &str) -> Result<CastDoc, Vec<Diagnostic>> {
-    let parsed: CastDoc = load_tagged(file, yaml, SCHEMA, true)?;
+fn parse(file: &str, yaml: &str) -> Result<CastDoc, Vec<Diagnostic>> {
+    let parsed: CastDoc = parse_tagged(file, yaml, SCHEMA, true)?;
     let source = FileText { file, text: yaml };
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short cast id");

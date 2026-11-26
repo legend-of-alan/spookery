@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 
-use crate::canon::{item, unknown_item};
+use crate::canon::{item, refuse_unknown_item};
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::ecs::component::meter::{self, Meter};
 use crate::ecs::component::modifier::{self, Modifier};
@@ -116,7 +116,7 @@ pub(crate) fn find_held_flags(world: &ecs::World) -> BTreeSet<&str> {
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
 pub(crate) fn find_stale_meters(world: &ecs::World) -> Vec<DroppedMeter> {
     held_meters(world)
-        .filter(|(carrier, id, _)| world.canon().meter_desc(carrier.as_ref(), id).is_none())
+        .filter(|(carrier, id, _)| world.canon().meter_def(carrier.as_ref(), id).is_none())
         .map(|(carrier, id, _)| DroppedMeter {
             id: id.to_string(),
             carrier,
@@ -204,7 +204,7 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
         diags.push(meter_error(&meter.carrier, &meter.id, &problem, hint));
     }
     for (carrier, key, held) in held_meters(world) {
-        let desc = canon.meter_desc(carrier.as_ref(), key);
+        let desc = canon.meter_def(carrier.as_ref(), key);
         if desc.is_some_and(|desc| !meter::is_storable(desc, held.base, held.offset)) {
             let problem = format!("meter '{key}' is outside the rules");
             let hint = "set base and offset so the stored pair fits the meter";
@@ -260,12 +260,12 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
     for (actor_id, item, _) in actor_items {
         if !canon.items.contains_key(item) {
             let path = format!("actors.items.{actor_id}.{item}");
-            diags.push(unknown_item(FILE, item, &path));
+            diags.push(refuse_unknown_item(FILE, item, &path));
         }
     }
     for (actor_id, wielded) in actors.query::<(ActorId, &component::WieldedItem)>().iter() {
         if !canon.items.contains_key(wielded) {
-            diags.push(unknown_item(
+            diags.push(refuse_unknown_item(
                 FILE,
                 wielded,
                 &format!("actors.wielded.{actor_id}"),
@@ -297,7 +297,7 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
     for (place, item, _) in place_items {
         if !canon.items.contains_key(item) {
             let path = format!("places.items.{place}.{item}");
-            diags.push(unknown_item(FILE, item, &path));
+            diags.push(refuse_unknown_item(FILE, item, &path));
         }
     }
     if diags.is_empty() {

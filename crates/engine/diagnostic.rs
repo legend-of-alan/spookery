@@ -313,7 +313,7 @@ pub(crate) fn parse_file<T: serde::de::DeserializeOwned>(
     serde_saphyr::from_str(text).map_err(|err| vec![diagnose_yaml(file, &err, holds_rule_lines)])
 }
 
-pub(crate) fn load_tagged<T: serde::de::DeserializeOwned>(
+pub(crate) fn parse_tagged<T: serde::de::DeserializeOwned>(
     file: &str,
     text: &str,
     expected: &str,

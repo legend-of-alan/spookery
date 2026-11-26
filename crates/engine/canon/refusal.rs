@@ -15,7 +15,7 @@ pub(super) struct FileText<'a> {
 
 impl<'a> FileText<'a> {
     /// A file or directory whose text the caller does not hold, such as a lint's.
-    pub(super) fn named(file: &'a str) -> Self {
+    pub(super) fn without_text(file: &'a str) -> Self {
         Self { file, text: "" }
     }
 
@@ -29,7 +29,7 @@ impl<'a> FileText<'a> {
     ) -> Option<Diagnostic> {
         let (problem, hint) = words;
         id.is_empty()
-            .then(|| self.refusal(path, at, problem.into(), hint))
+            .then(|| self.refuse_at(path, at, problem.into(), hint))
     }
 
     /// The refusal at `path` for an `id` the caller found a second time.
@@ -41,13 +41,13 @@ impl<'a> FileText<'a> {
         words: DuplicateWords,
     ) -> Diagnostic {
         let (before, after, hint) = words;
-        self.refusal(path, at, format!("{before} '{id}' {after}"), hint)
+        self.refuse_at(path, at, format!("{before} '{id}' {after}"), hint)
     }
 
     /// The refusals for the `row`th item of the top-level `{noun}s:` list, whose id is
     /// `id`: an empty id, then each rule the row breaks, then, when nothing else is wrong
     /// and `taken` says an earlier row has this id, the repeat.
-    pub(super) fn refuse_row(
+    pub(super) fn refuse_entry(
         &self,
         noun: &str,
         row: usize,
@@ -66,7 +66,7 @@ impl<'a> FileText<'a> {
                 row,
                 key: &key,
             };
-            self.refusal(&format!("{noun}s[{row}].{field}"), at, message, hint)
+            self.refuse_at(&format!("{noun}s[{row}].{field}"), at, message, hint)
         };
         let empty = format!("a {noun} id is empty");
         let broken = rules.into_iter().filter(|(broken, ..)| *broken);
@@ -84,11 +84,11 @@ impl<'a> FileText<'a> {
     }
 
     /// A converter's `fault` at the spot it recorded, refused as a schema error.
-    pub(super) fn fault(&self, path: &str, fault: Fault) -> Diagnostic {
-        self.refusal(path, Locator::Spot(fault.spot), fault.message, "")
+    pub(super) fn refuse_error(&self, path: &str, fault: Fault) -> Diagnostic {
+        self.refuse_at(path, Locator::Spot(fault.spot), fault.message, "")
     }
 
-    fn refusal(&self, path: &str, at: Locator, problem: String, hint: &str) -> Diagnostic {
+    fn refuse_at(&self, path: &str, at: Locator, problem: String, hint: &str) -> Diagnostic {
         Problem {
             source: self,
             path,
@@ -149,7 +149,7 @@ impl Problem<'_> {
             Locator::Nowhere | Locator::Spot(None) => diag,
             Locator::Key(key) => diag.at_spot(locate_nth(source.text, key, 0)),
             Locator::Row { list, row, key } => {
-                diag.at_spot(locate_row_field(source.text, list, row, key))
+                diag.at_spot(locate_entry_field(source.text, list, row, key))
             }
             Locator::Spot(Some(spot)) => {
                 diag.at_line(spot.line, Some(spot.column).filter(|column| *column > 0))
@@ -211,7 +211,7 @@ impl Extend<Diagnostic> for Diags {
 }
 
 /// The line and column serde recorded for a value, or `None` when it has no line.
-pub(super) fn spot_of<T>(span: &Spanned<T>) -> Option<LineColumn> {
+pub(super) fn file_location_of<T>(span: &Spanned<T>) -> Option<LineColumn> {
     let line = u32::try_from(span.referenced.line()).unwrap_or(0);
     let column = u32::try_from(span.referenced.column()).unwrap_or(0);
     (line > 0).then_some(LineColumn { line, column })
@@ -219,7 +219,7 @@ pub(super) fn spot_of<T>(span: &Spanned<T>) -> Option<LineColumn> {
 
 /// `field` inside the `row`th item of the top-level `list`. An item starts at a line whose
 /// key is `id:`, so an `id:` inside a value, or the file's own `id:`, is not a row.
-fn locate_row_field(text: &str, list: &str, row: usize, field: &str) -> Option<(u32, u32)> {
+fn locate_entry_field(text: &str, list: &str, row: usize, field: &str) -> Option<(u32, u32)> {
     let lines: Vec<&str> = text.lines().collect();
     let first = lines.iter().position(|line| line.starts_with(list))? + 1;
     let last = lines[first..]

@@ -3,13 +3,13 @@
 use serde::Deserialize;
 
 use crate::canon::rule_list::{self, parse::RuleYaml};
-use crate::diagnostic::{load_tagged, Diagnostic};
+use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::rules::rule::{Owner, Rule};
 
 const SCHEMA: &str = "verbs";
 
 pub(in crate::canon) fn load(rel: &str, text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
-    let doc: Yaml = load_tagged(rel, text, SCHEMA, true)?;
+    let doc: Yaml = parse_tagged(rel, text, SCHEMA, true)?;
     rule_list::compile(rel, doc.rules, &Owner::Verb)
 }
 

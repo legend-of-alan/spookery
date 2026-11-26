@@ -29,17 +29,16 @@ pub(crate) mod story;
 mod verbs;
 
 pub(crate) use budget::Budget;
-pub(crate) use lint::{check_canon, unknown_item};
 use lint::{
-    check_carriers, check_meter_reads, check_modifiers, check_paths, check_rule_items, EntityScope,
+    find_missing_components, find_unknown_meter_reads, find_unknown_modifiers,
+    find_unknown_path_ids, find_unknown_rule_items, EntityScope,
 };
+pub(crate) use lint::{refuse_unknown_item, run};
 use map::MAP_FILE;
 pub(crate) use map::{Exit, PathDef, Paths, OPEN};
 use modifiers::MODIFIERS_FILE;
-use pack::load_pack_yaml;
 use pack_files::{collect_files, collect_markdown_files, read_text};
 use refusal::{Diags, FileText, Locator};
-use story::load_stories;
 
 #[derive(Clone, Debug)]
 pub struct Canon {
@@ -126,7 +125,7 @@ impl Canon {
     }
 
     /// The descriptor of meter `key` on `id`, when that entity carries it.
-    pub fn meter_desc(&self, id: entity::IdRef<'_>, key: &str) -> Option<&meter::Descriptor> {
+    pub fn meter_def(&self, id: entity::IdRef<'_>, key: &str) -> Option<&meter::Descriptor> {
         match id {
             entity::IdRef::Global => self.world_meters.get(key),
             _ => self.meters.get(key).filter(|desc| desc.is_on(id)),
@@ -185,7 +184,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let mut items = BTreeMap::new();
     let mut place_meters = Vec::new();
     let mut loaded = Vec::new();
-    let pack = diags.keep(read_text(root, "pack.yaml").and_then(|text| load_pack_yaml(&text)));
+    let pack = diags.keep(read_text(root, "pack.yaml").and_then(|text| pack::load(&text)));
     for page in collect_markdown_files(root, "world") {
         let Some(page) = diags.keep(page) else {
             continue;
@@ -222,7 +221,13 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     }
     for (file, own) in place_meters {
         if let Some(meters) = meters.as_mut() {
-            meters::add_own(meters, own, None, &FileText::named(&file), &mut diags);
+            meters::add_own(
+                meters,
+                own,
+                None,
+                &FileText::without_text(&file),
+                &mut diags,
+            );
         }
     }
     let modifiers = match &meters {
@@ -236,13 +241,13 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         loaded.extend(diags.keep(verbs::load(rel, text)).unwrap_or_default());
     }
     let (story_rules, stories) =
-        load_stories(root, meters.as_mut(), world_meters.as_ref(), &mut diags);
+        story::load_dir(root, meters.as_mut(), world_meters.as_ref(), &mut diags);
     loaded.extend(story_rules);
     let mut seen_ids = BTreeSet::new();
     for rule in &loaded {
         let twice = ("rule", "is already defined", "keep one rule with this id");
         let taken = !seen_ids.insert(rule.id.clone());
-        let source = FileText::named(&rule.file);
+        let source = FileText::without_text(&rule.file);
         diags.extend(taken.then(|| source.refuse_duplicate(&rule.id, "", Locator::Nowhere, twice)));
     }
     let rules = rule::Table::new(loaded);
@@ -256,15 +261,15 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
             paths,
             stories: &stories,
         };
-        diags.extend(check_meter_reads(&scope, &rules));
-        diags.extend(check_carriers(&scope, &rules));
+        diags.extend(find_unknown_meter_reads(&scope, &rules));
+        diags.extend(find_missing_components(&scope, &rules));
     }
     if let Some(modifiers) = &modifiers {
-        diags.extend(check_modifiers(&rules, modifiers));
+        diags.extend(find_unknown_modifiers(&rules, modifiers));
     }
-    diags.extend(check_rule_items(&rules, &items));
+    diags.extend(find_unknown_rule_items(&rules, &items));
     if let Some(path_lines) = &path_lines {
-        diags.extend(check_paths(path_lines, &places, &items));
+        diags.extend(find_unknown_path_ids(path_lines, &places, &items));
     }
     let checkpoint_every = pack
         .as_ref()

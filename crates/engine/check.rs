@@ -160,7 +160,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
             .as_ref()
             .map(save::find_held_flags)
             .unwrap_or_default();
-        diags.extend(crate::canon::check_canon(canon, &held_flags));
+        diags.extend(crate::canon::run(canon, &held_flags));
     }
     diags
 }

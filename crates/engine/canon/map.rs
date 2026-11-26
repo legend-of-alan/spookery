@@ -8,7 +8,7 @@ use serde::Deserialize;
 use crate::canon::refusal::{Diags, FileText};
 use crate::canon::rule_list;
 use crate::canon::Canon;
-use crate::diagnostic::{load_tagged, schema_error, Diagnostic};
+use crate::diagnostic::{parse_tagged, schema_error, Diagnostic};
 use crate::ecs::component::ActorLocation;
 use crate::ecs::id::{PathId, PlaceId};
 use crate::rules::expr::Expr;
@@ -20,7 +20,7 @@ const SCHEMA: &str = "map";
 
 /// Every line under `paths:`, in file order, or the refusals of the lines that do not compile.
 pub(super) fn load(text: &str) -> Result<Vec<PathDef>, Vec<Diagnostic>> {
-    let doc: MapDoc = load_tagged(MAP_FILE, text, SCHEMA, true)?;
+    let doc: MapDoc = parse_tagged(MAP_FILE, text, SCHEMA, true)?;
     let mut diags = Diags::default();
     let paths = (doc.paths.iter().enumerate())
         .filter_map(|(row, line)| diags.keep(compile(row, line)))
@@ -30,7 +30,7 @@ pub(super) fn load(text: &str) -> Result<Vec<PathDef>, Vec<Diagnostic>> {
 
 /// The `row`th line under `paths:`: its ends, its id, its name, its cost and its `if`.
 fn compile(row: usize, line: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
-    let source = FileText::named(MAP_FILE);
+    let source = FileText::without_text(MAP_FILE);
     let refuse = |field: &str, problem: &str, hint: &str| {
         vec![schema_error(MAP_FILE, problem, hint).at_path(format!("paths[{row}]{field}"))]
     };
@@ -55,8 +55,8 @@ fn compile(row: usize, line: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
         }
     };
     let cost = match &line.cost {
-        Some(yaml) => rule_list::cost_of(yaml)
-            .map_err(|fault| vec![source.fault(&format!("paths[{row}].cost"), fault)])?,
+        Some(yaml) => rule_list::compile_cost(yaml)
+            .map_err(|fault| vec![source.refuse_error(&format!("paths[{row}].cost"), fault)])?,
         None => Cost {
             ticks: Expr::Num(0),
             meters: Vec::new(),
@@ -66,8 +66,8 @@ fn compile(row: usize, line: &PathYaml) -> Result<PathDef, Vec<Diagnostic>> {
     let mut diags = Diags::default();
     let if_ = (line.if_.iter())
         .filter_map(|cond| {
-            let fault = |fault| diags.push(source.fault(&format!("paths[{row}].if"), fault));
-            rule_list::cond_of(cond).map_err(fault).ok()
+            let fault = |fault| diags.push(source.refuse_error(&format!("paths[{row}].if"), fault));
+            rule_list::compile_cond(cond).map_err(fault).ok()
         })
         .collect();
     diags.into_result(())?;

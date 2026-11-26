@@ -8,7 +8,7 @@ use crate::rules::rule::{ChangeWatch, EffectTemplate, LocationTo, NarrateTo, Rul
 use crate::Reason;
 
 /// Change rules that set each other's watched values.
-pub(super) fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
+pub(super) fn find_trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
     let rules: Vec<&Rule> = canon
         .rules
         .iter()
@@ -54,7 +54,7 @@ pub(super) fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// Narrate and note on a change rule that can reach a viewer who cannot see the change.
-pub(super) fn check_leaks(canon: &Canon) -> Vec<Diagnostic> {
+pub(super) fn find_trigger_leaks(canon: &Canon) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in canon.rules.iter() {
         let When::Change(watch) = &rule.when else {
@@ -208,7 +208,7 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
         }
         ChangeWatch::Flag { key, .. } => {
             (key == OPEN && canon.paths.iter().any(PathDef::is_conditional))
-                || super::find_flag_holders(canon, key)
+                || super::find_flag_objects(canon, key)
                     .any(|of| !matches!(of, grammar::Object::Actor(_)))
         }
         _ => false,
@@ -224,7 +224,7 @@ fn watches_actor_key(canon: &Canon, watch: &ChangeWatch) -> bool {
             .get(key)
             .is_some_and(meter::Descriptor::is_actor_meter),
         ChangeWatch::Flag { key, .. } => {
-            super::find_flag_holders(canon, key).any(|of| matches!(of, grammar::Object::Actor(_)))
+            super::find_flag_objects(canon, key).any(|of| matches!(of, grammar::Object::Actor(_)))
         }
         _ => false,
     }
@@ -232,7 +232,7 @@ fn watches_actor_key(canon: &Canon, watch: &ChangeWatch) -> bool {
 
 /// A change rule on a world change runs once, for no one, so it has no `self` and no `here`.
 /// Every other rule has a subject, so its `narrate` names who hears it.
-pub(super) fn check_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
+pub(super) fn find_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in canon.rules.iter() {
         let on_world = matches!(&rule.when, When::Change(watch) if watches_world(canon, watch));

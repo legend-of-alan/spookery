@@ -293,7 +293,7 @@ fn apply_modifier(
     ticks: u64,
 ) -> Result<(), Reason> {
     let desc = canon.modifiers.get(id).ok_or(Reason::UnknownId)?;
-    let carried = canon.meter_desc(entity::IdRef::Actor(actor_id), &desc.meter);
+    let carried = canon.meter_def(entity::IdRef::Actor(actor_id), &desc.meter);
     carried.ok_or(Reason::UnknownId)?;
     let now = world.world_time;
     let held = world.actors().get::<Modifier>(actor_id).get(id);

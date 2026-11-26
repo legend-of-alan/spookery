@@ -13,7 +13,7 @@ use crate::rules::expr::Expr;
 use crate::rules::grammar;
 use crate::rules::rule::{self, Cond, EffectTemplate, Owner, Rule, TargetKind, When};
 
-pub(in crate::canon) fn check_meter_reads(
+pub(in crate::canon) fn find_unknown_meter_reads(
     scope: &EntityScope,
     rules: &rule::Table,
 ) -> Vec<Diagnostic> {
@@ -21,12 +21,12 @@ pub(in crate::canon) fn check_meter_reads(
     for rule in rules.iter() {
         let exprs = rule.exprs();
         let at = format!("rules[{}]", rule.index);
-        let source = FileText::named(&rule.file);
+        let source = FileText::without_text(&rule.file);
         scope.push_unknown_reads(&source, &at, fixed_self_id(rule), &exprs, &mut diags);
     }
     for (row, path) in scope.paths.iter().enumerate() {
         let at = format!("paths[{row}]");
-        let source = FileText::named(MAP_FILE);
+        let source = FileText::without_text(MAP_FILE);
         scope.push_unknown_reads(&source, &at, None, &path.exprs(), &mut diags);
     }
     diags
@@ -35,7 +35,7 @@ pub(in crate::canon) fn check_meter_reads(
 /// Meter effects and conditions whose entity is fixed by the pack and does not carry the meter,
 /// and flag effects and conditions on a path that cannot carry the flag. Any other entity may
 /// carry any flag.
-pub(in crate::canon) fn check_carriers(
+pub(in crate::canon) fn find_missing_components(
     scope: &EntityScope,
     rules: &rule::Table,
 ) -> Vec<Diagnostic> {
@@ -58,8 +58,8 @@ pub(in crate::canon) fn check_carriers(
         let target = rule.when.target_kind();
         for (kind, of, key) in named {
             let why = match kind {
-                "meter" => scope.why_meter_not_carried(fixed, of, key),
-                _ => scope.why_path_lacks_flag(of, key, target),
+                "meter" => scope.meter_not_carried_reason(fixed, of, key),
+                _ => scope.path_lacks_flag_reason(of, key, target),
             };
             let Some(why) = why else {
                 continue;
@@ -120,7 +120,7 @@ impl EntityScope<'_> {
     /// Why flag `key` of the path `of` names can never be set or tested, or `None` when it may be
     /// or `of` names no path. `target` is what the rule's move targets, so `of: target` names a
     /// path only on a move that targets one.
-    fn why_path_lacks_flag(
+    fn path_lacks_flag_reason(
         &self,
         of: &grammar::Object,
         key: &str,
@@ -144,7 +144,7 @@ impl EntityScope<'_> {
     /// Why meter `key` of the owner `of` names can never be read or written, or `None` when it
     /// may be.
     /// An entity known only at play time is not guessed: only its key is checked.
-    fn why_meter_not_carried(
+    fn meter_not_carried_reason(
         &self,
         fixed_self_id: Option<&str>,
         of: &grammar::Object,
@@ -210,7 +210,7 @@ impl EntityScope<'_> {
                     }
                     .into_diagnostic()
                 };
-                if let Some(why) = self.why_meter_not_carried(fixed_self_id, of, key) {
+                if let Some(why) = self.meter_not_carried_reason(fixed_self_id, of, key) {
                     diags.push(refuse(
                         format!("expression reads meter '{key}', but {why}"),
                         "declare the meter on that entity, or read one that exists",

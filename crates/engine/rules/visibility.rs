@@ -99,7 +99,7 @@ fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
         }
         (Item::ID, _) => canon.name(&entry_id).map(str::to_string),
         (Meter::ID, _) => {
-            (canon.meter_desc(key.entity_id.as_ref(), &entry_id)).map(|desc| desc.name.clone())
+            (canon.meter_def(key.entity_id.as_ref(), &entry_id)).map(|desc| desc.name.clone())
         }
         _ => None,
     };
@@ -182,7 +182,7 @@ fn can_see(canon: &Canon, world: &ecs::World, viewer_id: &ActorId, change: &Chan
 /// Whether the pack shows meter `key` on `id` to players.
 fn is_shown(canon: &Canon, id: &entity::Id, key: &str) -> bool {
     canon
-        .meter_desc(id.as_ref(), key)
+        .meter_def(id.as_ref(), key)
         .is_some_and(|desc| !desc.hidden)
 }
 

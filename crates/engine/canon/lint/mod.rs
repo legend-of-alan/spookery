@@ -14,10 +14,10 @@ use crate::rules::cond;
 use crate::rules::grammar;
 use crate::rules::rule::{self, ChangeWatch, Cond, EffectTemplate, Owner, When};
 
-pub(super) use entity_scope::{check_carriers, check_meter_reads, EntityScope};
+pub(super) use entity_scope::{find_missing_components, find_unknown_meter_reads, EntityScope};
 
 /// Paths whose ends are not places, and items a path names but the pack does not.
-pub(super) fn check_paths(
+pub(super) fn find_unknown_path_ids(
     paths: &[PathDef],
     places: &BTreeMap<PlaceId, place::Def>,
     items: &BTreeMap<String, item::Def>,
@@ -47,7 +47,7 @@ pub(super) fn check_paths(
     diags
 }
 
-pub(super) fn check_rule_items(
+pub(super) fn find_unknown_rule_items(
     rules: &rule::Table,
     items: &BTreeMap<String, item::Def>,
 ) -> Vec<Diagnostic> {
@@ -57,7 +57,7 @@ pub(super) fn check_rule_items(
             if items.contains_key(id) {
                 continue;
             }
-            diags.push(unknown_item(
+            diags.push(refuse_unknown_item(
                 &rule.file,
                 id,
                 &format!("rules[{}]", rule.index),
@@ -68,7 +68,7 @@ pub(super) fn check_rule_items(
 }
 
 /// Modifier effects naming a modifier `rules/modifiers.yaml` does not define.
-pub(super) fn check_modifiers(
+pub(super) fn find_unknown_modifiers(
     rules: &rule::Table,
     modifiers: &BTreeMap<String, modifier::Descriptor>,
 ) -> Vec<Diagnostic> {
@@ -94,7 +94,7 @@ pub(super) fn check_modifiers(
     diags
 }
 
-pub(crate) fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
+pub(crate) fn refuse_unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
     schema_error(
         file,
         &format!("unknown item '{id}'"),
@@ -105,20 +105,20 @@ pub(crate) fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
 
 /// Static warnings and trigger-reach errors on a loaded `Canon`, whose save lists the flag keys in
 /// `held_flags`.
-pub(crate) fn check_canon(canon: &Canon, held_flags: &BTreeSet<&str>) -> Vec<Diagnostic> {
-    let mut diags = check_reachable_places(canon);
-    diags.extend(check_teleport_verbs(canon));
-    diags.extend(trigger::check_cycles(canon));
-    diags.extend(trigger::check_leaks(canon));
-    diags.extend(trigger::check_world_change_subjects(canon));
-    diags.extend(check_cycle_conditions(canon));
-    diags.extend(check_gm_notes_length(canon));
-    diags.extend(check_unset_flags(canon, held_flags));
+pub(crate) fn run(canon: &Canon, held_flags: &BTreeSet<&str>) -> Vec<Diagnostic> {
+    let mut diags = find_unreachable_places(canon);
+    diags.extend(find_teleport_verbs(canon));
+    diags.extend(trigger::find_trigger_cycles(canon));
+    diags.extend(trigger::find_trigger_leaks(canon));
+    diags.extend(trigger::find_world_change_subjects(canon));
+    diags.extend(find_bad_cycle_conds(canon));
+    diags.extend(find_long_gm_notes(canon));
+    diags.extend(find_unset_flags(canon, held_flags));
     diags
 }
 
 /// Each rule's and each path's conditions, with the file and path that hold them.
-fn conditions(canon: &Canon) -> impl Iterator<Item = (&str, String, &[Cond])> {
+fn rule_and_path_conds(canon: &Canon) -> impl Iterator<Item = (&str, String, &[Cond])> {
     let rules = (canon.rules.iter()).map(|rule| {
         (
             rule.file.as_str(),
@@ -134,14 +134,14 @@ fn conditions(canon: &Canon) -> impl Iterator<Item = (&str, String, &[Cond])> {
 /// Flag conditions, on a rule or a path, a change rule's flag watch and a path's `revealed_by`,
 /// that name a key no rule sets and `held` does not list, so its value never moves: most likely
 /// a misspelt key. `open` gets no warning here: the round sets it on paths, not through rules,
-/// and `check_carriers` checks it in a condition.
-fn check_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
+/// and `find_missing_components` checks it in a condition.
+fn find_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    let is_ever_set = |key| held.contains(key) || find_flag_holders(canon, key).next().is_some();
+    let is_ever_set = |key| held.contains(key) || find_flag_objects(canon, key).next().is_some();
     let hint = "set the flag in a rule or the save, or name a flag that is set";
     let unset_problem =
         |key: &str| format!("names flag '{key}', which no rule sets and no save holds");
-    for (file, at, conds) in conditions(canon) {
+    for (file, at, conds) in rule_and_path_conds(canon) {
         for cond in conds {
             cond.visit(|cond| {
                 let Cond::Flag { key, .. } = cond else {
@@ -179,7 +179,7 @@ fn check_unset_flags(canon: &Canon, held: &BTreeSet<&str>) -> Vec<Diagnostic> {
 const MAX_GM_NOTES_CHARS: usize = 1000;
 
 /// `gm_notes` past `MAX_GM_NOTES_CHARS` is a warning, so an author can still go over on purpose.
-fn check_gm_notes_length(canon: &Canon) -> Option<Diagnostic> {
+fn find_long_gm_notes(canon: &Canon) -> Option<Diagnostic> {
     let chars = canon.gm_notes.chars().count();
     (chars > MAX_GM_NOTES_CHARS).then(|| {
         warning(
@@ -195,9 +195,9 @@ fn check_gm_notes_length(canon: &Canon) -> Option<Diagnostic> {
 
 /// `cycle` conditions, on a rule or a path, that name no cycle in the budget or have a bound
 /// at or past the cycle's length.
-fn check_cycle_conditions(canon: &Canon) -> Vec<Diagnostic> {
+fn find_bad_cycle_conds(canon: &Canon) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    for (file, at, conds) in conditions(canon) {
+    for (file, at, conds) in rule_and_path_conds(canon) {
         let mut cycles = Vec::new();
         for cond in conds {
             cond.visit(|cond| {
@@ -235,7 +235,7 @@ fn check_cycle_conditions(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// Places no walk reaches from the start, including through hidden and locked exits.
-fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
+fn find_unreachable_places(canon: &Canon) -> Vec<Diagnostic> {
     let mut seen = BTreeSet::new();
     let mut queue = vec![canon.start_place.clone()];
     while let Some(place_id) = queue.pop() {
@@ -263,7 +263,7 @@ fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// `teleport: true` in the shared verbs file is a warning. Author rules may teleport.
-fn check_teleport_verbs(canon: &Canon) -> Vec<Diagnostic> {
+fn find_teleport_verbs(canon: &Canon) -> Vec<Diagnostic> {
     canon
         .rules
         .iter()
@@ -286,7 +286,7 @@ fn check_teleport_verbs(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// The entities a rule can make hold flag `key`: the `of` of each flag effect that writes it.
-fn find_flag_holders<'c>(canon: &'c Canon, key: &str) -> impl Iterator<Item = &'c grammar::Object> {
+fn find_flag_objects<'c>(canon: &'c Canon, key: &str) -> impl Iterator<Item = &'c grammar::Object> {
     let mut holders = Vec::new();
     for rule in canon.rules.iter() {
         rule.visit_templates(|effect| match effect {

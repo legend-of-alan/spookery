@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::canon::refusal::{Diags, FileText};
-use crate::diagnostic::{load_tagged, Diagnostic};
+use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::component::modifier;
 
@@ -18,7 +18,7 @@ pub(super) fn load(
     text: &str,
     meters: &BTreeMap<String, meter::Descriptor>,
 ) -> Result<BTreeMap<String, modifier::Descriptor>, Vec<Diagnostic>> {
-    let doc: ModifiersDoc = load_tagged(MODIFIERS_FILE, text, SCHEMA, false)?;
+    let doc: ModifiersDoc = parse_tagged(MODIFIERS_FILE, text, SCHEMA, false)?;
     let source = FileText {
         file: MODIFIERS_FILE,
         text,
@@ -45,7 +45,7 @@ pub(super) fn load(
                 "set max_stacks to 1 or more, or leave it out for 1",
             ),
         ];
-        let found = source.refuse_row("modifier", row, id, modifiers.contains_key(id), rules);
+        let found = source.refuse_entry("modifier", row, id, modifiers.contains_key(id), rules);
         if found.is_empty() {
             let desc = modifier::Descriptor {
                 meter: entry.meter,

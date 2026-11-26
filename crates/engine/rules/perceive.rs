@@ -158,7 +158,7 @@ fn shown_meters(canon: &Canon, world: &ecs::World, carrier: &entity::Id) -> Vec<
         .keys()
         .filter_map(|id| {
             let desc = canon
-                .meter_desc(carrier.as_ref(), id)
+                .meter_def(carrier.as_ref(), id)
                 .filter(|desc| !desc.hidden)?;
             let value = world.entities().get::<Meter>(carrier).value(id).ok()?;
             Some(MeterView {
