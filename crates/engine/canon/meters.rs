@@ -70,7 +70,7 @@ pub(super) fn compile(
                 max: entry.max,
                 base: entry.base,
                 hidden: entry.hidden.unwrap_or(hidden_by_default),
-                carrier: entity_id.clone(),
+                entity_id: entity_id.clone(),
             },
         );
     }
@@ -94,7 +94,7 @@ pub(super) fn add_own(
             } else {
                 meters
                     .get(&key)
-                    .map(|earlier_def| earlier_def.carrier.clone())
+                    .map(|earlier_def| earlier_def.entity_id.clone())
             };
         let (after, hint) = match duplicate_entity_id {
             None => {

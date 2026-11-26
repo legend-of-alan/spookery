@@ -480,7 +480,7 @@ impl<Lock> Session<Lock> {
             .canon()
             .meters
             .iter()
-            .filter_map(|(id, def)| Some((def.carrier.clone()?, id)));
+            .filter_map(|(id, def)| Some((def.entity_id.clone()?, id)));
         let world_meters = self
             .canon()
             .world_meters
@@ -488,11 +488,11 @@ impl<Lock> Session<Lock> {
             .map(|id| (entity::Id::Global, id));
         carried
             .chain(world_meters)
-            .filter_map(|(carrier, id)| {
-                let meter = self.world.entities().get::<component::Meter>(&carrier);
+            .filter_map(|(entity_id, id)| {
+                let meter = self.world.entities().get::<component::Meter>(&entity_id);
                 let value = meter.value(id).ok()?;
-                let max = self.canon().meter_def(carrier.as_ref(), id)?.max;
-                Some(format!("meter {carrier} {id} {value} {max}"))
+                let max = self.canon().meter_def(entity_id.as_ref(), id)?.max;
+                Some(format!("meter {entity_id} {id} {value} {max}"))
             })
             .collect()
     }

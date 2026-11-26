@@ -174,7 +174,7 @@ impl EntityDefs<'_> {
             Some(entity::Id::Global) if self.world_meters.contains_key(key) => None,
             Some(entity::Id::Global) => Some(format!("the world carries no meter '{key}'")),
             Some(id) if !def.is_some_and(|def| def.is_on(id.as_ref())) => {
-                Some(match def.and_then(|def| def.carrier.as_ref()) {
+                Some(match def.and_then(|def| def.entity_id.as_ref()) {
                     Some(entity_id) => format!("only {entity_id} carries meter '{key}'"),
                     None => format!("{id} carries no meter '{key}'"),
                 })

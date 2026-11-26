@@ -19,22 +19,22 @@ pub struct Def {
     pub base: i64,
     /// Kept off the players' views.
     pub hidden: bool,
-    /// Who carries it, from the file that declares it. `None` is every actor.
-    pub carrier: Option<entity::Id>,
+    /// The entity that carries it, from the file that declares it. `None` is every actor.
+    pub entity_id: Option<entity::Id>,
 }
 
 impl Def {
     /// Whether `id` carries this meter.
     pub fn is_on(&self, id: entity::IdRef<'_>) -> bool {
-        match &self.carrier {
+        match &self.entity_id {
             None => matches!(id, entity::IdRef::Actor(_)),
-            Some(carrier) => carrier.as_ref() == id,
+            Some(entity_id) => entity_id.as_ref() == id,
         }
     }
 
     /// Whether every actor, or one actor, carries this meter.
     pub fn is_actor_meter(&self) -> bool {
-        matches!(self.carrier, None | Some(entity::Id::Actor(_)))
+        matches!(self.entity_id, None | Some(entity::Id::Actor(_)))
     }
 }
 
@@ -46,7 +46,7 @@ pub struct Meter {
 }
 
 impl Meter {
-    /// The meter a carrier with no save row reads: `def`'s base, with no offset.
+    /// The meter an entity with no save row reads: `def`'s base, with no offset.
     pub fn at_base(def: &Def) -> Meter {
         Meter {
             base: def.base,
@@ -194,7 +194,7 @@ mod tests {
             max: 110,
             base: 1,
             hidden: false,
-            carrier: None,
+            entity_id: None,
         }
     }
 

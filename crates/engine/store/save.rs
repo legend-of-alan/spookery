@@ -117,10 +117,10 @@ pub(crate) fn find_held_flags(world: &ecs::World) -> BTreeSet<&str> {
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
 pub(crate) fn find_stale_meters(world: &ecs::World) -> Vec<DroppedMeter> {
     held_meters(world)
-        .filter(|(carrier, id, _)| world.canon().meter_def(carrier.as_ref(), id).is_none())
-        .map(|(carrier, id, _)| DroppedMeter {
+        .filter(|(entity_id, id, _)| world.canon().meter_def(entity_id.as_ref(), id).is_none())
+        .map(|(entity_id, id, _)| DroppedMeter {
             id: id.to_string(),
-            carrier,
+            entity_id,
         })
         .collect()
 }
@@ -149,7 +149,7 @@ pub(crate) fn migrate(mut world: ecs::World, record: &MigrateRecord) -> Result<e
         (world.actors_mut().get_mut::<Modifier>(actor)).set(id, None)?;
     }
     for meter in &record.dropped_meters {
-        (world.entities_mut().get_mut::<Meter>(&meter.carrier)).set(&meter.id, None)?;
+        (world.entities_mut().get_mut::<Meter>(&meter.entity_id)).set(&meter.id, None)?;
     }
     world.pack_rev = record.pack_rev_after.clone();
     world.state_rev = record.state_rev_after;
@@ -202,14 +202,14 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
             meter.id
         );
         let hint = "run spook migrate to drop the meter";
-        diags.push(meter_error(&meter.carrier, &meter.id, &problem, hint));
+        diags.push(meter_error(&meter.entity_id, &meter.id, &problem, hint));
     }
-    for (carrier, key, held) in held_meters(world) {
-        let def = canon.meter_def(carrier.as_ref(), key);
+    for (entity_id, key, held) in held_meters(world) {
+        let def = canon.meter_def(entity_id.as_ref(), key);
         if def.is_some_and(|def| !meter::is_storable(def, held.base, held.offset)) {
             let problem = format!("meter '{key}' is outside the rules");
             let hint = "set base and offset so the stored pair fits the meter";
-            diags.push(meter_error(&carrier, key, &problem, hint));
+            diags.push(meter_error(&entity_id, key, &problem, hint));
         }
     }
     for (id, key, live) in find_stale_modifiers(world) {
@@ -308,14 +308,14 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
     }
 }
 
-/// A save error on meter `key` of `carrier`, at the meter's path: who carries it, then
+/// A save error on meter `key` of `entity_id`, at the meter's path: who carries it, then
 /// `problem`.
-fn meter_error(carrier: &entity::Id, key: &str, problem: &str, hint: &str) -> Diagnostic {
-    let (who, path) = match carrier {
+fn meter_error(entity_id: &entity::Id, key: &str, problem: &str, hint: &str) -> Diagnostic {
+    let (who, path) = match entity_id {
         entity::Id::Actor(id) => (format!("actor '{id}'"), format!("actors.meters.{id}")),
-        entity::Id::Place(id) => (carrier.to_string(), format!("places.meters.{id}")),
-        entity::Id::Path(id) => (carrier.to_string(), format!("paths.{id}")),
-        entity::Id::Story(id) => (carrier.to_string(), format!("stories.meters.{id}")),
+        entity::Id::Place(id) => (entity_id.to_string(), format!("places.meters.{id}")),
+        entity::Id::Path(id) => (entity_id.to_string(), format!("paths.{id}")),
+        entity::Id::Story(id) => (entity_id.to_string(), format!("stories.meters.{id}")),
         entity::Id::Global => ("the world".to_string(), "world.meters".to_string()),
     };
     let diag = schema_error(FILE, &format!("{who} {problem}"), hint);

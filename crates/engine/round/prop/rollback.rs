@@ -90,7 +90,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         (entity::Id::Story("tale".into()), "tension"),
         (entity::Id::Global, "tide"),
     ];
-    for (carrier, key) in &carried {
+    for (entity_id, key) in &carried {
         let def = meter::Def {
             name: String::new(),
             min: 0,
@@ -98,18 +98,18 @@ fn nested_rollbacks_put_the_save_back_exactly() {
             max: 10,
             base: 5,
             hidden: false,
-            carrier: Some(carrier.clone()),
+            entity_id: Some(entity_id.clone()),
         };
-        match carrier {
+        match entity_id {
             entity::Id::Global => canon.world_meters.insert(key.to_string(), def),
             _ => canon.meters.insert(key.to_string(), def),
         };
     }
     let mut world = ecs::World::new(Save::clone(opened.world()), Arc::new(canon));
-    for (carrier, key) in &carried {
-        let def = world.canon().meter_def(carrier.as_ref(), key);
+    for (entity_id, key) in &carried {
+        let def = world.canon().meter_def(entity_id.as_ref(), key);
         let base = Meter::at_base(def.expect("the meter's def"));
-        let put = (world.entities_mut().get_mut::<Meter>(carrier)).set(key, Some(base));
+        let put = (world.entities_mut().get_mut::<Meter>(entity_id)).set(key, Some(base));
         put.expect("the meter goes on");
     }
     world.accept();
@@ -256,8 +256,8 @@ fn every_moved_meter_is_reported(
 fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
     let mira = ActorId::from("mira");
     let kind = match step {
-        Step::Item(carrier, id, delta) => {
-            let (actor_id, place) = match carrier {
+        Step::Item(entity_id, id, delta) => {
+            let (actor_id, place) = match entity_id {
                 entity::Id::Actor(id) => (Some(id.clone()), None),
                 _ => (None, Some("docks_shop".into())),
             };
@@ -269,8 +269,8 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
                 max: None,
             }
         }
-        Step::Meter(carrier, key, delta) => EffectKind::Meter {
-            entity: carrier.clone(),
+        Step::Meter(entity_id, key, delta) => EffectKind::Meter {
+            entity: entity_id.clone(),
             key: key.to_string(),
             write: meter::Write::Offset(*delta),
         },
@@ -280,8 +280,8 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
             add: *add,
             ticks: 3,
         },
-        Step::Flag(carrier, key, value) => EffectKind::Flag {
-            entity: carrier.clone(),
+        Step::Flag(entity_id, key, value) => EffectKind::Flag {
+            entity: entity_id.clone(),
             key: key.to_string(),
             value: *value,
         },
@@ -333,7 +333,7 @@ fn mira_intent() -> Intent {
 }
 
 fn pick_step() -> impl Strategy<Value = Step> {
-    let carrier = select(vec![
+    let entity_id = select(vec![
         entity::Id::Actor("mira".into()),
         entity::Id::Actor("bram".into()),
         entity::Id::Place("docks_shop".into()),
@@ -357,14 +357,14 @@ fn pick_step() -> impl Strategy<Value = Step> {
         3 => Just(Step::Savepoint),
         3 => Just(Step::Rollback),
         2 => Just(Step::Take),
-        1 => (carrier, select(vec!["lamp_oil", "brass_key"]), -3i64..=3)
-            .prop_map(|(carrier, id, delta)| Step::Item(carrier, id, delta)),
+        1 => (entity_id, select(vec!["lamp_oil", "brass_key"]), -3i64..=3)
+            .prop_map(|(entity_id, id, delta)| Step::Item(entity_id, id, delta)),
         2 => (select(meters), -2i64..=2)
-            .prop_map(|((carrier, key), delta)| Step::Meter(carrier, key, delta)),
+            .prop_map(|((entity_id, key), delta)| Step::Meter(entity_id, key, delta)),
         1 => (-2i64..=2).prop_map(Step::Fatigue),
         1 => Just(Step::Expire),
         2 => (select(flags), any::<bool>())
-            .prop_map(|((carrier, key), value)| Step::Flag(carrier, key, value)),
+            .prop_map(|((entity_id, key), value)| Step::Flag(entity_id, key, value)),
         1 => select(vec!["docks_shop", "docks_street", "mira_rooms"]).prop_map(Step::Walk),
         1 => select(vec!["brass_key", "lamp_oil"]).prop_map(Step::Wield),
         1 => Just(Step::Unwield),
