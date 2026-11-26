@@ -64,9 +64,9 @@ fn change_rules(canon: &Canon) -> Vec<&Rule> {
         .filter(|rule| matches!(rule.kind, RuleKind::Change(_)))
         .collect();
     rules.sort_by(|left, right| {
-        left.owner
+        left.scope
             .rank()
-            .cmp(&right.owner.rank())
+            .cmp(&right.scope.rank())
             .then(left.file.cmp(&right.file))
             .then(left.index.cmp(&right.index))
     });

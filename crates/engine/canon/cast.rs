@@ -12,7 +12,7 @@ use crate::diagnostic::{parse_tagged, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::ActorId;
 use crate::entity;
-use crate::rules::rule::{Owner, Rule};
+use crate::rules::rule::{Rule, Scope};
 
 const SCHEMA: &str = "cast";
 
@@ -75,7 +75,7 @@ pub(super) fn add(
     diagnostics.keep(rule_list::compile(
         &page.file,
         yaml.rules,
-        &Owner::Cast(id.into()),
+        &Scope::Cast(id.into()),
     ))
 }
 

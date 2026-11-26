@@ -292,8 +292,8 @@ fn needs_subject(rule: &Rule) -> bool {
         grammar::Object::Actor(grammar::Actor::Self_),
         grammar::Object::Here,
     ];
-    let owners = rule.mentions().owners;
-    needs || self_or_here.iter().any(|of| owners.contains(of))
+    let entities = rule.mentions().entities;
+    needs || self_or_here.iter().any(|of| entities.contains(of))
 }
 
 fn mark_cycles(next: &[Vec<usize>], in_cycle: &mut [bool]) {

@@ -1,4 +1,4 @@
-//! The world's components: it is one entity, so the save writes its stores with no owner id.
+//! The world's components: it is one entity, so the save writes its stores with no parent id.
 
 use serde::{Deserialize, Serialize};
 

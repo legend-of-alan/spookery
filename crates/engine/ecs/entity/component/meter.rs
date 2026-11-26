@@ -122,7 +122,7 @@ impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter
 
     /// Give the entity meter `entry_id` as `meter` says, `None` taking it off, outside a round's
     /// rules: migrate and fixtures. It reports as `shift` does. Taking a meter off checks no
-    /// owner: the entry is its own evidence.
+    /// parent: the entry is its own evidence.
     pub fn set(&mut self, entry_id: &str, meter: Option<Meter>) -> Result<(), Reason> {
         if meter.is_some() {
             self.check_exists()?;

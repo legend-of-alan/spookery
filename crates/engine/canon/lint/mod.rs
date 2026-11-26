@@ -12,7 +12,7 @@ use crate::ecs::component::modifier;
 use crate::ecs::id::PlaceId;
 use crate::rules::cond;
 use crate::rules::grammar;
-use crate::rules::rule::{self, ChangeWatch, Cond, EffectTemplate, Owner, RuleKind};
+use crate::rules::rule::{self, ChangeWatch, Cond, EffectTemplate, RuleKind, Scope};
 
 /// Paths whose ends are not places, and items a path names but the pack does not.
 pub(super) fn find_unknown_path_ids(
@@ -271,7 +271,7 @@ fn find_teleport_verbs(canon: &Canon) -> Vec<Diagnostic> {
         .rules
         .iter()
         .filter(|rule| {
-            rule.owner == Owner::Verb
+            rule.scope == Scope::Verb
                 && rule
                     .templates()
                     .into_iter()

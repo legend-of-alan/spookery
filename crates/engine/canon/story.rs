@@ -14,7 +14,7 @@ use crate::diagnostic::{parse_tagged, schema_error};
 use crate::ecs::component::meter;
 use crate::ecs::id::StoryId;
 use crate::entity;
-use crate::rules::rule::{Owner, Rule};
+use crate::rules::rule::{Rule, Scope};
 
 const SCHEMA: &str = "story";
 
@@ -78,7 +78,7 @@ pub(super) fn load_dir(
         }
         let name = yaml.name.unwrap_or_else(|| yaml.id.clone());
         stories.insert(id, Def { name });
-        let compiled = rule_list::compile(&file, yaml.rules, &Owner::Story(yaml.id));
+        let compiled = rule_list::compile(&file, yaml.rules, &Scope::Story(yaml.id));
         rules.extend(diagnostics.keep(compiled).unwrap_or_default());
     }
     (rules, stories)

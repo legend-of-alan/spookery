@@ -13,7 +13,7 @@ use crate::Reason;
 pub(crate) struct Rule {
     pub id: String,
     pub local_id: String,
-    pub owner: Owner,
+    pub scope: Scope,
     pub kind: RuleKind,
     pub if_: Vec<Cond>,
     /// `let:`: each id and the number it stores, in the order written. They roll first, and
@@ -40,7 +40,7 @@ pub(crate) struct Rule {
 impl Rule {
     pub(crate) fn watched_place<'a>(&'a self, place: &'a str) -> &'a str {
         if place == "here" {
-            if let Owner::Place(id) = &self.owner {
+            if let Scope::Place(id) = &self.scope {
                 return id;
             }
         }
@@ -85,7 +85,7 @@ impl Rule {
         exprs
     }
 
-    /// The owners, item ids and `target`s the rule's lines name: its conditions', costs' and
+    /// The entities, item ids and `target`s the rule's lines name: its conditions', costs' and
     /// numbers', then on its effects `of:`, `subject:`, `to:`, a nested check's `by:`, `id:`, and
     /// `location to:` or `location via:` when it says `target`.
     pub(crate) fn mentions(&self) -> Mentions<'_> {
@@ -93,9 +93,9 @@ impl Rule {
         self.visit_templates(|effect| {
             match effect {
                 EffectTemplate::Meter { of, .. } | EffectTemplate::Item { of, .. } => {
-                    mentions.add_owner("of:", of);
+                    mentions.add_entity("of:", of);
                 }
-                EffectTemplate::Flag { of, .. } => mentions.add_flag_owner("of:", of),
+                EffectTemplate::Flag { of, .. } => mentions.add_flag_entity("of:", of),
                 EffectTemplate::Modifier { to, .. } | EffectTemplate::Memory { to, .. } => {
                     mentions.add_actor("to:", to);
                 }
@@ -121,12 +121,12 @@ impl Rule {
 }
 
 /// What a rule's or exit's lines name, borrowed from those lines (`'l`) and sorted by kind. The
-/// word `target` stands for whatever the move targets, so it is kept apart from the owners and
+/// word `target` stands for whatever the move targets, so it is kept apart from the entities and
 /// items it could name.
 #[derive(Default)]
 pub(crate) struct Mentions<'l> {
-    /// The owners other than `target`, in the order written.
-    pub(crate) owners: Vec<grammar::Object>,
+    /// The entities other than `target`, in the order written.
+    pub(crate) entities: Vec<grammar::Object>,
     /// The item ids other than `target`, each once.
     pub(crate) item_ids: BTreeSet<&'l str>,
     /// Each key that says `target`, as written and in the order written, with what the move
@@ -135,7 +135,7 @@ pub(crate) struct Mentions<'l> {
 }
 
 impl<'l> Mentions<'l> {
-    /// What `conds` and `costs` name, and the owners `exprs` read, as `a number`: `subject:`,
+    /// What `conds` and `costs` name, and the entities `exprs` read, as `a number`: `subject:`,
     /// `id:` and `of:` on a condition, then a cost's `items:`.
     pub(crate) fn of_lines(
         conds: &'l [Cond],
@@ -150,8 +150,8 @@ impl<'l> Mentions<'l> {
                     mentions.add_item_id("id:", id);
                 }
                 Cond::At { subject, .. } => mentions.add_actor("subject:", subject),
-                Cond::Meter { of, .. } => mentions.add_owner("of:", of),
-                Cond::Flag { of, .. } => mentions.add_flag_owner("of:", of),
+                Cond::Meter { of, .. } => mentions.add_entity("of:", of),
+                Cond::Flag { of, .. } => mentions.add_flag_entity("of:", of),
                 _ => {}
             });
         }
@@ -160,33 +160,33 @@ impl<'l> Mentions<'l> {
         }
         for read in exprs.into_iter().flat_map(Expr::reads) {
             if let Expr::Meter { of, .. } = read {
-                mentions.add_owner("a number", of);
+                mentions.add_entity("a number", of);
             }
         }
         mentions
     }
 
-    fn add_owner(&mut self, key: &'static str, of: &grammar::Object) {
+    fn add_entity(&mut self, key: &'static str, of: &grammar::Object) {
         match of {
             grammar::Object::Actor(actor) => self.add_actor(key, actor),
-            of => self.owners.push(of.clone()),
+            of => self.entities.push(of.clone()),
         }
     }
 
-    /// As `add_owner`, but `target` may also be an exit: a flag on its path.
-    fn add_flag_owner(&mut self, key: &'static str, of: &grammar::Object) {
+    /// As `add_entity`, but `target` may also be an exit: a flag on its path.
+    fn add_flag_entity(&mut self, key: &'static str, of: &grammar::Object) {
         match of {
             grammar::Object::Actor(grammar::Actor::Target) => {
                 self.add_target(key, &[TargetKind::Actor, TargetKind::Path]);
             }
-            of => self.add_owner(key, of),
+            of => self.add_entity(key, of),
         }
     }
 
     fn add_actor(&mut self, key: &'static str, actor: &grammar::Actor) {
         match actor {
             grammar::Actor::Target => self.add_target(key, &[TargetKind::Actor]),
-            actor => self.owners.push(grammar::Object::Actor(actor.clone())),
+            actor => self.entities.push(grammar::Object::Actor(actor.clone())),
         }
     }
 
@@ -222,7 +222,7 @@ pub(crate) struct Phase {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Owner {
+pub(crate) enum Scope {
     Verb,
     Place(String),
     Item(String),
@@ -230,24 +230,24 @@ pub(crate) enum Owner {
     Story(String),
 }
 
-impl Owner {
+impl Scope {
     pub(crate) fn rank(&self) -> u8 {
         match self {
-            Owner::Verb => 0,
-            Owner::Place(_) => 1,
-            Owner::Item(_) => 2,
-            Owner::Cast(_) => 3,
-            Owner::Story(_) => 4,
+            Scope::Verb => 0,
+            Scope::Place(_) => 1,
+            Scope::Item(_) => 2,
+            Scope::Cast(_) => 3,
+            Scope::Story(_) => 4,
         }
     }
 
     pub(crate) fn rule_id(&self, local: &str) -> String {
         match self {
-            Owner::Verb => format!("verb:{local}"),
-            Owner::Place(owner) => format!("place:{owner}/{local}"),
-            Owner::Item(owner) => format!("item:{owner}/{local}"),
-            Owner::Cast(owner) => format!("cast:{owner}/{local}"),
-            Owner::Story(owner) => format!("story:{owner}/{local}"),
+            Scope::Verb => format!("verb:{local}"),
+            Scope::Place(id) => format!("place:{id}/{local}"),
+            Scope::Item(id) => format!("item:{id}/{local}"),
+            Scope::Cast(id) => format!("cast:{id}/{local}"),
+            Scope::Story(id) => format!("story:{id}/{local}"),
         }
     }
 }
@@ -603,7 +603,7 @@ impl Table {
         self.rules
             .iter()
             .filter(|rule| {
-                matches!(&rule.owner, Owner::Cast(id) if *actor == **id)
+                matches!(&rule.scope, Scope::Cast(id) if *actor == **id)
                     && matches!(rule.kind, RuleKind::Habit)
             })
             .collect()
@@ -612,9 +612,9 @@ impl Table {
     pub fn ids_in_order(&self) -> Vec<&str> {
         let mut rules: Vec<&Rule> = self.rules.iter().collect();
         rules.sort_by(|left, right| {
-            left.owner
+            left.scope
                 .rank()
-                .cmp(&right.owner.rank())
+                .cmp(&right.scope.rank())
                 .then(left.file.cmp(&right.file))
                 .then(left.index.cmp(&right.index))
         });

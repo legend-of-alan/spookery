@@ -8,7 +8,7 @@ use crate::canon::pack_files::Page;
 use crate::canon::refusal::{Diagnostics, FileText, Locator};
 use crate::canon::rule_list::{self, parse::RuleYaml};
 use crate::diagnostic::parse_tagged;
-use crate::rules::rule::{Owner, Rule};
+use crate::rules::rule::{Rule, Scope};
 
 const SCHEMA: &str = "item";
 
@@ -43,7 +43,7 @@ pub(super) fn add(
         diagnostics.push(diagnostic);
         return None;
     }
-    let rules = rule_list::compile(&page.file, yaml.rules, &Owner::Item(yaml.id.clone()));
+    let rules = rule_list::compile(&page.file, yaml.rules, &Scope::Item(yaml.id.clone()));
     items.insert(
         yaml.id.clone(),
         Def {

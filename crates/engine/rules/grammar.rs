@@ -1,4 +1,4 @@
-//! The words a pack line names its actor, its owner and its receiver with: `subject:`, `of:` and
+//! The words a pack line names its actor, its entity and its receiver with: `subject:`, `of:` and
 //! `to:`, and who they name for an intent.
 
 use crate::ecs::id::{ActorId, PathId, PlaceId, StoryId};
@@ -26,7 +26,7 @@ pub enum Actor {
 }
 
 impl Actor {
-    /// Reads an actor word: `self`, `target` or a cast id. An owner that is not an actor, such
+    /// Reads an actor word: `self`, `target` or a cast id. An entity word that is not an actor, such
     /// as `world` or `here`, is refused.
     pub(crate) fn parse(word: &str) -> Result<Actor, String> {
         match Object::parse(word)? {
@@ -68,9 +68,9 @@ pub enum Object {
 }
 
 impl Object {
-    /// Reads an owner word: `self`, `target`, `here`, `world`, `place:<id>`, `path:<id>`,
+    /// Reads an entity word: `self`, `target`, `here`, `world`, `place:<id>`, `path:<id>`,
     /// `story:<id>` or a cast id. It refuses `subject`, an empty word and the selector
-    /// words retired packs wrote as owners; the error is the refusal a pack author reads.
+    /// words retired packs wrote as entities; the error is the refusal a pack author reads.
     pub(crate) fn parse(word: &str) -> Result<Object, String> {
         if let Some(place) = word.strip_prefix("place:") {
             if place.is_empty() {
@@ -106,7 +106,7 @@ impl Object {
         }
     }
 
-    /// Who holds the meter, flag or item this owner names for `context`'s intent: `here` and
+    /// Who holds the meter, flag or item this entity word names for `context`'s intent: `here` and
     /// `place:` are a place, `path:` is a path, `story:` is a story, `world` is the world,
     /// `target` on a move whose target is a path is that path, and anyone else is an actor.
     pub(crate) fn entity_id(&self, context: &Context) -> Result<entity::Id, Reason> {

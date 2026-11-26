@@ -168,7 +168,7 @@ impl PathDef {
         self.cost.exprs().chain(cond_numbers).collect()
     }
 
-    /// The owners, item ids and `target`s the path's conds, cost and numbers name.
+    /// The entities, item ids and `target`s the path's conds, cost and numbers name.
     pub(super) fn mentions(&self) -> rule::Mentions<'_> {
         rule::Mentions::of_lines(&self.if_, [&self.cost], self.exprs())
     }

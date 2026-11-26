@@ -8,8 +8,8 @@ use crate::diagnostic::{schema_error, Diagnostic};
 use crate::rules::expr::{self, stamp_file_locations, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
-    self, ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner,
-    Phase, Rule, RuleKind, TargetKind,
+    self, ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Phase,
+    Rule, RuleKind, Scope, TargetKind,
 };
 
 use parse::{
@@ -21,14 +21,14 @@ pub(super) mod parse;
 pub(super) fn compile(
     file: &str,
     entries: Vec<RuleYaml>,
-    owner: &Owner,
+    scope: &Scope,
 ) -> Result<Vec<Rule>, Vec<Diagnostic>> {
     let file_text = FileText::without_text(file);
     let mut diagnostics = Diagnostics::default();
     let mut rules: Vec<Rule> = Vec::new();
     let mut verb_ids = Vec::new();
     for (index, entry) in entries.into_iter().enumerate() {
-        let Some(rule) = diagnostics.keep(compile_rule(file, index, entry, owner)) else {
+        let Some(rule) = diagnostics.keep(compile_rule(file, index, entry, scope)) else {
             continue;
         };
         if let RuleKind::Verb { verb_id, .. } = &rule.kind {
@@ -54,7 +54,7 @@ fn compile_rule(
     file: &str,
     index: usize,
     entry: RuleYaml,
-    owner: &Owner,
+    scope: &Scope,
 ) -> Result<Rule, Vec<Diagnostic>> {
     let file_text = FileText::without_text(file);
     let mut diagnostics = Diagnostics::default();
@@ -186,9 +186,9 @@ fn compile_rule(
     }
     let kind = diagnostics.into_result(kind)?.expect("kind checked");
     let rule = Rule {
-        id: owner.rule_id(&local_id),
+        id: scope.rule_id(&local_id),
         local_id,
-        owner: owner.clone(),
+        scope: scope.clone(),
         kind,
         if_,
         lets,
@@ -639,7 +639,7 @@ fn parse_object(yaml: &Spanned<String>) -> Result<grammar::Object, CompileError>
     })
 }
 
-/// The actor a slot that needs one names, refused on the word's line when it is another owner.
+/// The actor a slot that needs one names, refused on the word's line when it is another entity.
 fn parse_actor(yaml: &Spanned<String>) -> Result<grammar::Actor, CompileError> {
     grammar::Actor::parse(&yaml.value).map_err(|message| CompileError {
         message,

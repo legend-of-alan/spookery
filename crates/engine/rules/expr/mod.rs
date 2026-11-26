@@ -168,7 +168,7 @@ fn stamp_at(expr: &mut Expr, spot: LineColumn) {
 }
 
 /// Whether `word` can be a `let:` id: a bare word that a number reads back as that id, and
-/// not an owner word such as `self` or `world` or a call such as `min` or `high`.
+/// not an entity word such as `self` or `world` or a call such as `min` or `high`.
 pub(crate) fn is_let_id(word: &str) -> bool {
     let read = Expr::Let {
         id: word.to_string(),

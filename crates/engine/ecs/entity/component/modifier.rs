@@ -133,7 +133,7 @@ impl Mut<'_, entity::Actors, Modifier> {
     /// stacks move, the meter must still read with `next` on, then the modifier's own key: the
     /// order the budget refuses in. When the stacks move it reports the meter's key with what the
     /// modifiers added before, and the change is read when the changes are taken. Taking one off
-    /// checks no owner: the entry is its own evidence.
+    /// checks no parent: the entry is its own evidence.
     pub fn set(&mut self, id: &str, next: Option<Modifier>) -> Result<(), Reason> {
         let (canon, actor) = (self.writer.canon, self.id);
         let actors = Reader::new(&*self.writer.components, canon);
