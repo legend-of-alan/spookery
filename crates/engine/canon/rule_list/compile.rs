@@ -277,7 +277,7 @@ fn rule_kind(yaml: &WhenYaml, scope: &Scope) -> Result<RuleKind, String> {
         WhenYaml::Map(map) => match (&map.verb_id, &map.change) {
             (Some(verb_id), None) => {
                 if verb_id.is_empty() {
-                    return Err("verb_id is empty".to_string());
+                    return Err("verb is empty".to_string());
                 }
                 if is_built_in(Seat::Player, verb_id) {
                     return Err(format!(
@@ -298,7 +298,7 @@ fn rule_kind(yaml: &WhenYaml, scope: &Scope) -> Result<RuleKind, String> {
                 })
             }
             (None, Some(change)) => compile::change_watch(change, scope).map(RuleKind::Change),
-            _ => Err("when needs one of verb_id or change".to_string()),
+            _ => Err("when needs one of verb or change".to_string()),
         },
     }
 }
@@ -333,7 +333,7 @@ fn change_watch(yaml: &ChangeYaml, scope: &Scope) -> Result<ChangeWatch, String>
         let crosses = yaml
             .crosses
             .as_deref()
-            .ok_or_else(|| "a change with meter_id needs crosses".to_string())?;
+            .ok_or_else(|| "a meter change needs crosses".to_string())?;
         let (op, bound) = parse_crosses(crosses)?;
         return Ok(ChangeWatch::Meter {
             id: id.clone(),
@@ -344,7 +344,7 @@ fn change_watch(yaml: &ChangeYaml, scope: &Scope) -> Result<ChangeWatch, String>
     if let Some(id) = &yaml.flag_id {
         let becomes = yaml
             .becomes
-            .ok_or_else(|| "a change with flag_id needs becomes".to_string())?;
+            .ok_or_else(|| "a flag change needs becomes".to_string())?;
         return Ok(ChangeWatch::Flag {
             id: id.clone(),
             becomes,
@@ -354,14 +354,14 @@ fn change_watch(yaml: &ChangeYaml, scope: &Scope) -> Result<ChangeWatch, String>
         let gained = match (yaml.gained, yaml.lost) {
             (Some(true), _) => true,
             (_, Some(true)) => false,
-            _ => return Err("a change with item_id needs gained or lost".to_string()),
+            _ => return Err("an item change needs gained or lost".to_string()),
         };
         return Ok(ChangeWatch::Item {
             id: id.clone(),
             gained,
         });
     }
-    Err("a change needs arrive_place_id, leave_place_id, meter_id, flag_id, or item_id".to_string())
+    Err("a change needs arrive, leave, meter, flag, or item".to_string())
 }
 
 fn conds(yaml: &IfYaml) -> Result<Vec<Cond>, CompileError> {

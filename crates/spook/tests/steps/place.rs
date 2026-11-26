@@ -146,7 +146,7 @@ async fn add_rule_and_join(world: &mut World, label: &str, page: &str, from: &st
 #[given(expr = "Aldric has an ask verb and the CLI holds rowan in the shop")]
 async fn aldric_has_an_ask_verb(world: &mut World) {
     let from = "  eligible: false\n";
-    let rules = "  eligible: false\nrules:\n  - id: ask\n    when:\n      verb_id: ask\n      target: actor\n    do: []\n";
+    let rules = "  eligible: false\nrules:\n  - id: ask\n    when:\n      verb: ask\n      target: actor\n    do: []\n";
     add_rule_and_join(world, "help-cast", "cast/aldric.md", from, rules).await;
 }
 
@@ -156,7 +156,7 @@ async fn the_docks_have_a_greet_verb(world: &mut World) {
 ";
     let rules = "  - id: greet
     when:
-      verb_id: greet
+      verb: greet
       target: actor
     do: []
 
@@ -168,14 +168,14 @@ async fn the_docks_have_a_greet_verb(world: &mut World) {
 #[given(expr = "the shop has a pray verb if rowan holds lamp_oil, and the CLI holds rowan")]
 async fn the_shop_has_a_pray_verb(world: &mut World) {
     let from = "    base: 2\n";
-    let rules = "    base: 2\nrules:\n  - id: pray\n    when:\n      verb_id: pray\n    if:\n      - has_item:\n          subject: self\n          id: lamp_oil\n    do: []\n";
+    let rules = "    base: 2\nrules:\n  - id: pray\n    when:\n      verb: pray\n    if:\n      - has_item:\n          subject: self\n          id: lamp_oil\n    do: []\n";
     add_rule_and_join(world, "help-if", "world/places/docks_shop.md", from, rules).await;
 }
 
 #[given(expr = "lamp_oil has a sniff verb, and the CLI holds rowan")]
 async fn lamp_oil_has_a_sniff_verb(world: &mut World) {
     let rules =
-        "rules:\n  - id: sniff\n    when:\n      verb_id: sniff\n      target: item\n    do: []\n";
+        "rules:\n  - id: sniff\n    when:\n      verb: sniff\n      target: item\n    do: []\n";
     add_rule_and_join(
         world,
         "help-item",

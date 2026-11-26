@@ -47,7 +47,7 @@ fn add_timed_verb(pack: &Path, verb: &str, to: &str, applies: &[(&str, i64)], ti
         .collect();
     add_verb(
         pack,
-        &format!("\n  - id: {verb}\n    when:\n      verb_id: {verb}{target}\n    do:\n{effects}"),
+        &format!("\n  - id: {verb}\n    when:\n      verb: {verb}{target}\n    do:\n{effects}"),
     );
     stamp_pack_rev(pack);
 }
@@ -463,7 +463,7 @@ rules:
   - id: under_3
     when:
       change:
-        meter_id: vigor
+        meter: vigor
         crosses: \"<3\"
     do:
       - flag:
@@ -473,7 +473,7 @@ rules:
   - id: under_4
     when:
       change:
-        meter_id: vigor
+        meter: vigor
         crosses: \"<4\"
     do:
       - flag:
@@ -489,7 +489,7 @@ fn rowan_pays_one_vigor(world: &mut World) {
     fs::write(pack.join("story/strain.yaml"), STRAIN).unwrap();
     add_verb(
         &pack,
-        "\n  - id: brace\n    when:\n      verb_id: brace\n    cost:\n      meters:\n        vigor: 1\n    do: []\n",
+        "\n  - id: brace\n    when:\n      verb: brace\n    cost:\n      meters:\n        vigor: 1\n    do: []\n",
     );
     stamp_pack_rev(&pack);
     let played = play_round(world, &pack, vec![intent("brace", "rowan", "brace", None)]);

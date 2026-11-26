@@ -48,7 +48,7 @@ fn the_pack_gm_notes_run_to(world: &mut World, chars: usize) {
 #[when(expr = "a verb's if names flag {string}, which no rule sets")]
 fn a_verb_names_an_unset_flag(world: &mut World, flag: String) {
     let verb_yaml = format!(
-        "\n  - id: test_{flag}\n    when:\n      verb_id: test_{flag}\n    if:\n      - flag: {{ of: rowan, id: {flag}, is: true }}\n    do: []\n"
+        "\n  - id: test_{flag}\n    when:\n      verb: test_{flag}\n    if:\n      - flag: {{ of: rowan, id: {flag}, is: true }}\n    do: []\n"
     );
     super::common::add_verb(host::pack(world), &verb_yaml);
 }
@@ -62,7 +62,7 @@ rules:
   - id: on_{flag}
     when:
       change:
-        flag_id: {flag}
+        flag: {flag}
         becomes: true
     do: []
 "

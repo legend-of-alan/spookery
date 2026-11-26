@@ -51,7 +51,7 @@ fn write_rules(world: &World, verbs: &str, story: &str, rules: &str) {
 /// A verb that sets world flag `id` to `value`, when every condition in `if_` holds.
 fn flag_verb(verb: &str, id: &str, value: bool, if_: &str) -> String {
     format!(
-        "\n  - id: {verb}\n    when:\n      verb_id: {verb}\n{if_}    do:\n      - flag:\n          of: world\n          id: {id}\n          value: {value}\n"
+        "\n  - id: {verb}\n    when:\n      verb: {verb}\n{if_}    do:\n      - flag:\n          of: world\n          id: {id}\n          value: {value}\n"
     )
 }
 
@@ -64,7 +64,7 @@ fn world_flag_is(id: &str, is: bool) -> String {
 /// condition in `if_` holds.
 fn chain_rule(id: &str, watch: &str, then: &str, if_: &str) -> String {
     format!(
-        "  - id: {id}\n    when:\n      change:\n        flag_id: {watch}\n        becomes: true\n{if_}    do:\n      - flag:\n          of: world\n          id: {then}\n          value: true\n"
+        "  - id: {id}\n    when:\n      change:\n        flag: {watch}\n        becomes: true\n{if_}    do:\n      - flag:\n          of: world\n          id: {then}\n          value: true\n"
     )
 }
 
@@ -86,7 +86,7 @@ fn three_in_the_shop(world: &mut World) {
 fn a_bell_on_the_cellar_door(world: &mut World) {
     let verbs = flag_verb("open_cellar", "cellar_open", true, "")
         + &flag_verb("close_cellar", "cellar_open", false, "");
-    let ring = "  - id: ring\n    when:\n      change:\n        flag_id: cellar_open\n        becomes: true\n    do:\n      - meter:\n          of: rowan\n          id: vigor\n          add: 1\n";
+    let ring = "  - id: ring\n    when:\n      change:\n        flag: cellar_open\n        becomes: true\n    do:\n      - meter:\n          of: rowan\n          id: vigor\n          add: 1\n";
     write_rules(world, &verbs, "cellar", ring);
 }
 
@@ -116,9 +116,9 @@ fn the_bell_rings_twice(world: &mut World) {
 
 #[given(expr = "a rule locks the gate when Rowan arrives in the street")]
 fn a_gate_that_locks(world: &mut World) {
-    let verbs = "\n  - id: go_street\n    when:\n      verb_id: go_street\n    do:\n      - location:\n          to: docks_street\n          teleport: true\n".to_string()
+    let verbs = "\n  - id: go_street\n    when:\n      verb: go_street\n    do:\n      - location:\n          to: docks_street\n          teleport: true\n".to_string()
         + &flag_verb("go_gate", "gate_passed", true, &world_flag_is("gate_locked", false));
-    let lock = "  - id: lock_gate\n    when:\n      change:\n        arrive_place_id: docks_street\n        subject: rowan\n    do:\n      - flag:\n          of: world\n          id: gate_locked\n          value: true\n";
+    let lock = "  - id: lock_gate\n    when:\n      change:\n        arrive: docks_street\n        subject: rowan\n    do:\n      - flag:\n          of: world\n          id: gate_locked\n          value: true\n";
     write_rules(world, &verbs, "gate", lock);
 }
 

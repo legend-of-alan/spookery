@@ -80,7 +80,7 @@ fn a_timed_teleport(world: &mut World, verb: String, ticks: u64) {
     add_verb(
         world,
         &format!(
-            "\n  - id: {verb}\n    when:\n      verb_id: {verb}\n    cost:\n      ticks: {ticks}\n    do:\n      - location:\n          to: mira_rooms\n          teleport: true\n"
+            "\n  - id: {verb}\n    when:\n      verb: {verb}\n    cost:\n      ticks: {ticks}\n    do:\n      - location:\n          to: mira_rooms\n          teleport: true\n"
         ),
     );
 }
@@ -90,7 +90,7 @@ fn a_cooldown(world: &mut World, verb: String, ticks: u64, cooldown_ticks: u64) 
     add_verb(
         world,
         &format!(
-            "\n  - id: {verb}\n    when:\n      verb_id: {verb}\n    cost:\n      ticks: {ticks}\n    cooldown_ticks: {cooldown_ticks}\n    do: []\n"
+            "\n  - id: {verb}\n    when:\n      verb: {verb}\n    cost:\n      ticks: {ticks}\n    cooldown_ticks: {cooldown_ticks}\n    do: []\n"
         ),
     );
 }
@@ -107,7 +107,7 @@ fn timed_verb(verb: &str, ticks: u64, extra: &str) -> String {
         "
   - id: {verb}
     when:
-      verb_id: {verb}
+      verb: {verb}
     cost:
       ticks: {ticks}
 {extra}    do:

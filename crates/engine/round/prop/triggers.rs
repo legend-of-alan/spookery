@@ -305,8 +305,8 @@ fn push_rule(
 
 fn rule_yaml(id: &str, watch: Option<&str>, effects: &[(String, bool)]) -> String {
     let when = match watch {
-        Some(flag_id) => format!("      change:\n        flag_id: {flag_id}\n        becomes: true\n"),
-        None => "      change:\n        item_id: lamp_oil\n        gained: true\n    if:\n      - meter: { of: self, id: assassination_debt, op: \">=\", value: 0 }\n".to_string(),
+        Some(flag_id) => format!("      change:\n        flag: {flag_id}\n        becomes: true\n"),
+        None => "      change:\n        item: lamp_oil\n        gained: true\n    if:\n      - meter: { of: self, id: assassination_debt, op: \">=\", value: 0 }\n".to_string(),
     };
     let mut body = format!("  - id: {id}\n    when:\n{when}    do:\n");
     for (flag_id, value) in effects {

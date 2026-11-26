@@ -5,12 +5,12 @@ rules:
   - id: through_the_gate
     when:
       change:
-        leave_place_id: yard
+        leave: yard
         subject: pc
     if:
       - at:
           subject: self
-          place_id: path:gate
+          place: path:gate
     do:
       - flag:
           of: world
@@ -19,7 +19,7 @@ rules:
   - id: gate_after_a_fight
     when:
       change:
-        arrive_place_id: lane
+        arrive: lane
         subject: pc
     if:
       - flag:
@@ -37,7 +37,7 @@ rules:
   - id: cart_warded
     when:
       change:
-        arrive_place_id: lane
+        arrive: lane
         subject: pc
     if:
       - not:
@@ -60,7 +60,7 @@ rules:
   - id: cart_braced
     when:
       change:
-        arrive_place_id: lane
+        arrive: lane
         subject: pc
     if:
       - not:
@@ -82,7 +82,7 @@ rules:
   - id: knocked_out
     when:
       change:
-        meter_id: hp
+        meter: hp
         crosses: "<=0"
     if:
       - flag:
@@ -105,7 +105,7 @@ rules:
   - id: dusk
     when:
       change:
-        meter_id: daylight
+        meter: daylight
         crosses: "<=0"
     if:
       - not:
@@ -123,7 +123,7 @@ rules:
   - id: lane_shut
     when:
       change:
-        flag_id: lost
+        flag: lost
         becomes: true
     do:
       - flag:

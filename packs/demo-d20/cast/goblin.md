@@ -17,7 +17,7 @@ rules:
     if:
       - at:
           subject: corin
-          place_id: loft
+          place: loft
       - meter:
           of: goblin
           id: nerve
@@ -40,7 +40,7 @@ rules:
           text: The goblin snaps at your ankle and misses.
   - id: banish
     when:
-      verb_id: banish
+      verb: banish
       target: actor
     if:
       - meter:
@@ -84,7 +84,7 @@ rules:
   - id: flee
     when:
       change:
-        meter_id: nerve
+        meter: nerve
         crosses: "<=0"
     do:
       - item:

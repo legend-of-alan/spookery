@@ -88,7 +88,7 @@ fn push_and_shove_cost_vigor(world: &mut World) {
         "\
 \n  - id: push
     when:
-      verb_id: push
+      verb: push
     cost:
       meters:
         vigor: 1
@@ -96,7 +96,7 @@ fn push_and_shove_cost_vigor(world: &mut World) {
 
   - id: shove
     when:
-      verb_id: shove
+      verb: shove
     cost:
       meters:
         vigor: 1
@@ -118,7 +118,7 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read yard: {err}"));
     let drop = "rules:
   - id: drop
-    when: { verb_id: drop, target: item }
+    when: { verb: drop, target: item }
     do:
       - item: { of: self, id: target, add: -1 }
       - item: { of: here, id: target, add: 1 }
@@ -182,7 +182,7 @@ async fn one_effect_is_over_budget(world: &mut World) {
         "\
 \n  - id: tap
     when:
-      verb_id: tap
+      verb: tap
     do:
       - flag:
           of: self
@@ -290,7 +290,7 @@ rules:
         "\
 \n  - id: sap
     when:
-      verb_id: sap
+      verb: sap
     do:
       - meter:
           of: bram
