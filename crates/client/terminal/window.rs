@@ -292,9 +292,9 @@ impl Screen {
                 self.transcript.push_round_divider(divider);
             }
             ServerBody::View(view) => {
-                let is_new_place = view.place != self.last_place_id;
+                let is_new_place = view.place.place_id != self.last_place_id;
                 if is_new_place {
-                    self.last_place_id = view.place.clone();
+                    self.last_place_id = view.place.place_id.clone();
                 }
                 if is_new_place || answers_own_command {
                     self.push_place(view);
@@ -337,8 +337,8 @@ impl Screen {
     /// The place's name and prose, shown on reaching a new place and in reply to this seat's `look`.
     fn push_place(&mut self, view: &protocol::View) {
         let palette = self.palette;
-        if !view.place_name.is_empty() {
-            let name = palette.span(view.place_name.clone(), GOLD);
+        if !view.place.name.is_empty() {
+            let name = palette.span(view.place.name.clone(), GOLD);
             let marker = palette.span("▌ ", FLAME);
             let line = Line::from(vec![marker, name.add_modifier(Modifier::BOLD)]);
             self.transcript.push(line);
@@ -578,7 +578,7 @@ mod tests {
     use super::{KeyRequest, Screen, ScreenAreas};
     use crate::protocol::{self, ServerBody, ServerMessage};
 
-    const RECORDING: &str = include_str!("../../protocol/sessions/v4.jsonl");
+    const RECORDING: &str = include_str!("../../protocol/sessions/v5.jsonl");
 
     fn press(screen: &mut Screen, code: KeyCode, commands: &[String]) -> Option<KeyRequest> {
         screen.on_key(KeyEvent::from(code), commands)

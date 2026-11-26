@@ -170,8 +170,8 @@ fn rowan_is_in_mira_rooms_at_tick_1300(world: &mut World) {
 }
 
 #[then(expr = "rowan's line shows {string}")]
-async fn rowans_line_shows(world: &mut World, text: String) {
-    let needle = format!("\"place\":\"{text}\"");
+async fn rowans_line_shows(world: &mut World, place_id: String) {
+    let needle = format!("\"place\":{{\"place_id\":\"{place_id}\"");
     let added = host::wait_player_from(world, world.mark, &needle).await;
     assert!(added.contains(&needle), "{added}");
 }
@@ -380,7 +380,7 @@ async fn rowan_is_seated_and_travels_to_docks_street(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     host::listen(world, &pack).await;
     host::seat_rowan(world, &pack).await;
-    let needle = "\"place\":\"docks_street\"";
+    let needle = "\"place\":{\"place_id\":\"docks_street\"";
     let (_mark, added) = host::player_send(world, "travel docks_street", needle).await;
     world.player_added = added;
 }
@@ -392,7 +392,7 @@ fn the_docks_street_view_carries_the_shop_nearby_and_not_gate_yard(world: &mut W
     let view = (world.player_added.lines())
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .map(|message| message["body"].clone())
-        .find(|body| body["kind"] == "view" && body["place"] == "docks_street")
+        .find(|body| body["kind"] == "view" && body["place"]["place_id"] == "docks_street")
         .unwrap_or_else(|| panic!("no Docks Street view\n{}", world.player_added));
     let nearby = view["nearby"].as_array().cloned().unwrap_or_default();
     let place_ids: Vec<&str> = (nearby.iter())

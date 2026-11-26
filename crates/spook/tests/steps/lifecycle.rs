@@ -242,7 +242,7 @@ fn wrens_look_does_not_show_rowan(world: &mut World) {
 fn rowans_look_and_last_round_place_changes_name(world: &mut World, name: String) {
     let opened = open(world.pack.as_ref().unwrap());
     let view = opened.perceive(&seated(), "rowan").unwrap();
-    assert_eq!(view.place_name, name);
+    assert_eq!(view.place.name, name);
     let changes = world.rowan_last_round_changes.iter();
     let place_changes: Vec<_> = (changes.into_iter())
         .filter(|change| change.component_id == "place")
@@ -267,7 +267,8 @@ fn the_street_exit_shows(world: &mut World, rowan_ticks: u64, wren_ticks: u64) {
     let opened = open(world.pack.as_ref().unwrap());
     let street_ticks = |viewer_id| {
         let view = opened.perceive(&seated(), viewer_id).unwrap();
-        let street = (view.exits.iter()).find(|exit| exit.path_id == "docks_shop.docks_street");
+        let street =
+            (view.place.exits.iter()).find(|exit| exit.path_id == "docks_shop.docks_street");
         street.unwrap().ticks
     };
     assert_eq!(street_ticks("rowan"), rowan_ticks);

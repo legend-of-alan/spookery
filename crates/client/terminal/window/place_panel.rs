@@ -19,7 +19,7 @@ pub(super) fn draw(
     is_tab_box_hidden: bool,
     palette: Palette,
 ) {
-    let title = view.map_or("Here", |view| view.place_name.as_str());
+    let title = view.map_or("Here", |view| view.place.name.as_str());
     let mut border = palette.titled_border(title, false);
     if is_tab_box_hidden {
         border = border.title_bottom(palette.span("F2 F3 F4 tabs", TANGERINE));
@@ -47,22 +47,18 @@ pub(super) fn draw(
     }
     here_lines.push(Line::from(here_spans));
     let mut exit_lines = vec![Line::from(palette.span("Exits", ASH))];
-    for exit in &view.exits {
+    for exit in &view.place.exits {
         let color = if exit.locked { ROSE } else { ORANGE };
         exit_lines.push(Line::styled(text::render_exit(exit), palette.style(color)));
     }
-    if view.exits.is_empty() {
+    if view.place.exits.is_empty() {
         exit_lines.push(Line::styled("none", palette.style(ASH)));
     }
     let mut sections = vec![here_lines, exit_lines];
-    let nearby_lines: Vec<Line> = (view.exits.iter())
-        .filter_map(|exit| {
-            let place = (view.nearby.iter()).find(|place| place.place_id == exit.place_id)?;
-            Some(render_nearby_place(place, &view.place, palette))
-        })
-        .collect();
-    if !nearby_lines.is_empty() {
+    if !view.nearby.is_empty() {
         let heading = Line::from(palette.span("Nearby", ASH));
+        let nearby_lines = (view.nearby.iter())
+            .map(|place| render_nearby_place(place, &view.place.place_id, palette));
         sections.push(std::iter::once(heading).chain(nearby_lines).collect());
     }
     if !view.items.is_empty() {

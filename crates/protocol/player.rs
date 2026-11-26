@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct View {
     pub viewer: String,
-    pub place: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub place_name: String,
+    /// Where the viewer is, with the exits they see there. A walker's `place_id` is
+    /// `path:<path_id>` and its name the path's.
+    pub place: PlaceView,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub body: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -39,10 +39,8 @@ pub struct View {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub world_meters: Vec<MeterView>,
     pub habits: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub exits: Vec<ExitView>,
-    /// The places `exits` go to that the viewer's `map` knows, each with the exits the viewer saw
-    /// there.
+    /// The places `place.exits` go to that the viewer's `map` knows, each with the exits the
+    /// viewer saw there.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub nearby: Vec<PlaceView>,
 }
@@ -175,11 +173,11 @@ pub struct CommandView {
     pub owner: Option<String>,
 }
 
-/// One place of a `map` reply: its id, its name and the exits the player may see there.
+/// A place as one viewer sees it: its id, its name and the exits they may see there. A view's
+/// `place` and `nearby`, and each place of a `map` reply, are one.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PlaceView {
-    #[serde(default)]
     pub place_id: String,
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -197,7 +195,7 @@ mod tests {
 
     #[test]
     fn a_view_body_ignores_unknown_fields() {
-        let body = r#"{"kind":"view","viewer":"rowan","place":"shop","visible_actors":[],"notes":[],"items":[{"id":"oil","count":1,"extra":true}],"habits":[],"future":1}"#;
+        let body = r#"{"kind":"view","viewer":"rowan","place":{"place_id":"shop","name":"Shop"},"visible_actors":[],"notes":[],"items":[{"id":"oil","count":1,"extra":true}],"habits":[],"future":1}"#;
         assert!(matches!(
             serde_json::from_str(body),
             Ok(ServerBody::View(_))
@@ -206,7 +204,7 @@ mod tests {
 
     #[test]
     fn a_view_body_keeps_the_scene_after_the_place() {
-        let body = r#"{"kind":"view","viewer":"rowan","place":"shop","place_name":"Shop","body":"b","actor_names":["Rowan"],"cant_act":"s","visible_actors":["rowan"],"notes":[],"items":[],"habits":[]}"#;
+        let body = r#"{"kind":"view","viewer":"rowan","place":{"place_id":"shop","name":"Shop"},"body":"b","actor_names":["Rowan"],"cant_act":"s","visible_actors":["rowan"],"notes":[],"items":[],"habits":[]}"#;
         let view: ServerBody = serde_json::from_str(body).unwrap();
         assert_eq!(serde_json::to_string(&view).unwrap(), body);
     }

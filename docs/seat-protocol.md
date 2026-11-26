@@ -4,7 +4,7 @@ This page is the wire a player client or a GM speaks to `spook run`. [Engine gua
 
 - this page, whose examples are one live session of `tests/packs/docks`. A test plays that session and fails when an example and the host disagree.
 - the JSON Schema, [`client.json`](../crates/protocol/schema/client.json) for what a client sends and [`server.json`](../crates/protocol/schema/server.json) for what the host sends. A test fails when the schema `spookery-protocol` derives with its `schema` feature is not the published one.
-- the recorded session, [`v4.jsonl`](../crates/protocol/sessions/v4.jsonl), a player and a GM recorded against version 4. The `compatibility-replay` CI job replays it against each build.
+- the recorded session, [`v5.jsonl`](../crates/protocol/sessions/v5.jsonl), a player and a GM recorded against version 5. The `compatibility-replay` CI job replays it against each build.
 
 In the examples, Rowan is the player, in the shop, at game time 1080. A tick is game time. A round is one batch of queued moves.
 
@@ -46,12 +46,12 @@ The host speaks first, with `version`, the `commands` this seat may send, and, o
 
 <!-- example: player-hello -->
 ```json
-{"body":{"kind":"hello","version":4,"commands":["claim","release","say","look","help","map","cancel","ask","chock","drop","exert","strike","take","travel","unwield","use","wait","wield"],"open":["harbormouse","rowan","wren"],"pc_names":{"harbormouse":"Harbormouse","rowan":"Rowan","wren":"Wren"}}}
+{"body":{"kind":"hello","version":5,"commands":["claim","release","say","look","help","map","cancel","ask","chock","drop","exert","strike","take","travel","unwield","use","wait","wield"],"open":["harbormouse","rowan","wren"],"pc_names":{"harbormouse":"Harbormouse","rowan":"Rowan","wren":"Wren"}}}
 ```
 
 <!-- example: gm-hello -->
 ```json
-{"body":{"kind":"hello","version":4,"commands":["status","perceive","queue","say","commit","release"]}}
+{"body":{"kind":"hello","version":5,"commands":["status","perceive","queue","say","commit","release"]}}
 ```
 
 One GM holds the seat at a time, on `/gm` or on `/mcp`. A second GM on `/gm` gets one `refused` with `TABLE_FULL`, and the connection closes.
@@ -362,7 +362,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 ### view and resume
 
-`viewer` is the bare actor id. `place_name`, `actor_names` and each item's `name` are the pack's names, and `body` is the place prose. Each exit has the `path_id` of the path it walks, the `name` a player reads for it, and where it goes as `place_id` and `place_name`. A walker's `place` is `path:<path_id>`, and their `place_name` is the path's. `notes` are the notes left to the viewer and those lying in their place. Each note has its `id`, the actor ids it addresses as `to_ids`, an optional `place_id`, and `text`. `items` lie in the viewer's place. `items_carried` are the items the viewer holds, and `wielded_item_id` is the one of them they wield. Each is left out when there is none. `meters` are the viewer's own, without hidden ones, and each has the pack's `name` when its row gives one. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `nearby` holds the places those exits go to that the viewer's `map` knows, each as a `map` place with the exits seen there, and is left out when there is none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`, except `cancel` (see [Moves](#moves)). `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
+`viewer` is the bare actor id. `place` is where the viewer is, shaped like a `map` place: its `place_id`, the pack's `name` for it and the `exits` the viewer sees there. A walker's `place_id` is `path:<path_id>`, and its `name` is the path's. `actor_names` and each item's `name` are the pack's names, and `body` is the place prose. Each exit has the `path_id` of the path it walks, the `name` a player reads for it, and where it goes as `place_id` and `place_name`. `notes` are the notes left to the viewer and those lying in their place. Each note has its `id`, the actor ids it addresses as `to_ids`, an optional `place_id`, and `text`. `items` lie in the viewer's place. `items_carried` are the items the viewer holds, and `wielded_item_id` is the one of them they wield. Each is left out when there is none. `meters` are the viewer's own, without hidden ones, and each has the pack's `name` when its row gives one. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `place.exits` is left out when the place has none. `nearby` holds the places those exits go to that the viewer's `map` knows, each as a `map` place with the exits seen there, and is left out when there is none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`, except `cancel` (see [Moves](#moves)). `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
 
 <!-- example: player-resume -->
 ```json
@@ -376,8 +376,28 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
   "body": {
     "kind": "view",
     "viewer": "rowan",
-    "place": "docks_shop",
-    "place_name": "Docks Shop",
+    "place": {
+      "place_id": "docks_shop",
+      "name": "Docks Shop",
+      "exits": [
+        {
+          "path_id": "docks_shop.docks_street",
+          "name": "Docks Street",
+          "place_id": "docks_street",
+          "place_name": "Docks Street",
+          "ticks": 0,
+          "locked": false
+        },
+        {
+          "path_id": "stairs",
+          "name": "stairs",
+          "place_id": "mira_rooms",
+          "place_name": "Mira's Rooms",
+          "ticks": 2,
+          "locked": true
+        }
+      ]
+    },
     "body": "The shop faces the water. Tins sit in a row. Oil is on the shelf.",
     "actor_names": [
       "Aldric",
@@ -423,25 +443,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
         "max": 110
       }
     ],
-    "habits": [],
-    "exits": [
-      {
-        "path_id": "docks_shop.docks_street",
-        "name": "Docks Street",
-        "place_id": "docks_street",
-        "place_name": "Docks Street",
-        "ticks": 0,
-        "locked": false
-      },
-      {
-        "path_id": "stairs",
-        "name": "stairs",
-        "place_id": "mira_rooms",
-        "place_name": "Mira's Rooms",
-        "ticks": 2,
-        "locked": true
-      }
-    ]
+    "habits": []
   }
 }
 ```
@@ -633,7 +635,7 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 
 - A client ignores a body `kind` and a field it does not know.
 - Changes only add. A field never changes meaning, and a new meaning gets a new name.
-- The hello announces `version` and the commands. A command is removed only after one release of being marked as going away. Version 4 has no such command and no marker yet. The marker is added to the hello before the first command needs it.
+- The hello announces `version` and the commands. A command is removed only after one release of being marked as going away. Version 5 has no such command and no marker yet. The marker is added to the hello before the first command needs it.
 - Version 2 broke version 1 once, on purpose: clocks left the wire with world clocks. `clocks` left `view` and `resume`, `pause` left `status`, `PAUSED_CLOCK` left the refusal codes, and `view.status` became `view.cant_act`. `view.world_meters` was added. The session recorded against version 1 was replaced by one recorded against version 2.
 - Version 2 dropped one field before any release, on purpose: `CHOOSE_PC` no longer lists the open PCs in `detail`, since the hello's `open` already does, so `detail` is always a string. The version stayed 2 because no build had shipped.
 - Version 2 renamed two things before any release, on purpose, when game time became ticks: an exit's `minutes` became `ticks`, and the changed key `live_acts_this_hour` became `live_acts_this_window`. The recording took the docks pack's new `pack_rev` with them. The version stayed 2 because no build had shipped.
@@ -653,6 +655,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 renamed the GM `queue` field and the actor id on `status.queued[]` before any release, on purpose, so they match the other actor ids: `actor_id` became `actor`. There is no alias for the old key. The recording took the new name with it. The version stayed 2 because no build had shipped.
 - Version 3 broke version 2 once, on purpose, when known facts left the engine: a place's public facts moved into its prose, and what someone has found out became a flag, which never reaches a player. `known_facts` and `unknown_mentions` left `view`, `fact_ids` left a note, `max_body_chars` left the GM's `perceive`, the changed key `actor_known_facts` went, and `ILLEGAL_KNOWLEDGE` left the refusal codes. The session recorded against version 2 was replaced by one recorded against version 3.
 - Version 4 broke version 3 once, on purpose, when a path became an entity: a door's open state is the path's `open` flag, one for both ends of a two-way path. The changed key `place_exit_open <place> <exit>` became `path_flag <path> open`, a walker's place in `view` and in a `place` change became `path:<path>` instead of `exit:<place>.<exit>`, and an exit in `view` and `map` gained `path_id`, the path it walks, and lost `exit_id`. A verb that takes an exit reports `"target":"path"` in `help` and `status`, and a journal intent names its exit under the target key `path`, not `exit`. The session recorded against version 3 was replaced by one recorded against version 4.
-- Version 4 added `view.nearby`, and the version stayed 4 because it only adds: the places past the exits that the viewer's `map` knows, so a window draws them from the view without sending `map`. A client that does not know it ignores it, and one that reads it from an older host finds it empty.
+- Version 5 broke version 4 once, on purpose, so a view's place has the shape of a `map` place: the flat `place`, `place_name` and `exits` of `view` became one `place` with `place_id`, `name` and `exits`. It also added `view.nearby`, the places past those exits that the viewer's `map` knows, so a window draws them from the view without sending `map`. The session recorded against version 4 was replaced by one recorded against version 5.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each host mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

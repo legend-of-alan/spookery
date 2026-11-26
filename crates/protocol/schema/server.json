@@ -877,10 +877,8 @@
           "type": "string"
         },
         "place": {
-          "type": "string"
-        },
-        "place_name": {
-          "type": "string"
+          "description": "Where the viewer is, with the exits they see there. A walker's `place_id` is\n`path:<path_id>` and its name the path's.",
+          "$ref": "#/$defs/PlaceView"
         },
         "body": {
           "type": "string"
@@ -950,14 +948,8 @@
             "type": "string"
           }
         },
-        "exits": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/ExitView"
-          }
-        },
         "nearby": {
-          "description": "The places `exits` go to that the viewer's `map` knows, each with the exits the viewer saw\nthere.",
+          "description": "The places `place.exits` go to that the viewer's `map` knows, each with the exits the\nviewer saw there.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/PlaceView"
@@ -1068,12 +1060,11 @@
       ]
     },
     "PlaceView": {
-      "description": "One place of a `map` reply: its id, its name and the exits the player may see there.",
+      "description": "A place as one viewer sees it: its id, its name and the exits they may see there. A view's\n`place` and `nearby`, and each place of a `map` reply, are one.",
       "type": "object",
       "properties": {
         "place_id": {
-          "type": "string",
-          "default": ""
+          "type": "string"
         },
         "name": {
           "type": "string"
@@ -1086,6 +1077,7 @@
         }
       },
       "required": [
+        "place_id",
         "name"
       ]
     }

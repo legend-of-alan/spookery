@@ -406,6 +406,7 @@ fn the_viewer_sees_the_trapdoor(world: &mut World, viewer: String, can_or_cannot
     let exits = world_now
         .perceive(&Presence::default(), &viewer)
         .unwrap()
+        .place
         .exits;
     let sees = exits.iter().any(|exit| exit.path_id == "trapdoor");
     let should_see = can_or_cannot == "can";
