@@ -68,7 +68,7 @@
         }
       ]
     },
-    "MoveArgs": {
+    "VerbArgs": {
       "description": "A pack verb's arguments, sent by a player seat.",
       "type": "object",
       "properties": {

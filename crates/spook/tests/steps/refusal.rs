@@ -1,4 +1,4 @@
-//! A move refused while its round runs tells that player why.
+//! A verb refused while its round runs tells that player why.
 
 use std::fs;
 

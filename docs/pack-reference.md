@@ -153,7 +153,7 @@ Stone, and a low door. The cellar is dark.
 
 ## Items
 
-An item file is Markdown with the same frontmatter shape. `tags` may include `weapon`. Wielding an item without that tag is refused when the move is played. The file name is not the id.
+An item file is Markdown with the same frontmatter shape. `tags` may include `weapon`. Wielding an item without that tag is refused when the verb is played. The file name is not the id.
 
 ```yaml file=world/items/oil.md
 ---
@@ -351,7 +351,7 @@ A pack line reads as a clause. Each word keeps one part of speech and one role:
 
 | Word | Part of speech | Role |
 |---|---|---|
-| `subject` | subject | the actor the verb is about: who plays the move, or who has, is at or wields in a condition |
+| `subject` | subject | the actor the verb is about: who plays the verb, or who has, is at or wields in a condition |
 | verb | verb | the action |
 | `target` | direct object | the thing the verb acts on, and nothing else |
 | `of` | preposition | the owner of the meter, flag or item count the line names, e.g. `meter: hp, of: target` reads as "hp of the target" |
@@ -399,7 +399,7 @@ The strike in `tests/packs/docks/rules/verbs.yaml`:
           add: "-(self.might / 10)"
 ```
 
-reads as *the subject strikes an actor (the target): roll 1d20 plus might of self, succeed at 38, and on a success subtract might of self over 10 from hp of the target.* The subject is whoever played the move, written `self`. `target: actor` says what the verb acts on; `of: target` says the hp belongs to it.
+reads as *the subject strikes an actor (the target): roll 1d20 plus might of self, succeed at 38, and on a success subtract might of self over 10 from hp of the target.* The subject is whoever played the verb, written `self`. `target: actor` says what the verb acts on; `of: target` says the hp belongs to it.
 
 The take in the same file:
 
@@ -443,7 +443,7 @@ A check's `total`, `success_at` and `partial_at` are each a number, and each may
 - `partial_at <= total < success_at` is a partial, only when the check sets `partial_at`.
 - Any lower total is a miss. A check without `partial_at` is a success or a miss.
 
-The check rolls when the move lands, after the gate admits it, its start cost is paid and its `let` has rolled: `total`, then `success_at`, then `partial_at`, each writing its own dice line. A contested defense is a `let` value that reads the target's stats, used as `success_at`, not a nested check (see `lunge` below). A nested check is a save with its own outcome: it rolls when the effects reach it, on the rule's own dice, and may have a partial band.
+The check rolls when the verb lands, after the gate admits it, its start cost is paid and its `let` has rolled: `total`, then `success_at`, then `partial_at`, each writing its own dice line. A contested defense is a `let` value that reads the target's stats, used as `success_at`, not a nested check (see `lunge` below). A nested check is a save with its own outcome: it rolls when the effects reach it, on the rule's own dice, and may have a partial band.
 
 ### Rule fields
 
@@ -467,7 +467,7 @@ Matching change rules run in owner order (shared verbs, then place, item, cast, 
 
 `if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `subject` on `has_item`, `at`, and `wielding` is the subject of that verb: `has_item: { subject: self, id: key }` reads as *self has the key*. It is an actor: `self`, `target`, or an actor id; check refuses any other owner on that word's line. `place` on `at` is a place id, or `path:<id>` for anyone walking that path. `of` on a meter, flag, or item is the owner whose value or count the line reads or changes: `self`, `target`, `here`, `world`, `place:<id>`, `path:<id>`, `story:<id>`, or an actor id. A path holds only its flag `open`. An owner `target`, in a slot or a number such as `target.hp`, is the move's target, and check refuses it unless the rule targets an actor, or, on a flag, an exit, whose path it then names. On `has_item`, `wielding`, an item effect, `wield`, and a cost's `items`, `id: target` is the intent's target, and check refuses it unless the rule targets an item. A habit and a change rule target nothing, and a path's `if` and `cost` cannot say `target`. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `id`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are ticks below the cycle's length and they differ; check compares them when they are integers, and a bound read from a meter that falls outside the cycle refuses the move `OUT_OF_RANGE`.
 
-Every move but `say` is an action that starts and finishes. `cost` is what the start costs, and it may name `ticks`, `meters`, and `items`. `cost.ticks` is how long the action takes, read for the acting actor; omitted, it finishes in the round it starts. A count below 0 refuses the move `OUT_OF_RANGE`. An exit's ticks in a view and on `map` are read for the viewer, and show 0 when they cannot be read. A cost the actor cannot pay is refused when the move is played, and the world stays as it was. The start is checked again when the round runs it, since an earlier move may have changed the world.
+Every verb is an action that starts and finishes. `cost` is what the start costs, and it may name `ticks`, `meters`, and `items`. `cost.ticks` is how long the action takes, read for the acting actor; omitted, it finishes in the round it starts. A count below 0 refuses the verb `OUT_OF_RANGE`. An exit's ticks in a view and on `map` are read for the viewer, and show 0 when they cannot be read. A cost the actor cannot pay is refused when the verb is played, and the world stays as it was. The start is checked again when the round runs it, since an earlier verb may have changed the world.
 
 `start.counts_as_act` says whether the start uses the actor's act this round. Omitted, it is `true`. An NPC that has used its act skips its habits that round, so a drink with `counts_as_act: false` leaves the act for one. `finish` may have `cost`, in `meters` and `items`, paid when the action finishes, and `counts_as_act`, which is `false` when omitted. A finish cost with `ticks` is rejected. Every effect lands at the finish, a timed walk's arrival and a timed teleport among them. `cooldown_ticks` is the ticks the actor stays busy after the finish. Omitted, it is 0. `cancellable: true` lets a player send the built-in command `cancel` while the action is under way: the action is dropped, its start cost is not refunded, and it never finishes. Omitted, it is `false`, and `cancel` is refused `INELIGIBLE`. A walk is never cancelled, whatever its rule says. The `chant` rule below takes five ticks, then three more to recover, and may be cancelled.
 
@@ -475,9 +475,9 @@ Every move but `say` is an action that starts and finishes. `cost` is what the s
 
 A number is an integer or an [expression](spec.md). A number in a condition or a cost cannot roll dice: check refuses it on its line.
 
-`let` is a map of ids to numbers that the rule rolls once and reads by id. It runs first, after the gate: once the move is admitted and its start cost is paid, each id rolls in the order written, then the check, then the effects. A move that takes time rolls its `let` at its finish, where its check rolls. A number reads an id as a bare word, `total: attack`, and a `let` number reads only the ids written above it. An id is letters, digits and `_`, not starting with a digit. It is not an owner word, such as `self` or `world`, and not `min`, `max`, `high` or `low`. Check refuses any other id at its line. An id written twice, or a second `let` in one rule, fails check at the second one's line with `'attack' is listed twice; keep one`. A roll used in more than one place goes in `let`. Dice written inline roll where they are written, so each list rolls its own inline dice, and a list that does not run rolls nothing. Each id that rolls writes one dice line with its id in front, `attack: 2d6 → 5, 2 = 7 + 1`. `high(dmg)` and `low(dmg)` read the higher and lower face of an id whose number is one dice group with no keep, such as `dmg: 2d4`. A contested defense is a `let` value that reads the target's stats, used as `success_at` and for `partial_at`, as in `lunge` below. A condition or a cost cannot read an id, since the gate reads them before `let` rolls: check refuses the read as dice. Check also refuses, at the rule's line, an id the rule's `let` does not hold, an id a `let` number reads at or above the line that holds it, and `high` or `low` of a number that is not one dice group with no keep. A number with a comma, such as `"-max(1, high(dmg) - 1)"`, needs quotes.
+`let` is a map of ids to numbers that the rule rolls once and reads by id. It runs first, after the gate: once the verb is admitted and its start cost is paid, each id rolls in the order written, then the check, then the effects. A verb that takes time rolls its `let` at its finish, where its check rolls. A number reads an id as a bare word, `total: attack`, and a `let` number reads only the ids written above it. An id is letters, digits and `_`, not starting with a digit. It is not an owner word, such as `self` or `world`, and not `min`, `max`, `high` or `low`. Check refuses any other id at its line. An id written twice, or a second `let` in one rule, fails check at the second one's line with `'attack' is listed twice; keep one`. A roll used in more than one place goes in `let`. Dice written inline roll where they are written, so each list rolls its own inline dice, and a list that does not run rolls nothing. Each id that rolls writes one dice line with its id in front, `attack: 2d6 → 5, 2 = 7 + 1`. `high(dmg)` and `low(dmg)` read the higher and lower face of an id whose number is one dice group with no keep, such as `dmg: 2d4`. A contested defense is a `let` value that reads the target's stats, used as `success_at` and for `partial_at`, as in `lunge` below. A condition or a cost cannot read an id, since the gate reads them before `let` rolls: check refuses the read as dice. Check also refuses, at the rule's line, an id the rule's `let` does not hold, an id a `let` number reads at or above the line that holds it, and `high` or `low` of a number that is not one dice group with no keep. A number with a comma, such as `"-max(1, high(dmg) - 1)"`, needs quotes.
 
-The flag id `busy` is rejected. An actor is busy from the start of a timed action until it finishes, and then through its cooldown. A move from a busy actor is refused `BUSY`, except `cancel`.
+The flag id `busy` is rejected. An actor is busy from the start of a timed action until it finishes, and then through its cooldown. A verb from a busy actor is refused `BUSY`, except `cancel`.
 
 ```yaml file=rules/verbs.yaml
 schema: verbs

@@ -23,7 +23,7 @@ pub(crate) struct Mentions<'l> {
 impl<'l> Mentions<'l> {
     /// What `conds` and `costs` name, and the entities `exprs` read, as `a number`: `subject:`,
     /// `id:` and `of:` on a condition, then a cost's `items:`.
-    pub(crate) fn of_lines(
+    pub(crate) fn of(
         conds: &'l [Cond],
         costs: impl IntoIterator<Item = &'l Cost>,
         exprs: Vec<&Expr>,
@@ -105,7 +105,7 @@ impl Rule {
     /// numbers', then on its effects `of:`, `subject:`, `to:`, a nested check's `by:`, `id:`, and
     /// `location to:` or `location via:` when it says `target`.
     pub(crate) fn mentions(&self) -> Mentions<'_> {
-        let mut mentions = Mentions::of_lines(&self.if_, self.costs(), self.exprs());
+        let mut mentions = Mentions::of(&self.if_, self.costs(), self.exprs());
         self.visit_templates(|effect| {
             match effect {
                 EffectTemplate::Meter { of, .. } | EffectTemplate::Item { of, .. } => {

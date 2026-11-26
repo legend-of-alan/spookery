@@ -1,6 +1,6 @@
 Feature: A round refusal names the gap
 
-  Scenario: A move refused during the round names the vigor it lacks
+  Scenario: A verb refused during the round names the vigor it lacks
     Given a docks table where push and shove each cost 1 vigor
     When the GM is seated and play joins
     And play queues "push"

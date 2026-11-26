@@ -55,7 +55,7 @@ The porch needs a path to the yard, or `spook check` warns that the porch cannot
 
 `travel porch` follows the exit `porch`. A place with no path from the start place is a warning from `spook check`.
 
-## Add a player move
+## Add a player verb
 
 Append a yield to `rules/verbs.yaml`. A yield commits a round and changes no numbers.
 

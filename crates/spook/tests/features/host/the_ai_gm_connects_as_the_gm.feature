@@ -76,7 +76,7 @@ Feature: The AI GM connects as the GM
   Scenario: Play, the AI GM, and a stub share one speech turn and one travel turn
     When play and the AI GM and a stub run a speech turn and a travel turn
 
-  Scenario: A move queued while the model answers a player's speech still commits one round
+  Scenario: A verb queued while the model answers a player's speech still commits one round
     When a player queues travel while the model answers their say
     Then the queued line committed one round
 

@@ -156,7 +156,7 @@ fn break_pack(pack: &Path, fault: &str) {
             "  - id: exert\n    when:\n",
             "  - id: exert\n    audiance: player\n    when:\n",
         ),
-        "duplicate move" => replace_in_file(
+        "duplicate verb" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "  - id: wait\n",
             "  - id: exert\n",
@@ -307,17 +307,17 @@ fn break_pack(pack: &Path, fault: &str) {
             "      - has_item:\n          subject: self\n          id: chock\n",
             "      - at:\n          subject: world\n          place: gate_yard\n",
         ),
-        "target on a move with none" => replace_in_file(
+        "target on a verb with none" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "      verb: wait\n    do: []\n",
             "      verb: wait\n    do:\n      - meter: { of: target, id: hp, add: -1 }\n",
         ),
-        "owner target on an item move" => replace_in_file(
+        "owner target on an item verb" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "      verb: drop\n      target: item\n    do:\n",
             "      verb: drop\n      target: item\n    do:\n      - meter: { of: target, id: hp, add: -1 }\n",
         ),
-        "a meter on a travel move's target" => replace_in_file(
+        "a meter on a travel verb's target" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "          via: target
 ",
@@ -325,7 +325,7 @@ fn break_pack(pack: &Path, fault: &str) {
       - meter: { of: target, id: hp, add: -1 }
 ",
         ),
-        "a travel move's target flag besides open" => replace_in_file(
+        "a travel verb's target flag besides open" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "          via: target
 ",

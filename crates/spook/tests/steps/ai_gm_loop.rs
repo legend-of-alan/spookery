@@ -64,7 +64,7 @@ async fn start_docks_table_with_mira(world: &mut World, notes: Option<&str>) {
     world.pack = Some(pack);
 }
 
-#[given(expr = "a docks table with a seated player who has queued a move")]
+#[given(expr = "a docks table with a seated player who has queued a verb")]
 async fn a_docks_table_with_a_queued_verb(world: &mut World) {
     let (pack, _) = super::ai_gm::queued_travel(world, "ai-gm-stuck").await;
     world.pack = Some(pack);
@@ -100,7 +100,7 @@ fn a_model_that_perceives_mira_and_rowan(world: &mut World) {
     world.model.push(&[END_TURN]);
 }
 
-#[given(expr = "a scripted model that queues a move Mira can't make")]
+#[given(expr = "a scripted model that queues a verb Mira can't play")]
 fn a_model_that_queues_a_bad_verb(world: &mut World) {
     world
         .model
@@ -110,7 +110,7 @@ fn a_model_that_queues_a_bad_verb(world: &mut World) {
 }
 
 #[given(
-    expr = "a scripted model that queues a move for Mira and a move for Aldric, then ends the turn"
+    expr = "a scripted model that queues a verb for Mira and a verb for Aldric, then ends the turn"
 )]
 fn a_model_that_queues_two_npcs(world: &mut World) {
     world.model.push(&[
@@ -303,7 +303,7 @@ async fn one_round_is_committed(world: &mut World) {
     assert_eq!(host::wait_rounds_to_view(world, world.mark).await.len(), 1);
 }
 
-#[then(expr = "the round resolves the player's, Mira's and Aldric's moves together")]
+#[then(expr = "the round resolves the player's, Mira's and Aldric's verbs together")]
 async fn the_round_resolves_three_verbs(world: &mut World) {
     assert_eq!(host::wait_rounds_to_view(world, world.mark).await.len(), 1);
     let now = world_of(host::pack(world));

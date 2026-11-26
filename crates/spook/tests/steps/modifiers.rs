@@ -482,7 +482,7 @@ rules:
           value: true
 ";
 
-#[when(expr = "rowan makes a move that costs 1 vigor")]
+#[when(expr = "rowan plays a verb that costs 1 vigor")]
 fn rowan_pays_one_vigor(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     fs::create_dir_all(pack.join("story")).unwrap();

@@ -12,7 +12,7 @@ Feature: A round returns its output
   Scenario: A busy refusal with no GM refreshes every seated player
     Given a docks table with rowan and wren seated and no GM
     And both players are travelling
-    When "rowan" sends a move
+    When "rowan" sends a verb
     Then "rowan" gets a refused line with code BUSY
     And each seated player then gets a resume line and a perceive line
     And the host prints its status once

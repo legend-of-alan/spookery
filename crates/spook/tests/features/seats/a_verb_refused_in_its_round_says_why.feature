@@ -1,6 +1,6 @@
-Feature: A move refused in its round says why
+Feature: A verb refused in its round says why
 
-  Scenario: A move refused in its round says why
+  Scenario: A verb refused in its round says why
     Given a docks table
     When play joins the table as "harbormouse"
     And play types "take stick"

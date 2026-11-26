@@ -42,7 +42,7 @@ impl Target {
         matches!(self, Target::Empty)
     }
 
-    /// The id a move names.
+    /// The id a verb names.
     pub(crate) fn token(&self) -> Option<&str> {
         match self {
             Target::Place(id) => Some(id.as_str()),

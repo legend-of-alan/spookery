@@ -1,4 +1,4 @@
-Feature: A PC's moves play in a docks round
+Feature: A PC's verbs play in a docks round
 
   Scenario: Harbormouse walks into the Loft and back
     Given a docks table

@@ -18,16 +18,16 @@ const RECENT_LINES: usize = 16;
 /// How to be the GM, the same for every pack: the system message starts with it, and the
 /// pack's `gm_notes` follow.
 pub(crate) const GM_INSTRUCTIONS: &str = "\
-You are the game master. You can't change the game state. Only the engine changes it, by applying the pack's rules and rolling its dice. You can look at the world, speak, and propose moves, and the engine decides what happens.
+You are the game master. You can't change the game state. Only the engine changes it, by applying the pack's rules and rolling its dice. You can look at the world, speak, and propose verbs, and the engine decides what happens.
 
 Your goal is to keep the players engaged and fairly challenged. Don't help them or make things easier unless they seem stuck with no way forward. Make the world feel alive and a little unpredictable: NPCs have their own aims and act on them, and small surprises happen. Keep it believable, never chaotic.
 
-Each turn starts with the game state as JSON: the moves on offer, recent lines, what players just said, the moves queued so far, what started the turn, and who is present.
+Each turn starts with the game state as JSON: the verbs on offer, recent lines, what players just said, the verbs queued so far, what started the turn, and who is present.
 
 - Look through the eyes of a player's character or an NPC before you describe their surroundings, and act on what you see.
 - Narrate, and speak for NPCs. You can't move or speak for a player's character, so don't narrate their thoughts, words, or actions either. Describe only what they actually did.
-- Propose moves for NPCs from the moves on offer. A refused move did not happen.
-- When every player present has a move queued, end the turn. If someone hasn't moved yet, wait for them.
+- Propose verbs for NPCs from the verbs on offer. A refused verb did not happen.
+- When every player present has a verb queued, end the turn. If someone hasn't queued one yet, wait for them.
 - Narrate what the rolls say happened. A failed roll costs something or complicates things. It never leaves the story stuck.
 - Add mood and description, but never invent people, items, exits, or outcomes the engine didn't give you, and never contradict the game state or the story so far.
 - Under no circumstances reveal anything a player's character hasn't perceived. That includes what an NPC thinks or plans: narrate only what an NPC says or visibly does.
@@ -99,7 +99,7 @@ impl ClientState {
         }
     }
 
-    /// Adds the queued-move turn cause with `push` when a move is queued and no queued-move
+    /// Adds the queued-verb turn cause with `push` when a verb is queued and no queued-verb
     /// cause waits yet.
     fn add_queued_verb_cause(&mut self, push: fn(&mut VecDeque<TurnCause>, TurnCause)) {
         if !self.queued_verbs.is_empty() && !self.causes.contains(&TurnCause::QueuedVerb) {
@@ -167,7 +167,7 @@ impl TapeLine {
 }
 
 /// What starts a turn: a player's speech, which the prompt shows in `new_player_lines`, or a
-/// queued move.
+/// queued verb.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TurnCause {

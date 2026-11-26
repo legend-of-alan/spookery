@@ -102,7 +102,7 @@ impl Session {
 
     /// Append a player's speech. `presence` is who can hear it. Speech to an actor reads
     /// `opening` and `text` as one line, and its listener is the longest run of leading words
-    /// that names an actor in sight, by id or name, as a move's target is; the rest is
+    /// that names an actor in sight, by id or name, as a verb's target is; the rest is
     /// the text. A name two of them share is `AMBIGUOUS_NAME`, and a line that names nobody is
     /// said at the table, its text the whole line.
     pub fn say_as_player(
@@ -268,7 +268,7 @@ impl<Lock> Session<Lock> {
     /// sight that has it, and a name two of them share is `AMBIGUOUS_NAME`, its detail the
     /// name and those ids, as `Briar: bram, briar`. Only a save at
     /// the last round index has no next round to name, and refuses `SCHEMA` with an empty id.
-    /// Returns the queued move and the target id it names.
+    /// Returns the queued verb and the target id it names.
     pub fn queue_player_verb(
         &mut self,
         presence: &Presence,

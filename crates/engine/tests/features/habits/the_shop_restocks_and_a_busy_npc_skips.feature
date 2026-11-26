@@ -18,7 +18,7 @@ Feature: Habits keep the shop's items and leave the door note
   Scenario: A queued door note sorts ahead of an unclaimed wait
     When the GM queues the door note ahead of a wait
 
-  Scenario: An NPC walking toward a seated player moves before an NPC who waits
+  Scenario: An NPC walking toward a seated player plays before an NPC who waits
     Given the docks pack allows 1 intent per round
     And the stair door stands open
     When Bram and Aldric wait and then Mira travels through the "stairs" exit

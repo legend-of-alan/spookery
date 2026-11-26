@@ -1,4 +1,4 @@
-//! Pick the rule a move runs, then admit it or refuse it with a reason.
+//! Pick the rule a verb runs, then admit it or refuse it with a reason.
 
 use serde::{Deserialize, Serialize};
 use spookery_protocol::is_named;
@@ -40,7 +40,7 @@ impl Refusal {
 
 /// The rule `viewer`'s `verb_id` runs, the queue's and the round's alike. An NPC's habit is
 /// picked by its local id first; any other verb is `verb_for`'s, looking in `hint` first.
-/// A full rule id picks nothing. A player's move never runs a habit, and a missing rule is
+/// A full rule id picks nothing. A player's verb never runs a habit, and a missing rule is
 /// `NOT_IN_SPEC` for it and `UNKNOWN_VERB` for anyone else.
 pub(crate) fn pick<'a>(
     canon: &'a Canon,

@@ -6,7 +6,7 @@
 //!   Scenario: Running a round's effects again matches the logged effects
 //!     Given the docks pack
 //!     And a successful exert check adds one lamp oil
-//!     When random legal player moves and habit rounds are played
+//!     When random legal player verbs and habit rounds are played
 //!     Then running each round again yields the effects written in the journal
 //! ```
 //!

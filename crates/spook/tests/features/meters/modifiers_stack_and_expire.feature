@@ -3,7 +3,7 @@ Feature: Modifiers stack per application, add ticks on reapply, and expire at on
   Background:
     Given the docks pack with one-tick rounds and rowan's vigor at 20, with three PCs in the shop
 
-  Scenario: Two moves apply fatigue with different strength, and both count
+  Scenario: Two verbs apply fatigue with different strength, and both count
     Given "fatigue" modifies vigor and has max_stacks 4
     And the jab verb applies fatigue -1 and the slam verb applies fatigue -2, each for 10 ticks
     When rowan is hit by the jab and then the slam in one round
@@ -49,7 +49,7 @@ Feature: Modifiers stack per application, add ticks on reapply, and expire at on
 
   Scenario: A cost paid while fatigue is on moves vigor as its player reads it
     Given "fatigue" modifies vigor, and rowan holds one stack of fatigue of -2 over a stored vigor of 5
-    When rowan makes a move that costs 1 vigor
+    When rowan plays a verb that costs 1 vigor
     Then the GM sees "actor_meter rowan vigor" as a changed key, going from 3 to 2
     And a change rule that waits for vigor below 3 fires
 

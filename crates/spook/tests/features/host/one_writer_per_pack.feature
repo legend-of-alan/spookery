@@ -22,7 +22,7 @@ Feature: One writer per pack
   Scenario: the table keeps a verifiable journal after a refused round
     Given spook run is serving a docks table
     And spook round was refused
-    When a seated player commits a move
+    When a seated player plays a verb
     And spook run stops
     Then spook verify passes
 

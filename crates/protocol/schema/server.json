@@ -890,7 +890,7 @@
           }
         },
         "cant_act": {
-          "description": "Why the viewer can't send a move at all. Empty when they can, and empty today: being\nbusy is `busy`, not this.",
+          "description": "Why the viewer can't send a verb at all. Empty when they can, and empty today: being\nbusy is `busy`, not this.",
           "type": "string"
         },
         "busy": {

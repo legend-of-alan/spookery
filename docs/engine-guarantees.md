@@ -3,7 +3,7 @@
 This page states what the engine promises. The feature files test those
 promises. Where this page and the feature files disagree, the feature files win.
 
-A tick is a unit of game time. A round is one batch of queued moves, settled
+A tick is a unit of game time. A round is one batch of intents, settled
 together.
 
 Field names are in the [pack reference](pack-reference.md). Socket bytes are in
@@ -13,7 +13,7 @@ the [seat protocol](seat-protocol.md).
 
 A round commit and a migrate, which stores a new hash of the world, cast, and
 rules files, each bump `state_rev`. Claiming or leaving writes nothing. A GM `say` is
-speech. A commit runs the queued moves as one round, in queue order. With no GM,
+speech. A commit runs the queued intents as one round, in queue order. With no GM,
 each player line commits its own round. A call off the GM menu is refused.
 Speech goes on the tape and leaves the journal and the clock alone. A world,
 cast, or rules file that no longer matches the save is refused, and that round
@@ -68,13 +68,13 @@ verification (`spook verify --quick`)
 checks the chain and replays only the latest bundle from the snapshot it starts
 at. Startup uses that same snapshot and the live bundle, and does not open a
 closed bundle. Verify names the record and the first save line that
-differs when a logged move no longer matches. An edit in a closed bundle fails
+differs when a logged verb no longer matches. An edit in a closed bundle fails
 verification and names that bundle. When logged effects differ from a fresh
 run, verify names that round and the first effect that differs. A journal nobody
 edited passes verify. Verify leaves the pack
 unchanged. Each roll keeps its own dice. An
 unrelated roll in the same round does not move them, and verify reproduces
-them. Two moves that target each other in one round each roll once, against
+them. Two verbs that target each other in one round each roll once, against
 their own rule's `success_at`. A number in a rule can roll dice, a check's `total` and an NPC habit's effect among them. Those faces derive from the world's
 seed and the round, are written on the journal line, and are shown to the GM. A
 save with no seed gets a fresh one the first time the world opens for play, so
@@ -121,33 +121,33 @@ Tested in `features/seats/one_gm_and_three_players.feature`,
 
 ## Ordering
 
-A later move sees what an earlier move in that round already changed. One
+A later verb sees what an earlier verb in that round already changed. One
 refused effect rolls the whole rule back. A rule over the effect cap is refused
 whole, not cut short, so none of its effects land. That holds for a change
-rule too. A move's check rolls when the move lands, after the gate admits it
-and its start cost is paid. So the check reads what earlier moves that round
-changed, a move the gate refuses then rolls no dice, and a roll whose effects
+rule too. A verb's check rolls when the verb lands, after the gate admits it
+and its start cost is paid. So the check reads what earlier verbs that round
+changed, a verb the gate refuses then rolls no dice, and a roll whose effects
 are refused is not reported as a success. A check's `success_at`
-that fails to evaluate refuses that move with its error, and the rest of the
-round lands and commits. A move pays the cost of the rule picked for it when the
-round starts, even when an earlier move that round changed which rule its verb would pick. A place's verb rule beats the shared rule. A cast
+that fails to evaluate refuses that verb with its error, and the rest of the
+round lands and commits. A verb pays the cost of the rule picked for it when the
+round starts, even when an earlier verb that round changed which rule its verb would pick. A place's verb rule beats the shared rule. A cast
 member's verb rule is picked by naming them while they share the actor's place,
 and a bare verb never reaches it. A wielded item's rule for any verb beats the
 target's, the place's and the shared rule, so a wielded weapon's attack beats the
 shared attack. With nothing wielded, the shared attack runs. Typing a full rule id is
 refused and the save stays put. A note addressed to someone present runs before
-an unclaimed wait, even if the wait was queued first. So does a move through an
+an unclaimed wait, even if the wait was queued first. So does a travel through an
 exit into a seated player's room. An NPC habit stays quiet while a player shares
 the room. The GM can still queue it, and a GM-queued habit is checked the same
 as one the engine runs, so a habit that adds to a meter its place does not
-carry is refused either way and sets nothing. A move the round has no room for is
+carry is refused either way and sets nothing. An intent the round has no room for is
 refused `BUDGET`, never dropped: one past the intent limit, and every one after
 a rule that goes over the state-key limit.
 
 Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/round/an_intent_the_round_has_no_room_for_is_refused_budget.feature`,
-`features/round/a_broken_success_at_refuses_one_move.feature`,
-`features/round/a_move_pays_the_rule_picked_when_the_round_starts.feature`,
+`features/round/a_broken_success_at_refuses_one_verb.feature`,
+`features/round/a_verb_pays_the_rule_picked_when_the_round_starts.feature`,
 `features/seats/a_round_refusal_names_the_gap.feature`,
 `features/rules/rules_live_with_their_owner.feature`,
 `features/rules/a_gm_queued_habit_is_judged_like_the_engines.feature`,
@@ -258,12 +258,12 @@ An exit reads as its path's name, or else as the name of the place it goes to. A
 player names it by its path's id or name, or by that place's id or name, and a
 word two exits answer to is refused `AMBIGUOUS_NAME` with both path ids.
 A walk that takes ticks puts the traveller on the path at once, in neither
-room, and keeps them busy until they arrive at the end they head for. A move
+room, and keeps them busy until they arrive at the end they head for. A verb
 before then is refused. Walkers on one path are in the same place whichever way
 each heads, and a walker reads the name of the exit toward the end they head
 for. The
 round does not shrink: a seated round still advances five ticks, a two-tick
-exit lands the traveller inside that round, and the next move is the
+exit lands the traveller inside that round, and the next verb is the
 following round. With every seat empty, a round advances sixty ticks. An earlier
 arrival is applied first. When every seated player is busy and no GM is seated,
 rounds run ahead without waiting on the wall clock, up to the pack's cap, and
@@ -277,13 +277,13 @@ Tested in `features/travel/travel_follows_the_map.feature`,
 
 ## Actions
 
-Every move but `say` starts and finishes through one path, whether it travels,
-teleports or does anything else. A move is checked when it is queued, by a
+Every verb starts and finishes through one path, whether it travels,
+teleports or does anything else. A verb is checked when it is queued, by a
 player or by the GM, so a busy actor is refused `BUSY` at once and keeps the
-turn. It is checked again when it starts, since an earlier move that round may
+turn. It is checked again when it starts, since an earlier verb that round may
 have changed the world, and a habit is checked only then. A GM-queued habit is
 checked the same as one the engine picks, its `if` included. The start pays
-its cost and, unless the rule says otherwise, uses the actor's act. A move
+its cost and, unless the rule says otherwise, uses the actor's act. A verb
 that takes no ticks finishes in the round it starts. A timed one finishes in
 the round that reaches its tick, and every effect lands then, a teleport
 included. After the finish the actor stays busy through the rule's cooldown.
@@ -294,7 +294,7 @@ Tested in `features/rules/one_action_lifecycle.feature`.
 ## Cancelling an action
 
 A player may cancel their own timed action while it is under way, when its rule
-says `cancellable`. The cancel is a move like any other, played in a round, so
+says `cancellable`. The cancel is a verb like any other, played in a round, so
 replay sees it. The action is dropped and its actor is free at once. Nothing it
 cost comes back, and its finish never runs. A cancel with no action under way,
 on a rule that is not cancellable, or on a walk is refused `INELIGIBLE`, and
@@ -312,7 +312,7 @@ ticks, and a round that crosses the end of a window gives that count back.
 Players and the GM see plain ticks, as `until tick 1300`. Check refuses a cycle
 length or an act window of 0, a `cycle` that names no cycle in the budget, or an
 integer bound at or past the cycle's length. A bound read at play outside the
-cycle refuses the move.
+cycle refuses the verb.
 
 Tested in `features/rules/windows_read_the_tick.feature`,
 `features/seats/a_player_knows_the_place.feature`,
@@ -338,15 +338,15 @@ pass below zero from a count above zero, and the rest of that rule is not kept.
 `NOT_A_WEAPON` is wielding an item that is not a weapon. `UNKNOWN_VERB` is a
 verb the actor does not have. `TABLE_FULL` is a fourth player or a second GM.
 `SEAT_TAKEN` is a claim for a character another seat holds, even one whose
-connection dropped. `ACTOR_MISMATCH` is a GM move for a PC a player holds.
+connection dropped. `ACTOR_MISMATCH` is a GM intent for a PC a player holds.
 `UNKNOWN_ID` is a claim by a token no claim holds. `LINE_TOO_LONG`
 is a message over 8 KiB, and the connection stays up. `SCHEMA` is a command the
-hello did not list. `NOT_IN_SPEC` is a full rule id used as a move, an address
+hello did not list. `NOT_IN_SPEC` is a full rule id used as a verb, an address
 that is not loopback, or a verb no rule matches, which is refused before the
 round so the turn is kept. `UNKNOWN_EFFECT` is
 a journal effect the engine does not run. `INELIGIBLE` is an NPC's habit in a round
-where a move the GM queued for that NPC already landed. `NO_EXIT` is a missing exit.
-`BUSY` is a move while busy.
+where an intent the GM queued for that NPC already landed. `NO_EXIT` is a missing exit.
+`BUSY` is an intent from a busy actor.
 
 Check's codes for a broken pack are `SCHEMA`, `NOT_IN_SPEC`,
 `PACK_REV_MISMATCH`, `TRIGGER_LEAK`, and `WARNING`. A warning alone does not
@@ -371,7 +371,7 @@ The host binds loopback only. Any other address is refused before the pack opens
 and the pack is unchanged. A player line with no end, a hello that never
 finishes, and an HTTP body over the size cap are refused. The save stays, and
 another player can still claim a PC. Invalid text from a seated player is refused, and
-that player can still move. A flood from one player does not stop another's
+that player can still play. A flood from one player does not stop another's
 round. A player who stops reading is dropped, and the other keeps receiving
 frames. The model client does not dial when a setting is missing.
 
@@ -395,7 +395,7 @@ lists each place their save says they visited, with the exits they saw there
 when they last stood there at the end of a round. Where those exits go and
 whether they are locked is read now. A busy player sees what keeps them busy:
 `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any
-other timed move, and `recovering until tick 1300` in a cooldown. A player names only
+other timed action, and `recovering until tick 1300` in a cooldown. A player names only
 what they hold or what that view shows, by its id or by the name they
 read, in any case. `help`, the room's items, the exits and the character
 picker show names, and an unnamed exit whose id is where it goes shows that

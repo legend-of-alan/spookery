@@ -40,7 +40,7 @@ fn the_state_is_unchanged(world: &mut World) {
     assert_eq!(read_state_files(world), world.state_files, "state/ changed");
 }
 
-#[when(expr = "a seated player commits a move")]
+#[when(expr = "a seated player plays a verb")]
 async fn a_seated_player_commits_a_verb(world: &mut World) {
     let pack = host::pack(world).to_path_buf();
     host::seat_rowan(world, &pack).await;
