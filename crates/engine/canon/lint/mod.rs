@@ -130,49 +130,48 @@ fn rule_and_path_conds(canon: &Canon) -> impl Iterator<Item = (&str, String, &[C
 }
 
 /// Flag conds, on a rule or a path, a change rule's flag watch and a path's `revealed_by`,
-/// that name a key no rule sets and `saved_flags` does not list, so its value never moves: most likely
-/// a misspelt key. `open` gets no warning here: the round sets it on paths, not through rules,
+/// that name an id no rule sets and `saved_flags` does not list, so its value never moves: most likely
+/// a misspelt id. `open` gets no warning here: the round sets it on paths, not through rules,
 /// and `find_missing_components` checks it in a cond.
 fn find_unset_flags(canon: &Canon, saved_flags: &BTreeSet<&str>) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     let is_ever_set =
-        |key| saved_flags.contains(key) || find_flag_objects(canon, key).next().is_some();
+        |id| saved_flags.contains(id) || find_flag_objects(canon, id).next().is_some();
     let hint = "set the flag in a rule or the save, or name a flag that is set";
     let unset_message =
-        |key: &str| format!("names flag '{key}', which no rule sets and no save holds");
+        |id: &str| format!("names flag '{id}', which no rule sets and no save holds");
     for (file, key_path, conds) in rule_and_path_conds(canon) {
         for cond in conds {
             cond.visit(|cond| {
-                let Cond::Flag { key, .. } = cond else {
+                let Cond::Flag { id, .. } = cond else {
                     return;
                 };
-                if key == OPEN || is_ever_set(key.as_str()) {
+                if id == OPEN || is_ever_set(id.as_str()) {
                     return;
                 }
-                diagnostics
-                    .push(warning(file, &unset_message(key), hint).at_path(key_path.clone()));
+                diagnostics.push(warning(file, &unset_message(id), hint).at_path(key_path.clone()));
             });
         }
     }
     for rule in canon.rules.iter() {
-        let RuleKind::Change(ChangeWatch::Flag { key, .. }) = &rule.kind else {
+        let RuleKind::Change(ChangeWatch::Flag { id, .. }) = &rule.kind else {
             continue;
         };
-        if key != OPEN && !is_ever_set(key) {
+        if id != OPEN && !is_ever_set(id) {
             let key_path = format!("rules[{}].when", rule.index);
-            diagnostics.push(warning(&rule.file, &unset_message(key), hint).at_path(key_path));
+            diagnostics.push(warning(&rule.file, &unset_message(id), hint).at_path(key_path));
         }
     }
     for (index, path_def) in canon.paths.iter().enumerate() {
-        let Some(key) = path_def
+        let Some(id) = path_def
             .revealed_by
             .as_deref()
-            .filter(|key| !is_ever_set(key))
+            .filter(|id| !is_ever_set(id))
         else {
             continue;
         };
         let key_path = format!("paths[{index}].revealed_by");
-        diagnostics.push(warning(map::FILE, &unset_message(key), hint).at_path(key_path));
+        diagnostics.push(warning(map::FILE, &unset_message(id), hint).at_path(key_path));
     }
     diagnostics
 }
@@ -289,14 +288,14 @@ fn find_teleport_verbs(canon: &Canon) -> Vec<Diagnostic> {
         .collect()
 }
 
-/// The entities a rule can make hold flag `key`: the `of` of each flag effect that writes it.
-fn find_flag_objects<'c>(canon: &'c Canon, key: &str) -> impl Iterator<Item = &'c grammar::Object> {
+/// The entities a rule can make hold flag `id`: the `of` of each flag effect that writes it.
+fn find_flag_objects<'c>(canon: &'c Canon, id: &str) -> impl Iterator<Item = &'c grammar::Object> {
     let mut objects = Vec::new();
     for rule in canon.rules.iter() {
         rule.visit_templates(|effect| match effect {
             EffectTemplate::Flag {
-                of, key: written, ..
-            } if written == key => objects.push(of),
+                of, id: written, ..
+            } if written == id => objects.push(of),
             _ => {}
         });
     }

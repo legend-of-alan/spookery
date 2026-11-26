@@ -16,7 +16,7 @@ rules:
     do:
       - flag:
           of: world
-          key: chocked
+          id: chocked
           value: true
       - narrate:
           to: self

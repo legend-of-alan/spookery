@@ -6,9 +6,9 @@ paths:
     cost:
       ticks: 15
     if:
-      - flag: { of: world, key: passage, is: true }
+      - flag: { of: world, id: passage, is: true }
       - not:
-          flag: { of: world, key: lost, is: true }
+          flag: { of: world, id: lost, is: true }
     locked_text: Briar keeps the gate shut.
   - path: yard -> lane
     id: cart
@@ -16,9 +16,9 @@ paths:
     cost:
       ticks: 15
     if:
-      - flag: { of: world, key: wheel_set, is: true }
+      - flag: { of: world, id: wheel_set, is: true }
       - not:
-          flag: { of: world, key: lost, is: true }
+          flag: { of: world, id: lost, is: true }
     locked_text: The cart won't move.
   - path: lane -> yard
   - path: yard <-> loft

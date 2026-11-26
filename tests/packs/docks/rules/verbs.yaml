@@ -32,12 +32,12 @@ rules:
     success:
       - meter:
           of: target
-          key: hp
+          id: hp
           add: "-(self.might / 10)"
     partial:
       - meter:
           of: target
-          key: hp
+          id: hp
           add: -1
 
   - id: take

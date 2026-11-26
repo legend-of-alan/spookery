@@ -269,7 +269,7 @@ fn a_spill_leaves_briar_a_note(world: &mut World) {
     let pack = host::pack(world).to_path_buf();
     add_verb(
         &pack,
-        "  - id: spill\n    when:\n      verb: spill\n    do:\n      - note:\n          id: note_sealed_name\n          to:\n            - briar\n          text: the sealed name\n      - flag:\n          of: world\n          key: sealed_name_spilled\n          value: true\n      - meter:\n          of: briar\n          key: hp\n          add: -1\n",
+        "  - id: spill\n    when:\n      verb: spill\n    do:\n      - note:\n          id: note_sealed_name\n          to:\n            - briar\n          text: the sealed name\n      - flag:\n          of: world\n          id: sealed_name_spilled\n          value: true\n      - meter:\n          of: briar\n          id: hp\n          add: -1\n",
     );
     stamp_pack_rev(&pack);
 }

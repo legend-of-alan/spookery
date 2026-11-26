@@ -86,11 +86,11 @@ fn a_timed_teleport(world: &mut World, verb: String, ticks: u64) {
 }
 
 #[given(expr = "the rule {string} takes {int} ticks and has a cooldown of {int} ticks")]
-fn a_cooldown(world: &mut World, verb: String, ticks: u64, cooldown: u64) {
+fn a_cooldown(world: &mut World, verb: String, ticks: u64, cooldown_ticks: u64) {
     add_verb(
         world,
         &format!(
-            "\n  - id: {verb}\n    when:\n      verb: {verb}\n    cost:\n      ticks: {ticks}\n    cooldown: {cooldown}\n    do: []\n"
+            "\n  - id: {verb}\n    when:\n      verb: {verb}\n    cost:\n      ticks: {ticks}\n    cooldown_ticks: {cooldown_ticks}\n    do: []\n"
         ),
     );
 }
@@ -113,7 +113,7 @@ fn timed_verb(verb: &str, ticks: u64, extra: &str) -> String {
 {extra}    do:
       - flag:
           of: world
-          key: {verb}_done
+          id: {verb}_done
           value: true
 "
     )

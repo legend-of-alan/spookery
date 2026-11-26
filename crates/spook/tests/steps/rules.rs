@@ -209,7 +209,7 @@ rules:
     do:
       - flag:
           of: self
-          key: took_the_ferry
+          id: took_the_ferry
           value: true
 ---
 The ferry waits at the dock.
@@ -460,12 +460,12 @@ fn attack_targets_defense(world: &mut World) {
     success:
       - flag:
           of: target
-          key: hit
+          id: hit
           value: true
     miss:
       - flag:
           of: target
-          key: missed
+          id: missed
           value: true
 "#,
     );
@@ -693,7 +693,7 @@ rules:
     do:
       - flag:
           of: self
-          key: took_the_street
+          id: took_the_street
           value: true
 ",
     );
@@ -828,7 +828,7 @@ fn a_verb_with_time_and_a_nested_check(world: &mut World) {
           success:
             - meter:
                 of: self
-                key: vigor
+                id: vigor
                 add: 1
 "#,
     );

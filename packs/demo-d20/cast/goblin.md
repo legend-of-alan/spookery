@@ -29,7 +29,7 @@ rules:
     success:
       - meter:
           of: corin
-          key: hp
+          id: hp
           add: -2
       - narrate:
           to: corin
@@ -55,7 +55,7 @@ rules:
     success:
       - meter:
           of: target
-          key: nerve
+          id: nerve
           add: -1
       - narrate:
           to: self
@@ -63,7 +63,7 @@ rules:
     partial:
       - meter:
           of: self
-          key: hp
+          id: hp
           add: -2
       - narrate:
           to: self
@@ -71,7 +71,7 @@ rules:
     miss:
       - meter:
           of: self
-          key: hp
+          id: hp
           add: -3
       - modifier:
           to: self

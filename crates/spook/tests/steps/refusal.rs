@@ -49,7 +49,7 @@ rules:
     do:
       - flag:
           of: self
-          key: grabbed
+          id: grabbed
           value: true
       - item:
           of: here
@@ -122,7 +122,7 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
     do:
       - item: { of: self, id: target, add: -1 }
       - item: { of: here, id: target, add: 1 }
-      - flag: { of: \"path:gate_yard.loft\", key: open, value: false }
+      - flag: { of: \"path:gate_yard.loft\", id: open, value: false }
 ";
     let next = text.replacen("rules:\n", drop, 1);
     assert_ne!(text, next, "the loft exit was not locked");
@@ -186,7 +186,7 @@ async fn one_effect_is_over_budget(world: &mut World) {
     do:
       - flag:
           of: self
-          key: tapped
+          id: tapped
           value: true
 ",
     );
@@ -280,7 +280,7 @@ rules:
     do:
       - flag:
           of: self
-          key: heaved
+          id: heaved
           value: true
 ",
     );
@@ -294,7 +294,7 @@ rules:
     do:
       - meter:
           of: bram
-          key: vigor
+          id: vigor
           add: -1
 ",
     );

@@ -293,7 +293,7 @@ rules:
   - id: ask
     when: { verb: ask, target: actor }
     cost: { ticks: 10 }
-    do: [meter: { of: target, key: rest, add: -1 }]
+    do: [meter: { of: target, id: rest, add: -1 }]
 ---";
     let next = text.replacen("  eligible: false\n---", rule, 1);
     assert_ne!(next, text, "aldric's front matter moved");
@@ -522,8 +522,8 @@ fn a_street_rule_over_the_cap(world: &mut World) {
     let rule = "  - id: greeted
     when: { change: { arrive: here, subject: rowan } }
     do:
-      - flag: { of: self, key: greeted, value: true }
-      - flag: { of: self, key: welcomed, value: true }";
+      - flag: { of: self, id: greeted, value: true }
+      - flag: { of: self, id: welcomed, value: true }";
     add_place_rules(&pack, "docks_street", rule);
     support::stamp_pack_rev(&pack);
     make_mira_ineligible(&pack);
@@ -645,8 +645,8 @@ fn the_docks_pack_allows_keys(world: &mut World, limit: u64) {
   - id: overset
     when: { verb: overset }
     do:
-      - flag: { of: world, key: greeted, value: true }
-      - flag: { of: world, key: welcomed, value: true }
+      - flag: { of: world, id: greeted, value: true }
+      - flag: { of: world, id: welcomed, value: true }
 ",
     );
     make_mira_ineligible(&pack);
@@ -888,7 +888,7 @@ fn a_cast_member_the_save_does_not_list(world: &mut World, row: String) {
   - id: {row}
     when: {{ verb: {row} }}
     do:
-      - flag: {{ of: nell, key: marked, value: true }}
+      - flag: {{ of: nell, id: marked, value: true }}
 "
         ),
     );

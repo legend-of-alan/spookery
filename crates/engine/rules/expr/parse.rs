@@ -186,17 +186,19 @@ impl Parser<'_> {
         while self.peek().is_ascii_alphanumeric() || matches!(self.peek(), '_' | ':' | '.') {
             self.pos += 1;
         }
-        let entity_and_key = &self.src[start..self.pos];
-        if entity_and_key == word {
+        let entity_and_meter_id = &self.src[start..self.pos];
+        if entity_and_meter_id == word {
             return Ok(Expr::Let {
                 id: word,
                 keep: None,
             });
         }
-        let Some((entity, key)) = entity_and_key.rsplit_once('.') else {
+        let Some((entity, meter_id)) = entity_and_meter_id.rsplit_once('.') else {
             return Err(self.not_a_number());
         };
-        if !key.starts_with(|ch: char| ch.is_ascii_alphabetic() || ch == '_') || key.contains(':') {
+        if !meter_id.starts_with(|ch: char| ch.is_ascii_alphabetic() || ch == '_')
+            || meter_id.contains(':')
+        {
             return Err(self.not_a_number());
         }
         let of = match grammar::Object::parse(entity)? {
@@ -207,7 +209,7 @@ impl Parser<'_> {
         };
         Ok(Expr::Meter {
             of,
-            key: key.to_string(),
+            id: meter_id.to_string(),
             file_location: None,
         })
     }

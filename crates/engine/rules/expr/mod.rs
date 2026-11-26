@@ -39,7 +39,7 @@ pub enum Expr {
     },
     Meter {
         of: grammar::Object,
-        key: String,
+        id: String,
         file_location: Option<FileLocation>,
     },
     Binary {

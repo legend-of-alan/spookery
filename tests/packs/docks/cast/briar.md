@@ -13,7 +13,7 @@ rules:
     do:
       - flag:
           of: world
-          key: passage
+          id: passage
           value: true
       - narrate:
           to: self

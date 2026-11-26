@@ -32,7 +32,7 @@ pub(super) fn find_cycles(canon: &Canon) -> Vec<Diagnostic> {
             let RuleKind::Change(watch) = &rule.kind else {
                 continue;
             };
-            if writes.iter().any(|write| sets_watch(watch, rule, write)) {
+            if writes.iter().any(|write| sets_watch(watch, write)) {
                 next[from].push(to);
             }
         }
@@ -90,7 +90,7 @@ pub(super) fn find_leaks(canon: &Canon) -> Vec<Diagnostic> {
 /// A value an effect writes, as a change watch matches it.
 #[derive(Clone)]
 enum EffectWrite {
-    Flag { key: String, value: bool },
+    Flag { id: String, value: bool },
     Meter(String),
     Item { id: String, gained: bool },
     Arrive(String),
@@ -118,13 +118,13 @@ fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<EffectWrite
                 out.push(EffectWrite::Meter(def.meter.clone()));
             }
         }
-        EffectTemplate::Flag { key, value, .. } => {
+        EffectTemplate::Flag { id, value, .. } => {
             out.push(EffectWrite::Flag {
-                key: key.clone(),
+                id: id.clone(),
                 value: *value,
             });
         }
-        EffectTemplate::Meter { key, .. } => out.push(EffectWrite::Meter(key.clone())),
+        EffectTemplate::Meter { id, .. } => out.push(EffectWrite::Meter(id.clone())),
         EffectTemplate::Item { id, add, .. } => {
             let constant_sign = add.constant().map(i64::signum);
             for (gained, sign) in [(true, 1), (false, -1)] {
@@ -144,32 +144,26 @@ fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<EffectWrite
     }
 }
 
-fn sets_watch(watch: &ChangeWatch, rule: &Rule, write: &EffectWrite) -> bool {
+fn sets_watch(watch: &ChangeWatch, write: &EffectWrite) -> bool {
     match (watch, write) {
-        (
-            ChangeWatch::Flag { key, becomes },
-            EffectWrite::Flag {
-                key: written,
-                value,
-            },
-        ) => key == written && becomes == value,
-        (ChangeWatch::Meter { key, .. }, EffectWrite::Meter(written)) => key == written,
+        (ChangeWatch::Flag { id, becomes }, EffectWrite::Flag { id: written, value }) => {
+            id == written && becomes == value
+        }
+        (ChangeWatch::Meter { id, .. }, EffectWrite::Meter(written)) => id == written,
         (
             ChangeWatch::Item { id, gained },
             EffectWrite::Item {
                 id: written,
-                gained: up,
+                gained: written_gained,
             },
-        ) => id == written && gained == up,
-        (ChangeWatch::Arrive { place, .. }, EffectWrite::Arrive(dest)) => {
-            rule.watched_place(place) == dest
-        }
+        ) => id == written && gained == written_gained,
+        (ChangeWatch::Arrive { place_id, .. }, EffectWrite::Arrive(written)) => place_id == written,
         _ => false,
     }
 }
 
 fn sight_of(canon: &Canon, watch: &ChangeWatch) -> Sight {
-    if watches_world(canon, watch) && !watches_actor_key(canon, watch) {
+    if watches_world(canon, watch) && !watches_actor(canon, watch) {
         Sight::World
     } else {
         Sight::Place
@@ -200,16 +194,16 @@ fn is_too_wide(sight: &Sight, reach: &Reach) -> bool {
 /// exit.
 fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
     match watch {
-        ChangeWatch::Meter { key, .. } => {
-            canon.world_meters.contains_key(key)
+        ChangeWatch::Meter { id, .. } => {
+            canon.world_meters.contains_key(id)
                 || canon
                     .meters
-                    .get(key)
+                    .get(id)
                     .is_some_and(|def| !def.is_actor_meter())
         }
-        ChangeWatch::Flag { key, .. } => {
-            (key == OPEN && canon.paths.iter().any(PathDef::is_conditional))
-                || super::find_flag_objects(canon, key)
+        ChangeWatch::Flag { id, .. } => {
+            (id == OPEN && canon.paths.iter().any(PathDef::is_conditional))
+                || super::find_flag_objects(canon, id)
                     .any(|of| !matches!(of, grammar::Object::Actor(_)))
         }
         _ => false,
@@ -218,14 +212,13 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
 
 /// Whether an actor may also hold the meter or flag `watch` names, so the watch can match an
 /// actor's change as well as the world's.
-fn watches_actor_key(canon: &Canon, watch: &ChangeWatch) -> bool {
+fn watches_actor(canon: &Canon, watch: &ChangeWatch) -> bool {
     match watch {
-        ChangeWatch::Meter { key, .. } => canon
-            .meters
-            .get(key)
-            .is_some_and(meter::Def::is_actor_meter),
-        ChangeWatch::Flag { key, .. } => {
-            super::find_flag_objects(canon, key).any(|of| matches!(of, grammar::Object::Actor(_)))
+        ChangeWatch::Meter { id, .. } => {
+            canon.meters.get(id).is_some_and(meter::Def::is_actor_meter)
+        }
+        ChangeWatch::Flag { id, .. } => {
+            super::find_flag_objects(canon, id).any(|of| matches!(of, grammar::Object::Actor(_)))
         }
         _ => false,
     }

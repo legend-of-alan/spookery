@@ -9,7 +9,7 @@ rules:
     do:
       - flag:
           of: world
-          key: finished
+          id: finished
           value: true
       - narrate:
           to: self

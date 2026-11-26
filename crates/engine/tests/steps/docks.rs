@@ -544,7 +544,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
         let pack = support::copy_pack("docks", label);
         let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         verbs.push_str(&format!(
-            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    check:\n      total: 2d6 + self.vigor\n      success_at: {difficulty}\n    do:\n      - flag:\n          of: target\n          key: marked\n          value: true\n",
+            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    check:\n      total: 2d6 + self.vigor\n      success_at: {difficulty}\n    do:\n      - flag:\n          of: target\n          id: marked\n          value: true\n",
         ));
         fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
         put_mira_in_the_shop(&pack);
@@ -563,7 +563,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
         let pack = support::copy_pack("docks", label);
         let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         verbs.push_str(&format!(
-            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    check:\n      total: 2d6 + self.vigor\n      success_at: {difficulty}\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n",
+            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    check:\n      total: 2d6 + self.vigor\n      success_at: {difficulty}\n    success:\n      - flag:\n          of: target\n          id: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          id: missed\n          value: true\n",
         ));
         fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
         put_mira_in_the_shop(&pack);
@@ -607,7 +607,7 @@ rules:
     do:
       - meter:
           of: self
-          key: assassination_debt
+          id: assassination_debt
           add: 1
 ---
 Rowan";

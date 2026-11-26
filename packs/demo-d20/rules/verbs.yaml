@@ -14,7 +14,7 @@ rules:
           via: target
       - meter:
           of: world
-          key: daylight
+          id: daylight
           add: -1
 
   - id: take
@@ -77,7 +77,7 @@ rules:
     do:
       - flag:
           of: world
-          key: wheel_set
+          id: wheel_set
           value: true
       - narrate:
           to: self
@@ -101,11 +101,11 @@ rules:
     do:
       - flag:
           of: world
-          key: wheel_set
+          id: wheel_set
           value: true
       - meter:
           of: world
-          key: daylight
+          id: daylight
           add: -3
       - narrate:
           to: self

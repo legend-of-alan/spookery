@@ -305,14 +305,14 @@ fn push_rule(
 
 fn rule_yaml(id: &str, watch: Option<&str>, effects: &[(String, bool)]) -> String {
     let when = match watch {
-        Some(flag) => format!("      change:\n        flag: {flag}\n        becomes: true\n"),
+        Some(flag_id) => format!("      change:\n        flag: {flag_id}\n        becomes: true\n"),
         None => "      change:\n        item: lamp_oil\n        gained: true\n    if:\n      - meter: { of: self, id: assassination_debt, op: \">=\", value: 0 }\n".to_string(),
     };
     let mut body = format!("  - id: {id}\n    when:\n{when}    do:\n");
-    for (key, value) in effects {
+    for (flag_id, value) in effects {
         let value = if *value { "true" } else { "false" };
         body.push_str(&format!(
-            "      - flag:\n          of: self\n          key: {key}\n          value: {value}\n"
+            "      - flag:\n          of: self\n          id: {flag_id}\n          value: {value}\n"
         ));
     }
     body

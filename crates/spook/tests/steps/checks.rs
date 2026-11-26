@@ -22,12 +22,12 @@ const NOTICE_ROWS: &str = "
     success:
       - flag:
           of: self
-          key: braced
+          id: braced
           value: true
     miss:
       - flag:
           of: self
-          key: slipped
+          id: slipped
           value: true
   - id: notice_hard
     when:
@@ -38,12 +38,12 @@ const NOTICE_ROWS: &str = "
     success:
       - flag:
           of: self
-          key: braced
+          id: braced
           value: true
     miss:
       - flag:
           of: self
-          key: slipped
+          id: slipped
           value: true
 ";
 
@@ -62,17 +62,17 @@ const CONTESTED_MARK_ROW: &str = "
     success:
       - flag:
           of: target
-          key: marked
+          id: marked
           value: true
     partial:
       - flag:
           of: target
-          key: grazed
+          id: grazed
           value: true
     miss:
       - flag:
           of: target
-          key: missed
+          id: missed
           value: true
 ";
 
@@ -275,7 +275,7 @@ fn insert_brace_habit(pack: &Path) {
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
     let next = text.replacen(
         "rules:\n  - id: leave_door_note\n",
-        "rules:\n  - id: brace\n    when: habit\n    check:\n      total: 2d6 + self.vigor\n      success_at: 14\n    success:\n      - flag:\n          of: self\n          key: braced\n          value: true\n    miss:\n      - flag:\n          of: self\n          key: slipped\n          value: true\n  - id: leave_door_note\n",
+        "rules:\n  - id: brace\n    when: habit\n    check:\n      total: 2d6 + self.vigor\n      success_at: 14\n    success:\n      - flag:\n          of: self\n          id: braced\n          value: true\n    miss:\n      - flag:\n          of: self\n          id: slipped\n          value: true\n  - id: leave_door_note\n",
         1,
     );
     assert_ne!(next, text, "mira habit was not inserted");
@@ -367,22 +367,22 @@ const PRESS_ROW: &str = "
     do:
       - flag:
           of: target
-          key: touched
+          id: touched
           value: true
     success:
       - flag:
           of: target
-          key: clean
+          id: clean
           value: true
     partial:
       - flag:
           of: target
-          key: halfway
+          id: halfway
           value: true
     miss:
       - flag:
           of: target
-          key: missed
+          id: missed
           value: true
 ";
 
@@ -397,22 +397,22 @@ const NOTICE_PARTIAL_ROW: &str = "
     do:
       - flag:
           of: self
-          key: touched
+          id: touched
           value: true
     success:
       - flag:
           of: self
-          key: clean
+          id: clean
           value: true
     partial:
       - flag:
           of: self
-          key: halfway
+          id: halfway
           value: true
     miss:
       - flag:
           of: self
-          key: missed
+          id: missed
           value: true
 ";
 

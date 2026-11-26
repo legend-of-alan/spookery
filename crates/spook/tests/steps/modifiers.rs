@@ -468,7 +468,7 @@ rules:
     do:
       - flag:
           of: story:strain
-          key: under_3
+          id: under_3
           value: true
   - id: under_4
     when:
@@ -478,7 +478,7 @@ rules:
     do:
       - flag:
           of: story:strain
-          key: under_4
+          id: under_4
           value: true
 ";
 

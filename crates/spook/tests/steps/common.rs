@@ -106,7 +106,7 @@ pub(crate) fn write_tide_story(pack: &Path, fields: &str) {
 
 /// The body of a verb rule that sets the world flag `tide_turned`, which makes `mark` in
 /// `story/tide.yaml` a world change rule.
-const TURN_TIDE: &str = "    do:\n      - flag: { of: world, key: tide_turned, value: true }\n";
+const TURN_TIDE: &str = "    do:\n      - flag: { of: world, id: tide_turned, value: true }\n";
 
 /// Writes `rules/modifiers.yaml` with these rows.
 fn write_modifiers(pack: &Path, rows: &str) {
@@ -130,11 +130,11 @@ pub(crate) fn format_meter_row(id: &str, hidden: Option<bool>) -> String {
     format!("  - id: {id}\n    min: 0\n    base_cap: 6\n    max: 6\n    base: 0\n{hidden}")
 }
 
-/// Appends verb rule `verb`, for the verb of the same id, with `body` after its `when`.
-fn add_verb_rule(pack: &Path, verb: &str, body: &str) {
+/// Appends verb rule `verb_id`, for the verb of the same id, with `body` after its `when`.
+fn add_verb_rule(pack: &Path, verb_id: &str, body: &str) {
     add_verb(
         pack,
-        &format!("\n  - id: {verb}\n    when:\n      verb: {verb}\n{body}"),
+        &format!("\n  - id: {verb_id}\n    when:\n      verb: {verb_id}\n{body}"),
     );
 }
 
@@ -310,19 +310,19 @@ fn break_pack(pack: &Path, fault: &str) {
         "target on a move with none" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "      verb: wait\n    do: []\n",
-            "      verb: wait\n    do:\n      - meter: { of: target, key: hp, add: -1 }\n",
+            "      verb: wait\n    do:\n      - meter: { of: target, id: hp, add: -1 }\n",
         ),
         "owner target on an item move" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "      verb: drop\n      target: item\n    do:\n",
-            "      verb: drop\n      target: item\n    do:\n      - meter: { of: target, key: hp, add: -1 }\n",
+            "      verb: drop\n      target: item\n    do:\n      - meter: { of: target, id: hp, add: -1 }\n",
         ),
         "a meter on a travel move's target" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "          via: target
 ",
             "          via: target
-      - meter: { of: target, key: hp, add: -1 }
+      - meter: { of: target, id: hp, add: -1 }
 ",
         ),
         "a travel move's target flag besides open" => replace_in_file(
@@ -330,7 +330,7 @@ fn break_pack(pack: &Path, fault: &str) {
             "          via: target
 ",
             "          via: target
-      - flag: { of: target, key: worn, value: true }
+      - flag: { of: target, id: worn, value: true }
 ",
         ),
         "id: target with no target" => replace_in_file(
@@ -345,13 +345,13 @@ fn break_pack(pack: &Path, fault: &str) {
         ),
         "target on an exit" => replace_in_file(
             &pack.join("world/map.yaml"),
-            "          of: world\n          key: passage\n",
-            "          of: target\n          key: passage\n",
+            "          of: world\n          id: passage\n",
+            "          of: target\n          id: passage\n",
         ),
         "a meter on the wrong actor" => replace_in_file(
             &pack.join("cast/bram.md"),
             "  eligible: true\n",
-            "  eligible: true\nrules:\n  - id: tally_shop_day\n    when: habit\n    do:\n      - meter: { of: self, key: shop_day, add: 1 }\n",
+            "  eligible: true\nrules:\n  - id: tally_shop_day\n    when: habit\n    do:\n      - meter: { of: self, id: shop_day, add: 1 }\n",
         ),
         "a cast meter that is global" => {
             let meters = format!("meters:\n{}", format_meter_row("vigor", None));
@@ -362,12 +362,12 @@ fn break_pack(pack: &Path, fault: &str) {
             replace_in_file(
                 &pack.join("cast/mira.md"),
                 "rules:\n",
-                "rules:\n  - id: bump_dawn\n    when: habit\n    do:\n      - meter: { of: self, key: dawn, add: 1 }\n",
+                "rules:\n  - id: bump_dawn\n    when: habit\n    do:\n      - meter: { of: self, id: dawn, add: 1 }\n",
             );
         }
         "self in a world change rule" => {
             add_verb_rule(pack, "turn_tide", TURN_TIDE);
-            let fields = "    do:\n      - flag: { of: self, key: saw_tide, value: true }\n";
+            let fields = "    do:\n      - flag: { of: self, id: saw_tide, value: true }\n";
             write_tide_story(pack, fields);
         }
         "a check in a world change rule" => {
@@ -416,13 +416,13 @@ fn break_pack(pack: &Path, fault: &str) {
             write_file(
                 pack,
                 "story/prologue.yaml",
-                "schema: story\nid: prologue\nrules:\n  - id: on_oil\n    when:\n      change:\n        item: lamp_oil\n        gained: true\n    do:\n      - meter: { of: \"story:prologue\", key: dread, add: 1 }\n",
+                "schema: story\nid: prologue\nrules:\n  - id: on_oil\n    when:\n      change:\n        item: lamp_oil\n        gained: true\n    do:\n      - meter: { of: \"story:prologue\", id: dread, add: 1 }\n",
             );
         }
         "an undeclared place meter" => add_verb_rule(
             pack,
             "bump",
-            "    do:\n      - meter: { of: \"place:docks_street\", key: light, add: 1 }\n",
+            "    do:\n      - meter: { of: \"place:docks_street\", id: light, add: 1 }\n",
         ),
         "a repeated story id" => {
             write_file(pack, "story/later.yaml", "schema: story\nid: ending\nrules: []\n");
@@ -453,27 +453,27 @@ fn break_pack(pack: &Path, fault: &str) {
         "partial_at without partial" => add_verb_rule(
             pack,
             "press",
-            "    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n      partial_at: 7\n    do:\n      - flag: { of: self, key: touched, value: true }\n",
+            "    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n      partial_at: 7\n    do:\n      - flag: { of: self, id: touched, value: true }\n",
         ),
         "partial without partial_at" => add_verb_rule(
             pack,
             "press",
-            "    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n    partial:\n      - flag: { of: self, key: halfway, value: true }\n",
+            "    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n    partial:\n      - flag: { of: self, id: halfway, value: true }\n",
         ),
         "partial_at above success_at" => add_verb_rule(
             pack,
             "press",
-            "    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n      partial_at: 10\n    success:\n      - flag: { of: self, key: touched, value: true }\n    partial:\n      - flag: { of: self, key: halfway, value: true }\n",
+            "    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n      partial_at: 10\n    success:\n      - flag: { of: self, id: touched, value: true }\n    partial:\n      - flag: { of: self, id: halfway, value: true }\n",
         ),
         "a nested partial_at without partial" => add_verb_rule(
             pack,
             "press",
-            "    do:\n      - check:\n          total: 2d6 + self.vigor\n          success_at: 10\n          partial_at: 7\n          success:\n            - flag: { of: self, key: touched, value: true }\n",
+            "    do:\n      - check:\n          total: 2d6 + self.vigor\n          success_at: 10\n          partial_at: 7\n          success:\n            - flag: { of: self, id: touched, value: true }\n",
         ),
         "partial without a check" => add_verb_rule(
             pack,
             "press",
-            "    partial:\n      - flag: { of: self, key: halfway, value: true }\n",
+            "    partial:\n      - flag: { of: self, id: halfway, value: true }\n",
         ),
         "a cast id world" => write_file(
             pack,

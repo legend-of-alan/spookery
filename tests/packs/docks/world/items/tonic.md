@@ -20,7 +20,7 @@ rules:
     do:
       - meter:
           of: self
-          key: hp
+          id: hp
           add: 4
 ---
 

@@ -126,7 +126,7 @@ fn roll_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Show
                 faces,
             })
         }
-        Expr::Meter { of, key, .. } => Ok(ShownValue::from(read_meter(context, of, key)?)),
+        Expr::Meter { of, id, .. } => Ok(ShownValue::from(read_meter(context, of, id)?)),
         Expr::Let { id, keep } => {
             let stored = (context.lets.iter())
                 .find(|stored| stored.id == *id)
@@ -220,7 +220,7 @@ fn show_neg(text: &str) -> String {
     }
 }
 
-fn read_meter(context: &Context, of: &grammar::Object, key: &str) -> Result<i64, Reason> {
-    let id = of.entity_id(context)?;
-    (context.world.entities().get::<component::Meter>(&id)).value(key)
+fn read_meter(context: &Context, of: &grammar::Object, meter_id: &str) -> Result<i64, Reason> {
+    let entity_id = of.entity_id(context)?;
+    (context.world.entities().get::<component::Meter>(&entity_id)).value(meter_id)
 }

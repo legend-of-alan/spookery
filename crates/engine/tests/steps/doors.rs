@@ -63,11 +63,11 @@ fn the_stair_door_needs_the_key(world: &mut World) {
     let bolt = "  - id: bolt
     when: { verb: bolt, target: path }
     do:
-      - flag: { of: target, key: open, value: false }
+      - flag: { of: target, id: open, value: false }
   - id: creak
     when: { change: { flag: open, becomes: true } }
     do:
-      - flag: { of: world, key: creaked, value: true }";
+      - flag: { of: world, id: creaked, value: true }";
     super::round_play::add_place_rules(&pack, "docks_shop", bolt);
     let path = pack.join("cast/mira.md");
     let text = fs::read_to_string(&path).unwrap();

@@ -17,11 +17,11 @@ paths:
     if:
       - flag:
           of: world
-          key: passage
+          id: passage
           is: true
       - flag:
           of: world
-          key: chocked
+          id: chocked
           is: true
     locked_text: The lane is shut.
   - path: mill_lane -> gate_yard

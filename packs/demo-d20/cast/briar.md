@@ -38,7 +38,7 @@ rules:
     success:
       - meter:
           of: target
-          key: hp
+          id: hp
           add: -4
       - narrate:
           to: self
@@ -46,11 +46,11 @@ rules:
     partial:
       - meter:
           of: target
-          key: hp
+          id: hp
           add: -2
       - meter:
           of: self
-          key: hp
+          id: hp
           add: -2
       - narrate:
           to: self
@@ -58,7 +58,7 @@ rules:
     miss:
       - meter:
           of: self
-          key: hp
+          id: hp
           add: -3
       - narrate:
           to: self
@@ -71,12 +71,12 @@ rules:
     if:
       - flag:
           of: self
-          key: warden
+          id: warden
           is: true
     do:
       - flag:
           of: world
-          key: passage
+          id: passage
           value: true
       - narrate:
           to: here
