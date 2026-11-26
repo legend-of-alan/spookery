@@ -190,10 +190,9 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
             diagnostics.push(diagnostic.at_key_path(format!("actors.place.{id}")));
         }
     }
-    for (id, location) in actors.query::<(ActorId, &component::Place)>().iter() {
-        if !location.is_known(canon) {
-            let message =
-                format!("actor '{id}' is at '{location}', which the pack does not define");
+    for (id, place) in actors.query::<(ActorId, &component::Place)>().iter() {
+        if !place.is_known(canon) {
+            let message = format!("actor '{id}' is at '{place}', which the pack does not define");
             let diagnostic = schema_error(FILE, &message, "move the actor to a place");
             diagnostics.push(diagnostic.at_key_path(format!("actors.place.{id}")));
         }
@@ -316,17 +315,17 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
     }
 }
 
-/// A save error on meter `key` of `entity_id`, at the meter's key path: who carries it, then
+/// A save error on meter `key` of `entity_id`, at the meter's key path: the entity, then
 /// `message`.
 fn meter_error(entity_id: &entity::Id, key: &str, message: &str, hint: &str) -> Diagnostic {
-    let (who, key_path) = match entity_id {
+    let (entity_text, key_path) = match entity_id {
         entity::Id::Actor(id) => (format!("actor '{id}'"), format!("actors.meters.{id}")),
         entity::Id::Place(id) => (entity_id.to_string(), format!("places.meters.{id}")),
         entity::Id::Path(id) => (entity_id.to_string(), format!("paths.{id}")),
         entity::Id::Story(id) => (entity_id.to_string(), format!("stories.meters.{id}")),
         entity::Id::Global => ("the world".to_string(), "world.meters".to_string()),
     };
-    let diagnostic = schema_error(FILE, &format!("{who} {message}"), hint);
+    let diagnostic = schema_error(FILE, &format!("{entity_text} {message}"), hint);
     diagnostic.at_key_path(format!("{key_path}.{key}"))
 }
 

@@ -16,13 +16,13 @@ use crate::rules::roll::{MoveReport, Roll};
 use crate::rules::rule::{EffectTemplate, MoveTo, NarrateTo, Rule};
 use crate::Reason;
 
-/// Why a rule's effects are expanded and landed, which decides what the landing journals.
+/// Why a rule's effects are expanded and applied, which decides what applying them journals.
 #[derive(Clone, Copy)]
 pub(crate) enum Cause {
     /// An action finishing, now or when its ticks pass: each effect takes an `EffectApplied`
     /// step, and a refusal is told to a player.
     Finish,
-    /// A change rule firing, which is nobody's move: its effects take no step of their own and
+    /// A change rule firing, which is nobody's action: its effects take no step of their own and
     /// its refusal is told to nobody.
     Trigger,
 }
@@ -150,7 +150,7 @@ fn push_effects(
                 },
                 MoveTo::Place(_) | MoveTo::Target => return Err(Reason::NotInSpec),
             };
-            effects.push(location_effect(context, ActorLocation::Place(place_id))?);
+            effects.push(move_effect(context, ActorLocation::Place(place_id))?);
         }
         EffectTemplate::Meter { of, id, add, set } => {
             let entity = of.entity_id(context)?;
@@ -293,7 +293,7 @@ fn meter_offset(
     ))
 }
 
-fn location_effect(context: &Context, to: ActorLocation) -> Result<Effect, Reason> {
+fn move_effect(context: &Context, to: ActorLocation) -> Result<Effect, Reason> {
     let intent = context.intent;
     let actor_id = grammar::Actor::Self_.actor_id(context)?.clone();
     let from = context

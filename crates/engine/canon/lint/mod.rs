@@ -23,7 +23,7 @@ pub(super) fn find_unknown_path_ids(
     let mut diagnostics = Vec::new();
     for (index, path_def) in path_defs.iter().enumerate() {
         let arrow = if path_def.bidirectional { "<->" } else { "->" };
-        let line = format!(
+        let path_text = format!(
             "{} {arrow} {}",
             path_def.end_place_ids[0], path_def.end_place_ids[1]
         );
@@ -32,12 +32,13 @@ pub(super) fn find_unknown_path_ids(
             diagnostics.push(schema_error(map::FILE, &message, hint).at_key_path(key_path));
         };
         for end_place_id in (path_def.end_place_ids.iter()).filter(|id| !places.contains_key(*id)) {
-            let message = format!("path '{line}' names '{end_place_id}', which is not a place");
+            let message =
+                format!("path '{path_text}' names '{end_place_id}', which is not a place");
             refuse(".path", message, "name a place from world/places");
         }
         for id in path_def.mentions().item_ids {
             if !items.contains_key(id) {
-                let message = format!("path '{line}' names unknown item '{id}'");
+                let message = format!("path '{path_text}' names unknown item '{id}'");
                 refuse("", message, &format!("add world/items/{id}.md"));
             }
         }

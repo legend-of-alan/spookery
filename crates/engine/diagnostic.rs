@@ -82,7 +82,7 @@ pub struct Diagnostic {
     pub file: String,
     pub line: Option<u32>,
     pub column: Option<u32>,
-    /// Key path such as `rules[0].when`.
+    /// Such as `rules[0].when`.
     #[serde(rename = "path")]
     pub key_path: Option<String>,
     pub code: Code,
