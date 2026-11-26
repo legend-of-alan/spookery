@@ -13,7 +13,7 @@ use crate::rules::expr::Expr;
 use crate::rules::grammar;
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{MoveReport, Roll};
-use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, Rule};
+use crate::rules::rule::{EffectTemplate, MoveTo, NarrateTo, Rule};
 use crate::Reason;
 
 /// Why a rule's effects are expanded and landed, which decides what the landing journals.
@@ -137,18 +137,18 @@ fn push_effects(
                 },
             ));
         }
-        EffectTemplate::Location { to, teleport } => {
+        EffectTemplate::Move { to, teleport } => {
             let place_id = match to {
-                LocationTo::Via(via) => {
+                MoveTo::Via(via) => {
                     let exit = crate::rules::travel::exit_via(context, via)?;
                     exit.ok_or(Reason::Schema)?.to_place_id().clone()
                 }
-                LocationTo::Place(id) if *teleport => id.as_str().into(),
-                LocationTo::Target if *teleport => match &intent.target {
+                MoveTo::Place(id) if *teleport => id.as_str().into(),
+                MoveTo::Target if *teleport => match &intent.target {
                     Target::Place(id) => id.clone(),
                     _ => return Err(Reason::Schema),
                 },
-                LocationTo::Place(_) | LocationTo::Target => return Err(Reason::NotInSpec),
+                MoveTo::Place(_) | MoveTo::Target => return Err(Reason::NotInSpec),
             };
             effects.push(location_effect(context, ActorLocation::Place(place_id))?);
         }

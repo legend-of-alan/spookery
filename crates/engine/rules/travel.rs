@@ -12,7 +12,7 @@ use crate::rules::cost;
 use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::gate;
 use crate::rules::lines::find_place_name;
-use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
+use crate::rules::rule::{EffectTemplate, MoveTo, Rule};
 use crate::Reason;
 use spookery_protocol::ExitView;
 
@@ -23,8 +23,8 @@ pub(crate) fn exit_of<'c>(
     rule: &Rule,
 ) -> Result<Option<Exit<'c>>, gate::Refusal> {
     let via = (rule.templates().into_iter()).find_map(|effect| match effect {
-        EffectTemplate::Location {
-            to: LocationTo::Via(via),
+        EffectTemplate::Move {
+            to: MoveTo::Via(via),
             teleport: false,
         } => Some(via),
         _ => None,

@@ -94,12 +94,12 @@ impl Rule {
                     mentions.add_actor("subject:", subject);
                 }
                 EffectTemplate::Check { by, .. } => mentions.add_actor("by:", by),
-                EffectTemplate::Location { to, .. } => match to {
-                    LocationTo::Target => mentions.add_target("location to:", &[TargetKind::Place]),
-                    LocationTo::Via(via) if via == "target" => {
+                EffectTemplate::Move { to, .. } => match to {
+                    MoveTo::Target => mentions.add_target("location to:", &[TargetKind::Place]),
+                    MoveTo::Via(via) if via == "target" => {
                         mentions.add_target("location via:", &[TargetKind::Path]);
                     }
-                    LocationTo::Via(_) | LocationTo::Place(_) => {}
+                    MoveTo::Via(_) | MoveTo::Place(_) => {}
                 },
                 EffectTemplate::Note { .. } | EffectTemplate::Narrate { .. } => {}
             }
@@ -485,8 +485,8 @@ pub(crate) enum EffectTemplate {
         add: Expr,
         ticks: Expr,
     },
-    Location {
-        to: LocationTo,
+    Move {
+        to: MoveTo,
         teleport: bool,
     },
     Note {
@@ -550,7 +550,7 @@ impl EffectTemplate {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum LocationTo {
+pub(crate) enum MoveTo {
     Target,
     Place(String),
     Via(String),

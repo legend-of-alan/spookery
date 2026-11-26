@@ -5,7 +5,7 @@ use crate::canon::Canon;
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::ecs::component::meter;
 use crate::rules::grammar;
-use crate::rules::rule::{ChangeWatch, EffectTemplate, LocationTo, NarrateTo, Rule, RuleKind};
+use crate::rules::rule::{ChangeWatch, EffectTemplate, MoveTo, NarrateTo, Rule, RuleKind};
 use crate::Reason;
 
 /// Change rules that set each other's watched values.
@@ -136,8 +136,8 @@ fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<EffectWrite
                 }
             }
         }
-        EffectTemplate::Location {
-            to: LocationTo::Place(id),
+        EffectTemplate::Move {
+            to: MoveTo::Place(id),
             ..
         } => out.push(EffectWrite::Arrive(id.clone())),
         _ => {}
@@ -278,7 +278,7 @@ fn needs_subject(rule: &Rule) -> bool {
         EffectTemplate::Narrate { to, .. } => {
             needs |= matches!(to, NarrateTo::Self_ | NarrateTo::Here);
         }
-        EffectTemplate::Location { .. } => needs = true,
+        EffectTemplate::Move { .. } => needs = true,
         _ => {}
     });
     let self_or_here = [

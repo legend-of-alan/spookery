@@ -275,7 +275,7 @@ fn find_teleport_verbs(canon: &Canon) -> Vec<Diagnostic> {
                 && rule
                     .templates()
                     .into_iter()
-                    .any(|effect| matches!(effect, EffectTemplate::Location { teleport: true, .. }))
+                    .any(|effect| matches!(effect, EffectTemplate::Move { teleport: true, .. }))
         })
         .map(|rule| {
             warning(
