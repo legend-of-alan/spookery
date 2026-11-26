@@ -10,7 +10,7 @@ use std::task::{ready, Context, Poll};
 use spookery_engine::{ActorId, Presence};
 use tokio::sync::{mpsc, watch};
 
-use super::limits::{MISSED_MESSAGE_CAP, OUTBOUND_BYTE_CAP, OUTBOUND_FRAME_CAP};
+use super::limits::{MISSED_MESSAGE_CAP, OUTBOUND_CAP_BYTES, OUTBOUND_FRAME_CAP};
 use crate::protocol::{Seat, ServerMessage};
 
 /// One connection's id, on the game port or the MCP endpoint.
@@ -183,7 +183,7 @@ impl FrameSender {
                     return Some(len);
                 }
                 let next = cur.saturating_add(len);
-                if next > OUTBOUND_BYTE_CAP {
+                if next > OUTBOUND_CAP_BYTES {
                     None
                 } else {
                     Some(next)
@@ -213,7 +213,7 @@ fn release(queued: &AtomicUsize, len: usize) {
 
 /// One seat's frame queue. Like `mpsc::channel()`, it returns the sender and
 /// receiver halves. A frame is counted against `OUTBOUND_FRAME_CAP` and
-/// `OUTBOUND_BYTE_CAP` from the moment it is queued until the writer has sent
+/// `OUTBOUND_CAP_BYTES` from the moment it is queued until the writer has sent
 /// it.
 pub(super) fn frame_queue() -> (FrameSender, FrameReceiver) {
     let (tx, rx) = mpsc::channel(OUTBOUND_FRAME_CAP);
@@ -277,13 +277,13 @@ mod tests {
     #[tokio::test]
     async fn the_byte_cap_rejects_until_a_frame_is_written() {
         let (frames_tx, mut frames_rx) = frame_queue();
-        assert!(frames_tx.send(vec![b'a'; OUTBOUND_BYTE_CAP + 8]));
+        assert!(frames_tx.send(vec![b'a'; OUTBOUND_CAP_BYTES + 8]));
         assert!(
             !frames_tx.send(b"n".to_vec()),
             "a second frame was queued past the byte cap"
         );
         let bytes = frames_rx.rx.recv().await.expect("frame");
-        assert_eq!(bytes.len(), OUTBOUND_BYTE_CAP + 8);
+        assert_eq!(bytes.len(), OUTBOUND_CAP_BYTES + 8);
         assert!(
             !frames_tx.send(b"n".to_vec()),
             "a taken frame was released before it was written"

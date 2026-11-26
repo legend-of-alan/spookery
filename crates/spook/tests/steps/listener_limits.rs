@@ -18,7 +18,7 @@ const MIB: usize = 1024 * 1024;
 const SAY_TEXT_BYTES: usize = 4 * 1024;
 
 /// A message past 8 KiB is `LINE_TOO_LONG`.
-const MESSAGE_CAP: usize = 8 * 1024;
+const CLIENT_MESSAGE_CAP_BYTES: usize = 8 * 1024;
 /// A connection that sends nothing for 10 seconds closes.
 const FIRST_MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
 /// A connection may burst to 10 messages. A seated player's claim spent one.
@@ -26,18 +26,18 @@ const BURST: usize = 10;
 /// Then it may send 5 messages a second: one per 200 ms.
 const REFILL: Duration = Duration::from_millis(200);
 /// Each connection's outbound queue holds at most 256 messages.
-const FRAME_CAP: usize = 256;
+const OUTBOUND_FRAME_CAP: usize = 256;
 /// And at most 64 KiB.
-const BYTE_CAP: usize = 64 * 1024;
+const OUTBOUND_CAP_BYTES: usize = 64 * 1024;
 /// The window this test asks for: the stopped reader's receive buffer, and
 /// the send buffer it budgets for the host's side of that socket.
-const WINDOW: usize = 8 * 1024;
+const WINDOW_BYTES: usize = 8 * 1024;
 
 #[when(expr = "the player sends a message over the cap")]
 async fn the_player_sends_a_message_over_the_cap(world: &mut World) {
     let player = host::player_client(world, "rowan");
     let mark = player.seat.mark();
-    let long = json!({ "id": "long", "body": { "kind": "wait" }, "pad": "a".repeat(MESSAGE_CAP) });
+    let long = json!({ "id": "long", "body": { "kind": "wait" }, "pad": "a".repeat(CLIENT_MESSAGE_CAP_BYTES) });
     player.seat.send_raw(Message::text(long.to_string()));
     world.player_added = host::wait_player_from(world, mark, "\"code\":\"LINE_TOO_LONG\"").await;
 }
@@ -262,8 +262,8 @@ async fn one_player_stops_reading(world: &mut World) {
     host::seat_gm(world).await;
     host::seat_actor(world, &pack, "harbormouse").await;
     let port = host::live_mut(world).game_port;
-    let (stream, recv) = connect_small_window(port);
-    let send = granted_send_buffer(WINDOW);
+    let (stream, recv_buffer_bytes) = connect_small_window(port);
+    let send_buffer_bytes = granted_send_buffer_bytes(WINDOW_BYTES);
     let quiet = host::Seat::from_stream(stream, port, "player", false);
     quiet.send("claim", json!({ "actor": "rowan" }));
     host::wait_presence(world, "rowan seated", |_, present| {
@@ -275,7 +275,7 @@ async fn one_player_stops_reading(world: &mut World) {
         seat: quiet,
     });
     let say = "n".repeat(SAY_TEXT_BYTES);
-    let frame = ServerMessage {
+    let frame_bytes = ServerMessage {
         id: None,
         seq: Some(u64::from(u32::MAX)),
         reply_to: None,
@@ -289,28 +289,28 @@ async fn one_player_stops_reading(world: &mut World) {
     }
     .to_text()
     .len();
-    let queue = BYTE_CAP.min(FRAME_CAP.saturating_mul(frame));
-    let margin = recv.max(send).max(frame);
-    let budget = recv
-        .saturating_add(send)
-        .saturating_add(queue)
-        .saturating_add(margin);
+    let queue_bytes = OUTBOUND_CAP_BYTES.min(OUTBOUND_FRAME_CAP.saturating_mul(frame_bytes));
+    let margin_bytes = recv_buffer_bytes.max(send_buffer_bytes).max(frame_bytes);
+    let budget_bytes = recv_buffer_bytes
+        .saturating_add(send_buffer_bytes)
+        .saturating_add(queue_bytes)
+        .saturating_add(margin_bytes);
     let start = Instant::now();
-    let mut sent = 0usize;
+    let mut sent_bytes = 0usize;
     let args = format!(r#"{{"to":"table","text":"{say}"}}"#);
     while is_open(host::player_client(world, "rowan")) {
-        if start.elapsed() > support::WAIT_LIMIT || sent > budget {
+        if start.elapsed() > support::WAIT_LIMIT || sent_bytes > budget_bytes {
             let stderr = host::live_mut(world)
                 .process
                 .as_ref()
                 .map(|server| support::text_of(&server.stderr))
                 .unwrap_or_default();
             panic!(
-                "rowan still connected after {sent} bytes (recv {recv}, send {send}, frame {frame}, queue {queue}, budget {budget})\n{stderr}"
+                "rowan still connected after {sent_bytes} bytes (recv {recv_buffer_bytes}, send {send_buffer_bytes}, frame {frame_bytes}, queue {queue_bytes}, budget {budget_bytes})\n{stderr}"
             );
         }
         let _ = host::gm_tool_call(world, 2, "say", &args).await;
-        sent = sent.saturating_add(frame);
+        sent_bytes = sent_bytes.saturating_add(frame_bytes);
     }
     world.player_added = host::wait_actor_from(world, "harbormouse", 0, "\"kind\":\"say\"").await;
 }
@@ -352,7 +352,7 @@ fn connect_small_window(port: u16) -> (TcpStream, usize) {
     )
     .unwrap_or_else(|err| panic!("socket: {err}"));
     socket
-        .set_recv_buffer_size(WINDOW)
+        .set_recv_buffer_size(WINDOW_BYTES)
         .unwrap_or_else(|err| panic!("recv buffer: {err}"));
     let addr: std::net::SocketAddr = format!("127.0.0.1:{port}")
         .parse()
@@ -368,7 +368,7 @@ fn connect_small_window(port: u16) -> (TcpStream, usize) {
 
 /// What this OS grants for the send buffer the game port requests.
 /// Set after accept, which is when the listener sets it.
-fn granted_send_buffer(requested: usize) -> usize {
+fn granted_send_buffer_bytes(requested_bytes: usize) -> usize {
     let listener =
         std::net::TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
     let addr = listener
@@ -379,7 +379,7 @@ fn granted_send_buffer(requested: usize) -> usize {
         .accept()
         .unwrap_or_else(|err| panic!("accept: {err}"));
     let socket = socket2::SockRef::from(&accepted);
-    let _ = socket.set_send_buffer_size(requested);
+    let _ = socket.set_send_buffer_size(requested_bytes);
     let size = socket
         .send_buffer_size()
         .unwrap_or_else(|err| panic!("send buffer size: {err}"));
