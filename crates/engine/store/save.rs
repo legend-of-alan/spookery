@@ -7,7 +7,9 @@ use serde_saphyr::SerializerOptions;
 
 use crate::canon::item;
 use crate::canon::lint::refuse_unknown_item;
-use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
+use crate::diagnostic::{
+    diagnose_schema_tag, error, locate_nth, parse_file, schema_error, Diagnostic,
+};
 use crate::ecs::component::meter::{self, Meter};
 use crate::ecs::component::modifier::{self, Modifier};
 use crate::ecs::id::ActorId;
@@ -35,7 +37,7 @@ pub(crate) fn emit_options() -> SerializerOptions {
 /// Reads a save. A save from older rules, even one with a field these rules dropped, such as
 /// `presence`, is refused as `RULES_REV_MISMATCH`.
 pub fn parse(text: &str) -> Result<Save, Vec<Diagnostic>> {
-    if let Some(diagnostic) = check_tag(text, crate::diagnostic::SAVE_SCHEMA, FILE) {
+    if let Some(diagnostic) = diagnose_schema_tag(text, crate::diagnostic::SAVE_SCHEMA, FILE) {
         return Err(vec![diagnostic]);
     }
     #[derive(Deserialize)]

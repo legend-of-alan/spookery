@@ -187,7 +187,7 @@ pub(crate) fn locate_nth(text: &str, needle: &str, nth: usize) -> Option<FileLoc
 }
 
 /// Wrong or missing `schema` tag. `None` means the tag is the one this file uses.
-pub(crate) fn check_tag(text: &str, expected: &str, file: &str) -> Option<Diagnostic> {
+pub(crate) fn diagnose_schema_tag(text: &str, expected: &str, file: &str) -> Option<Diagnostic> {
     let hint = format!("write 'schema: {expected}'");
     let Some(found) = find_schema(text) else {
         return Some(
@@ -329,7 +329,7 @@ pub(crate) fn parse_tagged<T: serde::de::DeserializeOwned>(
     expected: &str,
     holds_rule_lines: bool,
 ) -> Result<T, Vec<Diagnostic>> {
-    if let Some(diagnostic) = check_tag(text, expected, file) {
+    if let Some(diagnostic) = diagnose_schema_tag(text, expected, file) {
         return Err(vec![diagnostic]);
     }
     parse_file(file, text, holds_rule_lines)
