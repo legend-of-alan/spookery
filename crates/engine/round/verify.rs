@@ -155,12 +155,10 @@ fn check_bundle_end(
 }
 
 fn check_save_file(pack: &Path, records: &[Record], base: &[u8]) -> Result<(), Error> {
-    let live = journal::read_save(&journal::save_path(pack)).map_err(Error::Reason)?;
+    let live = journal::read_save(&journal::save_path(pack))?;
     let save = load_save_bytes(&live)?;
     if records.is_empty() {
-        let canonical = save::emit(&save)
-            .map(|text| text.into_bytes())
-            .map_err(Error::Reason)?;
+        let canonical = save::emit(&save)?.into_bytes();
         if live != canonical {
             let diverged = Divergence::new(
                 DivergenceKind::Save,
@@ -227,9 +225,9 @@ fn name_save_line(pack: &Path, err: Error) -> Error {
 fn read_base(pack: &Path) -> Result<Vec<u8>, Error> {
     let base = journal::base_path(pack);
     if base.exists() {
-        return journal::read_save(&base).map_err(Error::Reason);
+        return Ok(journal::read_save(&base)?);
     }
-    journal::read_save(&journal::save_path(pack)).map_err(Error::Reason)
+    Ok(journal::read_save(&journal::save_path(pack))?)
 }
 
 fn replay_bundle(pack: &Path, start: &[u8], entries: &[Record]) -> Result<Vec<u8>, Error> {
