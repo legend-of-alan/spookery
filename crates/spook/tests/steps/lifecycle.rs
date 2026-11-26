@@ -3,7 +3,7 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::{component, entity, MoveReport, Presence};
+use spookery_engine::{component, entity, roll, Presence};
 
 use super::common::give_key;
 use super::rules::{open, split_line};
@@ -295,7 +295,7 @@ fn rowans_line_is_refused(world: &mut World, line: String, code: String) {
         Ok(_) => {
             let output = play(&mut opened);
             let refused = output.reports.iter().find_map(|report| match report {
-                MoveReport::Refused { actor_id, refusal } if actor_id == "rowan" => {
+                roll::Report::Refused { actor_id, refusal } if actor_id == "rowan" => {
                     Some(refusal.code)
                 }
                 _ => None,
@@ -311,6 +311,6 @@ fn rowans_line_lands(world: &mut World, line: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
     queue(&mut opened, &line);
     let reports = play(&mut opened).reports;
-    let refused = (reports.iter()).any(|report| matches!(report, MoveReport::Refused { .. }));
+    let refused = (reports.iter()).any(|report| matches!(report, roll::Report::Refused { .. }));
     assert!(!refused, "{reports:?}");
 }

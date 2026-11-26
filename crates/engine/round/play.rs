@@ -8,7 +8,7 @@ use crate::canon::Canon;
 use crate::ecs::{self, component, Presence};
 use crate::intent::Intent;
 use crate::rules::effect::Effect;
-use crate::rules::roll::MoveReport;
+use crate::rules::roll;
 use crate::rules::travel;
 use crate::rules::visibility::{RecipientLine, ViewerChanges};
 use crate::session;
@@ -22,7 +22,7 @@ use crate::round::{self, Ledger};
 /// What one round showed. Returned from the engine's round to the host table, which sends it on
 /// to players, the GM and the digest. `lines` and `seen` are empty when no human was seated.
 pub struct Output {
-    pub reports: Vec<MoveReport>,
+    pub reports: Vec<roll::Report>,
     pub dice: Vec<String>,
     pub changed_keys: Vec<String>,
     pub lines: Vec<RecipientLine>,

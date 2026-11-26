@@ -11,8 +11,7 @@ use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::expr::eval::{self, Dice};
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
-use crate::rules::roll::Outcome;
-use crate::rules::roll::{MoveReport, Roll};
+use crate::rules::roll::{self, Outcome, Roll};
 use crate::rules::rule::{EffectTemplate, MoveTo, NarrateTo, Rule};
 use crate::Reason;
 
@@ -32,7 +31,7 @@ pub(crate) enum Cause {
 pub(crate) struct Expansion {
     pub effects: Vec<Effect>,
     pub rolled: Option<Roll>,
-    pub reports: Vec<MoveReport>,
+    pub reports: Vec<roll::Report>,
     pub cause: Cause,
 }
 
@@ -81,7 +80,7 @@ fn build_effects(
     rule: &Rule,
     outcome: Option<Outcome>,
     dice: &mut dyn Dice,
-    reports: &mut Vec<MoveReport>,
+    reports: &mut Vec<roll::Report>,
 ) -> Result<Vec<Effect>, Reason> {
     let picked =
         outcome.map(|outcome| select_list(outcome, &rule.success, &rule.partial, &rule.miss));
@@ -110,7 +109,7 @@ fn push_effects(
     context: &Context,
     template: &EffectTemplate,
     effects: &mut Vec<Effect>,
-    reports: &mut Vec<MoveReport>,
+    reports: &mut Vec<roll::Report>,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let (world, intent) = (context.world, context.intent);
@@ -264,7 +263,7 @@ fn push_effects(
             let actor_id = by.actor_id(context)?.clone();
             let roll = check.roll(context, dice)?;
             let picked = select_list(roll.outcome, success, partial, miss);
-            reports.push(MoveReport::Rolled { actor_id, roll });
+            reports.push(roll::Report::Rolled { actor_id, roll });
             for template in picked {
                 push_effects(context, template, effects, reports, dice)?;
             }

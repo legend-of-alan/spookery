@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::roll;
-use spookery_engine::{component, GlobalId, MoveReport, Note};
+use spookery_engine::{component, GlobalId, Note};
 
 use crate::{resolve_id, World};
 use spookery_engine::round::Output;
@@ -213,10 +213,10 @@ fn harbormouse_and_briar_strike_each_other(world: &mut World) {
     world.pack = Some(pack);
     world.scratch = (output.reports.iter())
         .filter_map(|report| match report {
-            MoveReport::Rolled { actor_id, roll } => {
+            spookery_engine::roll::Report::Rolled { actor_id, roll } => {
                 Some(format!("{actor_id}={}:{}", roll.total, roll.success_at))
             }
-            MoveReport::Refused { .. } => None,
+            spookery_engine::roll::Report::Refused { .. } => None,
         })
         .collect::<Vec<_>>()
         .join(";");
@@ -499,7 +499,7 @@ fn rowan_walks_and_rummages(world: &mut World) {
     let (_state, output) = rowan_walks(world.pack(), vec![rummage]);
     world.seen = (output.reports.iter())
         .filter_map(|report| match report {
-            MoveReport::Rolled { actor_id, roll } if actor_id == "rowan" => {
+            spookery_engine::roll::Report::Rolled { actor_id, roll } if actor_id == "rowan" => {
                 Some(roll.success_at.to_string())
             }
             _ => None,
@@ -714,17 +714,21 @@ pub(crate) fn add_place_rules(pack: &Path, place: &str, rules: &str) {
 }
 
 /// Each refused move in `reports` as `actor CODE`, joined by commas.
-pub(crate) fn list_refusals<'r>(reports: impl IntoIterator<Item = &'r MoveReport>) -> String {
+pub(crate) fn list_refusals<'r>(
+    reports: impl IntoIterator<Item = &'r spookery_engine::roll::Report>,
+) -> String {
     let refused = reports.into_iter().filter_map(|report| match report {
-        MoveReport::Refused { actor_id, refusal } => Some(format!("{actor_id} {}", refusal.code)),
-        MoveReport::Rolled { .. } => None,
+        spookery_engine::roll::Report::Refused { actor_id, refusal } => {
+            Some(format!("{actor_id} {}", refusal.code))
+        }
+        spookery_engine::roll::Report::Rolled { .. } => None,
     });
     refused.collect::<Vec<_>>().join(", ")
 }
 
 /// How many rolls `reports` holds for `actor`.
-fn count_rolls(reports: &[MoveReport], actor: &str) -> usize {
-    let rolled = |report: &&MoveReport| matches!(report, MoveReport::Rolled { actor_id, .. } if actor_id == actor);
+fn count_rolls(reports: &[spookery_engine::roll::Report], actor: &str) -> usize {
+    let rolled = |report: &&spookery_engine::roll::Report| matches!(report, spookery_engine::roll::Report::Rolled { actor_id, .. } if actor_id == actor);
     reports.iter().filter(rolled).count()
 }
 
@@ -780,7 +784,9 @@ fn harbormouse_roll(pack: &Path, extra_first: bool) -> (String, i64) {
     intents.push(intent("harbormouse-exert", "harbormouse", "exert", None));
     let (_state, output) = play_queued(pack, &[], intents);
     let total = output.reports.into_iter().find_map(|report| match report {
-        MoveReport::Rolled { actor_id, roll } if actor_id == *"harbormouse" => Some(roll.total),
+        spookery_engine::roll::Report::Rolled { actor_id, roll } if actor_id == *"harbormouse" => {
+            Some(roll.total)
+        }
         _ => None,
     });
     let total = total.unwrap_or_else(|| panic!("Harbormouse did not roll"));
