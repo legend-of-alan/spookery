@@ -126,7 +126,9 @@ fn check_bundle_starts<'a>(
         current = fs::read(journal::checkpoint_path(pack, mark.state_rev))
             .map_err(|_| diverged("missing snapshot"))?;
         if blake2s_tagged(&current) != mark.state_hash {
-            return Err(diverged("state hash differed").replayed(current).into());
+            return Err(diverged("state hash differed")
+                .with_replayed_bytes(current)
+                .into());
         }
     }
     Ok(starts)
@@ -144,7 +146,7 @@ fn check_bundle_end(
             let detail = format!("{bundle}: state hash differed");
             return Err(
                 checkpoint_diverged(mark.state_rev, mark.round_index, detail)
-                    .replayed(end)
+                    .with_replayed_bytes(end)
                     .into(),
             );
         }
@@ -153,12 +155,10 @@ fn check_bundle_end(
 }
 
 fn check_save_file(pack: &Path, records: &[Record], base: &[u8]) -> Result<(), Error> {
-    let live = journal::read_save(&journal::save_path(pack)).map_err(Error::Reason)?;
+    let live = journal::read_save(&journal::save_path(pack))?;
     let save = load_save_bytes(&live)?;
     if records.is_empty() {
-        let canonical = save::emit(&save)
-            .map(|text| text.into_bytes())
-            .map_err(Error::Reason)?;
+        let canonical = save::emit(&save)?.into_bytes();
         if live != canonical {
             let diverged = Divergence::new(
                 DivergenceKind::Save,
@@ -166,14 +166,17 @@ fn check_save_file(pack: &Path, records: &[Record], base: &[u8]) -> Result<(), E
                 None,
                 Reason::HandEdit.as_str(),
             );
-            return Err(set_save_line(diverged.replayed(canonical), &live));
+            return Err(set_save_line(
+                diverged.with_replayed_bytes(canonical),
+                &live,
+            ));
         }
     }
     if let Some(mark) = journal::latest_checkpoint(records) {
         if blake2s_tagged(&live) != mark.state_hash {
             let snap = fs::read(journal::checkpoint_path(pack, mark.state_rev)).ok();
             let diverged = Divergence {
-                replayed: snap,
+                replayed_bytes: snap,
                 ..Divergence::new(
                     DivergenceKind::Save,
                     mark.state_rev,
@@ -190,14 +193,17 @@ fn check_save_file(pack: &Path, records: &[Record], base: &[u8]) -> Result<(), E
             None,
             "state hash differed",
         );
-        return Err(set_save_line(diverged.replayed(base.to_vec()), &live));
+        return Err(set_save_line(
+            diverged.with_replayed_bytes(base.to_vec()),
+            &live,
+        ));
     }
     Ok(())
 }
 
 /// Name the first line of `live` that differs from the replayed bytes.
 fn set_save_line(mut diverged: Divergence, live: &[u8]) -> Error {
-    diverged.save_line = diverged.replayed.as_deref().and_then(|replayed| {
+    diverged.save_line = diverged.replayed_bytes.as_deref().and_then(|replayed| {
         let live_text = std::str::from_utf8(live).ok()?;
         let replayed_text = std::str::from_utf8(replayed).ok()?;
         crate::check::first_diff_line(live_text, replayed_text)
@@ -219,9 +225,9 @@ fn name_save_line(pack: &Path, err: Error) -> Error {
 fn read_base(pack: &Path) -> Result<Vec<u8>, Error> {
     let base = journal::base_path(pack);
     if base.exists() {
-        return journal::read_save(&base).map_err(Error::Reason);
+        return Ok(journal::read_save(&base)?);
     }
-    journal::read_save(&journal::save_path(pack)).map_err(Error::Reason)
+    Ok(journal::read_save(&journal::save_path(pack))?)
 }
 
 fn replay_bundle(pack: &Path, start: &[u8], entries: &[Record]) -> Result<Vec<u8>, Error> {
