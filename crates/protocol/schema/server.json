@@ -485,7 +485,6 @@
         "BUDGET",
         "UNKNOWN_ID",
         "VIEWER_MISMATCH",
-        "ENGINE_ON_PLAYER",
         "INELIGIBLE",
         "ACTOR_MISMATCH",
         "TABLE_EMPTY",
@@ -888,10 +887,6 @@
           "items": {
             "type": "string"
           }
-        },
-        "cant_act": {
-          "description": "Why the viewer can't send a verb at all. Empty when they can, and empty today: being\nbusy is `busy`, not this.",
-          "type": "string"
         },
         "busy": {
           "description": "What keeps the viewer busy and until when, such as `on the stairs until tick 1300`.\nEmpty when they are free.",
