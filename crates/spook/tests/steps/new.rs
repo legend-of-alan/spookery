@@ -14,7 +14,7 @@ use super::host;
 #[when(expr = "the operator runs spook new in a fresh directory")]
 async fn the_operator_runs_spook_new_in_a_fresh_directory(world: &mut World) {
     let pack = fresh_path("pack");
-    run_new(world, &pack).await;
+    create_pack(world, &pack).await;
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     world.pack = Some(pack);
 }
@@ -58,14 +58,14 @@ fn a_non_empty_directory(world: &mut World) {
 #[when(expr = "the operator runs spook new on that directory")]
 async fn the_operator_runs_spook_new_on_that_directory(world: &mut World) {
     let pack = host::pack(world).to_path_buf();
-    run_new(world, &pack).await;
+    create_pack(world, &pack).await;
 }
 
 #[when(expr = "the operator runs spook new under a missing parent")]
 async fn the_operator_runs_spook_new_under_a_missing_parent(world: &mut World) {
     let parent = fresh_path("missing");
     let pack = parent.join("pack");
-    run_new(world, &pack).await;
+    create_pack(world, &pack).await;
     world.pack = Some(parent);
 }
 
@@ -90,7 +90,7 @@ async fn the_operator_runs_spook_new_beside_a_marker_file(world: &mut World) {
     world.before = host::read_files(&template_dir());
     world.now_bytes = fs::read(parent.join("keep.txt")).unwrap();
     let pack = parent.join("pack");
-    run_new(world, &pack).await;
+    create_pack(world, &pack).await;
     world.scratch = pack.to_str().unwrap().to_string();
     world.pack = Some(parent);
 }
@@ -153,7 +153,7 @@ async fn the_operator_runs_spook_new_beside_that_pack(world: &mut World) {
     let dir = pack.file_name().unwrap().to_string_lossy();
     let idle = pack.parent().unwrap().join(format!("{dir}-idle"));
     let _ = fs::remove_dir_all(&idle);
-    run_new(world, &idle).await;
+    create_pack(world, &idle).await;
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     world.scratch = idle.to_str().unwrap().to_string();
 }
@@ -314,8 +314,7 @@ fn insert_before(text: &str, anchor: &str, body: &str) -> String {
     out
 }
 
-async fn run_new(world: &mut World, pack: &Path) {
-    // repeats module: mirrors the `spook new` command
+async fn create_pack(world: &mut World, pack: &Path) {
     host::run(world, &["new", pack.to_str().unwrap()]).await;
 }
 

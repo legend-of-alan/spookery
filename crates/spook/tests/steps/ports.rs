@@ -113,8 +113,7 @@ async fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
 }
 
 #[then(expr = "the tables report distinct ports")]
-fn the_tables_report_distinct_ports(world: &mut World) {
-    // repeats module: mirrors its step text
+fn the_tables_report_distinct_addresses(world: &mut World) {
     let ports: Vec<SocketAddr> = world
         .stdout
         .split_whitespace()

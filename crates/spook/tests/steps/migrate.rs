@@ -53,8 +53,7 @@ async fn the_operator_tries_a_round(world: &mut World) {
 }
 
 #[when(expr = "the operator runs migrate")]
-async fn the_operator_runs_migrate(world: &mut World) {
-    // repeats module: mirrors its step text
+async fn the_operator_runs_the_command(world: &mut World) {
     let pack = host::pack(world).to_path_buf();
     host::run(world, &["migrate", pack.to_str().unwrap()]).await;
 }
@@ -168,8 +167,7 @@ fn state_rev_is_2(world: &mut World) {
 }
 
 #[then(expr = "migrate keeps the hand edit")]
-fn migrate_keeps_the_hand_edit(world: &mut World) {
-    // repeats module: mirrors its step text
+fn keeps_the_hand_edit(world: &mut World) {
     let pack = host::pack(world);
     let rev = spookery_engine::pack_rev(pack).unwrap();
     assert_ne!(rev, docks_pack_rev());

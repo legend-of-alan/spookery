@@ -16,8 +16,7 @@ use crate::World;
 use super::host::{self, Seat};
 
 #[given(expr = "a session recorded against this wire version")]
-fn a_recorded_session(world: &mut World) {
-    // repeats module: mirrors its step text
+fn a_session_at_this_wire_version(world: &mut World) {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../protocol/sessions/v8.jsonl");
     let text =
         std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("{}: {err}", path.display()));

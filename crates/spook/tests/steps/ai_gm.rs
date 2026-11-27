@@ -83,8 +83,7 @@ fn nothing_was_dialed(world: &mut World) {
 }
 
 #[when(expr = "the AI GM is pointed at a game port")]
-async fn ai_gm_is_pointed_at_a_game_port(world: &mut World) {
-    // repeats module: mirrors its step text
+async fn the_gm_is_pointed_at_a_game_port(world: &mut World) {
     let (listener, addr) = free_listener();
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command
@@ -110,8 +109,7 @@ async fn ai_gm_is_pointed_at_a_game_port(world: &mut World) {
 }
 
 #[then(expr = "the AI GM dialed that address")]
-fn ai_gm_dialed_that_address(world: &mut World) {
-    // repeats module: mirrors its step text
+fn the_gm_dialed_that_address(world: &mut World) {
     assert_eq!(world.scratch, "dialed");
 }
 
