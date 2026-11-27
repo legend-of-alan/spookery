@@ -19,8 +19,11 @@ pub(crate) struct Rule {
     pub check: Option<roll::Check>,
     /// The rule's `cost`, paid when the action starts. Its ticks are how long the action takes.
     pub start_cost: Option<Cost>,
+    /// Paid when the action finishes.
     pub finish_cost: Option<Cost>,
+    /// Whether the start uses the actor's act. Packs default this to true.
     pub start_counts_as_act: bool,
+    /// Whether the finish uses the actor's act. Packs default this to false.
     pub finish_counts_as_act: bool,
     /// Ticks the actor stays busy after the finish.
     pub cooldown_ticks: u64,
@@ -35,6 +38,7 @@ pub(crate) struct Rule {
 }
 
 impl Rule {
+    /// The start cost, then the finish cost. `exprs` relies on this order.
     pub(crate) fn costs(&self) -> impl Iterator<Item = &Cost> {
         self.start_cost.iter().chain(&self.finish_cost)
     }
