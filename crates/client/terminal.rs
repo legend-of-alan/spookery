@@ -83,7 +83,7 @@ impl Terminal {
 }
 
 /// The plain surface. Game text goes to stdout and refusals go to stderr. With `is_raw`,
-/// each message other than the picker or a refusal is its protocol message.
+/// each message other than the picker or a refusal prints as its protocol JSON.
 struct Plain {
     renderer: text::Renderer,
     is_raw: bool,
@@ -91,7 +91,7 @@ struct Plain {
 }
 
 impl Plain {
-    /// The picker as text, a refusal on stderr, and any other message as its message or its text.
+    /// The picker as text, a refusal on stderr, and any other message as its protocol JSON or its text.
     fn print(&mut self, message: &ServerMessage) {
         let body = &message.body;
         let content = match body {

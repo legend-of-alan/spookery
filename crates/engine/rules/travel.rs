@@ -248,28 +248,31 @@ pub(crate) struct DueAction {
     pub pending: PendingAction,
 }
 
-/// Clear every action that ends at or before `end`, earliest first.
-pub(crate) fn take_due_actions(world: &mut ecs::World, end: u64) -> Result<Vec<DueAction>, Reason> {
+/// Clear every action that ends at or before `until`, earliest first.
+pub(crate) fn take_due_actions(
+    world: &mut ecs::World,
+    until: u64,
+) -> Result<Vec<DueAction>, Reason> {
     let mut due_keys: Vec<(u64, ActorId)> = (world.actors().query::<(ActorId, &component::Act)>())
         .iter()
         .filter_map(|(id, act)| {
-            let until = act.busy_until?;
-            if act.pending.is_none() || until > end {
+            let busy_until = act.busy_until?;
+            if act.pending.is_none() || busy_until > until {
                 return None;
             }
-            Some((until, id.clone()))
+            Some((busy_until, id.clone()))
         })
         .collect();
     due_keys.sort();
     let mut due_actions = Vec::new();
-    for (until, actor_id) in due_keys {
+    for (busy_until, actor_id) in due_keys {
         let mut actors = world.actors_mut();
         let Some(pending) = actors.get_mut::<component::Act>(&actor_id).take_pending()? else {
             continue;
         };
         due_actions.push(DueAction {
             actor_id,
-            until,
+            until: busy_until,
             pending,
         });
     }

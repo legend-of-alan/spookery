@@ -55,7 +55,7 @@ impl<'a> Ref<'a, entity::Actors, Act> {
     }
 
     /// Busy means an action under way, or a cooldown whose `busy_until` is still after
-    /// `world_time`. An action stays under way until the round that reaches its end ends.
+    /// `world_time`. An action stays under way until the round that reaches its end tick.
     pub fn is_busy(&self, world_time: u64) -> bool {
         let act = self.get();
         act.pending.is_some() || act.busy_until.is_some_and(|until| until > world_time)

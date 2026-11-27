@@ -69,7 +69,7 @@ Feature: Startup repairs the journal and verify finds any edit
     When the operator runs verify
     Then the command exits 0
 
-  Scenario: A uncompressed bundle beside its gzip is removed on open
+  Scenario: An uncompressed bundle beside its gzip is removed on open
     Given a docks table
     And checkpoints are taken every 2 rounds
     When the operator plays 2 rounds

@@ -106,10 +106,10 @@ impl Stream for EventStream {
     type Item = ServerSseMessage;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let Some(message) = ready!(self.messages_rx.poll_message(cx)) else {
+        let Some(bytes) = ready!(self.messages_rx.poll_message(cx)) else {
             return Poll::Ready(None);
         };
-        let body = serde_json::from_slice(&message).expect("the host queues JSON");
+        let body = serde_json::from_slice(&bytes).expect("the host queues JSON");
         let note = CustomNotification::new("spook/event", Some(body));
         let message =
             ServerJsonRpcMessage::notification(ServerNotification::CustomNotification(note));

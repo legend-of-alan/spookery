@@ -494,18 +494,14 @@ mod tests {
     use std::fs;
 
     use super::apply_journal;
-    use crate::ecs::Presence;
     use crate::store::journal;
     use crate::testing::copy_pack;
-    use crate::testing::resume;
+    use crate::testing::play_empty_round;
 
     #[test]
     fn two_replays_in_one_process_do_not_collide() {
         let pack = copy_pack("docks", "replay-collide");
-        let mut session = resume(&pack);
-        let wall = session.world().last_round_at.clone();
-        session.play(&Presence::default(), &wall).unwrap();
-        drop(session);
+        play_empty_round(&pack);
         let records = journal::read_records(&pack).unwrap();
         let left = apply_journal(&pack, &records, None, None).unwrap();
         let right = apply_journal(&pack, &records, None, None).unwrap();

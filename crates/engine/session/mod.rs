@@ -22,8 +22,8 @@ use crate::rules::effect::{self, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind};
 use crate::store::journal;
-use crate::store::records::Record;
-use crate::store::tape::{self};
+use crate::store::records;
+use crate::store::tape;
 use crate::Reason;
 use spookery_protocol::{Audience, QueuedVerb, Refusal, Speaker};
 
@@ -455,7 +455,7 @@ impl<Lock> Session<Lock> {
         let entries = journal::read_verified(&self.root).map_err(|fault| fault.reason)?;
         let mut effects = Vec::new();
         for entry in &entries {
-            let Record::Round(record) = entry else {
+            let records::Record::Round(record) = entry else {
                 continue;
             };
             for effect in &record.effects {

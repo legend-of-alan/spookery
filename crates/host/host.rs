@@ -493,7 +493,7 @@ impl Host {
         if !self.seats.claims.is_empty() || self.seats.gm.is_some() {
             return Ok(());
         }
-        if idle::catch_up_if_due(&mut self.session)? {
+        if idle::play_idle_if_due(&mut self.session)? {
             self.restart_idle_timer();
         }
         Ok(())

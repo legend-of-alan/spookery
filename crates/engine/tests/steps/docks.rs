@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use spookery_engine::testing::{
-    self as support, act_of, place_of, resume, stamp_pack_rev, world_of, write_save, Canon,
+    self as support, act_of, place_of, play_empty_round, resume, stamp_pack_rev, world_of,
+    write_save, Canon,
 };
 use spookery_engine::{
     canon, component, ecs, emit_save, entity, globals, ActorId, Meter, Note, PlaceId, Presence,
@@ -103,14 +104,6 @@ fn rowan() -> Presence {
         players: 1,
         actors_present: vec!["rowan".into()],
     }
-}
-
-/// Play one round at an empty table, timed at the save's last round.
-fn play_empty_round(pack: &Path) {
-    let mut session = resume(pack);
-    let wall = session.world().last_round_at.clone();
-    let played = session.play(&Presence::default(), &wall);
-    played.unwrap_or_else(|err| panic!("round: {err}"));
 }
 
 fn evening_note() {
@@ -309,11 +302,11 @@ fn claimed_note_sorts_first() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn catch_up_to_cap() {
-    catch_up_for(72, 12);
+fn play_idle_to_cap() {
+    play_idle_for(72, 12);
 }
 
-fn catch_up_for(hours: u64, rounds: u64) {
+fn play_idle_for(hours: u64, rounds: u64) {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = support::fresh_dir("play_idle");
     let _ = fs::remove_dir_all(&pack);
@@ -686,12 +679,12 @@ fn the_gm_queues_the_door_note(_world: &mut World) {
 
 #[when(expr = "seventy-two hours of catch-up run")]
 fn seventy_two_hours_of_catch_up_run(_world: &mut World) {
-    catch_up_to_cap();
+    play_idle_to_cap();
 }
 
 #[when(expr = "one hour of catch-up runs")]
 fn one_hour_of_catch_up(_world: &mut World) {
-    catch_up_for(1, 8);
+    play_idle_for(1, 8);
 }
 
 #[when(expr = "Mira is busy and a round runs")]

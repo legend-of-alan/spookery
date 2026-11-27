@@ -163,12 +163,12 @@ fn commit_checkpoint(
     now_bytes: &[u8],
 ) -> Result<(String, String), Reason> {
     let prev = journal::read_chain(&line).map_err(|fault| fault.reason)?;
-    let mark = journal::checkpoint_record(
+    let checkpoint = journal::checkpoint_record(
         world.round_index,
         world.state_rev,
         &blake2s_tagged(now_bytes),
     );
-    let committed = journal::commit(&mark, &prev);
+    let committed = journal::commit(&checkpoint, &prev);
     let chain = journal::read_chain(&committed).map_err(|fault| fault.reason)?;
     Ok((format!("{line}{committed}"), chain))
 }
@@ -286,24 +286,24 @@ pub(crate) fn publish_last_checkpoint<Lock>(
     let Some(path) = journal::find_live_bundle(session.root()) else {
         return Ok(());
     };
-    let Some(mark) = journal::trailing_checkpoint(&path) else {
+    let Some(checkpoint) = journal::trailing_checkpoint(&path) else {
         return Ok(());
     };
     let now_bytes = save::emit(session.world())?.into_bytes();
-    if blake2s_tagged(&now_bytes) != mark.state_hash {
+    if blake2s_tagged(&now_bytes) != checkpoint.state_hash {
         return Ok(());
     }
     let save = journal::save_path(session.root());
-    let snap = journal::checkpoint_path(session.root(), mark.state_rev);
-    let save_ok = journal::hashes_to(&save, &mark.state_hash);
-    let snap_ok = journal::hashes_to(&snap, &mark.state_hash);
+    let snap = journal::checkpoint_path(session.root(), checkpoint.state_rev);
+    let save_ok = journal::hashes_to(&save, &checkpoint.state_hash);
+    let snap_ok = journal::hashes_to(&snap, &checkpoint.state_hash);
     if !save_ok || !snap_ok {
         store_checkpoint(
             session.root(),
             &now_bytes,
-            mark.state_rev,
-            mark.round_index,
-            &mark.chain,
+            checkpoint.state_rev,
+            checkpoint.round_index,
+            &checkpoint.chain,
             write,
         )?;
     }
@@ -337,9 +337,9 @@ mod tests {
             crate::store::records::Record::Round(record) => Some(record.state_rev_after),
             _ => None,
         });
-        let mark = crate::store::journal::latest_checkpoint(&live).unwrap();
+        let checkpoint = crate::store::journal::latest_checkpoint(&live).unwrap();
         assert_eq!(session.world().state_rev, round_rev.unwrap());
-        assert_eq!(session.world().state_rev, mark.state_rev);
+        assert_eq!(session.world().state_rev, checkpoint.state_rev);
         assert!(root.join("state/journal/bundle-0000.jsonl").is_file());
         assert!(!root.join("state/journal/bundle-0000.jsonl.gz").is_file());
 
@@ -376,8 +376,8 @@ mod tests {
         durability::fail_next("save.yaml.tmp");
         commit_round(&mut session, second, round_line(2)).unwrap();
         let live = crate::store::journal::read_live_records(&root).unwrap();
-        let mark = crate::store::journal::latest_checkpoint(&live).unwrap();
-        assert_eq!(session.world().state_rev, mark.state_rev);
+        let checkpoint = crate::store::journal::latest_checkpoint(&live).unwrap();
+        assert_eq!(session.world().state_rev, checkpoint.state_rev);
 
         let mut third = session.start_round();
         third.round_index = 3;

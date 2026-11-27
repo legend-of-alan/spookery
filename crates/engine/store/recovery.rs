@@ -51,11 +51,11 @@ fn close_one(root: &Path, bundle: &Path) -> Result<(), Reason> {
 }
 
 fn snapshot_matches(root: &Path, bundle: &Path) -> bool {
-    let Some(mark) = journal::trailing_checkpoint(bundle) else {
+    let Some(checkpoint) = journal::trailing_checkpoint(bundle) else {
         return false;
     };
-    let snap = journal::checkpoint_path(root, mark.state_rev);
-    journal::hashes_to(&snap, &mark.state_hash)
+    let snap = journal::checkpoint_path(root, checkpoint.state_rev);
+    journal::hashes_to(&snap, &checkpoint.state_hash)
 }
 
 fn gz_matches(gz: &Path, uncompressed: &[u8]) -> bool {

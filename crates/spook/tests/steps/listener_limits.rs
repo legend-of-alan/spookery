@@ -336,7 +336,7 @@ async fn that_player_is_disconnected(world: &mut World) {
 }
 
 #[then(expr = "the other player keeps receiving messages")]
-fn the_other_player_keeps_receivin_messages(world: &mut World) {
+fn the_other_player_keeps_receiving_messages(world: &mut World) {
     assert!(
         world.player_added.contains("\"kind\":\"say\""),
         "{}",

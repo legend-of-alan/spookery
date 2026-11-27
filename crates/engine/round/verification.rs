@@ -105,7 +105,7 @@ fn check_bundle_starts<'a>(
         if index + 1 == bundles.len() {
             break;
         }
-        let Some(mark) = journal::latest_checkpoint(entries) else {
+        let Some(checkpoint) = journal::latest_checkpoint(entries) else {
             return Err(Divergence::new(
                 DivergenceKind::Checkpoint,
                 0,
@@ -116,14 +116,14 @@ fn check_bundle_starts<'a>(
         };
         let diverged = |detail: &str| {
             checkpoint_diverged(
-                mark.state_rev,
-                mark.round_index,
+                checkpoint.state_rev,
+                checkpoint.round_index,
                 format!("{bundle}: {detail}"),
             )
         };
-        current = fs::read(journal::checkpoint_path(pack, mark.state_rev))
+        current = fs::read(journal::checkpoint_path(pack, checkpoint.state_rev))
             .map_err(|_| diverged("missing snapshot"))?;
-        if blake2s_tagged(&current) != mark.state_hash {
+        if blake2s_tagged(&current) != checkpoint.state_hash {
             return Err(diverged("state hash differed")
                 .with_replayed_bytes(current)
                 .into());
@@ -139,11 +139,11 @@ fn check_bundle_end(
     end: Result<Vec<u8>, Error>,
 ) -> Result<Vec<u8>, Error> {
     let end = end.map_err(|err| read_first_diverged_line(pack, err))?;
-    if let Some(mark) = journal::latest_checkpoint(entries) {
-        if blake2s_tagged(&end) != mark.state_hash {
+    if let Some(checkpoint) = journal::latest_checkpoint(entries) {
+        if blake2s_tagged(&end) != checkpoint.state_hash {
             let detail = format!("{bundle}: state hash differed");
             return Err(
-                checkpoint_diverged(mark.state_rev, mark.round_index, detail)
+                checkpoint_diverged(checkpoint.state_rev, checkpoint.round_index, detail)
                     .with_replayed_bytes(end)
                     .into(),
             );
@@ -170,15 +170,15 @@ fn check_save(pack: &Path, records: &[Record], base: &[u8]) -> Result<(), Error>
             ));
         }
     }
-    if let Some(mark) = journal::latest_checkpoint(records) {
-        if blake2s_tagged(&live) != mark.state_hash {
-            let snap = fs::read(journal::checkpoint_path(pack, mark.state_rev)).ok();
+    if let Some(checkpoint) = journal::latest_checkpoint(records) {
+        if blake2s_tagged(&live) != checkpoint.state_hash {
+            let snap = fs::read(journal::checkpoint_path(pack, checkpoint.state_rev)).ok();
             let diverged = Divergence {
                 replayed_bytes: snap,
                 ..Divergence::new(
                     DivergenceKind::Save,
-                    mark.state_rev,
-                    Some(mark.round_index),
+                    checkpoint.state_rev,
+                    Some(checkpoint.round_index),
                     "state hash differed",
                 )
             };
@@ -247,9 +247,8 @@ mod tests {
     use std::fs;
 
     use super::{journal, run, run_quick};
-    use crate::ecs::Presence;
     use crate::testing::copy_pack;
-    use crate::testing::resume;
+    use crate::testing::play_empty_round;
 
     #[test]
     fn verify_and_quick_verify_reject_tampered_save_after_checkpoint() {
@@ -258,11 +257,8 @@ mod tests {
         let mut cfg = fs::read_to_string(&pack_yaml).unwrap();
         cfg.push_str("\ncheckpoint_every: 2\n");
         fs::write(&pack_yaml, cfg).unwrap();
-        let mut session = resume(&pack);
-        let wall = session.world().last_round_at.clone();
-        session.play(&Presence::default(), &wall).unwrap();
-        session.play(&Presence::default(), &wall).unwrap();
-        drop(session);
+        play_empty_round(&pack);
+        play_empty_round(&pack);
         let save = journal::save_path(&pack);
         let text = fs::read_to_string(&save).unwrap();
         let tampered = text.replacen("state_rev: 2", "state_rev: 99", 1);

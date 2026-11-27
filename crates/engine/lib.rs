@@ -229,6 +229,14 @@ pub mod testing {
             .unwrap_or_else(|err| panic!("Session::resume {}: {err}", pack.display()))
     }
 
+    /// Play one round at an empty table, timed at the save's last round.
+    pub fn play_empty_round(pack: &Path) {
+        let mut session = resume(pack);
+        let wall = session.world().last_round_at.clone();
+        let played = session.play(&crate::ecs::Presence::default(), &wall);
+        played.unwrap_or_else(|err| panic!("round {}: {err}", pack.display()));
+    }
+
     /// Read the pack's journal and replay all of it.
     pub fn replay_pack(pack: &Path) -> Result<crate::replay::Report, crate::replay::Error> {
         let records = crate::store::journal::read_records(pack)?;

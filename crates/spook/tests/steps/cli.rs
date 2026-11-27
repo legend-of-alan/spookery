@@ -57,7 +57,7 @@ async fn play_joins_the_table_with_plain(world: &mut World) {
 }
 
 #[when(expr = "play joins the table with raw messages")]
-async fn play_joins_the_table_with_ra_messages(world: &mut World) {
+async fn play_joins_the_table_with_raw_messages(world: &mut World) {
     play_as_pc(world, "rowan", &["--raw"]).await;
 }
 
@@ -121,7 +121,7 @@ async fn play_error_shows(world: &mut World, text: String) {
 }
 
 #[then(expr = "play shows protocol messages")]
-async fn play_shows_protoco_messages(world: &mut World) {
+async fn play_shows_protocol_messages(world: &mut World) {
     wait_play(world, "\"kind\":\"view\"").await;
     let stdout = capture_play_stdout(world);
     assert!(stdout.contains("\"kind\":\"resume\""), "{stdout}");

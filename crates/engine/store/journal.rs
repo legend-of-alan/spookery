@@ -265,7 +265,8 @@ pub(crate) fn trailing_checkpoint(path: &Path) -> Option<CheckpointRecord> {
 /// The checkpoint hash is already in `save.yaml`, so the bundle is complete.
 /// Until then it stays the live file and startup can still replay it.
 pub(crate) fn is_published(pack: &Path, path: &Path) -> bool {
-    trailing_checkpoint(path).is_some_and(|mark| hashes_to(&save_path(pack), &mark.state_hash))
+    trailing_checkpoint(path)
+        .is_some_and(|checkpoint| hashes_to(&save_path(pack), &checkpoint.state_hash))
 }
 
 /// The file at `path` can be read and its bytes hash to `hash`.
