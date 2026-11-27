@@ -1,4 +1,4 @@
-//! One round, in the order `play` runs them.
+//! One round, in the order `round::stage` runs them.
 
 pub(crate) mod advance;
 pub(crate) mod apply;

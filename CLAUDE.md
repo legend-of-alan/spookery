@@ -49,8 +49,8 @@ cargo test -p spook --test features_world -- --name "Locked exit"
 
 ## Engine
 
-- **One writer.** State changes only inside a round, which `round/play.rs` runs as the stages in `round/stage/`: advance, pick, apply, finish, triggers, deliver, record. Stages write into the round's working copy of the save, and nothing is published until `record` commits. The one exception is `spook migrate`.
-- **Live and replay share the path.** `round/replay.rs` runs the same stages on a lockless session, and `round/verify.rs` compares the result byte for byte. Keep a new mechanic inside this path. Dice come from `round/dice.rs`, never from ambient randomness or the model.
+- **One writer.** State changes only inside a round, which `round.rs` runs as the stages in `round/stages/`: advance, pick, apply, end, triggers, deliver, record. Stages write into the round's working copy of the save, and nothing is published until `record` commits. The one exception is `spook migrate`.
+- **Live and replay share the path.** `replay.rs` runs the same stages on a lockless session, and `round/verification.rs` compares the result byte for byte. Keep a new mechanic inside this path. Dice come from `round/dice.rs`, never from ambient randomness or the model.
 - **Versions.** `store::RULES_REV` is stamped on every save and round, and a mismatch is refused, never migrated. Bump it only when the save or round format changes. After canon edits, `spook check` reports `PACK_REV_MISMATCH` until `spook migrate`.
 - **Visibility.** `rules/perceive.rs` and `rules/visibility.rs` decide what each viewer sees. Treat any change there as a privacy change.
 

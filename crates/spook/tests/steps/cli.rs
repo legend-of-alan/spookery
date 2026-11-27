@@ -56,8 +56,8 @@ async fn play_joins_the_table_with_plain(world: &mut World) {
     play_as_pc(world, "rowan", &["--plain"]).await;
 }
 
-#[when(expr = "play joins the table with raw frames")]
-async fn play_joins_the_table_with_raw_frames(world: &mut World) {
+#[when(expr = "play joins the table with raw messages")]
+async fn play_joins_the_table_with_ra_messages(world: &mut World) {
     play_as_pc(world, "rowan", &["--raw"]).await;
 }
 
@@ -120,8 +120,8 @@ async fn play_error_shows(world: &mut World, text: String) {
     .await;
 }
 
-#[then(expr = "play shows protocol frames")]
-async fn play_shows_protocol_frames(world: &mut World) {
+#[then(expr = "play shows protocol messages")]
+async fn play_shows_protoco_messages(world: &mut World) {
     wait_play(world, "\"kind\":\"view\"").await;
     let stdout = capture_play_stdout(world);
     assert!(stdout.contains("\"kind\":\"resume\""), "{stdout}");
@@ -208,7 +208,7 @@ async fn play_shows_the_raw_resume_digest(world: &mut World) {
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .map(|message| message["body"].clone())
         .find(|body| body["kind"] == "resume")
-        .unwrap_or_else(|| panic!("no resume frame\n{stdout}"));
+        .unwrap_or_else(|| panic!("no resume message\n{stdout}"));
     assert_eq!(resume["notes"][0]["id"], "note_mira_door", "{stdout}");
     assert_eq!(
         resume["notes"][0]["text"], "Back at dusk. Oil on the shelf.",

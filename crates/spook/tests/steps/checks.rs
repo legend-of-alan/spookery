@@ -203,8 +203,8 @@ async fn the_gm_sees_miras_failed_notice(world: &mut World) {
     assert_one_roll(world, 1, 14, "miss").await;
 }
 
-#[then(expr = "the player sees no check frame")]
-async fn the_player_sees_no_check_frame(world: &mut World) {
+#[then(expr = "the player sees no check message")]
+async fn the_player_sees_no_check_message(world: &mut World) {
     let added = host::wait_player_from(world, world.mark, "\"kind\":\"view\"").await;
     assert!(!added.contains("\"kind\":\"check\""), "{added}");
 }

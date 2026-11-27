@@ -271,11 +271,11 @@ fn harbormouse_is_refused(world: &mut World, code: String) {
         .player_added
         .lines()
         .find(|row| row.contains("\"kind\":\"refused\""))
-        .unwrap_or_else(|| panic!("no refused frame\n{}", world.player_added));
+        .unwrap_or_else(|| panic!("no refused message\n{}", world.player_added));
     let message: Value = serde_json::from_str(row).unwrap();
-    let frame = &message["body"];
-    assert_eq!(frame["code"], code.as_str(), "{frame}");
-    assert!(frame.get("detail").is_none(), "{frame}");
+    let payload = &message["body"];
+    assert_eq!(payload["code"], code.as_str(), "{payload}");
+    assert!(payload.get("detail").is_none(), "{payload}");
 }
 
 #[then(expr = "no round was spent and harbormouse still holds 1 latch")]

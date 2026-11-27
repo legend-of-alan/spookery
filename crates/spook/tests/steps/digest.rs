@@ -218,7 +218,7 @@ fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: S
     );
 }
 
-/// The resume frame the host sends when `actor` is claimed on a host running this pack.
+/// The resume message the host sends when `actor` is claimed on a host running this pack.
 async fn read_player_resume(world: &mut World, actor: &str) -> String {
     let pack = host::pack(world).to_path_buf();
     host::listen(world, &pack).await;
@@ -229,7 +229,7 @@ async fn read_player_resume(world: &mut World, actor: &str) -> String {
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .map(|message| message["body"].clone())
         .find(|body| body["kind"] == "resume")
-        .unwrap_or_else(|| panic!("no resume frame\n{text}"))
+        .unwrap_or_else(|| panic!("no resume message\n{text}"))
         .to_string()
 }
 

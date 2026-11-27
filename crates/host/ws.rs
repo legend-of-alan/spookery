@@ -128,7 +128,7 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
     }
     let mut cancel_rx = messages_rx.cancel.clone();
     let writer = tokio::spawn(write_messages(
-        async move |frame: &[u8]| match std::str::from_utf8(frame) {
+        async move |message: &[u8]| match std::str::from_utf8(message) {
             Ok(text) => sink.send(Message::text(text)).await.is_ok(),
             Err(_) => false,
         },

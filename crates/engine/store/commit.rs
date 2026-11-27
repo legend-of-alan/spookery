@@ -25,9 +25,9 @@ pub struct Outcome {
     pub world_time: u64,
 }
 
-/// Seal one played round, append it, finish a due checkpoint, and clear the queue. `world` is
+/// Commit one played round, append it, end a due checkpoint, and clear the queue. `world` is
 /// the round's working copy of the save, published only once the round is on disk.
-pub(crate) fn commit(
+pub(crate) fn run(
     session: &mut session::Session,
     mut world: ecs::World,
     record: RoundRecord,
@@ -92,8 +92,8 @@ fn bump_state_rev(world: &mut ecs::World) -> Result<(), Reason> {
     Ok(())
 }
 
-/// Seal a migrate record for `world`, which is already the journal tip or the on-disk save.
-/// `edited` means `world` is a hand edit of the checkpoint head. The journal does not hold
+/// Commit a migrate record for `world`, which is already the journal tip or the on-disk save.
+/// `edited` means `world` is a hand edit of the checkpoint mark. The journal does not hold
 /// that edit, so a checkpoint of the migrated save follows the record and replay restarts
 /// from it. Its snapshot is on disk before the record, so a crash after the append still
 /// replays. The caller holds the pack lock.
@@ -129,7 +129,7 @@ pub(crate) fn commit_migrate(
     let entry = Record::Migrate(record);
     let write = lock::take_write(root, lock)?;
     let prev = journal::read_chain_tip(root).map_err(|fault| fault.reason)?;
-    let line = journal::seal(&entry, &prev);
+    let line = journal::commit(&entry, &prev);
     if edited {
         write_atomic(&journal::checkpoint_path(root, world.state_rev), &emitted)?;
         let (payload, chain) = commit_checkpoint(line, &world, &emitted)?;
@@ -155,7 +155,7 @@ pub(crate) fn commit_migrate(
     Ok(())
 }
 
-/// Follow a sealed `line` with a checkpoint of `world`. Returns both lines and the
+/// Follow a committed `line` with a checkpoint of `world`. Returns both lines and the
 /// checkpoint's chain.
 fn commit_checkpoint(
     line: String,
@@ -168,9 +168,9 @@ fn commit_checkpoint(
         world.state_rev,
         &blake2s_tagged(now_bytes),
     );
-    let sealed = journal::seal(&mark, &prev);
-    let chain = journal::read_chain(&sealed).map_err(|fault| fault.reason)?;
-    Ok((format!("{line}{sealed}"), chain))
+    let committed = journal::commit(&mark, &prev);
+    let chain = journal::read_chain(&committed).map_err(|fault| fault.reason)?;
+    Ok((format!("{line}{committed}"), chain))
 }
 
 fn commit_round(
@@ -185,7 +185,7 @@ fn commit_round(
     record.memories = world.take_memories();
     record.state_hash = blake2s_tagged(now_bytes);
     let prev = journal::read_chain_tip(root).map_err(|fault| fault.reason)?;
-    Ok(journal::seal(&Record::Round(record), &prev))
+    Ok(journal::commit(&Record::Round(record), &prev))
 }
 
 fn is_checkpoint_due(every: u64, round_index: u64) -> bool {
@@ -228,7 +228,7 @@ fn store_checkpoint(
     chain: &str,
     _write: &WriteGuard,
 ) -> Result<(), Reason> {
-    let head = serde_json::to_string(&journal::Mark {
+    let mark = serde_json::to_string(&journal::Mark {
         rules_rev: crate::store::RULES_REV,
         state_rev,
         round_index,
@@ -236,7 +236,7 @@ fn store_checkpoint(
         chain: chain.to_string(),
     })
     .map_err(|_| Reason::Schema)?;
-    write_atomic(&journal::mark_path(root), head.as_bytes())?;
+    write_atomic(&journal::mark_path(root), mark.as_bytes())?;
     let save = journal::save_path(root);
     let base = journal::base_path(root);
     if !base.is_file() {
@@ -256,7 +256,7 @@ fn store_checkpoint(
 }
 
 /// The journal line is already durable. An error means `save.yaml` or the gzip did
-/// not finish. The round stays committed either way.
+/// not land. The round stays committed either way.
 fn end_checkpoint(
     session: &mut session::Session,
     now_bytes: &[u8],
@@ -268,11 +268,11 @@ fn end_checkpoint(
     close_checkpointed(session.root(), write)
 }
 
-/// A finished bundle that could not be closed stays open, and the next commit closes it.
+/// A checkpointed bundle that could not be closed stays open, and the next commit closes it.
 /// Returns whether it closed.
 fn warn_if_left_open(closed: Result<(), Reason>) -> bool {
     if let Err(code) = &closed {
-        tracing::warn!(code = %code, "a finished journal bundle stays open until the next commit");
+        tracing::warn!(code = %code, "a checkpointed journal bundle stays open until the next commit");
     }
     closed.is_ok()
 }
@@ -320,7 +320,7 @@ mod tests {
     use crate::store::records::RoundRecord;
     use crate::testing::copy_pack;
 
-    use super::commit;
+    use crate::store::commit;
 
     #[test]
     fn a_failed_gzip_keeps_the_round_and_the_next_commit_starts_a_bundle() {
@@ -331,7 +331,7 @@ mod tests {
         let mut world = session.start_round();
         world.round_index = 1;
         durability::fail_next(".jsonl.gz.tmp");
-        commit(&mut session, world, round_line(1)).unwrap();
+        commit::run(&mut session, world, round_line(1)).unwrap();
         let live = crate::store::journal::read_live_records(&root).unwrap();
         let round_rev = live.iter().rev().find_map(|entry| match entry {
             crate::store::records::Record::Round(record) => Some(record.state_rev_after),
@@ -345,7 +345,7 @@ mod tests {
 
         let mut again = session.start_round();
         again.round_index = 2;
-        commit(&mut session, again, round_line(2)).unwrap();
+        commit::run(&mut session, again, round_line(2)).unwrap();
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
         for (bundle, entries) in &bundles {
@@ -369,19 +369,19 @@ mod tests {
         let mut session = crate::testing::resume(&root);
         let mut first = session.start_round();
         first.round_index = 1;
-        commit(&mut session, first, round_line(1)).unwrap();
+        commit::run(&mut session, first, round_line(1)).unwrap();
 
         let mut second = session.start_round();
         second.round_index = 2;
         durability::fail_next("save.yaml.tmp");
-        commit(&mut session, second, round_line(2)).unwrap();
+        commit::run(&mut session, second, round_line(2)).unwrap();
         let live = crate::store::journal::read_live_records(&root).unwrap();
         let mark = crate::store::journal::latest_checkpoint(&live).unwrap();
         assert_eq!(session.world().state_rev, mark.state_rev);
 
         let mut third = session.start_round();
         third.round_index = 3;
-        commit(&mut session, third, round_line(3)).unwrap();
+        commit::run(&mut session, third, round_line(3)).unwrap();
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
         let (first_bundle, first_entries) = &bundles[0];

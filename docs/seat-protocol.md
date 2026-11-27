@@ -142,7 +142,7 @@ A pack verb is a command of its own, its target in `target`. The target is an id
 {"seq":9,"reply_to":"c3","body":{"kind":"queued","intent":"150ad41608eafe8bfb76d88485e665c77021363782bbb8bc1f5eafb2345ac8b6","actor":"rowan","verb":"exert"}}
 ```
 
-`cancel` is a verb too, and a busy player may send it. It drops the PC's own action under way when its rule says `cancellable`, with no refund, and the action never finishes. A walk is never cancelled. With nothing to cancel, or an action whose rule does not allow it, `cancel` is refused `INELIGIBLE` and the action still lands.
+`cancel` is a verb too, and a busy player may send it. It drops the PC's own action under way when its rule says `cancellable`, with no refund, and the action never ends. A walk is never cancelled. With nothing to cancel, or an action whose rule does not allow it, `cancel` is refused `INELIGIBLE` and the action still lands.
 
 A verb the host can judge at once is refused before it is queued. Here Rowan sent `travel` with `target` `stairs`, and `detail` is the pack's locked text:
 

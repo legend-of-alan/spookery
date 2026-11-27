@@ -74,7 +74,7 @@ pub(crate) struct Roller<'r> {
 }
 
 impl eval::Dice for Roller<'_> {
-    fn begin(&mut self) {
+    fn start(&mut self) {
         self.key = None;
         self.drawn = 0;
     }

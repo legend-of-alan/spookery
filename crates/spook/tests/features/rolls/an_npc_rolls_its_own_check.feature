@@ -6,7 +6,7 @@ Feature: An NPC rolls its own check
     And the GM commits the round
     Then Mira is braced
     And the GM sees Mira's sure notice
-    And the player sees no check frame
+    And the player sees no check message
     And spook verify passes
 
   Scenario: A GM-queued NPC notice fails
@@ -15,7 +15,7 @@ Feature: An NPC rolls its own check
     And the GM commits the round
     Then Mira slipped
     And the GM sees Mira's failed notice
-    And the player sees no check frame
+    And the player sees no check message
     And spook verify passes
 
   Scenario: An engine habit rolls its NPC's check

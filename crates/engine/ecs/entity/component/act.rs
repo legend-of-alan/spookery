@@ -55,7 +55,7 @@ impl<'a> Ref<'a, entity::Actors, Act> {
     }
 
     /// Busy means an action under way, or a cooldown whose `busy_until` is still after
-    /// `world_time`. An action stays under way until the round that reaches its finish ends.
+    /// `world_time`. An action stays under way until the round that reaches its end ends.
     pub fn is_busy(&self, world_time: u64) -> bool {
         let act = self.get();
         act.pending.is_some() || act.busy_until.is_some_and(|until| until > world_time)
@@ -93,7 +93,7 @@ impl Mut<'_, entity::Actors, Act> {
     }
 
     /// End the actor's action under way, if any, and free them. The action, so `cancel` and
-    /// `finish` see it.
+    /// `end` see it.
     pub fn take_pending(&mut self) -> Result<Option<PendingAction>, Reason> {
         let mut taken = None;
         self.write(Act::BUSY, busy_value, |act| {
@@ -179,7 +179,7 @@ impl WindowCount {
     }
 }
 
-/// A timed action that finishes when `busy_until` is reached: its verb, who queued it, the
+/// A timed action that ends when `busy_until` is reached: its verb, who queued it, the
 /// target it was queued against, and the rule it started with.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

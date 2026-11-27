@@ -19,7 +19,7 @@ use crate::Reason;
 
 /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
 /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
-/// The caller holds the pack lock, so a crash is repaired and the checkpoint settled.
+/// The caller holds the pack lock, so a crash is repaired and the checkpoint committed.
 pub(crate) fn load_tip(pack: &Path, guard: &PackGuard) -> Result<Session<()>, Reason> {
     choose_seed(pack, guard)?;
     rebuild_save(pack, guard)?;
@@ -63,7 +63,7 @@ pub fn migrate_pack(pack: &Path) -> Result<(), Reason> {
     Ok(())
 }
 
-/// The world to migrate, and whether it is a hand edit of the checkpoint head. A hand edit
+/// The world to migrate, and whether it is a hand edit of the checkpoint mark. A hand edit
 /// with live rounds past it is refused, because the tip does not hold it.
 fn load_migrate_tip(pack: &Path, guard: &PackGuard) -> Result<(ecs::World, bool), Error> {
     let bytes = journal::read_save(&journal::save_path(pack))?;
@@ -108,18 +108,18 @@ fn apply_live(session: &mut Session<()>) -> Result<bool, Error> {
 }
 
 fn rebuild_save(pack: &Path, guard: &PackGuard) -> Result<(), Error> {
-    let Some(head) = journal::read_mark(pack)? else {
+    let Some(mark) = journal::read_mark(pack)? else {
         return Ok(());
     };
     let save_path = journal::save_path(pack);
     match journal::read_save(&save_path) {
         Ok(bytes) => {
-            if blake2s_tagged(&bytes) == head.state_hash {
+            if blake2s_tagged(&bytes) == mark.state_hash {
                 return Ok(());
             }
             if let Ok(text) = std::str::from_utf8(&bytes) {
                 if let Ok(file_save) = save::parse(text) {
-                    if file_save.state_rev == head.state_rev
+                    if file_save.state_rev == mark.state_rev
                         || save::emit(&file_save)
                             .map(|emitted| emitted.into_bytes())
                             .ok()
@@ -135,10 +135,10 @@ fn rebuild_save(pack: &Path, guard: &PackGuard) -> Result<(), Error> {
         Err(reason) => return Err(reason.into()),
     }
     let records = journal::read_records(pack)?;
-    let report = apply_journal(pack, &records, None, Some(head.state_rev))?;
-    if blake2s_tagged(&report.now_yaml) != head.state_hash {
+    let report = apply_journal(pack, &records, None, Some(mark.state_rev))?;
+    if blake2s_tagged(&report.now_yaml) != mark.state_hash {
         return Err(
-            checkpoint_diverged(head.state_rev, head.round_index, "state hash differed")
+            checkpoint_diverged(mark.state_rev, mark.round_index, "state hash differed")
                 .with_replayed_bytes(report.now_yaml)
                 .into(),
         );

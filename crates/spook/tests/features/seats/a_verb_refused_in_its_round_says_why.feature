@@ -11,8 +11,8 @@ Feature: A verb refused in its round says why
     And play's error shows "[NOT_A_WEAPON]" once
     And play shows no protocol JSON
 
-  Scenario: A refused NPC habit sends no player frame
+  Scenario: A refused NPC habit sends no player message
     Given Bram's habit takes a tonic that is not there
     When the player waits for the resume
-    Then the player sees no refused frame
+    Then the player sees no refused message
     And Bram does not have flag grabbed

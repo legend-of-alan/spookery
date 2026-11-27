@@ -59,6 +59,6 @@ pub(crate) fn run(
         prev: String::new(),
         chain: String::new(),
     };
-    output.commit = Some(commit::commit(session, world, record)?);
+    output.commit = Some(commit::run(session, world, record)?);
     Ok(output)
 }

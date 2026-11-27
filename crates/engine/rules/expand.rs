@@ -18,9 +18,9 @@ use crate::Reason;
 /// Why a rule's effects are expanded and applied, which decides what applying them journals.
 #[derive(Clone, Copy)]
 pub(crate) enum Cause {
-    /// An action finishing, now or when its ticks pass: each effect takes an `EffectApplied`
+    /// An action ending, now or when its ticks pass: each effect takes an `EffectApplied`
     /// step, and a refusal is told to a player.
-    Finish,
+    End,
     /// A change rule firing, which is nobody's action: its effects take no step of their own and
     /// its refusal is told to nobody.
     Trigger,
@@ -318,7 +318,7 @@ fn move_effect(context: &Context, to: ActorLocation) -> Result<Effect, Reason> {
 struct PreviewDice;
 
 impl Dice for PreviewDice {
-    fn begin(&mut self) {}
+    fn start(&mut self) {}
 
     fn draw(&mut self, count: u32, _sides: u32) -> Result<Vec<u32>, Reason> {
         Ok(vec![1; count as usize])

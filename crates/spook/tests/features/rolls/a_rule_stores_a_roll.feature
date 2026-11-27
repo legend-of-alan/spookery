@@ -34,7 +34,7 @@ Feature: A rule stores a roll in let
       | 0          | attack: 1d20, 1d4, 1d6 |
       | 100        | attack: 1d20, 1d4      |
 
-  Scenario: A verb that takes time reads its let at its finish
+  Scenario: A verb that takes time reads its let at its end
     Given a docks table
     When the pack's hit stores "zeal: self.rest", takes 30 ticks, and adds "zeal" to vigor
     And Mira's rouse takes 10 ticks and adds 2 to Rowan's rest

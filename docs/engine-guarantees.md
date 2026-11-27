@@ -50,12 +50,12 @@ Tested in `features/seats/one_gm_and_three_players.feature`,
 ## Replay
 
 The journal is a hash chain of bundle files. Each record's hash covers its own
-bytes and the previous record's hash. Closed bundles stay, gzip-compressed. A
-plain bundle whose checkpoint matches `save.yaml` is closed on the next open
+bytes and the previous record's hash. Closed bundles stay, gzip-compressed. An
+uncompressed bundle whose checkpoint matches `save.yaml` is closed on the next open
 or the next commit, and the next round starts a new bundle. If `save.yaml` or
 the gzip does not land, the round stays committed and the engine logs a
 warning. The next commit publishes that checkpoint and then starts a new
-bundle. A plain copy beside a finished gzip is removed. `save.yaml` is the latest
+bundle. An uncompressed copy beside a complete gzip is removed. `save.yaml` is the latest
 checkpoint, taken every `checkpoint_every` rounds (100 when the pack omits it;
 the scenario "A pack that does not set checkpoint_every checkpoints every 100
 rounds" in `features/replay/the_journal_repairs_and_verify_finds_edits.feature` pins it). Between
@@ -158,7 +158,7 @@ Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 
 A change rule fires in the same round that makes its watch true, and not again
 while the watch stays true. Change rules run right after each action starts and
-after each one finishes, so an exit opened twice in one round fires its watcher
+after each one ends, so an exit opened twice in one round fires its watcher
 twice, and a rule can refuse a later action in that round. The depth limit
 counts the passes after each action, not the round. Arrival fires a rule on that place, including an
 author teleport. A meter that crosses the watched line can set a flag in that
@@ -277,16 +277,16 @@ Tested in `features/travel/travel_follows_the_map.feature`,
 
 ## Actions
 
-Every verb starts and finishes through one path, whether it travels,
+Every verb starts and ends through one path, whether it travels,
 teleports or does anything else. A verb is checked when it is queued, by a
 player or by the GM, so a busy actor is refused `BUSY` at once and keeps the
 turn. It is checked again when it starts, since an earlier verb that round may
 have changed the world, and a habit is checked only then. A GM-queued habit is
 checked the same as one the engine picks, its `if` included. The start pays
 its cost and, unless the rule says otherwise, uses the actor's act. A verb
-that takes no ticks finishes in the round it starts. A timed one finishes in
+that takes no ticks ends in the round it starts. A timed one ends in
 the round that reaches its tick, and every effect lands then, a teleport
-included. After the finish the actor stays busy through the rule's cooldown.
+included. After the end the actor stays busy through the rule's cooldown.
 A player's view says what keeps them busy and until when.
 
 Tested in `features/rules/one_action_lifecycle.feature`.
@@ -296,7 +296,7 @@ Tested in `features/rules/one_action_lifecycle.feature`.
 A player may cancel their own timed action while it is under way, when its rule
 says `cancellable`. The cancel is a verb like any other, played in a round, so
 replay sees it. The action is dropped and its actor is free at once. Nothing it
-cost comes back, and its finish never runs. A cancel with no action under way,
+cost comes back, and its end never runs. A cancel with no action under way,
 on a rule that is not cancellable, or on a walk is refused `INELIGIBLE`, and
 the action still lands. No one cancels another's action.
 
@@ -369,11 +369,11 @@ Tested in `features/rules/rules_live_with_their_owner.feature`,
 
 The host binds loopback only. Any other address is refused before the pack opens,
 and the pack is unchanged. A player line with no end, a hello that never
-finishes, and an HTTP body over the size cap are refused. The save stays, and
+ends, and an HTTP body over the size cap are refused. The save stays, and
 another player can still claim a PC. Invalid text from a seated player is refused, and
 that player can still play. A flood from one player does not stop another's
 round. A player who stops reading is dropped, and the other keeps receiving
-frames. The model client does not dial when a setting is missing.
+messages. The model client does not dial when a setting is missing.
 
 Tested in `features/loopback/only_loopback_binds.feature`,
 `features/limits/the_listener_bounds_input.feature`, and

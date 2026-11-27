@@ -57,7 +57,6 @@ impl Target {
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Args {
-    // repeats module: re-exported at the crate root
     #[serde(rename = "to", default, skip_serializing_if = "Option::is_none")]
     pub message_to: Option<Vec<ActorId>>,
 }
@@ -114,7 +113,7 @@ impl Intent {
             None => verb.to_string(),
         };
         Ok(Self::new(
-            id(&world.world_id, round, actor_id.as_str(), &line),
+            hash(&world.world_id, round, actor_id.as_str(), &line),
             round,
             Some(actor_id.clone()),
             Source::Player,
@@ -127,7 +126,7 @@ impl Intent {
     pub(crate) fn habit(world: &ecs::World, actor_id: &ActorId, local_id: &str) -> Self {
         let round = world.round_index;
         Self::new(
-            id(&world.world_id, round, actor_id.as_str(), local_id),
+            hash(&world.world_id, round, actor_id.as_str(), local_id),
             round,
             Some(actor_id.clone()),
             Source::Engine,
@@ -166,9 +165,9 @@ impl Intent {
         Ok(intent)
     }
 
-    /// The finish of `actor_id`'s timed action, as `finish:<actor>`, with the source, verb
-    /// and target it began with.
-    pub(crate) fn finish(
+    /// The end of `actor_id`'s timed action, as `end:<actor>`, with the source, verb
+    /// and target it started with.
+    pub(crate) fn end(
         world: &ecs::World,
         actor_id: &ActorId,
         source: Source,
@@ -178,7 +177,7 @@ impl Intent {
         if !world.actors().contains(actor_id) {
             return Err(Reason::UnknownId);
         }
-        let id = format!("finish:{actor_id}");
+        let id = format!("end:{actor_id}");
         Ok(Self::new(
             id,
             world.round_index,
@@ -240,6 +239,6 @@ impl TryFrom<TargetWire> for Target {
 
 /// Blake2s of `world|round|actor|line`: a player's line for the round after the save's,
 /// or a habit's local id for the save's round.
-fn id(world_id: &str, round_index: u64, actor_id: &str, line: &str) -> String {
+fn hash(world_id: &str, round_index: u64, actor_id: &str, line: &str) -> String {
     crate::hash::blake2s_hex(format!("{world_id}|{round_index}|{actor_id}|{line}").as_bytes())
 }

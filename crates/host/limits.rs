@@ -20,7 +20,7 @@ pub(super) const RATE_PER_SEC: u64 = 5;
 /// Client messages accepted immediately on a fresh connection.
 pub(super) const BURST: u64 = 10;
 
-/// Frames queued toward one socket before that socket is dropped.
+/// Messages queued toward one socket before that socket is dropped.
 pub(super) const OUTBOUND_MESSAGE_CAP: usize = 256;
 
 /// How many messages a claim keeps for a reconnect. Older ones are dropped, and the
@@ -28,7 +28,7 @@ pub(super) const OUTBOUND_MESSAGE_CAP: usize = 256;
 pub(super) const MISSED_MESSAGE_CAP: usize = 256;
 
 /// Bytes queued toward one socket before that socket is dropped.
-/// A 256-frame queue of long speech fills the tape before a large TCP
+/// A 256-message queue of long speech fills the tape before a large TCP
 /// window fills, so the byte cap is what drops a stopped reader there.
 pub(super) const OUTBOUND_CAP_BYTES: usize = 64 * 1024;
 

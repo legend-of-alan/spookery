@@ -31,7 +31,7 @@ impl Terminal {
         })
     }
 
-    /// Prints plain lines, as text or with `raw` as protocol frames.
+    /// Prints plain lines, as text or with `raw` as protocol messages.
     pub fn plain(raw: bool) -> Self {
         Self {
             surface: Surface::Plain(Plain {
@@ -83,7 +83,7 @@ impl Terminal {
 }
 
 /// The plain surface. Game text goes to stdout and refusals go to stderr. With `is_raw`,
-/// each message other than the picker or a refusal is its protocol frame.
+/// each message other than the picker or a refusal is its protocol message.
 struct Plain {
     renderer: text::Renderer,
     is_raw: bool,
@@ -91,7 +91,7 @@ struct Plain {
 }
 
 impl Plain {
-    /// The picker as text, a refusal on stderr, and any other message as its frame or its text.
+    /// The picker as text, a refusal on stderr, and any other message as its message or its text.
     fn print(&mut self, message: &ServerMessage) {
         let body = &message.body;
         let content = match body {

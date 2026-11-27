@@ -93,7 +93,7 @@ impl SeatSessions {
     }
 }
 
-/// The GM's event stream: each frame the host queues for the seat, as one `spook/event`
+/// The GM's event stream: each message the host queues for the seat, as one `spook/event`
 /// notification over SSE. It owns the seat, so when it is dropped the session is closed.
 /// A refused stream carries only its refusal and owns nothing.
 struct EventStream {
@@ -106,10 +106,10 @@ impl Stream for EventStream {
     type Item = ServerSseMessage;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let Some(frame) = ready!(self.messages_rx.poll_message(cx)) else {
+        let Some(message) = ready!(self.messages_rx.poll_message(cx)) else {
             return Poll::Ready(None);
         };
-        let body = serde_json::from_slice(&frame).expect("the host queues JSON");
+        let body = serde_json::from_slice(&message).expect("the host queues JSON");
         let note = CustomNotification::new("spook/event", Some(body));
         let message =
             ServerJsonRpcMessage::notification(ServerNotification::CustomNotification(note));
@@ -545,7 +545,7 @@ mod tests {
         (port, fault_seen, let_go)
     }
 
-    /// Opens a session and finishes its handshake. It holds no seat yet.
+    /// Opens a session and completes its handshake. It holds no seat yet.
     async fn open_session(port: u16) -> (String, String) {
         let (session, body) = open(port).await;
         let session = session.unwrap_or_else(|| panic!("no session\n{body}"));

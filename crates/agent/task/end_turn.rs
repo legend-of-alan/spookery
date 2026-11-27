@@ -8,7 +8,7 @@ use graph_flow::{NextAction, Task, TaskResult};
 use crate::turn::END_TURN;
 use crate::{Agent, Connection, Model};
 
-/// Finishes the turn: commits a queued verb.
+/// Ends the turn: commits a queued verb.
 pub(crate) struct EndTurn<M, Conn>(pub(crate) Arc<Agent<M, Conn>>);
 
 #[async_trait]

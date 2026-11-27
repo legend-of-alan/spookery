@@ -45,7 +45,7 @@ enum Command {
     /// Play a PC. At a terminal it opens the game window. Piped, it prints lines.
     #[cfg(feature = "client")]
     Play {
-        /// Print each protocol frame as one JSON line. Implies `--plain`.
+        /// Print each protocol message as one JSON line. Implies `--plain`.
         #[arg(long)]
         raw: bool,
         /// Print plain lines even at a terminal.
@@ -55,7 +55,7 @@ enum Command {
     /// Play the GM seat.
     #[cfg(feature = "client")]
     Gm {
-        /// Print each protocol frame as one JSON line.
+        /// Print each protocol message as one JSON line.
         #[arg(long)]
         raw: bool,
     },

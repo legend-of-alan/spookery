@@ -23,7 +23,6 @@ const SCROLLBACK_LINES: usize = 256;
 /// missing key is not a record.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Record {
-    // repeats module: re-exported at the crate root
     pub seq: u64,
     pub from: Speaker,
     #[serde(default, skip_serializing_if = "String::is_empty")]

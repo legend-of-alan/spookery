@@ -53,7 +53,7 @@ pub(crate) struct ClientState {
 impl ClientState {
     /// Fills the state from the first `status`: the pack, the actors present and the queue,
     /// which starts a turn when a verb already waits.
-    pub(crate) fn initialize(&mut self, status: HostStatus) {
+    pub(crate) fn init(&mut self, status: HostStatus) {
         self.pack = status.pack;
         self.actors_present = status.presence.actors_present;
         self.queued_verbs = status.queued;

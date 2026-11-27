@@ -280,7 +280,7 @@ fn checkpoints_are_taken_every_n_rounds(world: &mut World, every: u64) {
     fs::write(&path, text).unwrap();
 }
 
-#[when(expr = "the live bundle gains a torn tail")]
+#[when(expr = "the live bundle gains a torn end")]
 fn the_live_bundle_gains_a_torn_end(world: &mut World) {
     let pack = host::pack(world);
     let path = spookery_engine::testing::journal::find_live_bundle(pack)
@@ -310,7 +310,7 @@ fn resume_as_writer(pack: &std::path::Path) {
     spookery_engine::Session::resume(pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
 }
 
-#[then(expr = "the torn tail is gone")]
+#[then(expr = "the torn end is gone")]
 fn the_torn_end_is_gone(world: &mut World) {
     let path = spookery_engine::testing::journal::find_live_bundle(host::pack(world))
         .unwrap_or_else(|| panic!("no live bundle"));
@@ -340,9 +340,9 @@ fn one_record_in_a_closed_bundle_is_changed(world: &mut World) {
         .find(|(bundle, _)| bundle.ends_with(".gz"))
         .unwrap_or_else(|| panic!("no closed bundle"));
     let compressed = fs::read(&path).unwrap();
-    let plain = spookery_engine::testing::journal::gunzip_bytes(&compressed)
+    let uncompressed = spookery_engine::testing::journal::gunzip_bytes(&compressed)
         .unwrap_or_else(|err| panic!("gunzip: {err}"));
-    let text = String::from_utf8(plain).unwrap_or_else(|err| panic!("{err}"));
+    let text = String::from_utf8(uncompressed).unwrap_or_else(|err| panic!("{err}"));
     let next = spookery_engine::testing::journal::gzip_bytes(&change_payload(&text))
         .unwrap_or_else(|err| panic!("gzip: {err}"));
     fs::write(&path, next).unwrap();
@@ -457,19 +457,27 @@ async fn the_operator_plays_a_round(world: &mut World) {
     the_operator_plays_n_rounds(world, 1).await;
 }
 
-#[when(expr = "the closed bundle is expanded back to plain JSONL")]
-fn the_closed_bundle_is_expanded_back_to_plain_jsonl(world: &mut World) {
+#[when(expr = "the closed bundle is expanded back to uncompressed JSONL")]
+fn the_closed_bundle_is_expanded_back_to_uncompressed_jsonl(world: &mut World) {
     let (bundle, path) = only_closed_bundle(world);
-    let plain = gunzip_closed(&path);
-    fs::write(path.with_file_name(bundle.trim_end_matches(".gz")), plain).unwrap();
+    let uncompressed = gunzip_closed(&path);
+    fs::write(
+        path.with_file_name(bundle.trim_end_matches(".gz")),
+        uncompressed,
+    )
+    .unwrap();
     fs::remove_file(&path).unwrap();
 }
 
 #[when(expr = "the closed bundle is copied back beside its gzip")]
 fn the_closed_bundle_is_copied_back_beside_its_gzip(world: &mut World) {
     let (bundle, path) = only_closed_bundle(world);
-    let plain = gunzip_closed(&path);
-    fs::write(path.with_file_name(bundle.trim_end_matches(".gz")), plain).unwrap();
+    let uncompressed = gunzip_closed(&path);
+    fs::write(
+        path.with_file_name(bundle.trim_end_matches(".gz")),
+        uncompressed,
+    )
+    .unwrap();
     assert!(path.is_file(), "gzip removed");
 }
 
@@ -492,7 +500,7 @@ fn the_checkpoints_save_and_snapshot_are_rolled_back(world: &mut World) {
         .join(format!("{}.yaml", mark.state_rev));
     fs::remove_file(snap).unwrap_or_else(|err| panic!("remove snapshot: {err}"));
     fs::write(pack.join("state/save.yaml"), &world.scratch).unwrap();
-    the_closed_bundle_is_expanded_back_to_plain_jsonl(world);
+    the_closed_bundle_is_expanded_back_to_uncompressed_jsonl(world);
 }
 
 #[then(expr = "the live bundle is {word}")]
@@ -510,22 +518,25 @@ fn the_live_bundle_is(world: &mut World, expected: String) {
 fn the_bundle_is_closed(world: &mut World, bundle: String) {
     let journal = host::pack(world).join("state/journal");
     assert!(journal.join(format!("{bundle}.gz")).is_file(), "no gzip");
-    assert!(!journal.join(&bundle).exists(), "plain bundle still open");
+    assert!(
+        !journal.join(&bundle).exists(),
+        "uncompressed bundle still open"
+    );
 }
 
-#[then(expr = "the plain bundle file is gone")]
-fn the_plain_bundle_file_is_gone(world: &mut World) {
+#[then(expr = "the uncompressed bundle file is gone")]
+fn the_uncompressed_bundle_file_is_gone(world: &mut World) {
     let journal = host::pack(world).join("state/journal");
-    let mut plain = Vec::new();
+    let mut uncompressed = Vec::new();
     for entry in fs::read_dir(&journal).unwrap_or_else(|err| panic!("read journal: {err}")) {
         let entry = entry.unwrap();
         let bundle = entry.file_name();
         let bundle = bundle.to_string_lossy().into_owned();
         if bundle.ends_with(".jsonl") {
-            plain.push(bundle);
+            uncompressed.push(bundle);
         }
     }
-    assert!(plain.is_empty(), "{plain:?}");
+    assert!(uncompressed.is_empty(), "{uncompressed:?}");
 }
 
 fn only_closed_bundle(world: &World) -> (String, std::path::PathBuf) {

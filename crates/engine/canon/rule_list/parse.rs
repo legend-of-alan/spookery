@@ -17,8 +17,8 @@ pub(in crate::canon) struct RuleYaml {
     pub(super) if_: Option<IfYaml>,
     pub(super) cost: Option<CostYaml>,
     pub(super) start: Option<ActionStartYaml>,
-    pub(super) finish: Option<ActionEndYaml>,
-    /// Ticks the actor stays busy after the finish.
+    pub(super) end: Option<ActionEndYaml>,
+    /// Ticks the actor stays busy after the end.
     #[serde(default)]
     pub(super) cooldown_ticks: u64,
     /// Whether the actor may cancel the action while it is under way.

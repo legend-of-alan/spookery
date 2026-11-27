@@ -512,7 +512,7 @@ enum StubHostStop {
 fn a_stub_host(world: &mut World, behavior: String) {
     let stop = match behavior.as_str() {
         "accepts the connection and says nothing" => StubHostStop::Accept,
-        "finishes the handshake and sends no hello" => StubHostStop::Handshake,
+        "completes the handshake and sends no hello" => StubHostStop::Handshake,
         "sends the hello and only chatter after the claim" => StubHostStop::Hello,
         "answers the claim and then says nothing" => StubHostStop::Claim,
         other => panic!("unknown stub host {other}"),

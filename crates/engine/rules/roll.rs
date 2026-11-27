@@ -64,7 +64,7 @@ impl Check {
 }
 
 /// What the round did with a verb: the roll, or a refusal and its reason. Returned from the
-/// engine's round to the host table, which turns it into check frames. Neither the save nor
+/// engine's round to the host table, which turns it into check messages. Neither the save nor
 /// the journal stores it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Report {

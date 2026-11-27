@@ -145,7 +145,7 @@ impl Claim {
     }
 }
 
-/// The host's end of one seat's frame queue. The host sends that seat frames with it.
+/// The host's end of one seat's message queue. The host sends that seat messages with it.
 /// Also holds the seat's cancel: dropping it cancels the seat.
 pub(super) struct MessageSender {
     tx: mpsc::Sender<Vec<u8>>,
@@ -153,8 +153,8 @@ pub(super) struct MessageSender {
     _cancel: watch::Sender<()>,
 }
 
-/// The writer's end of one seat's frame queue. That seat's socket or event writer reads from it.
-/// A frame's bytes stay counted until it is written.
+/// The writer's end of one seat's message queue. That seat's socket or event writer reads from it.
+/// A message's bytes stay counted until it is written.
 pub(super) struct MessageReceiver {
     rx: mpsc::Receiver<Vec<u8>>,
     queued_bytes: Arc<AtomicUsize>,
@@ -162,20 +162,20 @@ pub(super) struct MessageReceiver {
 }
 
 impl MessageSender {
-    /// Queues one frame. False when the queue is full or closed.
-    pub(super) fn send(&self, frame: Vec<u8>) -> bool {
-        let len = frame.len();
+    /// Queues one message. False when the queue is full or closed.
+    pub(super) fn send(&self, message: Vec<u8>) -> bool {
+        let len = message.len();
         if !self.reserve(len) {
             return false;
         }
-        if self.tx.try_send(frame).is_err() {
+        if self.tx.try_send(message).is_err() {
             release(&self.queued_bytes, len);
             return false;
         }
         true
     }
 
-    /// An empty queue takes one frame of any size, so a welcome still fits.
+    /// An empty queue takes one message of any size, so a welcome still fits.
     fn reserve(&self, len: usize) -> bool {
         self.queued_bytes
             .try_update(Ordering::AcqRel, Ordering::Acquire, |cur| {
@@ -194,14 +194,14 @@ impl MessageSender {
 }
 
 impl MessageReceiver {
-    /// The next frame, or `None` once the queue is closed and empty. Its bytes are released
+    /// The next message, or `None` once the queue is closed and empty. Its bytes are released
     /// as it is handed on, for a writer that cannot see the send.
     pub(super) fn poll_message(&mut self, cx: &mut Context<'_>) -> Poll<Option<Vec<u8>>> {
-        let frame = ready!(self.rx.poll_recv(cx));
-        if let Some(bytes) = &frame {
+        let message = ready!(self.rx.poll_recv(cx));
+        if let Some(bytes) = &message {
             release(&self.queued_bytes, bytes.len());
         }
-        Poll::Ready(frame)
+        Poll::Ready(message)
     }
 }
 
@@ -211,8 +211,8 @@ fn release(queued: &AtomicUsize, len: usize) {
     });
 }
 
-/// One seat's frame queue. Like `mpsc::channel()`, it returns the sender and
-/// receiver halves. A frame is counted against `OUTBOUND_MESSAGE_CAP` and
+/// One seat's message queue. Like `mpsc::channel()`, it returns the sender and
+/// receiver halves. A message is counted against `OUTBOUND_MESSAGE_CAP` and
 /// `OUTBOUND_CAP_BYTES` from the moment it is queued until the writer has sent
 /// it.
 pub(super) fn open_queue() -> (MessageSender, MessageReceiver) {
@@ -233,19 +233,19 @@ pub(super) fn open_queue() -> (MessageSender, MessageReceiver) {
     )
 }
 
-/// Sends each queued frame to `sink` until the queue closes, the seat is
-/// cancelled, or `sink` fails. A frame's bytes are released once it is sent.
+/// Sends each queued message to `sink` until the queue closes, the seat is
+/// cancelled, or `sink` fails. A message's bytes are released once it is sent.
 pub(super) async fn write_messages(
     mut sink: impl AsyncFnMut(&[u8]) -> bool,
     mut messages_rx: MessageReceiver,
 ) {
     loop {
-        let frame = tokio::select! {
+        let message = tokio::select! {
             biased;
-            frame = messages_rx.rx.recv() => frame,
+            message = messages_rx.rx.recv() => message,
             _ = messages_rx.cancel.changed() => break,
         };
-        let Some(bytes) = frame else {
+        let Some(bytes) = message else {
             break;
         };
         tokio::select! {
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn the_message_cap_rejects_before_the_byte_cap() {
-        let (messages_tx, _frames_rx) = open_queue();
+        let (messages_tx, _messages_rx) = open_queue();
         for _ in 0..OUTBOUND_MESSAGE_CAP {
             assert!(messages_tx.send(b"n".to_vec()));
         }
@@ -280,13 +280,13 @@ mod tests {
         assert!(messages_tx.send(vec![b'a'; OUTBOUND_CAP_BYTES + 8]));
         assert!(
             !messages_tx.send(b"n".to_vec()),
-            "a second frame was queued past the byte cap"
+            "a second message was queued past the byte cap"
         );
-        let bytes = messages_rx.rx.recv().await.expect("frame");
+        let bytes = messages_rx.rx.recv().await.expect("message");
         assert_eq!(bytes.len(), OUTBOUND_CAP_BYTES + 8);
         assert!(
             !messages_tx.send(b"n".to_vec()),
-            "a taken frame was released before it was written"
+            "a taken message was released before it was written"
         );
         release(&messages_rx.queued_bytes, bytes.len());
         assert!(messages_tx.send(b"n".to_vec()));

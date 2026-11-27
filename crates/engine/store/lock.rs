@@ -86,11 +86,10 @@ pub(crate) struct ReadGuard {
     _file: LockedFile,
 }
 
-/// Take `state/.pack.lock`, then finish or roll back a commit a crash left half done.
+/// Take `state/.pack.lock`, then complete or roll back a commit a crash left half done.
 /// The lock makes this process the pack's writer, so only it repairs the pack.
 /// A path with no `state/` is `NOT_IN_SPEC`. A second writer is refused with `COMMIT_CONFLICT`.
 pub fn take(root: &Path) -> Result<PackGuard, Reason> {
-    // repeats module: re-exported at the crate root
     let file = open(root, "state/.pack.lock")?;
     let lock = PackGuard {
         _file: LockedFile::try_lock(file)?,
@@ -99,7 +98,7 @@ pub fn take(root: &Path) -> Result<PackGuard, Reason> {
     Ok(lock)
 }
 
-/// Wait for readers to finish, then keep new ones out until the guard drops.
+/// Wait for readers to be done, then keep new ones out until the guard drops.
 /// Only the pack's writer takes it, and never inside another write guard.
 pub(crate) fn take_write(root: &Path, _lock: &PackGuard) -> Result<WriteGuard, Reason> {
     Ok(WriteGuard {
@@ -117,7 +116,14 @@ pub(crate) fn take_read(root: &Path) -> Result<ReadGuard, Reason> {
     Ok(ReadGuard {
         _file: LockedFile::lock_shared(file, || {
             #[cfg(feature = "testing")]
-            run_read_wait_hook(root);
+            {
+                let mut handlers = READ_WAIT_HANDLERS.lock().unwrap();
+                if let Some(index) = handlers.iter().position(|(watched, _)| watched == root) {
+                    let (_, handler) = handlers.swap_remove(index);
+                    drop(handlers);
+                    handler();
+                }
+            }
         })?,
     })
 }
@@ -125,28 +131,17 @@ pub(crate) fn take_read(root: &Path) -> Result<ReadGuard, Reason> {
 #[cfg(feature = "testing")]
 type ReadWaitHandler = Box<dyn FnOnce() + Send>;
 
-/// Hooks a test set with `set_read_wait_handler`, each with the pack root it watches.
+/// Handlers a test set with `set_read_wait_handler`, each with the pack root it watches.
 #[cfg(feature = "testing")]
 static READ_WAIT_HANDLERS: std::sync::Mutex<Vec<(std::path::PathBuf, ReadWaitHandler)>> =
     std::sync::Mutex::new(Vec::new());
 
-/// Call `hook` once, the next time a read of `root` finds the write guard held,
+/// Call `handler` once, the next time a read of `root` finds the write guard held,
 /// just before it waits for the guard to drop.
 #[cfg(feature = "testing")]
-pub fn set_read_wait_handler(root: &Path, hook: impl FnOnce() + Send + 'static) {
-    let mut hooks = READ_WAIT_HANDLERS.lock().unwrap();
-    hooks.push((root.to_path_buf(), Box::new(hook)));
-}
-
-#[cfg(feature = "testing")]
-fn run_read_wait_hook(root: &Path) {
-    let mut hooks = READ_WAIT_HANDLERS.lock().unwrap();
-    let Some(index) = hooks.iter().position(|(watched, _)| watched == root) else {
-        return;
-    };
-    let (_, hook) = hooks.swap_remove(index);
-    drop(hooks);
-    hook();
+pub fn set_read_wait_handler(root: &Path, handler: impl FnOnce() + Send + 'static) {
+    let mut handlers = READ_WAIT_HANDLERS.lock().unwrap();
+    handlers.push((root.to_path_buf(), Box::new(handler)));
 }
 
 fn open(root: &Path, rel: &str) -> Result<File, Reason> {

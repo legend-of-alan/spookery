@@ -29,7 +29,6 @@ pub struct Effect {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Kind {
-    // repeats module: the tag of an Effect, named as a pair with it
     Meter {
         entity: entity::Id,
         key: String,

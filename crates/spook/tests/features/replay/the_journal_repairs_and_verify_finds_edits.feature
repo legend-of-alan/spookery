@@ -1,11 +1,11 @@
 Feature: Startup repairs the journal and verify finds any edit
 
-  Scenario: A torn tail is cut off on startup
+  Scenario: A torn end is cut off on startup
     Given a docks table
     When the operator plays 3 rounds
-    And the live bundle gains a torn tail
+    And the live bundle gains a torn end
     And the table is opened again
-    Then the torn tail is gone
+    Then the torn end is gone
     And the opened state matches the last complete record
 
   Scenario: Startup does not open a closed bundle
@@ -62,20 +62,20 @@ Feature: Startup repairs the journal and verify finds any edit
     Given a docks table
     And checkpoints are taken every 2 rounds
     When the operator plays 2 rounds
-    And the closed bundle is expanded back to plain JSONL
+    And the closed bundle is expanded back to uncompressed JSONL
     And the operator plays a round
     Then the live bundle is bundle-0001.jsonl
     And bundle-0000.jsonl is closed
     When the operator runs verify
     Then the command exits 0
 
-  Scenario: A plain bundle beside its gzip is removed on open
+  Scenario: A uncompressed bundle beside its gzip is removed on open
     Given a docks table
     And checkpoints are taken every 2 rounds
     When the operator plays 2 rounds
     And the closed bundle is copied back beside its gzip
     And the table is opened again
-    Then the plain bundle file is gone
+    Then the uncompressed bundle file is gone
     When the operator runs verify
     Then the command exits 0
 

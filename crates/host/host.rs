@@ -99,7 +99,7 @@ impl Host {
         idle: watch::Sender<u64>,
         out: Box<dyn Write>,
     ) -> Self {
-        let verbs = session.verbs();
+        let verbs = session.list_verbs();
         Self {
             session,
             seats: Seats::default(),

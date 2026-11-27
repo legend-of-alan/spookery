@@ -78,7 +78,7 @@ pub async fn run<M: Model, Conn: Connection>(
     });
     let graph = turn::build_graph(&agent);
     match agent.send_command("status", json!({})).await {
-        Ok(ServerBody::Status(status)) => agent.state().initialize(*status),
+        Ok(ServerBody::Status(status)) => agent.state().init(*status),
         Ok(ServerBody::Refused(refusal)) => return Err(Error::Refused(refusal)),
         Ok(_) => return Err(Error::Unexpected),
         Err(err) => return agent.end_run(err),

@@ -1,4 +1,4 @@
-//! Journal record shapes. Sealing and the bundle files live in `journal`.
+//! Journal record shapes. Committing and the bundle files live in `journal`.
 
 use serde::{Deserialize, Serialize};
 
@@ -36,7 +36,7 @@ pub struct MigrateRecord {
     /// Omitted when false, so a plain migrate keeps its bytes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub edited: bool,
-    /// Chain hash of the previous record. Empty on a record that has not been sealed.
+    /// Chain hash of the previous record. Empty on a record that has not been committed.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub prev: String,
     /// Blake2s of `prev` and this record's bytes, not including `chain` itself.
@@ -98,7 +98,7 @@ pub struct RoundRecord {
     pub memories: Vec<MemoryLine>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub state_hash: String,
-    /// Chain hash of the previous record. Empty on a record that has not been sealed.
+    /// Chain hash of the previous record. Empty on a record that has not been committed.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub prev: String,
     /// Blake2s of `prev` and this record's bytes, not including `chain` itself.

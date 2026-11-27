@@ -43,7 +43,7 @@ pub(crate) fn help(
     let hints: Vec<Option<&str>> = std::iter::once(None)
         .chain(ids.iter().map(|named_id| Some(named_id.id.as_str())))
         .collect();
-    for verb_id in canon.verbs() {
+    for verb_id in canon.list_verbs() {
         for &hint in &hints {
             let Some(rule) = verb_for(canon, world, actor_id, &verb_id, hint) else {
                 continue;

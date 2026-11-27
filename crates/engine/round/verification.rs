@@ -25,7 +25,6 @@ pub struct Report {
 /// Read the journal, replay it, and check checkpoints and `state/save.yaml`. A pack with
 /// neither a save nor a base is refused `NOT_IN_SPEC`, with or without `from`.
 pub fn run(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
-    // repeats module: re-exported at the crate root
     if !pack.join("pack.yaml").is_file() {
         return Err(Error::Reason(Reason::NotInSpec));
     }
@@ -70,7 +69,6 @@ pub fn run(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
 
 /// Check every chain hash, then replay the latest bundle from the snapshot it starts at.
 pub fn run_quick(pack: &Path) -> Result<Report, Error> {
-    // repeats module: re-exported at the crate root
     let bundles = journal::read_bundle_records(pack)?;
     journal::check_chain(pack, &bundles)?;
     let records = journal::flatten_bundles(&bundles);

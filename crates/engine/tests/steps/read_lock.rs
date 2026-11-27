@@ -50,9 +50,9 @@ enum StatusEvent {
     Done(Result<String, String>),
 }
 
-/// Hold the write guard while the disk is `halfway`, start status, then `finish` and drop it
+/// Hold the write guard while the disk is `halfway`, start status, then `end` and drop it
 /// once status is waiting on the guard. `scratch` gets the text status printed.
-fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce()) {
+fn peek_during(world: &mut World, halfway: impl FnOnce(), end: impl FnOnce()) {
     let pack = world.pack().to_path_buf();
     let write = lock_write(writer(world)).unwrap_or_else(|err| panic!("write guard: {err}"));
     halfway();
@@ -64,9 +64,9 @@ fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce())
     let peeked = thread::scope(|scope| {
         scope.spawn(|| status_tx.send(StatusEvent::Done(peek_digest(&pack))));
         let Ok(StatusEvent::Waiting) = status_rx.recv() else {
-            panic!("status finished without waiting on the write guard, so it read the half-written pack");
+            panic!("status returned without waiting on the write guard, so it read the half-written pack");
         };
-        finish();
+        end();
         drop(write);
         match status_rx.recv() {
             Ok(StatusEvent::Done(peeked)) => peeked,

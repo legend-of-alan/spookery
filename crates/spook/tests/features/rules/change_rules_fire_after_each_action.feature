@@ -1,6 +1,6 @@
 Feature: Change rules fire after each action
 
-  A trigger pass runs right after each start and each finish lands, so every action's change
+  A trigger pass runs right after each start and each end lands, so every action's change
   fires its watchers and a rule can react before the next action in the round.
   `max_trigger_depth` limits each pass, not the round.
 

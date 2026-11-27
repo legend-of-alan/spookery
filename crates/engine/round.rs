@@ -176,8 +176,8 @@ fn stage(
         &mut dice,
         &mut ledger,
     );
-    let end = clock.world_time_after;
-    end::run(canon, &mut world, presence, end, &mut dice, &mut ledger)?;
+    let until = clock.world_time_after;
+    end::run(canon, &mut world, presence, until, &mut dice, &mut ledger)?;
     travel::open_conditional_paths(canon, &mut world, presence, &mut ledger);
     triggers::run(canon, &mut world, presence, &mut dice, &mut ledger);
     travel::note_exits(canon, &mut world)?;

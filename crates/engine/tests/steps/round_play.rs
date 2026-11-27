@@ -303,8 +303,8 @@ rules:
     world.pack = Some(pack);
 }
 
-#[when(expr = "Rowan asks Aldric and the table plays until the action finishes")]
-fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
+#[when(expr = "Rowan asks Aldric and the table plays until the action ends")]
+fn rowan_asks_aldric_until_it_ends(world: &mut World) {
     let pack = world.pack().to_path_buf();
     let lock = spookery_engine::lock::take(&pack).unwrap();
     let mut session =
@@ -357,8 +357,8 @@ fn a_docks_pack_with_a_timed_haul(world: &mut World, oil: i64) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "Rowan hauls with no lamp oil and the table plays until the action finishes")]
-fn rowan_hauls_until_it_finishes(world: &mut World) {
+#[when(expr = "Rowan hauls with no lamp oil and the table plays until the action ends")]
+fn rowan_hauls_until_it_ends(world: &mut World) {
     let pack = world.pack().to_path_buf();
     let mut session = support::resume(&pack);
     let rowan = spookery_engine::Presence {
@@ -386,7 +386,7 @@ fn rowan_hauls_until_it_finishes(world: &mut World) {
 }
 
 #[then(
-    expr = "the finishing round commits with Rowan's haul refused MISSING_ITEM, Rowan is no longer busy, and spook verify passes"
+    expr = "the ending round commits with Rowan's haul refused MISSING_ITEM, Rowan is no longer busy, and spook verify passes"
 )]
 fn the_refused_end_commits(world: &mut World) {
     assert!(world.scratch.is_empty(), "{}", world.scratch);

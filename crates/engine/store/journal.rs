@@ -1,6 +1,6 @@
 //! Append-only journal bundles. Each record carries `prev` and `chain`: `chain`
 //! is the Blake2s of the previous record's chain and this record's own bytes.
-//! A bundle is one file per checkpoint interval. The live bundle is plain
+//! A bundle is one file per checkpoint interval. The live bundle is uncompressed
 //! JSONL. A closed bundle is gzip and is never appended to again.
 //!
 //! `journal/base.yaml` is the base snapshot, written the first time a
@@ -51,7 +51,7 @@ pub(crate) fn read_save(path: &Path) -> Result<Vec<u8>, Reason> {
 /// The latest checkpoint, written beside the bundles so startup can skip them.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Mark {
-    /// A head without it is refused.
+    /// A mark without it is refused.
     pub rules_rev: u64,
     pub state_rev: u64,
     pub round_index: u64,
@@ -68,7 +68,7 @@ pub(crate) fn read_mark(pack: &Path) -> Result<Option<Mark>, Error> {
         Error::new(
             &path,
             Reason::StoreIo,
-            "the checkpoint head could not be read",
+            "the checkpoint mark could not be read",
         )
     })?;
     let value: serde_json::Value = serde_json::from_str(&text)
@@ -80,11 +80,11 @@ pub(crate) fn read_mark(pack: &Path) -> Result<Option<Mark>, Error> {
     Ok(Some(parse_json("mark.json", &text)?))
 }
 
-/// `true` when a save at `state_rev` claims the checkpoint head's `state_rev` but not its
-/// `bytes`. A save from before the head is a checkpoint that did not land, not an edit.
+/// `true` when a save at `state_rev` claims the checkpoint mark's `state_rev` but not its
+/// `bytes`. A save from before the mark is a checkpoint that did not land, not an edit.
 pub(crate) fn edits_mark(pack: &Path, state_rev: u64, bytes: &[u8]) -> Result<bool, Error> {
-    Ok(read_mark(pack)?.is_some_and(|head| {
-        head.state_rev == state_rev && head.state_hash != blake2s_tagged(bytes)
+    Ok(read_mark(pack)?.is_some_and(|mark| {
+        mark.state_rev == state_rev && mark.state_hash != blake2s_tagged(bytes)
     }))
 }
 
@@ -167,37 +167,37 @@ pub(crate) fn checkpoint_record(round_index: u64, state_rev: u64, state_hash: &s
     })
 }
 
-/// Chain field of one sealed line.
+/// Chain field of one committed line.
 pub(crate) fn read_chain(line: &str) -> Result<String, Error> {
     let entry = parse_line("bundle", line.trim_end())?;
     Ok(entry.chain().to_string())
 }
 
 /// `prev` is the chain to continue. The returned line ends with a newline.
-pub(crate) fn seal(entry: &Record, prev: &str) -> String {
-    let mut sealed = entry.clone();
-    sealed.set_prev(prev.to_string());
-    sealed.set_chain(String::new());
-    let body = emit_record(&sealed);
+pub(crate) fn commit(entry: &Record, prev: &str) -> String {
+    let mut committed = entry.clone();
+    committed.set_prev(prev.to_string());
+    committed.set_chain(String::new());
+    let body = emit_record(&committed);
     let chain = chain_hash(prev, body.trim_end());
-    sealed.set_chain(chain);
-    emit_record(&sealed)
+    committed.set_chain(chain);
+    emit_record(&committed)
 }
 
-/// Chain of the last live record, or of the checkpoint head when the live bundle is empty.
+/// Chain of the last live record, or of the checkpoint mark when the live bundle is empty.
 pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, Error> {
     if let Some((bundle, text)) = read_live_bundle(pack)? {
         if let Some(line) = find_last_line(&text) {
             return check_line_chain(&bundle, line);
         }
     }
-    if let Some(head) = read_mark(pack)? {
-        return Ok(head.chain);
+    if let Some(mark) = read_mark(pack)? {
+        return Ok(mark.chain);
     }
     base_hash(pack)
 }
 
-/// Records in the plain live bundle. Closed bundles stay unread.
+/// Records in the uncompressed live bundle. Closed bundles stay unread.
 pub(crate) fn read_live_records(pack: &Path) -> Result<Vec<Record>, Error> {
     let Some((bundle, text)) = read_live_bundle(pack)? else {
         return Ok(Vec::new());
@@ -205,7 +205,7 @@ pub(crate) fn read_live_records(pack: &Path) -> Result<Vec<Record>, Error> {
     parse_complete(&bundle, &text)
 }
 
-/// Name and text of the plain live bundle, if one is open.
+/// Name and text of the uncompressed live bundle, if one is open.
 fn read_live_bundle(pack: &Path) -> Result<Option<(String, String)>, Error> {
     let Some(path) = find_live_bundle(pack) else {
         return Ok(None);
@@ -230,7 +230,7 @@ pub fn latest_checkpoint(entries: &[Record]) -> Option<&CheckpointRecord> {
     })
 }
 
-/// Records in each bundle, in file order. A torn tail is not included.
+/// Records in each bundle, in file order. A torn end is not included.
 pub(crate) fn read_bundle_records(pack: &Path) -> Result<Vec<(String, Vec<Record>)>, Error> {
     let mut out = Vec::new();
     for (bundle, path) in list_bundles(pack)? {
@@ -240,7 +240,7 @@ pub(crate) fn read_bundle_records(pack: &Path) -> Result<Vec<(String, Vec<Record
     Ok(out)
 }
 
-/// Plain live bundle, if one is open.
+/// Uncompressed live bundle, if one is open.
 #[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn find_live_bundle(pack: &Path) -> Option<PathBuf> {
     let files = list_bundles(pack).ok()?;
@@ -252,7 +252,7 @@ pub fn find_live_bundle(pack: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Checkpoint record at the end of a plain bundle, if that is the last line.
+/// Checkpoint record at the end of an uncompressed bundle, if that is the last line.
 pub(crate) fn trailing_checkpoint(path: &Path) -> Option<CheckpointRecord> {
     let text = fs::read_to_string(path).ok()?;
     let line = find_last_line(&text)?;
@@ -262,7 +262,7 @@ pub(crate) fn trailing_checkpoint(path: &Path) -> Option<CheckpointRecord> {
     }
 }
 
-/// The checkpoint hash is already in `save.yaml`, so the bundle is finished.
+/// The checkpoint hash is already in `save.yaml`, so the bundle is complete.
 /// Until then it stays the live file and startup can still replay it.
 pub(crate) fn is_published(pack: &Path, path: &Path) -> bool {
     trailing_checkpoint(path).is_some_and(|mark| hashes_to(&save_path(pack), &mark.state_hash))
@@ -274,7 +274,7 @@ pub(crate) fn hashes_to(path: &Path, hash: &str) -> bool {
 }
 
 /// Next append lands here. The file may not exist yet.
-/// A plain bundle that already ends in a published checkpoint is skipped, so a
+/// An uncompressed bundle that already ends in a published checkpoint is skipped, so a
 /// failed gzip cannot take the next round.
 pub(crate) fn next_bundle_path(pack: &Path) -> PathBuf {
     if let Some(path) = find_live_bundle(pack).filter(|path| !is_published(pack, path)) {
@@ -330,7 +330,7 @@ fn name_the_field(bundle: &str, line: &str, value: &serde_json::Value) -> Option
     }
 }
 
-/// The bundles under `state/journal`, in index order, a closed `.gz` over a plain one.
+/// The bundles under `state/journal`, in index order, a closed `.gz` over an uncompressed one.
 #[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn list_bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
     let dir = pack.join("state/journal");
@@ -445,11 +445,11 @@ fn read_bundle(bundle: &str, path: &Path) -> Result<String, Error> {
     String::from_utf8(bytes).map_err(|_| undecoded())
 }
 
-/// Gzip `plain` into memory. The commit path writes and flushes the bytes.
+/// Gzip `bytes` into memory. The commit path writes and flushes the bytes.
 #[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
-pub fn gzip_bytes(plain: &[u8]) -> std::io::Result<Vec<u8>> {
+pub fn gzip_bytes(bytes: &[u8]) -> std::io::Result<Vec<u8>> {
     let mut enc = GzEncoder::new(Vec::new(), Compression::default());
-    enc.write_all(plain)?;
+    enc.write_all(bytes)?;
     enc.finish()
 }
 
@@ -477,11 +477,11 @@ mod tests {
         let round = include_str!("../fixtures/round.jsonl");
         let entry = parse_line("round.jsonl", round.trim_end()).unwrap();
         let prev = blake2s_tagged(b"base");
-        let line = seal(&entry, &prev);
+        let line = commit(&entry, &prev);
         let again = parse_line("bundle-0000.jsonl", line.trim_end()).unwrap();
         assert_eq!(again.prev(), prev);
         assert_eq!(again.chain(), chain_of(&again));
-        let next = seal(&entry, again.chain());
+        let next = commit(&entry, again.chain());
         let next_entry = parse_line("bundle-0000.jsonl", next.trim_end()).unwrap();
         assert_eq!(next_entry.prev(), again.chain());
         assert_ne!(next_entry.chain(), again.chain());
@@ -513,11 +513,11 @@ mod tests {
             let refused = parse_line("bundle-0000.jsonl", torn).unwrap_err();
             assert_eq!(refused.reason, Reason::JournalDiverged, "{torn}");
         }
-        let pack = crate::testing::copy_pack("docks", "old-head");
-        let head = mark_path(&pack);
-        fs::create_dir_all(head.parent().unwrap()).unwrap();
+        let pack = crate::testing::copy_pack("docks", "old-mark");
+        let mark = mark_path(&pack);
+        fs::create_dir_all(mark.parent().unwrap()).unwrap();
         fs::write(
-            &head,
+            &mark,
             r#"{"state_rev":1,"round_index":1,"state_hash":"","chain":""}"#,
         )
         .unwrap();

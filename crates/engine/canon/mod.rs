@@ -65,7 +65,7 @@ pub struct Canon {
 
 impl Canon {
     /// Every verb some rule names, sorted, once each.
-    pub(crate) fn verbs(&self) -> Vec<String> {
+    pub(crate) fn list_verbs(&self) -> Vec<String> {
         let verbs: std::collections::BTreeSet<&str> = self
             .rules
             .iter()
@@ -169,7 +169,6 @@ pub fn hash(root: &Path) -> Result<String, Reason> {
 /// `rules/budget.yaml`; verbs; `story/` and each story's own meters; rule ids across files;
 /// the budget; lints across files; and `checkpoint_every`.
 pub fn load(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
-    // repeats module: re-exported at the crate root
     let mut diagnostics = Diagnostics::default();
     let mut places = BTreeMap::new();
     let mut cast = BTreeMap::new();

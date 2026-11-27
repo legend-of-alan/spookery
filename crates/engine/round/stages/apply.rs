@@ -1,4 +1,4 @@
-//! Start each action: gate it again, pay for it, and finish it now or leave it pending.
+//! Start each action: gate it again, pay for it, and end it now or leave it pending.
 
 use crate::canon::map::Exit;
 use crate::canon::Canon;
@@ -79,7 +79,7 @@ pub(crate) fn run(
 }
 
 /// Start an action at tick `at`: pay the start cost and the exit's, and count the act when the
-/// rule asks. An action that takes no time finishes now. One that takes time is left pending
+/// rule asks. An action that takes no time ends now. One that takes time is left pending
 /// until its ticks pass, and a walk puts the actor on the exit, in neither place.
 #[allow(clippy::too_many_arguments)]
 fn start(
@@ -122,11 +122,11 @@ fn start(
         ledger.extra_steps.push(Step::Rule(rule.id.clone()));
         return Landing::Landed;
     }
-    finish(canon, world, presence, intent, rule, at, dice, ledger)
+    end(canon, world, presence, intent, rule, at, dice, ledger)
 }
 
 /// Drop the actor's action under way, with no refund, if the gate still allows it now. Its
-/// finish never runs.
+/// end never runs.
 fn cancel(
     canon: &Canon,
     world: &mut ecs::World,
@@ -184,11 +184,11 @@ fn pend(
     (world.actors_mut().get_mut::<component::Act>(actor_id)).set_busy(until, Some(pending))
 }
 
-/// Finish an action at tick `at`: pay the finish cost, count the act when the rule asks, keep
+/// End an action at tick `at`: pay the end cost, count the act when the rule asks, keep
 /// the actor busy through the rule's cooldown, then land every effect the rule expands to, a
 /// walk's arrival stamped `at`. A refusal is journaled and the round goes on.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn finish(
+pub(crate) fn end(
     canon: &Canon,
     world: &mut ecs::World,
     presence: &Presence,
@@ -200,7 +200,7 @@ pub(crate) fn finish(
 ) -> Landing {
     let context = Context::new(canon, world, presence, intent);
     let roller = dice.roller(ledger, &rule.id, intent.actor_id.as_ref());
-    let mut expansion = match expand::expand(&context, rule, Cause::Finish, roller) {
+    let mut expansion = match expand::expand(&context, rule, Cause::End, roller) {
         Ok(expansion) => expansion,
         Err(code) => {
             refuse(world, ledger, intent, gate::Refusal::new(intent, code));
@@ -213,21 +213,21 @@ pub(crate) fn finish(
         }
     }
     let point = world.savepoint();
-    let mut finished = match &rule.end_cost {
+    let mut ended = match &rule.end_cost {
         Some(cost) => cost::pay(canon, world, presence, intent, cost),
         None => Ok(()),
     };
     if rule.end_counts_as_act {
-        finished = finished.and_then(|()| count_act(world, presence, intent));
+        ended = ended.and_then(|()| count_act(world, presence, intent));
     }
     if rule.cooldown_ticks > 0 {
-        finished = finished.and_then(|()| {
+        ended = ended.and_then(|()| {
             let actor_id = intent.actor_id.as_ref().ok_or(Reason::UnknownId)?;
             let mut actors = world.actors_mut();
             (actors.get_mut::<component::Act>(actor_id)).set_busy(at + rule.cooldown_ticks, None)
         });
     }
-    if let Err(code) = finished {
+    if let Err(code) = ended {
         world.rollback(point);
         refuse(world, ledger, intent, gate::Refusal::new(intent, code));
         return landing_of(code);
@@ -255,7 +255,7 @@ fn landing_of(code: Reason) -> Landing {
     }
 }
 
-/// The one landing for a rule's effects: an action's finish or a change rule. Under one
+/// The one landing for a rule's effects: an action's end or a change rule. Under one
 /// savepoint it writes each effect. A failed write rolls back and refuses the intent;
 /// otherwise the effects and the rolls are kept and the rule takes its `Rule` step. The
 /// expansion's `Cause` decides the steps and who hears a refusal.
@@ -273,7 +273,7 @@ pub(crate) fn land(
     let written = expansion.effects.iter().try_for_each(|effect| {
         effect.clone().apply(canon, world, presence, intent)?;
         match cause {
-            Cause::Finish => ledger.extra_steps.push(Step::EffectApplied),
+            Cause::End => ledger.extra_steps.push(Step::EffectApplied),
             Cause::Trigger => {}
         }
         Ok(())
@@ -282,7 +282,7 @@ pub(crate) fn land(
         world.rollback(point);
         let refusal = gate::Refusal::new(intent, code);
         match cause {
-            Cause::Finish => refuse(world, ledger, intent, refusal),
+            Cause::End => refuse(world, ledger, intent, refusal),
             Cause::Trigger => ledger.refused.push(refusal),
         }
         return landing_of(code);

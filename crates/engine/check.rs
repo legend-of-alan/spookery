@@ -97,7 +97,7 @@ pub(crate) fn load(
                 error(
                     "state/save.yaml",
                     Reason::HandEdit,
-                    "this save differs from the checkpoint head it claims",
+                    "this save differs from the checkpoint mark it claims",
                     "restore the file, or run spook migrate to keep the edit if no round follows it",
                 )
                 .at_key_path("save"),
@@ -106,7 +106,7 @@ pub(crate) fn load(
                 error(
                     "state/journal/mark.json",
                     err.reason,
-                    "the checkpoint head could not be read",
+                    "the checkpoint mark could not be read",
                     "check that state/journal/mark.json is readable",
                 )
                 .at_key_path("schema"),
@@ -127,7 +127,6 @@ pub(crate) fn load(
 
 /// Read the pack and report every loader and lint diagnostic. Writes nothing.
 pub fn run(root: &Path) -> Vec<Diagnostic> {
-    // repeats module: re-exported at the crate root
     let mut diagnostics = Vec::new();
     let canon = match canon::load(root) {
         Ok(canon) => Some(Arc::new(canon)),

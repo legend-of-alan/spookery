@@ -89,7 +89,7 @@ pub(crate) async fn play<M: Model, Conn: Connection>(
         ?cause,
         model_call_count,
         elapsed_ms = started.elapsed().as_millis(),
-        "GM turn finished"
+        "GM turn ended"
     );
     Ok(())
 }

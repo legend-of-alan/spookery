@@ -306,7 +306,7 @@ async fn one_player_stops_reading(world: &mut World) {
                 .map(|process| support::text_of(&process.stderr))
                 .unwrap_or_default();
             panic!(
-                "rowan still connected after {sent_bytes} bytes (recv {recv_buffer_bytes}, send {send_buffer_bytes}, frame {message_bytes}, queue {queue_bytes}, budget {budget_bytes})\n{stderr}"
+                "rowan still connected after {sent_bytes} bytes (recv {recv_buffer_bytes}, send {send_buffer_bytes}, message {message_bytes}, queue {queue_bytes}, budget {budget_bytes})\n{stderr}"
             );
         }
         let _ = host::gm_tool_call(world, 2, "say", &args).await;
@@ -335,8 +335,8 @@ async fn that_player_is_disconnected(world: &mut World) {
     host::release_probe_gm(world).await;
 }
 
-#[then(expr = "the other player keeps receiving frames")]
-fn the_other_player_keeps_receiving_frames(world: &mut World) {
+#[then(expr = "the other player keeps receiving messages")]
+fn the_other_player_keeps_receivin_messages(world: &mut World) {
     assert!(
         world.player_added.contains("\"kind\":\"say\""),
         "{}",

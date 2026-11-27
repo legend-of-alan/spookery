@@ -89,16 +89,13 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
             None
         }
     };
-    let finish_cost_yaml = entry
-        .finish
-        .as_ref()
-        .and_then(|finish| finish.cost.as_ref());
-    let end_cost = match finish_cost_yaml.map(compile::cost).transpose() {
-        Ok(Some(_)) if finish_cost_yaml.is_some_and(|cost| cost.ticks.is_some()) => {
+    let end_cost_yaml = entry.end.as_ref().and_then(|end| end.cost.as_ref());
+    let end_cost = match end_cost_yaml.map(compile::cost).transpose() {
+        Ok(Some(_)) if end_cost_yaml.is_some_and(|cost| cost.ticks.is_some()) => {
             diagnostics.push(schema_error(
                 file,
-                &format!("rule '{local_id}' has ticks in its finish cost"),
-                "put the action's ticks in cost; the finish takes no time",
+                &format!("rule '{local_id}' has ticks in its end cost"),
+                "put the action's ticks in cost; the end takes no time",
             ));
             None
         }
@@ -137,7 +134,7 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
     if let Some(kind) = &kind {
         let has_action_fields = start_cost.is_some()
             || entry.start.is_some()
-            || entry.finish.is_some()
+            || entry.end.is_some()
             || entry.cooldown_ticks > 0
             || entry.cancellable;
         diagnostics.extend(lint::rule::find_change_with_action_fields(
@@ -188,10 +185,7 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
             .as_ref()
             .and_then(|start| start.counts_as_act)
             .unwrap_or(true),
-        end_counts_as_act: entry
-            .finish
-            .as_ref()
-            .is_some_and(|finish| finish.counts_as_act),
+        end_counts_as_act: entry.end.as_ref().is_some_and(|end| end.counts_as_act),
         cooldown_ticks: entry.cooldown_ticks,
         cancellable: entry.cancellable,
         do_,

@@ -95,7 +95,7 @@ impl Session {
         Ok(outputs)
     }
 
-    /// Play the rounds an absence earns. Only an empty table catches up.
+    /// Play the rounds an absence earns. Only an empty table plays them.
     pub fn play_idle(&mut self, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {
         crate::round::play_idle(self, now_wall, downtime_hours)
     }
@@ -226,8 +226,8 @@ impl<Lock> Session<Lock> {
     }
 
     /// Every verb the pack's rules name: the commands a player seat may send as verbs.
-    pub fn verbs(&self) -> Vec<String> {
-        self.canon().verbs()
+    pub fn list_verbs(&self) -> Vec<String> {
+        self.canon().list_verbs()
     }
 
     /// Every PC in the cast.

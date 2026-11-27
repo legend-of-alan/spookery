@@ -1,4 +1,4 @@
-//! Change rules, edge-triggered, to a fixpoint, after each start and each finish lands.
+//! Change rules, edge-triggered, to a fixpoint, after each start and each end lands.
 
 use crate::canon::Canon;
 use crate::ecs::change::{Change, ChangeValue};

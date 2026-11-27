@@ -54,5 +54,5 @@ Feature: A roll can partly succeed
     And the GM commits the round
     Then Mira is touched and halfway
     And the GM sees outcome "partial" and the faces
-    And the player sees no check frame
+    And the player sees no check message
     And spook verify passes

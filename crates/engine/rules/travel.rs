@@ -230,8 +230,8 @@ pub(crate) fn visible_exits(
     })
 }
 
-/// Ticks until the rule and its exit finish, read for the acting actor. Zero means it
-/// finishes now. A negative count is `OUT_OF_RANGE`.
+/// Ticks until the rule and its exit end, read for the acting actor. Zero means it
+/// ends now. A negative count is `OUT_OF_RANGE`.
 pub(crate) fn span(context: &Context, rule: &Rule) -> Result<u64, Reason> {
     let start_cost = rule.start_cost.as_ref();
     let mut ticks = start_cost.map_or(Ok(0), |cost| cost::read_ticks(context, cost))?;
@@ -241,14 +241,14 @@ pub(crate) fn span(context: &Context, rule: &Rule) -> Result<u64, Reason> {
     Ok(ticks)
 }
 
-/// One action whose finish tick has been reached. The actor is no longer busy.
+/// One action whose end tick has been reached. The actor is no longer busy.
 pub(crate) struct DueAction {
     pub actor_id: ActorId,
     pub until: u64,
     pub pending: PendingAction,
 }
 
-/// Clear every action that finishes at or before `end`, earliest first.
+/// Clear every action that ends at or before `end`, earliest first.
 pub(crate) fn take_due_actions(world: &mut ecs::World, end: u64) -> Result<Vec<DueAction>, Reason> {
     let mut due_keys: Vec<(u64, ActorId)> = (world.actors().query::<(ActorId, &component::Act)>())
         .iter()
