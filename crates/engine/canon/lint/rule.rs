@@ -10,7 +10,8 @@ use crate::rules::expr::Expr;
 use crate::rules::roll;
 use crate::rules::rule::{self, EffectTemplate, Rule};
 
-/// A change rule that is `timed`, refused on the line of `rule_id`, the id of rule `rule_index`.
+/// A change rule that is `timed` (it sets a cost, start, finish, cooldown_ticks or
+/// cancellable), refused on the line of `rule_id`, the id of rule `rule_index`.
 pub(in crate::canon) fn find_timed_change(
     file_text: &FileText,
     rule_index: usize,
@@ -27,7 +28,7 @@ pub(in crate::canon) fn find_timed_change(
 }
 
 /// Rule `rule_index` with no `check` but a success, partial or miss list, refused on the line
-/// of `rule_id`.
+/// of `rule_id`. The lists come as success, partial, miss.
 pub(in crate::canon) fn find_outcome_without_check(
     file_text: &FileText,
     rule_index: usize,
@@ -44,7 +45,7 @@ pub(in crate::canon) fn find_outcome_without_check(
 }
 
 /// Rule `rule_index` with a `check` and a partial or miss list but no success list, refused
-/// on the line of `rule_id`.
+/// on the line of `rule_id`. The lists come as success, partial, miss.
 pub(in crate::canon) fn find_check_without_success(
     file_text: &FileText,
     rule_index: usize,
