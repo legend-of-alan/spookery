@@ -6,12 +6,13 @@ use spookery_protocol::{is_built_in, Seat};
 use crate::canon::lint;
 use crate::canon::refusal::{file_location_of, CompileError, Diagnostics, FileText, Locator};
 use crate::diagnostic::{schema_error, Diagnostic, FileLocation};
+use crate::rules::cond::{self, Cond};
+use crate::rules::cost::Cost;
 use crate::rules::expr::{self, stamp_file_locations, Expr};
 use crate::rules::rule::{
-    ActionCost, ChangeWatch, Cond, Cost, EffectTemplate, MoveTo, NarrateTo, Rule, RuleKind, Scope,
-    TargetKind,
+    self, ChangeWatch, EffectTemplate, MoveTo, NarrateTo, Rule, Scope, TargetKind,
 };
-use crate::rules::{cond, grammar, roll};
+use crate::rules::{grammar, roll};
 
 use super::compile;
 use super::parse::{
@@ -31,7 +32,7 @@ pub(in crate::canon) fn rules(
         let Some(rule) = diagnostics.keep(compile::rule(file, index, entry, scope)) else {
             continue;
         };
-        if let RuleKind::Verb { verb_id, .. } = &rule.kind {
+        if let rule::Kind::Verb { verb_id, .. } = &rule.kind {
             let hint = "keep one rule for that verb in this file";
             let duplicate_words = ("two verb rules for", "at the same level", hint);
             let is_duplicate = verb_ids.contains(verb_id);
@@ -62,7 +63,7 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
             "set id to a short rule id; say is speech",
         ));
     }
-    let kind = match compile::rule_kind(&entry.when.value, scope) {
+    let kind = match compile::kind(&entry.when.value, scope) {
         Ok(kind) => Some(kind),
         Err(message) => {
             diagnostics.push(file_text.refuse_at(
@@ -81,7 +82,7 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
             Vec::new()
         }
     };
-    let cost = match entry.cost.as_ref().map(compile::cost).transpose() {
+    let start_cost = match entry.cost.as_ref().map(compile::cost).transpose() {
         Ok(cost) => cost,
         Err(error) => {
             diagnostics.push(file_text.refuse_error("", error));
@@ -134,12 +135,12 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
     let partial = compile::effect_templates(file, &entry.partial)?;
     let miss = compile::effect_templates(file, &entry.miss)?;
     if let Some(kind) = &kind {
-        let timed = cost.is_some()
+        let timed = start_cost.is_some()
             || entry.start.is_some()
             || entry.finish.is_some()
             || entry.cooldown_ticks > 0
             || entry.cancellable;
-        if matches!(kind, RuleKind::Change(_)) && timed {
+        if matches!(kind, rule::Kind::Change(_)) && timed {
             diagnostics.push(schema_error(
                 file,
                 "a change rule has a cost, start, finish, cooldown_ticks, or cancellable",
@@ -179,21 +180,17 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
         if_,
         lets,
         check,
-        start: ActionCost {
-            cost,
-            counts_as_act: entry
-                .start
-                .as_ref()
-                .and_then(|start| start.counts_as_act)
-                .unwrap_or(true),
-        },
-        finish: ActionCost {
-            cost: finish_cost,
-            counts_as_act: entry
-                .finish
-                .as_ref()
-                .is_some_and(|finish| finish.counts_as_act),
-        },
+        start_cost,
+        finish_cost,
+        start_counts_as_act: entry
+            .start
+            .as_ref()
+            .and_then(|start| start.counts_as_act)
+            .unwrap_or(true),
+        finish_counts_as_act: entry
+            .finish
+            .as_ref()
+            .is_some_and(|finish| finish.counts_as_act),
         cooldown_ticks: entry.cooldown_ticks,
         cancellable: entry.cancellable,
         do_,
@@ -214,9 +211,9 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
     }
 }
 
-fn rule_kind(yaml: &WhenYaml, scope: &Scope) -> Result<RuleKind, String> {
+fn kind(yaml: &WhenYaml, scope: &Scope) -> Result<rule::Kind, String> {
     match yaml {
-        WhenYaml::Word(word) if word == "habit" => Ok(RuleKind::Habit),
+        WhenYaml::Word(word) if word == "habit" => Ok(rule::Kind::Habit),
         WhenYaml::Word(word) => Err(format!("when '{word}' is not habit")),
         WhenYaml::Map(map) => match (&map.verb_id, &map.change) {
             (Some(verb_id), None) => {
@@ -236,12 +233,12 @@ fn rule_kind(yaml: &WhenYaml, scope: &Scope) -> Result<RuleKind, String> {
                     Some("item") => TargetKind::Item,
                     Some(other) => return Err(format!("target '{other}' is not a target kind")),
                 };
-                Ok(RuleKind::Verb {
+                Ok(rule::Kind::Verb {
                     verb_id: verb_id.clone(),
                     target,
                 })
             }
-            (None, Some(change)) => compile::change_watch(change, scope).map(RuleKind::Change),
+            (None, Some(change)) => compile::change_watch(change, scope).map(rule::Kind::Change),
             _ => Err("when needs one of verb or change".to_string()),
         },
     }

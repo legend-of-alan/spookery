@@ -11,7 +11,7 @@ use crate::rules::context::Context;
 use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
 use crate::rules::grammar;
-use crate::rules::rule::{ChangeWatch, Rule, RuleKind};
+use crate::rules::rule::{self, ChangeWatch, Rule};
 use crate::store::records::Step;
 
 use crate::round::stage::apply;
@@ -61,7 +61,7 @@ fn change_rules(canon: &Canon) -> Vec<&Rule> {
     let mut rules: Vec<&Rule> = canon
         .rules
         .iter()
-        .filter(|rule| matches!(rule.kind, RuleKind::Change(_)))
+        .filter(|rule| matches!(rule.kind, rule::Kind::Change(_)))
         .collect();
     rules.sort_by(|left, right| {
         left.scope
@@ -77,7 +77,7 @@ fn change_rules(canon: &Canon) -> Vec<&Rule> {
 fn match_rules<'a>(world: &ecs::World, rules: &[&'a Rule], changes: &[Change]) -> Vec<Trigger<'a>> {
     let mut matched_triggers = Vec::new();
     for &rule in rules {
-        let RuleKind::Change(watch) = &rule.kind else {
+        let rule::Kind::Change(watch) = &rule.kind else {
             continue;
         };
         let mut subject_ids = Vec::new();

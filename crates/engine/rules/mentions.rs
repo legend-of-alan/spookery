@@ -2,9 +2,11 @@
 
 use std::collections::BTreeSet;
 
+use crate::rules::cond::Cond;
+use crate::rules::cost::Cost;
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
-use crate::rules::rule::{Cond, Cost, EffectTemplate, MoveTo, Rule, TargetKind};
+use crate::rules::rule::{EffectTemplate, MoveTo, Rule, TargetKind};
 
 /// What a rule's or exit's lines name, borrowed from those lines (`'l`) and sorted into entities,
 /// item ids and `target` keys. The word `target` stands for whatever the verb targets, so it is

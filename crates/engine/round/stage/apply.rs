@@ -102,12 +102,11 @@ fn start(
         }
     };
     let mut costs = rule
-        .start
-        .cost
+        .start_cost
         .iter()
         .chain(exit.map(|exit| &exit.path_def.cost));
     let mut started = costs.try_for_each(|cost| cost::pay(canon, world, presence, intent, cost));
-    if rule.start.counts_as_act {
+    if rule.start_counts_as_act {
         started = started.and_then(|()| count_act(world, presence, intent));
     }
     if ticks > 0 {
@@ -214,11 +213,11 @@ pub(crate) fn finish(
         }
     }
     let point = world.savepoint();
-    let mut finished = match &rule.finish.cost {
+    let mut finished = match &rule.finish_cost {
         Some(cost) => cost::pay(canon, world, presence, intent, cost),
         None => Ok(()),
     };
-    if rule.finish.counts_as_act {
+    if rule.finish_counts_as_act {
         finished = finished.and_then(|()| count_act(world, presence, intent));
     }
     if rule.cooldown_ticks > 0 {

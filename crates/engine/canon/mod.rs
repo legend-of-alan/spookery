@@ -9,7 +9,7 @@ use crate::ecs::component::modifier;
 use crate::ecs::id::{ActorId, PlaceId, StoryId};
 use crate::entity;
 use crate::hash::blake2s_tagged;
-use crate::rules::rule::{self, RuleKind, Scope, TargetKind};
+use crate::rules::rule::{self, Scope, TargetKind};
 use crate::Reason;
 use spookery_protocol::{MenuRow, PackSummary};
 
@@ -70,7 +70,7 @@ impl Canon {
             .rules
             .iter()
             .filter_map(|rule| match &rule.kind {
-                RuleKind::Verb { verb_id, .. } => Some(verb_id.as_str()),
+                rule::Kind::Verb { verb_id, .. } => Some(verb_id.as_str()),
                 _ => None,
             })
             .collect();
@@ -82,10 +82,10 @@ impl Canon {
             .rules
             .iter()
             .filter_map(|rule| match &rule.kind {
-                RuleKind::Verb { verb_id, target } if matches!(rule.scope, Scope::Verb) => {
+                rule::Kind::Verb { verb_id, target } if matches!(rule.scope, Scope::Verb) => {
                     Some((verb_id.clone(), "verb", target.as_str()))
                 }
-                RuleKind::Habit => {
+                rule::Kind::Habit => {
                     Some((rule.local_id.clone(), "habit", TargetKind::None.as_str()))
                 }
                 _ => None,

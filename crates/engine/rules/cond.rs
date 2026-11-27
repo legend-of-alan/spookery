@@ -6,9 +6,83 @@ use crate::ecs::id::{ActorId, GlobalId};
 use crate::ecs::{self, component, Presence};
 use crate::intent::{Intent, Source, Target};
 use crate::rules::context::Context;
-use crate::rules::expr::eval;
-use crate::rules::rule::Cond;
+use crate::rules::expr::{eval, Expr};
+use crate::rules::grammar;
 use crate::Reason;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Cond {
+    HasItem {
+        subject: grammar::Actor,
+        id: String,
+        count: Expr,
+    },
+    Meter {
+        of: grammar::Object,
+        id: String,
+        op: Op,
+        value: Expr,
+    },
+    Flag {
+        of: grammar::Object,
+        id: String,
+        is: bool,
+    },
+    At {
+        subject: grammar::Actor,
+        place_id: String,
+    },
+    /// A tick of cycle `id` in `from..to`, wrapping past the cycle's end when `from > to`.
+    Cycle {
+        id: String,
+        from: Expr,
+        to: Expr,
+    },
+    Players {
+        op: Op,
+        value: Expr,
+    },
+    NoteExists(String),
+    Wielding {
+        subject: grammar::Actor,
+        id: String,
+    },
+    All(Vec<Cond>),
+    Any(Vec<Cond>),
+    Not(Box<Cond>),
+}
+
+impl Cond {
+    /// Calls `visit` on every leaf condition, walking into `all`, `any` and `not`.
+    pub(crate) fn visit<'a>(&'a self, mut visit: impl FnMut(&'a Cond)) {
+        fn walk<'a>(cond: &'a Cond, visit: &mut impl FnMut(&'a Cond)) {
+            match cond {
+                Cond::All(inner) | Cond::Any(inner) => {
+                    for cond in inner {
+                        walk(cond, visit);
+                    }
+                }
+                Cond::Not(inner) => walk(inner, visit),
+                leaf => visit(leaf),
+            }
+        }
+        walk(self, &mut visit);
+    }
+
+    /// Every number a leaf holds: an item count, a meter or player value, a cycle's bounds,
+    /// walking into `all`, `any` and `not`.
+    pub(crate) fn exprs(&self) -> Vec<&Expr> {
+        let mut exprs = Vec::new();
+        self.visit(|cond| match cond {
+            Cond::HasItem { count: value, .. }
+            | Cond::Meter { value, .. }
+            | Cond::Players { value, .. } => exprs.push(value),
+            Cond::Cycle { from, to, .. } => exprs.extend([from, to]),
+            _ => {}
+        });
+        exprs
+    }
+}
 
 /// Every condition holds. A failed `has_item` is [`Reason::MissingItem`].
 pub(crate) fn all_hold(context: &Context, conds: &[Cond]) -> Result<(), Reason> {

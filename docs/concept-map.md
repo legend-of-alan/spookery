@@ -18,7 +18,7 @@ A short guide to the word each concept gets, and the synonyms to avoid for it. N
 | parent: any other composition | owner, holder, carrier, bearer |
 | file: the pack file a rule lives in | owner, rel |
 | Scope: what a rule is attached to (verb, place, item, cast, story) | owner |
-| RuleKind and kind: whether a rule fires on a verb, a habit or a change | when (past the pack edge) |
+| rule::Kind and kind: whether a rule fires on a verb, a habit or a change | when (past the pack edge) |
 | actor | character, creature, person |
 | place | room, location, site |
 | position: where an actor is | location |
@@ -30,7 +30,6 @@ A short guide to the word each concept gets, and the synonyms to avoid for it. N
 | verb: what a player plays | move, act |
 | intent: a queued verb | proposal, order |
 | command: what a client asks the host to do | operation, order |
-| action, ActionCost | act, phase |
 | effect, change | mutation, modification, update |
 | Cond | condition |
 | refusal, with Refusal.message | reject, deny, fail, detail |

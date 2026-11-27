@@ -11,9 +11,11 @@ use crate::canon::Canon;
 use crate::diagnostic::{parse_tagged, schema_error, Diagnostic};
 use crate::ecs::component::ActorLocation;
 use crate::ecs::id::{PathId, PlaceId};
+use crate::rules::cond::Cond;
+use crate::rules::cost::Cost;
 use crate::rules::expr::Expr;
 use crate::rules::mentions;
-use crate::rules::rule::{Cond, Cost, TargetKind};
+use crate::rules::rule::TargetKind;
 
 /// The one pack file that lists the paths.
 pub(super) const FILE: &str = "world/map.yaml";

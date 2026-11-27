@@ -5,10 +5,24 @@ use crate::ecs::component::{self, modifier, Component, Meter};
 use crate::ecs::{self, change, entity, Presence};
 use crate::intent::Intent;
 use crate::rules::context::Context;
-use crate::rules::expr::eval;
+use crate::rules::expr::{eval, Expr};
 use crate::rules::gate;
-use crate::rules::rule::Cost;
 use crate::Reason;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Cost {
+    pub ticks: Expr,
+    pub meters: Vec<(String, Expr)>,
+    pub items: Vec<(String, Expr)>,
+}
+
+impl Cost {
+    /// The ticks, the meter amounts, then the item counts.
+    pub(crate) fn exprs(&self) -> impl Iterator<Item = &Expr> {
+        let amounts = self.meters.iter().chain(&self.items).map(|(_, expr)| expr);
+        std::iter::once(&self.ticks).chain(amounts)
+    }
+}
 
 /// Refuse a cost the actor cannot pay as `CANT_AFFORD`, with the meter or item id as `detail`.
 pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal> {
