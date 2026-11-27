@@ -11,7 +11,7 @@ Feature: The listener bounds input
     When a socket sends a 1 MiB message
     Then the socket was closed without a reply
     And save.yaml is unchanged since the table opened
-    And a second player can claim and wait
+    And a player can claim and wait
 
   Scenario: An HTTP body over 1 MiB is refused and the seat stays free
     Given a docks table
@@ -43,16 +43,16 @@ Feature: The listener bounds input
     Then that player is disconnected and still holds its PC
     And the other player keeps receiving frames
 
-  Scenario: The GM seat confirms it is free
+  Scenario: A released GM claim is confirmed and a player can then claim
     Given a docks table with a seated GM
-    When the GM releases the seat
-    Then the server confirms the seat is free
-    And a second player can claim and wait
+    When the GM releases its claim
+    Then the host confirms the GM claim is released
+    And a player can claim and wait
 
   Scenario: A closed GM session cannot call tools
     Given a docks table with a seated GM
-    When the GM releases the seat and keeps the session
-    Then the server confirms the seat is free
+    When the GM releases its claim and keeps the session
+    Then the host confirms the GM claim is released
     When another GM connects
     And the closed session calls say
     Then that call is refused and nothing was written

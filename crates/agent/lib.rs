@@ -1,9 +1,9 @@
 //! The Spookery AI GM. `run` connects as the GM and plays each turn through a graph that
 //! awaits two adapters the client implements: a `Model` and a `Connection`. It reads the
-//! server's one ordered stream and decides from everything up to the last `seq` it read.
+//! host's one ordered stream and decides from everything up to the last `seq` it read.
 
 pub mod chat_completions;
-mod connection;
+pub mod connection;
 mod context;
 pub mod model;
 mod task;
@@ -18,23 +18,23 @@ use graph_flow::GraphError;
 use serde_json::{json, Value};
 use spookery_protocol as protocol;
 
-pub use crate::connection::{Connection, ConnectionError};
+pub use crate::connection::Connection;
 use crate::context::ClientState;
 pub use crate::model::{CompletionError, Model, ToolCall};
 use crate::protocol::{ClientMessage, CommitArgs, Refusal, ServerBody};
 use crate::turn::Turn;
 pub use crate::turn::MAX_MODEL_CALLS;
 
-/// Why `run` stopped before the server closed the connection. Display is the line the client prints.
+/// Why `run` stopped before the host closed the connection. Display is the line the client prints.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
-    /// The server refused the agent's first `status`. Display is the refusal's body.
+    /// The host refused the agent's first `status`. Display is the refusal's body.
     Refused(Refusal),
     /// The `status` reply was some other body.
     Unexpected,
     /// The connection failed between turns.
-    Connection(ConnectionError),
-    /// `command` was sent and its reply never read, so the server may have applied it.
+    Connection(connection::Error),
+    /// `command` was sent and its reply never read, so the host may have applied it.
     Unanswered { command: String },
     /// The turn graph stopped with no command in flight.
     Graph(String),
@@ -50,7 +50,7 @@ impl fmt::Display for Error {
             Error::Connection(err) => err.fmt(f),
             Error::Unanswered { command } => write!(
                 f,
-                "no reply was read to {command}, so the server may have applied it; restart spook ai-gm to read the server's state again"
+                "no reply was read to {command}, so the host may have applied it; restart spook ai-gm to read the host's state again"
             ),
             Error::Graph(detail) => write!(f, "the GM turn stopped: {detail}"),
         }
@@ -59,7 +59,7 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// Connects as the GM and plays turns until the server closes the connection. `report` gets "listening"
+/// Connects as the GM and plays turns until the host closes the connection. `report` gets "listening"
 /// and each warning, one line each.
 pub async fn run<M: Model, Conn: Connection>(
     model: M,
@@ -113,7 +113,7 @@ struct Agent<M, Conn> {
     last_id: AtomicU64,
     /// The command sent whose reply has not been read.
     in_flight: Mutex<Option<String>>,
-    /// Set once the server closed the connection.
+    /// Set once the host closed the connection.
     closed: AtomicBool,
 }
 
@@ -171,7 +171,7 @@ impl<M: Model, Conn: Connection> Agent<M, Conn> {
     }
 
     /// How `run` ends once the connection or the graph stopped with `detail`: quietly when
-    /// the server closed the connection, and otherwise naming the command in flight.
+    /// the host closed the connection, and otherwise naming the command in flight.
     fn end_run(&self, detail: impl fmt::Display) -> Result<(), Error> {
         if self.closed.load(Ordering::Relaxed) {
             return Ok(());
@@ -204,7 +204,7 @@ mod tests {
     const PERCEIVE: (&str, &str) = ("perceive", r#"{"as":"pc"}"#);
     const SAY: (&str, &str) = ("say", r#"{"to":"table","text":"ok"}"#);
 
-    /// What the scripted server sends for one command: `bodies`, the last of them the reply, and
+    /// What the scripted host sends for one command: `bodies`, the last of them the reply, and
     /// then `then`, which arrive while the agent waits.
     struct Answer {
         command: &'static str,
@@ -228,7 +228,7 @@ mod tests {
         }
     }
 
-    /// A server that answers each command in the order scripted, and closes once nothing is
+    /// A host that answers each command in the order scripted, and closes once nothing is
     /// left to read.
     #[derive(Default)]
     struct ScriptedConnection {
@@ -265,7 +265,7 @@ mod tests {
     }
 
     impl Connection for Arc<ScriptedConnection> {
-        async fn send(&self, message: ClientMessage) -> Result<(), ConnectionError> {
+        async fn send(&self, message: ClientMessage) -> Result<(), connection::Error> {
             let answer = self.answers.lock().unwrap().pop_front();
             let answer = answer.unwrap_or_else(|| panic!("unscripted {:?}", message.body));
             assert_eq!(message.body.kind, answer.command, "{:?}", message.body);
@@ -281,11 +281,11 @@ mod tests {
             Ok(())
         }
 
-        async fn recv(&self) -> Option<Result<ServerMessage, ConnectionError>> {
+        async fn recv(&self) -> Option<Result<ServerMessage, connection::Error>> {
             let message = self.inbox.lock().unwrap().pop_front()?;
             match &message.body {
                 ServerBody::Lines { text } if text == BROKEN => {
-                    Some(Err(ConnectionError("reset".to_string())))
+                    Some(Err(connection::Error("reset".to_string())))
                 }
                 ServerBody::Lines { text } if text == SILENT => std::future::pending().await,
                 _ => Some(Ok(message)),
@@ -335,7 +335,7 @@ mod tests {
         }
     }
 
-    /// Runs the agent until the scripted server closes the connection.
+    /// Runs the agent until the scripted host closes the connection.
     async fn play(
         model: &Arc<ScriptedModel>,
         connection: &Arc<ScriptedConnection>,

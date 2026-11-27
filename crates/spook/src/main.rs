@@ -34,7 +34,7 @@ enum Command {
     /// Listen for the player seat and the GM seat.
     ///
     /// A second Ctrl+C exits at once when shutdown hangs.
-    #[cfg(feature = "server")]
+    #[cfg(feature = "host")]
     Run {
         /// Pack directory.
         pack: PathBuf,
@@ -64,25 +64,25 @@ enum Command {
     #[command(name = "ai-gm")]
     AiGm,
     /// Play one round on the pack.
-    #[cfg(feature = "server")]
+    #[cfg(feature = "host")]
     Round {
         /// Pack directory.
         pack: PathBuf,
     },
     /// Print the host digest.
-    #[cfg(feature = "server")]
+    #[cfg(feature = "host")]
     Status {
         /// Pack directory.
         pack: PathBuf,
     },
     /// Store the current canon hash in the save.
-    #[cfg(feature = "server")]
+    #[cfg(feature = "host")]
     Migrate {
         /// Pack directory.
         pack: PathBuf,
     },
     /// Replay the journal and byte-compare `save.yaml`.
-    #[cfg(feature = "server")]
+    #[cfg(feature = "host")]
     Verify {
         /// Pack directory.
         pack: PathBuf,
@@ -94,7 +94,7 @@ enum Command {
         quick: bool,
     },
     /// Report pack problems and write nothing.
-    #[cfg(feature = "server")]
+    #[cfg(feature = "host")]
     Check {
         /// Print problems as one JSON array on stdout.
         #[arg(long)]
@@ -123,7 +123,7 @@ async fn main() {
 }
 
 /// Waits for Ctrl+C, or on Windows for Ctrl+C or Ctrl+Break.
-#[cfg(feature = "server")]
+#[cfg(feature = "host")]
 async fn wait_for_interrupt() -> std::io::Result<()> {
     #[cfg(windows)]
     {
@@ -139,10 +139,10 @@ async fn wait_for_interrupt() -> std::io::Result<()> {
 
 async fn dispatch(cli: Cli) -> Result<(), String> {
     let addr = parse_loopback(&cli.addr)?;
-    #[cfg_attr(not(feature = "server"), allow(unused_variables))]
+    #[cfg_attr(not(feature = "host"), expect(unused_variables))]
     let log_path = start_logging(&cli.command)?;
     match cli.command {
-        #[cfg(feature = "server")]
+        #[cfg(feature = "host")]
         Command::Run { pack, mcp_addr } => {
             let mcp_addr = parse_mcp_addr(mcp_addr)?;
             let lock = spookery_engine::lock_pack(&pack).map_err(|e| e.to_string())?;
@@ -151,7 +151,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             if let Some(path) = &log_path {
                 eprintln!("logging to {}", path.display());
             }
-            let mut config = spookery_server::Config::new(addr);
+            let mut config = spookery_host::Config::new(addr);
             config.mcp_addr = mcp_addr;
             config.out = Box::new(std::io::stdout());
             let interrupt = tokio::spawn(wait_for_interrupt());
@@ -168,7 +168,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                     std::process::exit(130);
                 });
             };
-            spookery_server::serve(session, config, shutdown)
+            spookery_host::serve(session, config, shutdown)
                 .await
                 .map_err(|e| e.to_string())
         }
@@ -199,21 +199,21 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 .await
                 .map_err(|err| err.to_string())
         }
-        #[cfg(feature = "server")]
+        #[cfg(feature = "host")]
         Command::Round { pack } => {
             spookery_engine::play_pack_once(&pack).map_err(|e| e.to_string())
         }
-        #[cfg(feature = "server")]
+        #[cfg(feature = "host")]
         Command::Status { pack } => {
             let text = spookery_engine::Session::peek_digest(&pack).map_err(|e| e.to_string())?;
             print!("{text}");
             Ok(())
         }
-        #[cfg(feature = "server")]
+        #[cfg(feature = "host")]
         Command::Migrate { pack } => {
             spookery_engine::migrate_pack(&pack).map_err(|e| e.to_string())
         }
-        #[cfg(feature = "server")]
+        #[cfg(feature = "host")]
         Command::Verify { pack, from, quick } => {
             if quick && from.is_some() {
                 return Err("verify --quick does not take --from".into());
@@ -233,7 +233,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             }
             Ok(())
         }
-        #[cfg(feature = "server")]
+        #[cfg(feature = "host")]
         Command::Check { pack, json, rules } => {
             let mut found = spookery_engine::check_pack(&pack);
             if rules && found.is_empty() {
@@ -281,7 +281,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
 /// A `RUST_LOG` whose directives are all invalid logs warnings.
 fn start_logging(command: &Command) -> Result<Option<PathBuf>, String> {
     let (command_id, default_directives) = match command {
-        #[cfg(feature = "server")]
+        #[cfg(feature = "host")]
         Command::Run { .. } => (Some("run"), "warn,spook=info"),
         #[cfg(feature = "client")]
         Command::AiGm => (Some("ai-gm"), "warn,spook=info"),
@@ -332,12 +332,12 @@ fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {
     Ok(SocketAddr::from(([127, 0, 0, 1], port)))
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "host")]
 fn parse_mcp_addr(mcp_addr: Option<String>) -> Result<Option<SocketAddr>, String> {
     mcp_addr.as_deref().map(parse_loopback).transpose()
 }
 
-#[cfg(all(test, feature = "server", feature = "client"))]
+#[cfg(all(test, feature = "host", feature = "client"))]
 mod tests {
     use std::path::Path;
 

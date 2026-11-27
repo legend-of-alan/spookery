@@ -1,4 +1,4 @@
-//! What the model reads first on a turn: the server's state as this client has read it, and the
+//! What the model reads first on a turn: the host's state as this client has read it, and the
 //! observation built from it.
 
 use std::collections::VecDeque;
@@ -34,7 +34,7 @@ Each turn starts with the game state as JSON: the verbs on offer, recent lines, 
 - End your narration on the situation in front of the players, so they know it's their move.
 - When you are done, answer with no tool calls.";
 
-/// The server's state as its messages have shown this client so far, and the turns they
+/// The host's state as its messages have shown this client so far, and the turns they
 /// start.
 #[derive(Default)]
 pub(crate) struct ClientState {
@@ -145,7 +145,7 @@ impl ClientState {
 
 /// One line of speech as the model reads it in the prompt's `tape_lines` and
 /// `new_player_lines`, with the `seq` of the message that carried it and without `recipient_ids`.
-/// The GM's own lines carry the `seq` of the server's reply.
+/// The GM's own lines carry the `seq` of the host's reply.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(crate) struct TapeLine {
     pub(crate) seq: u64,

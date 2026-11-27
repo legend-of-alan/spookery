@@ -10,7 +10,7 @@ use crate::tool;
 use crate::turn::RUN_TOOL_CALL;
 use crate::{Agent, Connection, Model};
 
-/// Runs the first waiting tool call, through the server or locally, and adds its one
+/// Runs the first waiting tool call, through the host or locally, and adds its one
 /// tool result to the conversation.
 pub(crate) struct RunToolCall<M, Conn>(pub(crate) Arc<Agent<M, Conn>>);
 
