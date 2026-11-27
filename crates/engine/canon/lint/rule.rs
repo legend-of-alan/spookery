@@ -1,6 +1,6 @@
-//! Lints that compile runs on one rule: a timed change rule, an outcome without a check, a
-//! check without a success list, a misplaced target, a `let:` read that fails, and a broken
-//! partial band.
+//! Lints that compile runs on one rule: a change rule with action fields, an outcome without
+//! a check, a check without a success list, a misplaced target, a `let:` read that fails, and
+//! a broken partial band.
 
 use serde_saphyr::Spanned;
 
@@ -10,16 +10,16 @@ use crate::rules::expr::Expr;
 use crate::rules::roll;
 use crate::rules::rule::{self, EffectTemplate, Rule};
 
-/// A change rule that is `timed` (it sets a cost, start, finish, cooldown_ticks or
+/// A change rule with `action_fields` (it sets a cost, start, finish, cooldown_ticks or
 /// cancellable), refused on the line of `rule_id`, the id of rule `rule_index`.
-pub(in crate::canon) fn find_timed_change(
+pub(in crate::canon) fn find_change_with_action_fields(
     file_text: &FileText,
     rule_index: usize,
     rule_id: &Spanned<String>,
     kind: &rule::Kind,
-    timed: bool,
+    action_fields: bool,
 ) -> Vec<Diagnostic> {
-    if !matches!(kind, rule::Kind::Change(_)) || !timed {
+    if !matches!(kind, rule::Kind::Change(_)) || !action_fields {
         return Vec::new();
     }
     let message = format!(

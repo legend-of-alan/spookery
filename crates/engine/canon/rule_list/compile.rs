@@ -135,13 +135,17 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
     let partial = compile::effect_templates(file, &entry.partial)?;
     let miss = compile::effect_templates(file, &entry.miss)?;
     if let Some(kind) = &kind {
-        let timed = start_cost.is_some()
+        let action_fields = start_cost.is_some()
             || entry.start.is_some()
             || entry.finish.is_some()
             || entry.cooldown_ticks > 0
             || entry.cancellable;
-        diagnostics.extend(lint::rule::find_timed_change(
-            &file_text, index, &entry.id, kind, timed,
+        diagnostics.extend(lint::rule::find_change_with_action_fields(
+            &file_text,
+            index,
+            &entry.id,
+            kind,
+            action_fields,
         ));
         let outcome_lists = [&success[..], &partial, &miss];
         diagnostics.extend(lint::rule::find_outcome_without_check(
