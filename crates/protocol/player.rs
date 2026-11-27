@@ -16,10 +16,6 @@ pub struct View {
     pub body: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actor_names: Vec<String>,
-    /// Why the viewer can't send a verb at all. Empty when they can, and empty today: being
-    /// busy is `busy`, not this.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub cant_act: String,
     /// What keeps the viewer busy and until when, such as `on the stairs until tick 1300`.
     /// Empty when they are free.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -47,13 +43,6 @@ pub struct View {
     /// viewer saw there.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub nearby: Vec<PlaceView>,
-}
-
-impl View {
-    /// Whether the viewer can send a verb at all. A busy viewer can, and is refused `BUSY`.
-    pub fn can_act(&self) -> bool {
-        self.cant_act.is_empty()
-    }
 }
 
 /// Part of a `View`, sent from the host to a player client. `path` is the path it walks, as
@@ -214,7 +203,7 @@ mod tests {
 
     #[test]
     fn a_view_body_keeps_the_scene_after_the_place() {
-        let body = r#"{"kind":"view","viewer":"rowan","place":{"place":"shop","name":"Shop"},"body":"b","actor_names":["Rowan"],"cant_act":"s","visible_actors":["rowan"],"notes":[],"items":[],"habits":[]}"#;
+        let body = r#"{"kind":"view","viewer":"rowan","place":{"place":"shop","name":"Shop"},"body":"b","actor_names":["Rowan"],"busy":"s","visible_actors":["rowan"],"notes":[],"items":[],"habits":[]}"#;
         let view: ServerBody = serde_json::from_str(body).unwrap();
         assert_eq!(serde_json::to_string(&view).unwrap(), body);
     }

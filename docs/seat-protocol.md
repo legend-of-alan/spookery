@@ -4,7 +4,7 @@ This page is the wire a player client or a GM speaks to `spook run`. [Engine gua
 
 - this page, whose examples are one live session of `tests/packs/docks`. A test plays that session and fails when an example and the host disagree.
 - the JSON Schema, [`client.json`](../crates/protocol/schema/client.json) for what a client sends and [`server.json`](../crates/protocol/schema/server.json) for what the host sends. A test fails when the schema `spookery-protocol` derives with its `schema` feature is not the published one.
-- the recorded session, [`v7.jsonl`](../crates/protocol/sessions/v7.jsonl), a player and a GM recorded against version 7. The `compatibility-replay` CI job replays it against each build.
+- the recorded session, [`v8.jsonl`](../crates/protocol/sessions/v8.jsonl), a player and a GM recorded against version 8. The `compatibility-replay` CI job replays it against each build.
 
 In the examples, Rowan is the player, in the shop, at game time 1080. A tick is game time. A round is one batch of intents.
 
@@ -46,12 +46,12 @@ The host speaks first, with `version`, the `commands` this seat may send, and, o
 
 <!-- example: player-hello -->
 ```json
-{"body":{"kind":"hello","version":7,"commands":["claim","release","say","look","help","map","cancel","ask","chock","drop","exert","strike","take","travel","unwield","use","wait","wield"],"open":["harbormouse","rowan","wren"],"pc_names":{"harbormouse":"Harbormouse","rowan":"Rowan","wren":"Wren"}}}
+{"body":{"kind":"hello","version":8,"commands":["claim","release","say","look","help","map","cancel","ask","chock","drop","exert","strike","take","travel","unwield","use","wait","wield"],"open":["harbormouse","rowan","wren"],"pc_names":{"harbormouse":"Harbormouse","rowan":"Rowan","wren":"Wren"}}}
 ```
 
 <!-- example: gm-hello -->
 ```json
-{"body":{"kind":"hello","version":7,"commands":["status","perceive","queue","say","commit","release"]}}
+{"body":{"kind":"hello","version":8,"commands":["status","perceive","queue","say","commit","release"]}}
 ```
 
 One GM holds the seat at a time, on `/gm` or on `/mcp`. A second GM on `/gm` gets one `refused` with `TABLE_FULL`, and the connection closes.
@@ -362,7 +362,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 ### view and resume
 
-`viewer` is the bare actor id. `place` is where the viewer is, shaped like a `map` place: its `place`, the pack's `name` for it and the `exits` the viewer sees there. A walker's `place` is `path:<id>`, and its `name` is the path's. `actor_names` and each item's `name` are the pack's names, and `body` is the place prose. Each exit has the `path` of the path it walks, the `name` a player reads for it, and where it goes as `place` and `place_name`. `notes` are the notes left to the viewer and those lying in their place. Each note has its `id`, the actor ids it addresses as `to`, an optional `place`, and `text`. `items` lie in the viewer's place. `items_carried` are the items the viewer holds, and `wielded_item` is the one of them they wield. Each is left out when there is none. `meters` are the viewer's own, without hidden ones, and each has the pack's `name` when its row gives one. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `place.exits` is left out when the place has none. `nearby` holds the places those exits go to that the viewer's `map` knows, each as a `map` place with the exits seen there, and is left out when there is none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed action, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a verb, and it is refused `BUSY`, except `cancel` (see [Verbs](#verbs)). `cant_act` says why the viewer can't send a verb at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
+`viewer` is the bare actor id. `place` is where the viewer is, shaped like a `map` place: its `place`, the pack's `name` for it and the `exits` the viewer sees there. A walker's `place` is `path:<id>`, and its `name` is the path's. `actor_names` and each item's `name` are the pack's names, and `body` is the place prose. Each exit has the `path` of the path it walks, the `name` a player reads for it, and where it goes as `place` and `place_name`. `notes` are the notes left to the viewer and those lying in their place. Each note has its `id`, the actor ids it addresses as `to`, an optional `place`, and `text`. `items` lie in the viewer's place. `items_carried` are the items the viewer holds, and `wielded_item` is the one of them they wield. Each is left out when there is none. `meters` are the viewer's own, without hidden ones, and each has the pack's `name` when its row gives one. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `place.exits` is left out when the place has none. `nearby` holds the places those exits go to that the viewer's `map` knows, each as a `map` place with the exits seen there, and is left out when there is none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed action, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a verb, and it is refused `BUSY`, except `cancel` (see [Verbs](#verbs)).
 
 <!-- example: player-resume -->
 ```json
@@ -621,13 +621,14 @@ A refusal is a `refused` body, and the connection stays up. `detail` is there on
 | `NO_EXIT`, `CANT_AFFORD`, `MISSING_ITEM`, `NOT_A_WEAPON`, `BUSY` | The verb was not queued. `BUSY` clears when the character is free. |
 | `AMBIGUOUS_NAME` | Two things in sight, or two PCs, share that name. Name one by an id `detail` lists. |
 | `UNKNOWN_VERB`, `UNKNOWN_ID` | That verb or id is not in the world, or the token is no claim's. |
-| `INELIGIBLE`, `OUT_OF_RANGE`, `BUDGET`, `UNKNOWN_EFFECT`, `VIEWER_MISMATCH`, `ENGINE_ON_PLAYER`, `TABLE_EMPTY` | The rules refused the change, and nothing of it was kept. |
+| `INELIGIBLE`, `OUT_OF_RANGE`, `BUDGET`, `UNKNOWN_EFFECT`, `VIEWER_MISMATCH`, `TABLE_EMPTY` | The rules refused the change, and nothing of it was kept. |
 | `COMMIT_CONFLICT` | Another process holds the pack. Stop. |
 | `HAND_EDIT` | The save was edited by hand. Stop until it is migrated. |
 | `JOURNAL_DIVERGED` | The journal no longer replays. `spook verify` names the record. Stop. |
 | `STORE_IO` | The disk refused a read or a write. Stop until the operator fixes it. |
 | `PACK_REV_MISMATCH` | The save does not match the pack. Stop. |
 | `RULES_REV_MISMATCH` | The save was written by other rules. Start a fresh save. This fails at pack open, before any seat. |
+| `TRIGGER_LEAK` | Never sent. `spook check` raises it for a pack whose change rule can show a viewer a change they cannot see. |
 
 The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Protocol-Version` it does not know, 403 for a wrong `Host` or `Origin`, 405 for a DELETE that names a version with no session, 406 for an `Accept` without both types, and 413 for a body over 1 MiB.
 
@@ -635,7 +636,7 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 
 - A client ignores a body `kind` and a field it does not know.
 - Changes only add. A field never changes meaning, and a new meaning gets a new name.
-- The hello announces `version` and the commands. A command is removed only after one release of being marked as going away. Version 7 has no such command and no marker yet. The marker is added to the hello before the first command needs it.
+- The hello announces `version` and the commands. A command is removed only after one release of being marked as going away. Version 8 has no such command and no marker yet. The marker is added to the hello before the first command needs it.
 - Version 2 broke version 1 once, on purpose: clocks left the wire with world clocks. `clocks` left `view` and `resume`, `pause` left `status`, `PAUSED_CLOCK` left the refusal codes, and `view.status` became `view.cant_act`. `view.world_meters` was added. The session recorded against version 1 was replaced by one recorded against version 2.
 - Version 2 dropped one field before any release, on purpose: `CHOOSE_PC` no longer lists the open PCs in `detail`, since the hello's `open` already does, so `detail` is always a string. The version stayed 2 because no build had shipped.
 - Version 2 renamed two things before any release, on purpose, when game time became ticks: an exit's `minutes` became `ticks`, and the changed key `live_acts_this_hour` became `live_acts_this_window`. The recording took the docks pack's new `pack_rev` with them. The version stayed 2 because no build had shipped.
@@ -658,5 +659,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 5 broke version 4 once, on purpose, so a view's place has the shape of a `map` place: the flat `place`, `place_name` and `exits` of `view` became one `place` with `place_id`, `name` and `exits`. It also added `view.nearby`, the places past those exits that the viewer's `map` knows, so a window draws them from the view without sending `map`. The session recorded against version 4 was replaced by one recorded against version 5.
 - Version 6 broke version 5 once, on purpose, so a key drops an `_id` suffix it reads clearly without and a player's verb is called `verb`: an exit's `path_id` and `place_id` became `path` and `place`, a `view` or `map` place's `place_id` became `place`, a note's `to_ids` and `place_id` became `to` and `place`, `view.wielded_item_id` became `wielded_item`, a change's `component_id`, `entity_id` and `entry_id` became `component`, `entity` and `entry`, a speech's `recipient_ids` became `recipients`, `commit`'s `session_id` became `session`, and `move` in `queue`, `queued` and `status.queued[]` became `verb`, with `UNKNOWN_MOVE` now `UNKNOWN_VERB`. There is no alias for an old key. The session recorded against version 5 was replaced by one recorded against version 6.
 - Version 7 broke version 6 once, on purpose, so the client schema names a pack verb's arguments with the concept map's word: `$defs/MoveArgs` in the client schema became `$defs/VerbArgs`. Its fields did not change. There is no alias for the old name. The session recorded against version 6 was replaced by one recorded against version 7.
+- Version 8 broke version 7 once, on purpose, so the wire drops a field and a code that nothing produced: `view.cant_act`, which nothing set, and `ENGINE_ON_PLAYER`, which nothing raised. A busy viewer is still shown by `view.busy`. `TRIGGER_LEAK` stays in the codes because `spook check` and the journal share them with the wire. There is no alias for either. The session recorded against version 7 was replaced by one recorded against version 8, which differs only in the hello's `version`.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each host mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

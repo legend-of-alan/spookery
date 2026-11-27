@@ -29,10 +29,8 @@ pub(super) fn draw(
         return;
     };
     let mut here_lines: Vec<Line> = Vec::new();
-    for line in [&view.cant_act, &view.busy] {
-        if !line.is_empty() {
-            here_lines.push(Line::styled(line.clone(), palette.style(ASH)));
-        }
+    if !view.busy.is_empty() {
+        here_lines.push(Line::styled(view.busy.clone(), palette.style(ASH)));
     }
     let mut here_spans = vec![palette.span("Here: ", PARCHMENT)];
     for (index, (id, name)) in text::actor_ids_and_names(view).enumerate() {

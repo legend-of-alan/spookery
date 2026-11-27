@@ -578,7 +578,7 @@ mod tests {
     use super::{KeyRequest, Screen, ScreenAreas};
     use crate::protocol::{self, ServerBody, ServerMessage};
 
-    const RECORDING: &str = include_str!("../../protocol/sessions/v7.jsonl");
+    const RECORDING: &str = include_str!("../../protocol/sessions/v8.jsonl");
 
     fn press(screen: &mut Screen, code: KeyCode, commands: &[String]) -> Option<KeyRequest> {
         screen.on_key(KeyEvent::from(code), commands)

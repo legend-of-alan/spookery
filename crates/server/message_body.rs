@@ -101,7 +101,6 @@ pub(super) fn build_view(view: &engine::View) -> ServerBody {
         place: view.place.clone(),
         body: view.place_prose.clone(),
         actor_names: view.actor_names.clone(),
-        cant_act: String::new(),
         busy: view.busy.clone(),
         visible_actors: view.visible_actors.iter().map(ActorId::to_string).collect(),
         notes: view.notes.clone(),

@@ -75,7 +75,6 @@ pub enum Reason {
     Budget,
     UnknownId,
     ViewerMismatch,
-    EngineOnPlayer,
     Ineligible,
     ActorMismatch,
     TableEmpty,
@@ -110,7 +109,6 @@ impl Reason {
             Reason::Budget => "BUDGET",
             Reason::UnknownId => "UNKNOWN_ID",
             Reason::ViewerMismatch => "VIEWER_MISMATCH",
-            Reason::EngineOnPlayer => "ENGINE_ON_PLAYER",
             Reason::Ineligible => "INELIGIBLE",
             Reason::ActorMismatch => "ACTOR_MISMATCH",
             Reason::TableEmpty => "TABLE_EMPTY",
@@ -217,7 +215,6 @@ impl fmt::Display for Refusal {
             Reason::Budget => "That does not fit.",
             Reason::UnknownId => "That is not in the world.",
             Reason::ViewerMismatch => "That is not your view.",
-            Reason::EngineOnPlayer => "The table cannot do that for you.",
             Reason::Ineligible => "You cannot do that right now.",
             Reason::ActorMismatch => "That action is not yours.",
             Reason::TableEmpty => "Nobody is seated.",
@@ -315,13 +312,12 @@ impl From<Speaker> for String {
 mod tests {
     use super::*;
 
-    const ALL: [Reason; 30] = [
+    const ALL: [Reason; 29] = [
         Reason::UnknownEffect,
         Reason::OutOfRange,
         Reason::Budget,
         Reason::UnknownId,
         Reason::ViewerMismatch,
-        Reason::EngineOnPlayer,
         Reason::Ineligible,
         Reason::ActorMismatch,
         Reason::TableEmpty,
@@ -356,7 +352,6 @@ mod tests {
             | Reason::Budget
             | Reason::UnknownId
             | Reason::ViewerMismatch
-            | Reason::EngineOnPlayer
             | Reason::Ineligible
             | Reason::ActorMismatch
             | Reason::TableEmpty

@@ -180,7 +180,6 @@ pub fn render_view(view: &protocol::View) -> String {
         place,
         body,
         actor_names: _,
-        cant_act,
         busy,
         visible_actors,
         notes,
@@ -196,10 +195,8 @@ pub fn render_view(view: &protocol::View) -> String {
     if !place.name.is_empty() {
         sections.push(format!("You are in {}.", place.name));
     }
-    for line in [cant_act, busy] {
-        if !line.is_empty() {
-            sections.push(line.clone());
-        }
+    if !busy.is_empty() {
+        sections.push(busy.clone());
     }
     let prose = body.trim();
     if !prose.is_empty() {
