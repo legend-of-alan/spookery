@@ -20,10 +20,13 @@ pub(in crate::canon) fn find_misplaced_target(
         return Vec::new();
     };
     let (needs, rule_target) = (needs.as_str(), target_kind.as_str());
-    let message = format!("says target in {key}, but its target is {rule_target}");
+    let message = format!(
+        "rule '{}' says target in {key}, but its target is {rule_target}",
+        rule.local_id
+    );
     let hint = format!("give the verb target: {needs}, or name the {needs} by its id");
     let file_text = FileText::without_text(&rule.file);
-    refuse(&file_text, rule.index, rule_id, &message, &hint)
+    vec![file_text.refuse_at_rule_id(rule.index, rule_id, message, &hint)]
 }
 
 /// The first `let:` read in `rule` that fails, refused on the line of `rule_id`: an id its
@@ -57,7 +60,8 @@ pub(in crate::canon) fn find_failing_let_read(
                     "add the id to let:, or read an id that is there",
                 ),
             };
-            return refuse(&file_text, rule.index, rule_id, &message, hint);
+            let message = format!("rule '{}' {message}", rule.local_id);
+            return vec![file_text.refuse_at_rule_id(rule.index, rule_id, message, hint)];
         }
     }
     Vec::new()
@@ -86,17 +90,6 @@ pub(in crate::canon) fn find_broken_partial_band(
     let Some((message, hint)) = band_message else {
         return Vec::new();
     };
-    refuse(file_text, rule_index, rule_id, message, hint)
-}
-
-/// The refusal of rule `rule_index`, on the line of `rule_id`, with the words after its id.
-fn refuse(
-    file_text: &FileText,
-    rule_index: usize,
-    rule_id: &Spanned<String>,
-    message: &str,
-    hint: &str,
-) -> Vec<Diagnostic> {
     let message = format!("rule '{}' {message}", rule_id.value);
     vec![file_text.refuse_at_rule_id(rule_index, rule_id, message, hint)]
 }
