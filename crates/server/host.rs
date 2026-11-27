@@ -15,8 +15,8 @@ use super::message_body;
 use super::seat::{Claim, ConnId, Connection, FrameSender, Seats};
 use super::Error;
 use crate::protocol::{
-    is_built_in, parse_args, Audience, ClaimArgs, ClientBody, ClientMessage, MoveArgs, NoArgs,
-    SayArgs, Seat, ServerBody, ServerMessage, COMMANDS, VERSION,
+    is_built_in, parse_args, Audience, ClaimArgs, ClientBody, ClientMessage, NoArgs, SayArgs, Seat,
+    ServerBody, ServerMessage, VerbArgs, COMMANDS, VERSION,
 };
 
 /// The host's cap. A pack may define more PCs than this.
@@ -303,7 +303,7 @@ impl Host {
                 Err(code) => ServerBody::Refused(code.into()),
             },
             "release" | "look" | "help" | "map" => ServerBody::Refused(Reason::Schema.into()),
-            _ => match try_parse_args::<MoveArgs>(&args) {
+            _ => match try_parse_args::<VerbArgs>(&args) {
                 Some(verb_args) => {
                     return self.play_verb(conn, id, &actor_id, &command, verb_args.target)
                 }
@@ -413,9 +413,9 @@ impl Host {
         }
     }
 
-    /// With a GM seated, a move waits for `commit`, and the GM hears it queued. Without
-    /// one it commits its own round, and a busy PC's move plays the rounds its action still
-    /// needs. Either way the reply follows what the move wrote.
+    /// With a GM seated, a verb waits for `commit`, and the GM hears it queued. Without
+    /// one it commits its own round, and a busy PC's verb plays the rounds its action still
+    /// needs. Either way the reply follows what the verb wrote.
     fn play_verb(
         &mut self,
         conn: ConnId,

@@ -43,7 +43,7 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 | **Tick** | The only unit of game time. The engine counts world time in ticks. The engine knows no day or hour: a pack names its own cycles, such as a day or a tide, in `rules/budget.yaml`. Talking takes no ticks. Moving and acting do. Players and the GM see plain ticks. |
 | **Speech** | One spoken line on the session tape. The command that writes it is `say`. Talking takes no ticks. |
 | **Round** | One batch of work, in which queued intents are settled together and the results are journaled. A round writes some ticks, but it is not a unit of time. |
-| **Intent** | A proposed move from a player, an NPC or the engine's scheduler. |
+| **Intent** | A queued verb or habit, from a player, the GM or the engine's scheduler. |
 | **Effect** | A checked change to the world, produced from an intent. |
 | **Expression** | A number in a rule. An integer, dice such as `2d6` or `2d20kh1`, a meter read such as `self.might`, and `+`, `-`, `*`, `/`, `min`, and `max`. A condition's value does not roll dice. |
 | **GM** | The storyteller seat. Usually an agent that talks to the MCP endpoint. `spook ai-gm` is the built-in model GM. |
@@ -102,9 +102,9 @@ If you join as a character who's already seated, `spook play` exits 1 with `That
 
 ### No GM
 
-You can leave the GM seat empty. Then nobody narrates and no model gets called. Speech goes on the tape without moving the clock, and each move commits as its own round.
+You can leave the GM seat empty. Then nobody narrates and no model gets called. Speech goes on the tape without moving the clock, and each verb commits as its own round.
 
-If a move leaves every seated player busy, the clock runs on until they arrive.
+If a verb leaves every seated player busy, the clock runs on until they arrive.
 
 ### Model GM
 
@@ -112,9 +112,9 @@ If a move leaves every seated player busy, the clock runs on until they arrive.
 
 It posts to `{SPOOK_GM_URL}/chat/completions` with four tools. Three are the GM seat's commands: `perceive`, `say` and `queue`, with the parameters `crates/protocol/schema/client.json` gives them. The fourth, `end_turn`, plays the round: the AI GM sends `commit` for it.
 
-Each turn is a loop. A player's speech or a queued move starts it. The model calls tools, and each call goes to the host as it is. The host's reply comes back as that call's result, refusals included, so the model can look around first, try again after a refusal, and queue moves for several NPCs before it ends the turn. After `end_turn` it gets the rolls and can say what happened. The turn ends when the model answers with no tool calls.
+Each turn is a loop. A player's speech or a queued verb starts it. The model calls tools, and each call goes to the host as it is. The host's reply comes back as that call's result, refusals included, so the model can look around first, try again after a refusal, and queue verbs for several NPCs before it ends the turn. After `end_turn` it gets the rolls and can say what happened. The turn ends when the model answers with no tool calls.
 
-The engine still decides every effect. A turn commits when a move is queued, and it commits that move itself when the model stops without `end_turn`. A turn stops after 20 model calls and prints a `model call limit` warning. If a command goes out and its reply can't be read, `spook ai-gm` stops and names the command, because the host may have applied it. Start it again and it reads the host afresh.
+The engine still decides every effect. A turn commits when a verb is queued, and it commits that verb itself when the model stops without `end_turn`. A turn stops after 20 model calls and prints a `model call limit` warning. If a command goes out and its reply can't be read, `spook ai-gm` stops and names the command, because the host may have applied it. Start it again and it reads the host afresh.
 
 You need all three of these. There's no default URL.
 
@@ -169,7 +169,7 @@ Type `help` to see the GM commands. A line is a command the hello listed, then i
 
 Each call is one chat-completions POST. The body has the model name, `"stream": false`, the four tools and the turn's conversation so far.
 
-The conversation starts with one user message, a bounded JSON prompt. It holds the last 16 lines of speech this process has handled, the new player lines, the move menu, the queued intents, what started the turn (`cause`) and who is seated. Then come the model's tool calls and the host's reply to each: the views it perceived, the speech, the queue replies and refusals, and after `end_turn` the rolls and their dice lines. The conversation lasts one turn. The next turn starts again from a new prompt.
+The conversation starts with one user message, a bounded JSON prompt. It holds the last 16 lines of speech this process has handled, the new player lines, the menu, the queued intents, what started the turn (`cause`) and who is seated. Then come the model's tool calls and the host's reply to each: the views it perceived, the speech, the queue replies and refusals, and after `end_turn` the rolls and their dice lines. The conversation lasts one turn. The next turn starts again from a new prompt.
 
 The views are trimmed on purpose. A player's view is only a room census: it drops notes. An NPC's view keeps its notes.
 

@@ -1,6 +1,6 @@
 Feature: A crash leaves nothing half written
 
-  Scenario: A queued move that never commits writes nothing
+  Scenario: A queued verb that never commits writes nothing
     Given a docks table
     When a player queues take lamp_oil and the host stops before a round
     Then the save bytes are unchanged

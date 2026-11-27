@@ -45,12 +45,12 @@ pub(crate) static TOOLS: LazyLock<Value> = LazyLock::new(|| {
         ),
         tool(
             queue,
-            "Queue a move from the menu for an actor. The server answers queued or refused.",
+            "Queue a verb from the menu for an actor. The server answers queued or refused.",
             args("QueueArgs"),
         ),
         tool(
             END_TURN,
-            "Play the round: the engine resolves every queued move and answers with the rolls.",
+            "Play the round: the engine resolves every queued verb and answers with the rolls.",
             &json!({ "type": "object", "properties": {}, "additionalProperties": false }),
         ),
     ])

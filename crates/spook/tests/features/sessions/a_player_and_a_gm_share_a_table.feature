@@ -1,6 +1,6 @@
 Feature: A player and a GM share a table
 
-  Scenario: A move waits for the GM and lands when the GM commits
+  Scenario: A verb waits for the GM and lands when the GM commits
     Given rowan is in the shop and a GM is seated
     When the player travels to "docks_street"
     Then the GM sees rowan's travel queued
@@ -8,7 +8,7 @@ Feature: A player and a GM share a table
     Then the player sees rowan arrive at docks_street
     And the GM sees rowan in docks_street
 
-  Scenario: With no GM a move commits its own round
+  Scenario: With no GM a verb commits its own round
     Given a docks table with a seated player
     When the player travels to "docks_street"
     Then the player sees rowan arrive at docks_street
@@ -42,7 +42,7 @@ Feature: A player and a GM share a table
     When the player closes the seat
     Then the GM sees no player seated
 
-  Scenario: After the GM closes a move commits its own round
+  Scenario: After the GM closes a verb commits its own round
     Given rowan is in the shop and a GM is seated
     When the GM closes the seat
     And the player travels to "docks_street"

@@ -11,7 +11,7 @@ You write a world as a pack of plain YAML rules and Markdown pages for places an
 
 Bring a friend to GM or bring your own model key. Either way, the engine is the only thing that changes the world. The GM tells the story and asks the engine to commit.
 
-- ⚙️ Play moves in rounds. Everyone queues a move, and the engine resolves them.
+- ⚙️ Play runs in rounds. Everyone queues a verb, and the engine resolves them.
 - 🎲 Dice are seeded. A d20 check can partly succeed, and NPCs roll their own checks.
 - 📙 Every commit goes in a hash-chained journal. You can replay a game and check every roll.
 - ⚡ Triggers fire for in-round changes.

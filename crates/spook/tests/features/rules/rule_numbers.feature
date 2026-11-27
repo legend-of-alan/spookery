@@ -48,7 +48,7 @@ Feature: Dice and arithmetic in rule numbers
       | 2d6 +         | expression '2d6 +' is not a number (SCHEMA)                                                                                                |
       | self.nope     | expression reads meter 'nope', but no file declares meter 'nope'; declare the meter on that entity, or read one that exists (SCHEMA)       |
       | world.vigor   | expression reads meter 'vigor', but the world carries no meter 'vigor'; declare the meter on that entity, or read one that exists (SCHEMA) |
-      | subject.vigor | 'subject' is not an owner; use self, or target for the move's target (SCHEMA)                                                              |
+      | subject.vigor | 'subject' is not an owner; use self, or target for the verb's target (SCHEMA)                                                              |
       | path:a.b.hp   | 'path:a.b' is a path, which has no meters (SCHEMA)                                                                                         |
       | 100000000d6   | expression '100000000d6' rolls more than 1000 dice (SCHEMA)                                                                                |
       | 0d6           | expression '0d6' rolls no dice (SCHEMA)                                                                                                    |
@@ -101,13 +101,13 @@ Feature: Dice and arithmetic in rule numbers
     And the fatigue has 5 ticks left
     And the street exit shows 5 ticks to Rowan and 0 to Wren, who carries no assassination_debt
 
-  Scenario Outline: A number read out of range at play refuses the move OUT_OF_RANGE
+  Scenario Outline: A number read out of range at play refuses the verb OUT_OF_RANGE
     Given a docks table with Rowan and Wren seated in the shop
     And the pack has "<number>" as <field>
-    Then Rowan's "<move>" is refused OUT_OF_RANGE
+    Then Rowan's "<verb>" is refused OUT_OF_RANGE
 
     Examples:
-      | field                       | number          | move                |
+      | field                       | number          | verb                |
       | the street exit's ticks     | self.rest - 4   | travel docks_street |
       | the strain's modifier ticks | self.rest - 3   | strain              |
       | the strain's cycle bound    | self.rest * 500 | strain              |

@@ -60,7 +60,7 @@ cargo test -p spook --test features_world -- --name "Locked exit"
 - Every `##` section of `docs/engine-guarantees.md` cites feature files that exist (`engine_guarantees` test).
 - Every YAML fence in `docs/pack-reference.md` forms a pack that `spook check` accepts (`pack_reference` test).
 - Every backticked file path, Rust path and CamelCase name in this file and `docs/*.md` exists under `crates/` (`doc_code_names` test), so a rename updates the docs in the same PR.
-- `tests/packs/docks` is the one test pack. Tests copy it with `testing::copy_pack` and never write into `packs/` or `tests/packs/`. A canon edit there moves its `pack_rev`, so `crates/protocol/sessions/v6.jsonl` and `docs/seat-protocol.md` move with it.
+- `tests/packs/docks` is the one test pack. Tests copy it with `testing::copy_pack` and never write into `packs/` or `tests/packs/`. A canon edit there moves its `pack_rev`, so `crates/protocol/sessions/v7.jsonl` and `docs/seat-protocol.md` move with it.
 
 ## PRs
 

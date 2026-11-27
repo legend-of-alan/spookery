@@ -1,5 +1,5 @@
 //! Take queued intents and habits, in the order this round will try them, and pick each one's
-//! rule. The gate runs at queue and start; the check rolls when the move lands.
+//! rule. The gate runs at queue and start; the check rolls when the verb lands.
 
 use std::collections::BTreeSet;
 
@@ -28,7 +28,7 @@ pub(crate) struct Candidate<'c> {
 /// How pick left an intent for apply.
 pub(crate) enum Resolution<'c> {
     /// Picked against the state. Apply admits `rule` again against the working copy when it starts,
-    /// then pays for and expands it, so a move pays the cost of the rule it picked.
+    /// then pays for and expands it, so a verb pays the cost of the rule it picked.
     Ready { rule: &'c Rule },
     /// A player's `cancel`, which runs no rule.
     Cancel,

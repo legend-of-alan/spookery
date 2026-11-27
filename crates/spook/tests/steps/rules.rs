@@ -895,8 +895,8 @@ fn harbormouse_alone_plays(world: &mut World, line: String) {
     play_harbormouse_line(world, &line);
 }
 
-#[then(expr = "the move is refused NOT_IN_SPEC before the round and the save is unchanged")]
-fn ask_is_refused_before_the_round(world: &mut World) {
+#[then(expr = "the verb is refused NOT_IN_SPEC before the round and the save is unchanged")]
+fn the_verb_is_refused_before_the_round(world: &mut World) {
     assert_eq!(world.scratch, Reason::NotInSpec.as_str());
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(

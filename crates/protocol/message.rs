@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// The wire version the hello announces.
-pub const VERSION: u32 = 6;
+pub const VERSION: u32 = 7;
 
 /// One message on a seat's stream. `id` is chosen by the client and comes back as
 /// `reply_to` on the reply. `seq` is set by the server, from one counter per host, on
@@ -239,7 +239,7 @@ pub enum ClaimArgs {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub struct MoveArgs {
+pub struct VerbArgs {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
 }
@@ -263,7 +263,7 @@ impl ServerMessage {
 pub fn generate_client_schema() -> schemars::Schema {
     let mut generator = schemars::SchemaGenerator::default();
     generator.subschema_for::<ClaimArgs>();
-    generator.subschema_for::<MoveArgs>();
+    generator.subschema_for::<VerbArgs>();
     generator.subschema_for::<NoArgs>();
     generator.subschema_for::<crate::SayArgs>();
     generator.subschema_for::<crate::PerceiveArgs>();
@@ -316,7 +316,7 @@ mod tests {
             serde_json::from_str(r#"{"id":"c8","body":{"kind":"travel","args":{"target":"x"}}}"#)
                 .unwrap();
         assert_eq!(message.body.kind, "travel");
-        let args: MoveArgs = serde_json::from_value(Value::Object(message.body.args)).unwrap();
+        let args: VerbArgs = serde_json::from_value(Value::Object(message.body.args)).unwrap();
         assert_eq!(args.target.as_deref(), Some("x"));
         let bare: ClientMessage = serde_json::from_str(r#"{"body":{"kind":"wait"}}"#).unwrap();
         assert!(bare.body.args.is_empty());
@@ -383,7 +383,7 @@ mod tests {
         };
         assert_eq!(
             hello.to_text(),
-            r#"{"body":{"kind":"hello","version":6,"commands":["claim"],"open":["rowan"],"taken":["wren"]}}"#
+            r#"{"body":{"kind":"hello","version":7,"commands":["claim"],"open":["rowan"],"taken":["wren"]}}"#
         );
         let released = ServerMessage {
             body: ServerBody::Released,

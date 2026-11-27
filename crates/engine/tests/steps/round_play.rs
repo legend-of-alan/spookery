@@ -917,7 +917,7 @@ fn rowan_plays(world: &mut World, verb: String) {
     world.summary_lines = output.changed_keys;
 }
 
-#[then(expr = "Rowan's move is refused {word}")]
+#[then(expr = "Rowan's verb is refused {word}")]
 fn rowans_verb_is_refused(world: &mut World, code: String) {
     assert_eq!(world.scratch, format!("rowan {code}"));
 }

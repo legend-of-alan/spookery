@@ -9,10 +9,10 @@
 //! ```
 //!
 //! The test hosts a copy of the docks pack with `spook run`, connects `spook ai-gm`,
-//! and queues one player move. A small pass-through proxy sits between
+//! and queues one player verb. A small pass-through proxy sits between
 //! `ai-gm` and the provider so the test can see each model call and its HTTP
 //! status. The round passes when every model call returned 2xx, `ai-gm`
-//! printed no model-call failure, stayed up, and the queued move committed one
+//! printed no model-call failure, stayed up, and the queued verb committed one
 //! round. What the model says does not matter.
 
 use std::fs;
@@ -113,7 +113,7 @@ fn a_live_model_plays_one_round() {
     assert!(up, "ai-gm exited\n{host_err}");
     assert!(
         advanced,
-        "the queued move did not commit a round\n{host_err}"
+        "the queued verb did not commit a round\n{host_err}"
     );
     println!(
         "live round passed: {} model call(s), one round committed",

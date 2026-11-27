@@ -1,6 +1,6 @@
 Feature: One action lifecycle
 
-  Every move but say starts and finishes through one path. One that takes no ticks finishes
+  Every verb starts and finishes through one path. One that takes no ticks finishes
   in the round it starts. A walk that takes ticks puts the walker on the exit until they arrive.
 
   Background:
@@ -60,7 +60,7 @@ Feature: One action lifecycle
     Then "drink" finished
     And Rowan has used no act
 
-  Scenario: A free instant drink and a move both land in one round
+  Scenario: A free instant drink and a take both land in one round
     Given the rule "drink" does not count its start as an act
     When Rowan plays "drink" and "take lamp_oil" in the same round
     Then "drink" finished

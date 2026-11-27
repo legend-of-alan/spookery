@@ -171,7 +171,7 @@ impl PathDef {
 
     /// The entities, item ids and `target`s the path's conds, cost and numbers name.
     pub(super) fn mentions(&self) -> mentions::Mentions<'_> {
-        mentions::Mentions::of_lines(&self.if_, [&self.cost], self.exprs())
+        mentions::Mentions::of(&self.if_, [&self.cost], self.exprs())
     }
 
     /// The path has an `if`, so the exit can stay locked until it opens.

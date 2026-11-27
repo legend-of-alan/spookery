@@ -333,7 +333,7 @@ fn list_gm_tools() -> Vec<Tool> {
         .collect()
 }
 
-const SEAT_NOTES: &str = "The result lists every message the command sent this seat, its reply last. Player moves stay queued until commit. say does not tick. Other messages arrive as spook/event notifications on the GET /mcp event stream, which holds the seat.";
+const SEAT_NOTES: &str = "The result lists every message the command sent this seat, its reply last. Player verbs stay queued until commit. say does not tick. Other messages arrive as spook/event notifications on the GET /mcp event stream, which holds the seat.";
 
 #[cfg(test)]
 mod tests {

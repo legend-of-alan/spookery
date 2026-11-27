@@ -20,8 +20,8 @@ Commands:
       Speak to the whole table.
   say as <npc> <text>
       Speak as that NPC to the place it stands in.
-  queue <actor> <move> [target]
-      Queue a move. A target is a place id or an actor id.
+  queue <actor> <verb> [target]
+      Queue a verb. A target is a place id or an actor id.
   commit
       Commit the queue as one round.
   <command> {...}

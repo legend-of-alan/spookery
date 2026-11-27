@@ -18,7 +18,7 @@ Feature: The AI GM plays a turn as a loop
 
   Scenario: The GM recovers after a refusal
     Given a docks table with a seated player and the NPC Mira in the shop
-    And a scripted model that queues a move Mira can't make
+    And a scripted model that queues a verb Mira can't play
     When the table refuses the queue
     Then the model's next call carries the refusal as the tool result
     And the scripted model queues wait for Mira and ends the turn
@@ -26,13 +26,13 @@ Feature: The AI GM plays a turn as a loop
 
   Scenario: The GM runs several NPCs in one round
     Given a docks table with a seated player and the NPCs Mira and Aldric in the shop
-    And a scripted model that queues a move for Mira and a move for Aldric, then ends the turn
+    And a scripted model that queues a verb for Mira and a verb for Aldric, then ends the turn
     When the player queues travel
-    Then the round resolves the player's, Mira's and Aldric's moves together
+    Then the round resolves the player's, Mira's and Aldric's verbs together
     And the player sees the GM narrate the result, not the dice
 
   Scenario: The model call limit commits for a stuck model
-    Given a docks table with a seated player who has queued a move
+    Given a docks table with a seated player who has queued a verb
     And a scripted model that only ever calls perceive
     When the GM's turn runs
     Then the client stops after 20 model calls

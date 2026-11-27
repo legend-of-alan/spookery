@@ -6,7 +6,7 @@
 //!   Scenario: Random play stops trigger chains at the cap
 //!     Given the docks pack
 //!     And random change rules, including rules that set each other's watched values
-//!     When random legal player moves and habit rounds are played
+//!     When random legal player verbs and habit rounds are played
 //!     Then every action is followed by at most max_trigger_depth trigger passes
 //!     And a round that hit the cap logs trigger_depth
 //!     And replaying the journal yields the state hash stored on the last record

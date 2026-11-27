@@ -146,7 +146,7 @@ impl Seat {
 }
 
 /// The command a typed line names and its arguments, as `spook play` sends it: `say <text>`
-/// speaks to everyone present (`"to": "table"`), and any other first word is a move with the
+/// speaks to everyone present (`"to": "table"`), and any other first word is a verb with the
 /// rest as its target.
 pub(crate) fn parse_command(line: &str) -> (&str, Value) {
     match line.split_once(' ') {

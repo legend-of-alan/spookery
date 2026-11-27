@@ -24,7 +24,7 @@ Feature: spook check explains a broken pack
       | fault                               | file                       | code              | phrase                                                   |
       | missing when                        | rules/verbs.yaml           | SCHEMA            | missing field 'when'                                     |
       | unknown field                       | rules/verbs.yaml           | SCHEMA            | unknown field                                            |
-      | duplicate move                      | rules/verbs.yaml           | SCHEMA            | listed twice                                             |
+      | duplicate verb                      | rules/verbs.yaml           | SCHEMA            | listed twice                                             |
       | unknown format tag                  | rules/verbs.yaml           | SCHEMA            | does not use                                             |
       | missing meters                      | rules/meters.yaml          | NOT_IN_SPEC       | missing                                                  |
       | meter min above base_cap            | rules/meters.yaml          | SCHEMA            | min above base_cap                                       |
@@ -55,10 +55,10 @@ Feature: spook check explains a broken pack
       | a cycle past its length             | cast/mira.md               | SCHEMA            | cycle bound is not below cycle day                       |
       | an unknown cycle                    | cast/mira.md               | SCHEMA            | no cycle tide                                            |
       | world as an actor                   | world/places/gate_yard.md  | SCHEMA            | 'world' is not an actor                                  |
-      | target on a move with none          | rules/verbs.yaml           | SCHEMA            | in of:, but its target is none                           |
-      | owner target on an item move        | rules/verbs.yaml           | SCHEMA            | in of:, but its target is item                           |
-      | a meter on a travel move's target   | rules/verbs.yaml           | SCHEMA            | in of:, but its target is path                           |
-      | a travel move's target flag besides open | rules/verbs.yaml      | SCHEMA            | a path carries only the flag 'open'                      |
+      | target on a verb with none          | rules/verbs.yaml           | SCHEMA            | in of:, but its target is none                           |
+      | owner target on an item verb        | rules/verbs.yaml           | SCHEMA            | in of:, but its target is item                           |
+      | a meter on a travel verb's target   | rules/verbs.yaml           | SCHEMA            | in of:, but its target is path                           |
+      | a travel verb's target flag besides open | rules/verbs.yaml      | SCHEMA            | a path carries only the flag 'open'                      |
       | id: target with no target           | rules/verbs.yaml           | SCHEMA            | in id:, but its target is none                           |
       | a save by target with none          | rules/verbs.yaml           | SCHEMA            | in by:, but its target is none                           |
       | target on an exit                   | world/map.yaml             | SCHEMA            | but an exit has no target                                |
@@ -219,7 +219,7 @@ Feature: spook check explains a broken pack
     And the JSON array is one diagnostic code "WARNING" file "pack.yaml" path "gm_notes"
     And stderr is empty
 
-  Scenario: The authoring example move passes check
+  Scenario: The authoring example verb passes check
     Given a docks table
     When the worked example row is appended to the verbs file
     And the operator runs spook check --json

@@ -37,7 +37,7 @@ impl Actor {
         }
     }
 
-    /// The actor this word names for `context`'s intent: the one acting, the move's target, or
+    /// The actor this word names for `context`'s intent: the one acting, the verb's target, or
     /// an actor by id. A target that is a place, a path or an item names no actor, so it is
     /// `UNKNOWN_ID`.
     pub(crate) fn actor_id<'a>(&'a self, context: &Context<'_, 'a>) -> Result<&'a ActorId, Reason> {
@@ -96,7 +96,7 @@ impl Object {
             "here" => Ok(Object::Here),
             "world" => Ok(Object::Global),
             "subject" => Err(
-                "'subject' is not an owner; use self, or target for the move's target".to_string(),
+                "'subject' is not an owner; use self, or target for the verb's target".to_string(),
             ),
             "" | "token" | "first_rate" | "rate" | "first_drift" | "toward_target"
             | "first_known" | "first_listener" | "keep" | "first_due_note" | "first_owned" => {
@@ -108,7 +108,7 @@ impl Object {
 
     /// Who holds the meter, flag or item this entity word names for `context`'s intent: `here` and
     /// `place:` are a place, `path:` is a path, `story:` is a story, `world` is the world,
-    /// `target` on a move whose target is a path is that path, and anyone else is an actor.
+    /// `target` on a verb whose target is a path is that path, and anyone else is an actor.
     pub(crate) fn entity_id(&self, context: &Context) -> Result<entity::Id, Reason> {
         match self {
             Object::Global => Ok(entity::Id::Global),

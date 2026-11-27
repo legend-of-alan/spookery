@@ -216,7 +216,7 @@ fn the_round_still_ends_at_tick_1295(world: &mut World) {
     assert_eq!(world_of(host::pack(world)).world_time, EVENING + 5);
 }
 
-#[then(expr = "a move from rowan is accepted from the round starting at tick 1295")]
+#[then(expr = "a verb from rowan is accepted from the round starting at tick 1295")]
 async fn the_next_round_accepts_a_verb(world: &mut World) {
     let (_mark, added) = host::player_send(world, "wait", "\"kind\":").await;
     assert!(!added.contains("BUSY"), "{added}");

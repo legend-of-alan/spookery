@@ -62,14 +62,14 @@ Feature: Rules live with their owner
   Scenario: A cast member's rule needs its owner named
     Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage, and Mira's door note is not due
     When harbormouse, in the yard with briar, plays ask
-    Then the move is refused NOT_IN_SPEC before the round and the save is unchanged
+    Then the verb is refused NOT_IN_SPEC before the round and the save is unchanged
 
   Scenario: A cast member's rule refuses a target other than its owner
     Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage, and Mira's door note is not due
     When harbormouse, in the yard with briar, plays ask harbormouse
-    Then the move is refused NOT_IN_SPEC before the round and the save is unchanged
+    Then the verb is refused NOT_IN_SPEC before the round and the save is unchanged
 
   Scenario: A cast member's rule leaves with them
     Given briar's cast file holds a verb "ask" that targets an actor, and the save puts briar in the lane
     When harbormouse, alone in the yard, plays ask briar
-    Then the move is refused NOT_IN_SPEC before the round and the save is unchanged
+    Then the verb is refused NOT_IN_SPEC before the round and the save is unchanged

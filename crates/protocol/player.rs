@@ -16,7 +16,7 @@ pub struct View {
     pub body: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actor_names: Vec<String>,
-    /// Why the viewer can't send a move at all. Empty when they can, and empty today: being
+    /// Why the viewer can't send a verb at all. Empty when they can, and empty today: being
     /// busy is `busy`, not this.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub cant_act: String,
@@ -50,7 +50,7 @@ pub struct View {
 }
 
 impl View {
-    /// Whether the viewer can send a move at all. A busy viewer can, and is refused `BUSY`.
+    /// Whether the viewer can send a verb at all. A busy viewer can, and is refused `BUSY`.
     pub fn can_act(&self) -> bool {
         self.cant_act.is_empty()
     }

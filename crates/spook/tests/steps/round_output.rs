@@ -83,7 +83,7 @@ async fn the_gm_queues_a_ten_tick_travel(world: &mut World, actor: String) {
     queue_verb(world, &actor, "travel", Some("docks_shop.docks_street")).await;
 }
 
-#[when(expr = "{string} sends a move")]
+#[when(expr = "{string} sends a verb")]
 async fn the_player_sends_a_verb(world: &mut World, actor: String) {
     host::wait_until(world, "both seats printed", |text| {
         text.matches(STATUS_LINE).count() >= 2
