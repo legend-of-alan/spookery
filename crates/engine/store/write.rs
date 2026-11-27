@@ -27,7 +27,7 @@ pub struct Outcome {
 
 /// Commit one played round, append it, end a due checkpoint, and clear the queue. `world` is
 /// the round's working copy of the save, published only once the round is on disk.
-pub(crate) fn run(
+pub(crate) fn commit_round(
     session: &mut session::Session,
     mut world: ecs::World,
     record: RoundRecord,
@@ -46,7 +46,7 @@ pub(crate) fn run(
     )?;
     let due = is_checkpoint_due(session.canon().checkpoint_every, world.round_index);
     let (payload, chain) = if due {
-        let (payload, chain) = build_checkpoint_line(line, &world, &now_bytes)?;
+        let (payload, chain) = commit_checkpoint(line, &world, &now_bytes)?;
         (payload, Some(chain))
     } else {
         (line, None)
@@ -97,7 +97,7 @@ fn bump_state_rev(world: &mut ecs::World) -> Result<(), Reason> {
 /// that edit, so a checkpoint of the migrated save follows the record and replay restarts
 /// from it. Its snapshot is on disk before the record, so a crash after the append still
 /// replays. The caller holds the pack lock.
-pub(crate) fn migrate(
+pub(crate) fn commit_migrate(
     root: &Path,
     world: ecs::World,
     edited: bool,
@@ -132,7 +132,7 @@ pub(crate) fn migrate(
     let line = journal::commit(&entry, &prev);
     if edited {
         write_atomic(&journal::checkpoint_path(root, world.state_rev), &emitted)?;
-        let (payload, chain) = build_checkpoint_line(line, &world, &emitted)?;
+        let (payload, chain) = commit_checkpoint(line, &world, &emitted)?;
         append_to_bundle(root, &payload, &write)?;
         store_checkpoint(
             root,
@@ -157,7 +157,7 @@ pub(crate) fn migrate(
 
 /// Follow a committed `line` with a checkpoint of `world`. Returns both lines and the
 /// checkpoint's chain.
-fn build_checkpoint_line(
+fn commit_checkpoint(
     line: String,
     world: &ecs::World,
     now_bytes: &[u8],
@@ -320,7 +320,7 @@ mod tests {
     use crate::store::records::RoundRecord;
     use crate::testing::copy_pack;
 
-    use crate::store::commit;
+    use super::commit_round;
 
     #[test]
     fn a_failed_gzip_keeps_the_round_and_the_next_commit_starts_a_bundle() {
@@ -331,7 +331,7 @@ mod tests {
         let mut world = session.start_round();
         world.round_index = 1;
         durability::fail_next(".jsonl.gz.tmp");
-        commit::run(&mut session, world, round_line(1)).unwrap();
+        commit_round(&mut session, world, round_line(1)).unwrap();
         let live = crate::store::journal::read_live_records(&root).unwrap();
         let round_rev = live.iter().rev().find_map(|entry| match entry {
             crate::store::records::Record::Round(record) => Some(record.state_rev_after),
@@ -345,7 +345,7 @@ mod tests {
 
         let mut again = session.start_round();
         again.round_index = 2;
-        commit::run(&mut session, again, round_line(2)).unwrap();
+        commit_round(&mut session, again, round_line(2)).unwrap();
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
         for (bundle, entries) in &bundles {
@@ -369,19 +369,19 @@ mod tests {
         let mut session = crate::testing::resume(&root);
         let mut first = session.start_round();
         first.round_index = 1;
-        commit::run(&mut session, first, round_line(1)).unwrap();
+        commit_round(&mut session, first, round_line(1)).unwrap();
 
         let mut second = session.start_round();
         second.round_index = 2;
         durability::fail_next("save.yaml.tmp");
-        commit::run(&mut session, second, round_line(2)).unwrap();
+        commit_round(&mut session, second, round_line(2)).unwrap();
         let live = crate::store::journal::read_live_records(&root).unwrap();
         let mark = crate::store::journal::latest_checkpoint(&live).unwrap();
         assert_eq!(session.world().state_rev, mark.state_rev);
 
         let mut third = session.start_round();
         third.round_index = 3;
-        commit::run(&mut session, third, round_line(3)).unwrap();
+        commit_round(&mut session, third, round_line(3)).unwrap();
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
         let (first_bundle, first_entries) = &bundles[0];

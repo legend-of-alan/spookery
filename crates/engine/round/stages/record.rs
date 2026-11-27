@@ -2,7 +2,7 @@
 
 use crate::session;
 use crate::store::records::RoundRecord;
-use crate::store::{commit, RULES_REV};
+use crate::store::{self, RULES_REV};
 use crate::Reason;
 
 use crate::ecs::Presence;
@@ -58,6 +58,6 @@ pub(crate) fn run(
         prev: String::new(),
         chain: String::new(),
     };
-    output.commit = Some(commit::run(session, world, record)?);
+    output.commit = Some(store::commit_round(session, world, record)?);
     Ok(output)
 }

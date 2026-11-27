@@ -23,7 +23,7 @@ use crate::rules::roll;
 use crate::rules::travel;
 use crate::rules::visibility::{RecipientLine, ViewerChanges};
 use crate::session;
-use crate::store::commit;
+use crate::store;
 use crate::Reason;
 
 use crate::round::stages::{advance, apply, deliver, end, pick, record, triggers};
@@ -38,7 +38,7 @@ pub struct Output {
     pub seen: Vec<ViewerChanges>,
     pub(crate) effects: Vec<Effect>,
     /// Set when this round wrote the journal.
-    pub commit: Option<commit::Outcome>,
+    pub commit: Option<store::Outcome>,
 }
 
 /// Play the rounds `real_hours` of absence earn, at an empty table. A short absence plays one.
@@ -141,7 +141,7 @@ pub(crate) fn replay(
         ..
     } = stage(&canon, world, presence, wall, queue)?;
     let output = record::take_output(&mut ledger, delivered);
-    crate::store::commit::keep_in_memory(session, world)?;
+    store::keep_in_memory(session, world)?;
     Ok(output)
 }
 

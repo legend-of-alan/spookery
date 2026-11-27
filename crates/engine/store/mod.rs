@@ -2,7 +2,6 @@
 
 use crate::Reason;
 
-pub(crate) mod commit;
 pub(crate) mod durability;
 pub(crate) mod journal;
 pub mod lock;
@@ -10,8 +9,12 @@ pub(crate) mod records;
 pub(crate) mod recovery;
 pub(crate) mod save;
 pub mod tape;
+mod write;
 
 pub use lock::PackGuard;
+pub(crate) use write::{
+    commit_migrate, commit_round, keep_in_memory, publish_last_checkpoint, Outcome,
+};
 
 /// Rules version stamped on every save and every round.
 /// A different version is refused.

@@ -24,10 +24,7 @@ pub(crate) fn load_tip(pack: &Path, guard: &PackGuard) -> Result<Session<()>, Re
     choose_seed(pack, guard)?;
     rebuild_save(pack, guard)?;
     let session = peek_tip(pack)?;
-    crate::store::commit::publish_last_checkpoint(
-        &session,
-        &lock::take_write(session.root(), guard)?,
-    )?;
+    crate::store::publish_last_checkpoint(&session, &lock::take_write(session.root(), guard)?)?;
     Ok(session)
 }
 
@@ -62,7 +59,7 @@ pub fn migrate_pack(pack: &Path) -> Result<(), Reason> {
     let guard = lock::take(pack)?;
     choose_seed(pack, &guard)?;
     let (world, edited) = load_migrate_tip(pack, &guard)?;
-    crate::store::commit::migrate(pack, world, edited, &guard)?;
+    crate::store::commit_migrate(pack, world, edited, &guard)?;
     Ok(())
 }
 
@@ -91,10 +88,7 @@ fn load_tip_unchecked(pack: &Path, guard: &PackGuard) -> Result<Session<()>, Err
     let bytes = journal::read_save(&journal::save_path(pack))?;
     let mut session = open_at(pack, &bytes)?;
     apply_live(&mut session)?;
-    crate::store::commit::publish_last_checkpoint(
-        &session,
-        &lock::take_write(session.root(), guard)?,
-    )?;
+    crate::store::publish_last_checkpoint(&session, &lock::take_write(session.root(), guard)?)?;
     Ok(session)
 }
 
