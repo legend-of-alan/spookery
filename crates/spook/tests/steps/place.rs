@@ -97,7 +97,6 @@ fn i_type(world: &mut World, line: String) {
 /// `You are in` and `Here:` are the client's words for a view, not engine prose.
 #[then(expr = "I see the place name, exits and who is here, built from server messages")]
 async fn i_see_the_view(world: &mut World) {
-    // repeats module: mirrors its step text
     let shown = [
         "You are in Docks Shop.",
         "The shop faces the water. Tins sit in a row.",

@@ -21,8 +21,7 @@ pub(crate) fn split_line(line: &str) -> (&str, Option<&str>) {
 }
 
 #[given(expr = "a save from older rules")]
-fn a_save_from_older_rules(world: &mut World) {
-    // repeats module: mirrors its step text
+fn a_save_from_an_older_revision(world: &mut World) {
     let rev = spookery_engine::testing::RULES_REV;
     let pack = crate::support::copy_pack("docks", "rules-rev");
     let path = pack.join("state/save.yaml");
