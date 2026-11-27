@@ -38,8 +38,7 @@ The map is exactly as big as it needs to be to tell terms apart and give each a 
 | diagnostic | problem, fault, diag, diags |
 | Reason: why something was refused or flagged. code: a number or an enum, never a string. | code as a string |
 | Severity: error or warning | error (as a severity) |
-| check: a dice roll. lint: a pack rule. verify: a journal test. | validate |
-| check: compares fixed data, such as a pack, save, journal or input, against a fixed rule, at load or at runtime. eval: resolves live values, then computes or judges a pack's expression or condition, such as `expr::eval` and `cond::eval_all`. | evaluate |
+| check (noun): a dice roll against a bar, as in the pack's `check:` key, `roll::Check` and the `check` message. check (verb, in function names): compare fixed data, such as a pack, save, journal or input, against a fixed rule, at load or at runtime. eval: resolve live values, then compute or judge a pack's expression or condition, such as `expr::eval` and `cond::eval_all`. lint: a pack rule. verification: replaying the journal against the save. | validate, evaluate |
 | stage | phase, beat |
 | message: one wire text. payload: what it carries. | packet, body, frame (as a message) |
 | host | server |
@@ -54,7 +53,7 @@ The map is exactly as big as it needs to be to tell terms apart and give each a 
 | call: a request to an outside API or model. Std's Fn::call is exempt. | invoke |
 | run: executing our own code, including a check or a verification. | invoke |
 | start, end: the two ends of a span, such as a bundle, a round, a file, or a timed action. init: setting up a singleton, or a value after it is created. | finish, begin, initialize |
-| tip: the newest record of the hash-chained journal. base: the starting snapshot, `state/journal/base.yaml`. mark: the latest published checkpoint stamp, `state/journal/mark.json`. Meter base is a different concept. | head (for the journal) |
+| tip: the newest record of the hash-chained journal. base: the save the replay starts from, `state/journal/base.yaml`. mark: the latest published checkpoint stamp, `state/journal/mark.json`. Meter base is a different concept. | head (for the journal) |
 | commit | seal, settle |
 | read: bytes, records or state as stored, with no compile step, such as `journal::read_save` or `read_meter`. load: read if needed, then parse and compile into the engine's loaded form, such as `canon::load`. | |
 | emit, write, render | convert, dump |
