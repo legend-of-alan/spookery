@@ -135,7 +135,7 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
     let partial = compile::effect_templates(file, &entry.partial)?;
     let miss = compile::effect_templates(file, &entry.miss)?;
     if let Some(kind) = &kind {
-        let action_fields = start_cost.is_some()
+        let has_action_fields = start_cost.is_some()
             || entry.start.is_some()
             || entry.finish.is_some()
             || entry.cooldown_ticks > 0
@@ -145,7 +145,7 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
             index,
             &entry.id,
             kind,
-            action_fields,
+            has_action_fields,
         ));
         let outcome_lists = [&success[..], &partial, &miss];
         diagnostics.extend(lint::rule::find_outcome_without_check(

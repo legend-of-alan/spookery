@@ -10,16 +10,16 @@ use crate::rules::expr::Expr;
 use crate::rules::roll;
 use crate::rules::rule::{self, EffectTemplate, Rule};
 
-/// A change rule with `action_fields` (it sets a cost, start, finish, cooldown_ticks or
+/// A change rule with action fields (it sets a cost, start, finish, cooldown_ticks or
 /// cancellable), refused on the line of `rule_id`, the id of rule `rule_index`.
 pub(in crate::canon) fn find_change_with_action_fields(
     file_text: &FileText,
     rule_index: usize,
     rule_id: &Spanned<String>,
     kind: &rule::Kind,
-    action_fields: bool,
+    has_action_fields: bool,
 ) -> Vec<Diagnostic> {
-    if !matches!(kind, rule::Kind::Change(_)) || !action_fields {
+    if !matches!(kind, rule::Kind::Change(_)) || !has_action_fields {
         return Vec::new();
     }
     let message = format!(
