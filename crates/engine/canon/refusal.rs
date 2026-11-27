@@ -88,6 +88,18 @@ impl<'a> FileText<'a> {
         self.refuse_at(key_path, at, error.message, "")
     }
 
+    /// The refusal on the line of `rule_id`, the id of rule `index` in the list.
+    pub(super) fn refuse_at_rule_id(
+        &self,
+        index: usize,
+        rule_id: &Spanned<String>,
+        message: String,
+        hint: &str,
+    ) -> Diagnostic {
+        let at = Locator::FileLocation(file_location_of(rule_id));
+        self.refuse_at(&format!("rules[{index}].id"), at, message, hint)
+    }
+
     /// A schema error at `key_path` (such as `rules[0].when`), on the line and column `at` finds.
     pub(super) fn refuse_at(
         &self,

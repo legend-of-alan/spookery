@@ -3,6 +3,7 @@
 use serde_saphyr::Spanned;
 use spookery_protocol::{is_built_in, Seat};
 
+use crate::canon::lint;
 use crate::canon::refusal::{file_location_of, CompileError, Diagnostics, FileText, Locator};
 use crate::diagnostic::{schema_error, Diagnostic, FileLocation};
 use crate::rules::expr::{self, stamp_file_locations, Expr};
@@ -54,8 +55,7 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
     let mut diagnostics = Diagnostics::default();
     let local_id = entry.id.value.clone();
     if local_id.is_empty() || local_id == "say" {
-        diagnostics.push(refuse_at_rule_id(
-            &file_text,
+        diagnostics.push(file_text.refuse_at_rule_id(
             index,
             &entry.id,
             "a rule id is empty or is say".into(),
@@ -160,14 +160,15 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
                 "add success",
             ));
         }
-        let band_message =
-            find_rule_partial_band_message(check.as_ref(), &do_, &success, &partial, &miss);
-        if let Some((message, hint)) = band_message {
-            let message = format!("rule '{local_id}' {message}");
-            diagnostics.push(refuse_at_rule_id(
-                &file_text, index, &entry.id, message, hint,
-            ));
-        }
+        let own_check = check.as_ref().map(|check| (check, &partial[..]));
+        let effect_lists = [&do_[..], &success, &partial, &miss];
+        diagnostics.extend(lint::rule::find_broken_partial_band(
+            &file_text,
+            index,
+            &entry.id,
+            own_check,
+            effect_lists,
+        ));
     }
     let kind = diagnostics.into_result(kind)?.expect("kind checked");
     let rule = Rule {
@@ -202,72 +203,15 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
         file: file.to_string(),
         index,
     };
-    let target_or_let_message =
-        find_misplaced_target_message(&rule).or_else(|| find_let_read_message(&rule));
-    if let Some((message, hint)) = target_or_let_message {
-        let message = format!("rule '{}' {message}", rule.local_id);
-        return Err(vec![refuse_at_rule_id(
-            &file_text, index, &entry.id, message, &hint,
-        )]);
+    let mut refusals = lint::rule::find_misplaced_target(&rule, &entry.id);
+    if refusals.is_empty() {
+        refusals = lint::rule::find_failing_let_read(&rule, &entry.id);
     }
-    Ok(rule)
-}
-
-/// The refusal on the line of `rule_id`, the id of rule `index` in the list.
-fn refuse_at_rule_id(
-    file_text: &FileText,
-    index: usize,
-    rule_id: &Spanned<String>,
-    message: String,
-    hint: &str,
-) -> Diagnostic {
-    let at = Locator::FileLocation(file_location_of(rule_id));
-    file_text.refuse_at(&format!("rules[{index}].id"), at, message, hint)
-}
-
-/// The first key in `rule` whose `target` needs a target kind other than the rule's own, as
-/// the message and the hint.
-fn find_misplaced_target_message(rule: &Rule) -> Option<(String, String)> {
-    let target_kind = rule.kind.target_kind();
-    let (key, needs) = rule.mentions().find_misplaced_target(target_kind)?;
-    let (needs, target) = (needs.as_str(), target_kind.as_str());
-    Some((
-        format!("says target in {key}, but its target is {target}"),
-        format!("give the verb target: {needs}, or name the {needs} by its id"),
-    ))
-}
-
-/// The first `let:` read in `rule` that fails, as the message and the hint: an id its `let:`
-/// does not hold, an id a `let:` number reads at or above the line that holds it, or `high` or
-/// `low` of an id whose number is not one dice group with no keep. The `let:` numbers come
-/// first in `Rule::exprs`, so the one at `index` reads only the ids above it.
-fn find_let_read_message(rule: &Rule) -> Option<(String, String)> {
-    let lets = rule.lets.as_slice();
-    for (index, expr) in rule.exprs().into_iter().enumerate() {
-        let readable = lets.get(..index).unwrap_or(lets);
-        for read in expr.reads() {
-            let Expr::Let { id, keep } = read else {
-                continue;
-            };
-            let (message, hint) = match (readable.iter().find(|(bound, _)| bound == id), keep) {
-                (Some((_, Expr::Dice { keep: None, .. })), _) | (Some(_), None) => continue,
-                (Some(_), Some(_)) => (
-                    format!("reads high or low of '{id}', which is not one dice group with no keep"),
-                    "read high or low only of an id whose number is dice such as 2d8, with no keep such as kh1",
-                ),
-                (None, _) if lets.iter().any(|(bound, _)| bound == id) => (
-                    format!("reads '{id}' in let: at or above the line that holds it"),
-                    "a let: number reads only the ids written above it",
-                ),
-                (None, _) => (
-                    format!("reads '{id}', which its let: does not hold"),
-                    "add the id to let:, or read an id that is there",
-                ),
-            };
-            return Some((message, hint.to_string()));
-        }
+    if refusals.is_empty() {
+        Ok(rule)
+    } else {
+        Err(refusals)
     }
-    None
 }
 
 fn rule_kind(yaml: &WhenYaml, scope: &Scope) -> Result<RuleKind, String> {
@@ -606,58 +550,6 @@ fn effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
             }
         }
     })
-}
-
-/// Every check in a rule, judged by `find_partial_band_message` until one fails, as the words
-/// after the rule's id and the hint: first `check`, the rule's own check with the `partial`
-/// list, then each check nested in the `do_`, `success`, `partial` and `miss` lists.
-fn find_rule_partial_band_message(
-    check: Option<&roll::Check>,
-    do_: &[EffectTemplate],
-    success: &[EffectTemplate],
-    partial: &[EffectTemplate],
-    miss: &[EffectTemplate],
-) -> Option<(&'static str, &'static str)> {
-    let mut checks: Vec<_> = check.into_iter().map(|check| (check, partial)).collect();
-    for effect in [do_, success, partial, miss].into_iter().flatten() {
-        effect.visit(|effect| {
-            if let EffectTemplate::Check { check, partial, .. } = effect {
-                checks.push((check, &partial[..]));
-            }
-        });
-    }
-    (checks.into_iter()).find_map(|(check, partial)| find_partial_band_message(check, partial))
-}
-
-/// What is wrong with `check`'s partial band, given `partial`, the list its partial outcome
-/// runs, as the words after the rule's id and the hint: a `partial_at` with no list, a list
-/// with no `partial_at`, or a constant `partial_at` at or above a constant `success_at`.
-fn find_partial_band_message(
-    check: &roll::Check,
-    partial: &[EffectTemplate],
-) -> Option<(&'static str, &'static str)> {
-    let band = check.partial_at.as_ref();
-    if band.is_some() && partial.is_empty() {
-        return Some((
-            "sets partial_at without a partial list",
-            "add a partial list or remove partial_at",
-        ));
-    }
-    if band.is_none() && !partial.is_empty() {
-        return Some((
-            "lists partial without partial_at",
-            "set partial_at under check",
-        ));
-    }
-    let constants = band
-        .and_then(Expr::constant)
-        .zip(check.success_at.constant());
-    constants
-        .is_some_and(|(partial_at, success_at)| partial_at >= success_at)
-        .then_some((
-            "sets partial_at at or above success_at",
-            "set partial_at strictly below success_at",
-        ))
 }
 
 fn parse_object(yaml: &Spanned<String>) -> Result<grammar::Object, CompileError> {
