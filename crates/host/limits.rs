@@ -21,7 +21,7 @@ pub(super) const RATE_PER_SEC: u64 = 5;
 pub(super) const BURST: u64 = 10;
 
 /// Frames queued toward one socket before that socket is dropped.
-pub(super) const OUTBOUND_FRAME_CAP: usize = 256;
+pub(super) const OUTBOUND_MESSAGE_CAP: usize = 256;
 
 /// How many messages a claim keeps for a reconnect. Older ones are dropped, and the
 /// `claimed` reply says `is_missed_truncated`.

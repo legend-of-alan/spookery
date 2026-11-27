@@ -38,7 +38,9 @@ fn append_verbs(world: &mut World, extra: &str) {
 #[then(expr = "the load refusal is SCHEMA")]
 fn the_load_refusal_is_schema(world: &mut World) {
     assert_eq!(
-        spookery_engine::first_reason(&spookery_engine::load_canon(host::pack(world)).unwrap_err()),
+        spookery_engine::diagnostic::find_reason(
+            &spookery_engine::canon::load(host::pack(world)).unwrap_err()
+        ),
         Reason::Schema
     );
 }

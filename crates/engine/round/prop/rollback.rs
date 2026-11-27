@@ -23,8 +23,8 @@ use crate::ecs::component::{self, ActorLocation, Component};
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, Presence, Save, WindowCount};
 use crate::entity;
-use crate::intent::{Intent, IntentArgs, Source, Target};
-use crate::rules::effect::{Effect, EffectKind};
+use crate::intent::{self, Intent, Source, Target};
+use crate::rules::effect::{self, Effect};
 use crate::session;
 use crate::testing::copy_pack;
 
@@ -132,7 +132,7 @@ struct Open {
 fn play_steps(session: &session::Session<()>, steps: &[Step]) -> Result<(), TestCaseError> {
     let nobody = Presence::default();
     let canon = session.canon();
-    let mut world = session.begin_round();
+    let mut world = session.start_round();
     let intent = mira_intent();
     let mira = ActorId::from("mira");
     let open_at = |world: &ecs::World| Open {
@@ -261,7 +261,7 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
                 entity::Id::Actor(id) => (Some(id.clone()), None),
                 _ => (None, Some("docks_shop".into())),
             };
-            EffectKind::Item {
+            effect::Kind::Item {
                 actor_id,
                 place,
                 id: id.to_string(),
@@ -269,23 +269,23 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
                 max: None,
             }
         }
-        Step::Meter(entity_id, key, delta) => EffectKind::Meter {
+        Step::Meter(entity_id, key, delta) => effect::Kind::Meter {
             entity: entity_id.clone(),
             key: key.to_string(),
             write: meter::Write::Offset(*delta),
         },
-        Step::Fatigue(add) => EffectKind::Modifier {
+        Step::Fatigue(add) => effect::Kind::Modifier {
             actor_id: mira,
             id: "fatigue".to_string(),
             add: *add,
             ticks: 3,
         },
-        Step::Flag(entity_id, key, value) => EffectKind::Flag {
+        Step::Flag(entity_id, key, value) => effect::Kind::Flag {
             entity: entity_id.clone(),
             key: key.to_string(),
             value: *value,
         },
-        Step::Walk(to) => EffectKind::Move {
+        Step::Walk(to) => effect::Kind::Move {
             from: (world.actors().get::<component::Place>(&mira).get())
                 .cloned()
                 .unwrap_or_else(|| ActorLocation::Place("".into())),
@@ -293,12 +293,12 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
             to: ActorLocation::Place((*to).into()),
             arrived_at: None,
         },
-        Step::Wield(id) => EffectKind::Wield {
+        Step::Wield(id) => effect::Kind::Wield {
             actor_id: mira,
             id: id.to_string(),
         },
-        Step::Unwield => EffectKind::Unwield { actor_id: mira },
-        Step::Note => EffectKind::Note {
+        Step::Unwield => effect::Kind::Unwield { actor_id: mira },
+        Step::Note => effect::Kind::Note {
             note_id: format!("note_rollback_{index}"),
             to_ids: vec!["rowan".into()],
             place_id: Some("docks_shop".into()),
@@ -327,7 +327,7 @@ fn mira_intent() -> Intent {
         source: Source::Engine,
         verb_id: "rollback".to_string(),
         target: Target::Empty,
-        args: IntentArgs::default(),
+        args: intent::Args::default(),
         rationale_code: String::new(),
     }
 }

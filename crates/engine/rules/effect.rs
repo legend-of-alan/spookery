@@ -10,7 +10,8 @@ use crate::ecs::component::meter;
 use crate::ecs::component::modifier::{self, Modifier};
 use crate::ecs::component::ActorLocation;
 use crate::ecs::component::Note;
-use crate::ecs::id::{ActorId, GlobalId, PlaceId};
+use crate::ecs::entity::globals;
+use crate::ecs::id::{ActorId, PlaceId};
 use crate::ecs::{self, component, MemoryLine, Presence};
 use crate::entity;
 use crate::intent::Intent;
@@ -19,7 +20,7 @@ use crate::Reason;
 /// One effect. JSON is `kind`, `as`, `intent`, then the fields of `kind`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Effect {
-    pub kind: EffectKind,
+    pub kind: Kind,
     /// The actor the effect was written as, or `None` for a change rule on a world change.
     pub actor_id: Option<ActorId>,
     pub intent_id: String,
@@ -27,7 +28,7 @@ pub struct Effect {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum EffectKind {
+pub enum Kind {
     // repeats module: the tag of an Effect, named as a pair with it
     Meter {
         entity: entity::Id,
@@ -131,7 +132,7 @@ impl<'de> Deserialize<'de> for Effect {
             .get("kind")
             .and_then(Value::as_str)
             .map(str::to_owned);
-        let kind = EffectKind::deserialize(Value::Object(fields)).map_err(|err| {
+        let kind = Kind::deserialize(Value::Object(fields)).map_err(|err| {
             let unknown = variant.is_some_and(|variant| {
                 err.to_string()
                     .starts_with(&format!("unknown variant `{variant}`"))
@@ -142,7 +143,7 @@ impl<'de> Deserialize<'de> for Effect {
                 D::Error::custom(err)
             }
         })?;
-        if let EffectKind::Item {
+        if let Kind::Item {
             actor_id, place, ..
         } = &kind
         {
@@ -159,7 +160,7 @@ impl<'de> Deserialize<'de> for Effect {
 }
 
 impl Effect {
-    pub(crate) fn new(actor_id: Option<&ActorId>, intent_id: &str, kind: EffectKind) -> Self {
+    pub(crate) fn new(actor_id: Option<&ActorId>, intent_id: &str, kind: Kind) -> Self {
         Effect {
             kind,
             actor_id: actor_id.cloned(),
@@ -179,11 +180,11 @@ impl Effect {
             return Err(Reason::ViewerMismatch);
         }
         match self.kind {
-            EffectKind::Meter { entity, key, write } => {
+            Kind::Meter { entity, key, write } => {
                 let meter::Write::Offset(delta) = write;
                 (world.entities_mut().get_mut::<component::Meter>(&entity)).shift(&key, delta)
             }
-            EffectKind::Item {
+            Kind::Item {
                 actor_id,
                 place,
                 id,
@@ -198,13 +199,13 @@ impl Effect {
                     _ => Err(Reason::Schema),
                 }
             }
-            EffectKind::Modifier {
+            Kind::Modifier {
                 actor_id,
                 id,
                 add,
                 ticks,
-            } => apply_modifier(canon, world, &actor_id, &id, add, ticks),
-            EffectKind::Wield { actor_id, id } => {
+            } => stack_modifier(canon, world, &actor_id, &id, add, ticks),
+            Kind::Wield { actor_id, id } => {
                 let item = canon.items.get(&id).ok_or(Reason::UnknownId)?;
                 if !item.tags.iter().any(|tag| tag == "weapon") {
                     return Err(Reason::NotAWeapon);
@@ -212,19 +213,19 @@ impl Effect {
                 let mut actors = world.actors_mut();
                 (actors.get_mut::<component::WieldedItem>(&actor_id)).set(Some(&id))
             }
-            EffectKind::Unwield { actor_id } => {
+            Kind::Unwield { actor_id } => {
                 let mut actors = world.actors_mut();
                 (actors.get_mut::<component::WieldedItem>(&actor_id)).set(None)
             }
-            EffectKind::Move {
+            Kind::Move {
                 actor_id, from, to, ..
-            } => move_actor(canon, world, presence, intent, &actor_id, &from, &to),
-            EffectKind::Memory {
+            } => move_to(canon, world, presence, intent, &actor_id, &from, &to),
+            Kind::Memory {
                 actor_id,
                 tags,
                 text,
             } => remember(world, intent, &actor_id, tags, text),
-            EffectKind::Flag { entity, key, value } => {
+            Kind::Flag { entity, key, value } => {
                 let path_def = match &entity {
                     entity::Id::Path(id) => canon.paths.get(id),
                     _ => None,
@@ -234,7 +235,7 @@ impl Effect {
                 }
                 (world.entities_mut().get_mut::<component::Flag>(&entity)).set(&key, value)
             }
-            EffectKind::Note {
+            Kind::Note {
                 note_id,
                 to_ids,
                 place_id,
@@ -252,32 +253,32 @@ impl Effect {
                     text,
                 };
                 let mut globals = world.globals_mut();
-                globals.get_mut::<Note>(&GlobalId).leave(&note_id, note)
+                globals.get_mut::<Note>(&globals::Id).leave(&note_id, note)
             }
-            EffectKind::Narrate { .. } => Ok(()),
+            Kind::Narrate { .. } => Ok(()),
         }
     }
 }
 
-impl EffectKind {
+impl Kind {
     pub fn as_str(&self) -> &'static str {
         match self {
-            EffectKind::Meter { .. } => "meter",
-            EffectKind::Item { .. } => "item",
-            EffectKind::Modifier { .. } => "modifier",
-            EffectKind::Wield { .. } => "wield",
-            EffectKind::Unwield { .. } => "unwield",
-            EffectKind::Move { .. } => "move",
-            EffectKind::Memory { .. } => "memory",
-            EffectKind::Flag { .. } => "flag",
-            EffectKind::Note { .. } => "note",
-            EffectKind::Narrate { .. } => "narrate",
+            Kind::Meter { .. } => "meter",
+            Kind::Item { .. } => "item",
+            Kind::Modifier { .. } => "modifier",
+            Kind::Wield { .. } => "wield",
+            Kind::Unwield { .. } => "unwield",
+            Kind::Move { .. } => "move",
+            Kind::Memory { .. } => "memory",
+            Kind::Flag { .. } => "flag",
+            Kind::Note { .. } => "note",
+            Kind::Narrate { .. } => "narrate",
         }
     }
 }
 
 /// The effect's fields minus `kind`, keys in declaration order.
-pub(crate) fn payload_json(effect: &Effect) -> String {
+pub(crate) fn to_json(effect: &Effect) -> String {
     let Ok(Value::Object(mut fields)) = serde_json::to_value(&effect.kind) else {
         unreachable!("effect kinds are objects")
     };
@@ -291,7 +292,7 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
 
 /// Apply one stack of modifier `id` to an actor that carries its meter, lasting `ticks`, as
 /// `modifier::stack` says.
-fn apply_modifier(
+fn stack_modifier(
     canon: &Canon,
     world: &mut ecs::World,
     actor_id: &ActorId,
@@ -316,7 +317,7 @@ fn apply_modifier(
 
 /// Move the intent's own actor from `from` to `to`, a place or the exit they walk. A PC moves
 /// only while a player is seated.
-fn move_actor(
+fn move_to(
     canon: &Canon,
     world: &mut ecs::World,
     presence: &Presence,

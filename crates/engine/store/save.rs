@@ -7,14 +7,13 @@ use serde_saphyr::SerializerOptions;
 
 use crate::canon::item;
 use crate::canon::lint::refuse_unknown_item;
-use crate::diagnostic::{
-    diagnose_schema_tag, error, locate_nth, parse_file, schema_error, Diagnostic,
-};
+use crate::diagnostic::{self, diagnose_schema_tag, error, parse_file, schema_error, Diagnostic};
 use crate::ecs::component::meter::{self, Meter};
 use crate::ecs::component::modifier::{self, Modifier};
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, Save};
 use crate::entity;
+use crate::store;
 use crate::store::records::{DroppedMeter, MigrateRecord};
 use crate::Reason;
 
@@ -46,7 +45,7 @@ pub fn parse(text: &str) -> Result<Save, Vec<Diagnostic>> {
         rules_rev: u64,
     }
     if let Ok(probe) = serde_saphyr::from_str::<RulesProbe>(text) {
-        if super::require_rules_rev(probe.rules_rev).is_err() {
+        if store::check_rules_rev(probe.rules_rev).is_err() {
             return Err(vec![rules_rev_diagnostic(text)]);
         }
     }
@@ -70,7 +69,7 @@ fn rules_rev_diagnostic(text: &str) -> Diagnostic {
         "start a fresh save",
     )
     .at_key_path("rules_rev");
-    diagnostic = diagnostic.at_file_location(locate_nth(text, "rules_rev:", 0));
+    diagnostic = diagnostic.at_file_location(diagnostic::find_nth(text, "rules_rev:", 0));
     diagnostic
 }
 

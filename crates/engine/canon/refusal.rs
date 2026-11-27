@@ -2,7 +2,7 @@
 
 use serde_saphyr::Spanned;
 
-use crate::diagnostic::{locate_nth, Code, Diagnostic, FileLocation};
+use crate::diagnostic::{self, Code, Diagnostic, FileLocation};
 use crate::Reason;
 
 /// One pack file as the loader sees it: its pack-relative name and its YAML text, which
@@ -115,9 +115,11 @@ impl<'a> FileText<'a> {
         }
         match at {
             Locator::Nowhere | Locator::FileLocation(None) => diagnostic,
-            Locator::Key(key) => diagnostic.at_file_location(locate_nth(self.text, key, 0)),
+            Locator::Key(key) => {
+                diagnostic.at_file_location(diagnostic::find_nth(self.text, key, 0))
+            }
             Locator::Entry { list, index, key } => {
-                diagnostic.at_file_location(locate_entry_field(self.text, list, index, key))
+                diagnostic.at_file_location(find_entry_field(self.text, list, index, key))
             }
             Locator::FileLocation(Some(file_location)) => {
                 let column = Some(file_location.column).filter(|column| *column > 0);
@@ -217,7 +219,7 @@ pub(super) fn file_location_of<T>(span: &Spanned<T>) -> Option<FileLocation> {
 
 /// `field` inside the `index`th entry of the top-level `list`. An entry starts at a line
 /// whose key is `id:`, so an `id:` inside a value, or the file's own `id:`, starts none.
-fn locate_entry_field(text: &str, list: &str, index: usize, field: &str) -> Option<FileLocation> {
+fn find_entry_field(text: &str, list: &str, index: usize, field: &str) -> Option<FileLocation> {
     let lines: Vec<&str> = text.lines().collect();
     let first = lines.iter().position(|line| line.starts_with(list))? + 1;
     let last = lines[first..]

@@ -6,13 +6,13 @@ use std::io::Write;
 use std::sync::mpsc::{Receiver, Sender};
 
 use serde_json::{Map, Value};
-use spookery_engine::{emit_tape_record, ActorId, Presence, Reason, RecipientLine, TapeRecord};
+use spookery_engine::{tape, ActorId, Presence, Reason, RecipientLine};
 use tokio::sync::{oneshot, watch};
 
 use super::gm::{self, Reply};
 use super::idle::{self, now_stamp};
 use super::message_body;
-use super::seat::{Claim, ConnId, Connection, FrameSender, Seats};
+use super::seat::{Claim, ConnId, Connection, MessageSender, Seats};
 use super::Error;
 use crate::protocol::{
     is_built_in, parse_args, Audience, ClaimArgs, ClientBody, ClientMessage, NoArgs, SayArgs, Seat,
@@ -38,7 +38,7 @@ pub(super) enum Request {
     Open {
         conn: ConnId,
         seat: Seat,
-        frames_tx: FrameSender,
+        messages_tx: MessageSender,
         reply: oneshot::Sender<Result<(), Box<ServerMessage>>>,
     },
     /// One client message, or why the game port could not read it.
@@ -120,10 +120,10 @@ impl Host {
                 Request::Open {
                     conn,
                     seat,
-                    frames_tx,
+                    messages_tx,
                     reply,
                 } => {
-                    let opened = self.open(conn, seat, frames_tx);
+                    let opened = self.open(conn, seat, messages_tx);
                     let took = opened.is_ok();
                     if reply.send(opened).is_err() && took {
                         self.drop_connection(conn);
@@ -173,7 +173,7 @@ impl Host {
         &mut self,
         conn: ConnId,
         seat: Seat,
-        out: FrameSender,
+        out: MessageSender,
     ) -> Result<(), Box<ServerMessage>> {
         if seat == Seat::Gm && (self.seats.gm.is_some() || self.seats.connection(conn).is_some()) {
             tracing::debug!(conn_id = %conn, code = Reason::TableFull.as_str(), "GM seat refused");
@@ -563,8 +563,8 @@ impl Host {
 
     /// The one speech path: the host's tape line, then one `say` with one `seq` to the GM and
     /// to each player who hears it. The sender's copy is its reply.
-    fn deliver_speech(&mut self, speech: &TapeRecord, sender: Option<(ConnId, Option<String>)>) {
-        let _ = writeln!(self.out, "{}", emit_tape_record(speech));
+    fn deliver_speech(&mut self, speech: &tape::Record, sender: Option<(ConnId, Option<String>)>) {
+        let _ = writeln!(self.out, "{}", tape::emit(speech));
         let _ = self.out.flush();
         let seq = self.next_seq();
         let (sender, id) = sender.unzip();

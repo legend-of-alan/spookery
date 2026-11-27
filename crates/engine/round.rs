@@ -1,6 +1,17 @@
-//! Run a round, commit it, and catch the table up.
+//! Play one round, commit it, and play the idle rounds an absence earns.
 
-use std::path::Path;
+pub(crate) mod dice;
+pub(crate) mod ledger;
+pub(crate) mod stages;
+pub mod verification;
+
+#[cfg(test)]
+mod prop;
+
+pub(crate) use dice::Dice;
+pub(crate) use ledger::Ledger;
+pub(crate) use stages::advance::Time;
+
 use std::sync::Arc;
 
 use crate::canon::budget::Budget;
@@ -13,11 +24,9 @@ use crate::rules::travel;
 use crate::rules::visibility::{RecipientLine, ViewerChanges};
 use crate::session;
 use crate::store::commit;
-use crate::store::lock::lock_pack;
 use crate::Reason;
 
-use crate::round::stage::{advance, apply, deliver, finish, pick, record, triggers};
-use crate::round::{self, Ledger};
+use crate::round::stages::{advance, apply, deliver, end, pick, record, triggers};
 
 /// What one round showed. Returned from the engine's round to the host table, which sends it on
 /// to players, the GM and the digest. `lines` and `seen` are empty when no human was seated.
@@ -32,17 +41,8 @@ pub struct Output {
     pub commit: Option<commit::Outcome>,
 }
 
-/// Play one round from the save.
-pub fn play_pack_once(path: &Path) -> Result<(), Reason> {
-    // repeats module: re-exported at the crate root
-    let mut session = session::Session::resume(path, lock_pack(path)?)?;
-    let wall = session.world().last_round_at.clone();
-    run_round(&mut session, &Presence::default(), &wall, false)?;
-    Ok(())
-}
-
 /// Play the rounds `real_hours` of absence earn, at an empty table. A short absence plays one.
-pub(crate) fn catch_up(
+pub(crate) fn play_idle(
     session: &mut session::Session,
     wall: &str,
     real_hours: u64,
@@ -50,17 +50,17 @@ pub(crate) fn catch_up(
     let rounds = if real_hours == 0 {
         1
     } else {
-        planned_rounds(session.budget(), real_hours)?.max(1)
+        count_idle(session.budget(), real_hours)?.max(1)
     };
     let empty = Presence::default();
     for _ in 0..rounds {
-        run_round(session, &empty, wall, false)?;
+        run(session, &empty, wall, false)?;
     }
     Ok(())
 }
 
 /// How many rounds `real_hours` of empty-table absence earn, within the budget's caps.
-fn planned_rounds(budget: &Budget, real_hours: u64) -> Result<u64, Reason> {
+fn count_idle(budget: &Budget, real_hours: u64) -> Result<u64, Reason> {
     let every = budget.round_every_real_seconds;
     let idle_ticks = budget.idle_ticks_per_round;
     if every == 0 || idle_ticks == 0 {
@@ -86,24 +86,24 @@ pub(crate) fn fast_forward(
     already: u32,
 ) -> Result<Vec<Output>, Reason> {
     let cap = session.budget().max_fastforward_rounds;
-    let busy = seated_busy(session, presence);
+    let busy = list_busy(session, presence);
     if busy.is_empty() || busy.contains(&false) {
         return Ok(Vec::new());
     }
     let mut ran = already;
     let mut outputs = Vec::new();
     while u64::from(ran) < cap
-        && seated_busy(session, presence).contains(&true)
+        && list_busy(session, presence).contains(&true)
         && session.queued_intents().is_empty()
     {
-        outputs.push(run_round(session, presence, wall, true)?);
+        outputs.push(run(session, presence, wall, true)?);
         ran += 1;
     }
     Ok(outputs)
 }
 
 /// Whether each seated PC is busy at the current world time.
-fn seated_busy<Lock>(session: &session::Session<Lock>, presence: &Presence) -> Vec<bool> {
+fn list_busy<Lock>(session: &session::Session<Lock>, presence: &Presence) -> Vec<bool> {
     let (world, actors) = (session.world(), session.world().actors());
     presence
         .actors_present
@@ -113,33 +113,33 @@ fn seated_busy<Lock>(session: &session::Session<Lock>, presence: &Presence) -> V
 }
 
 /// Play the queue and commit the round. Only a session that owns the pack lock can.
-pub(crate) fn run_round(
+pub(crate) fn run(
     session: &mut session::Session,
     presence: &Presence,
     wall: &str,
     fast_forward: bool,
 ) -> Result<Output, Reason> {
     let canon = Arc::clone(session.world().canon());
-    let world = session.begin_round();
-    let staged = run_stages(&canon, world, presence, wall, session.queued_intents())?;
+    let world = session.start_round();
+    let staged = stage(&canon, world, presence, wall, session.queued_intents())?;
     record::run(session, staged, presence, wall, fast_forward)
 }
 
 /// Play the queue a journal line kept, in memory, with the seats it recorded.
-pub(crate) fn replay_round(
+pub(crate) fn replay(
     session: &mut session::Session<()>,
     wall: &str,
     queue: &[Intent],
     presence: &Presence,
 ) -> Result<Output, Reason> {
     let canon = Arc::clone(session.world().canon());
-    let world = session.begin_round();
+    let world = session.start_round();
     let StagedRound {
         world,
         mut ledger,
         delivered,
         ..
-    } = run_stages(&canon, world, presence, wall, queue)?;
+    } = stage(&canon, world, presence, wall, queue)?;
     let output = record::take_output(&mut ledger, delivered);
     crate::store::commit::keep_in_memory(session, world)?;
     Ok(output)
@@ -149,14 +149,14 @@ pub(crate) fn replay_round(
 /// and what each seat hears.
 pub(crate) struct StagedRound {
     pub(crate) world: ecs::World,
-    pub(crate) clock: round::Time,
+    pub(crate) clock: Time,
     pub(crate) ledger: Ledger,
     pub(crate) delivered: deliver::Deliveries,
 }
 
 /// Every stage but `record`, in order, on `world`, the round's working copy of the save. The
 /// candidates' rules borrow the canon, not the save, while the later stages write it.
-fn run_stages(
+fn stage(
     canon: &Canon,
     mut world: ecs::World,
     presence: &Presence,
@@ -164,7 +164,7 @@ fn run_stages(
     queue: &[Intent],
 ) -> Result<StagedRound, Reason> {
     let clock = advance::run(canon, &mut world, presence, wall)?;
-    let mut dice = round::Dice::new(world.seed.clone(), clock.round_index);
+    let mut dice = Dice::new(world.seed.clone(), clock.round_index);
     let mut ledger = Ledger::default();
     let candidates = pick::run(canon, &world, presence, queue, &mut ledger)?;
     apply::run(
@@ -177,7 +177,7 @@ fn run_stages(
         &mut ledger,
     );
     let end = clock.world_time_after;
-    finish::run(canon, &mut world, presence, end, &mut dice, &mut ledger)?;
+    end::run(canon, &mut world, presence, end, &mut dice, &mut ledger)?;
     travel::open_conditional_paths(canon, &mut world, presence, &mut ledger);
     triggers::run(canon, &mut world, presence, &mut dice, &mut ledger);
     travel::note_exits(canon, &mut world)?;

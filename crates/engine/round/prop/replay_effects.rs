@@ -22,8 +22,8 @@ use proptest::test_runner::{TestCaseError, TestRunner};
 
 use super::support::{arb_rounds, play_rounds, runner_config, TempPack};
 use crate::ecs::Presence;
-use crate::round::play::replay_round;
-use crate::round::replay::first_effect_diff;
+use crate::replay;
+use crate::round;
 use crate::testing::{copy_dir, copy_pack, fresh_dir};
 
 #[test]
@@ -67,7 +67,7 @@ fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
     let mut session =
         session::Session::open(&pack.0).map_err(|err| TestCaseError::fail(err.to_string()))?;
     for record in &round_records {
-        let effects = replay_round(
+        let effects = round::replay(
             &mut session,
             &record.last_round_at,
             &record.intents,
@@ -80,7 +80,7 @@ fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
         .map_err(|err| {
             TestCaseError::fail(format!("round {} failed: {err}", record.round_index))
         })?;
-        if let Some(diff) = first_effect_diff(&record.effects, &effects) {
+        if let Some(diff) = replay::find_effect_diff(&record.effects, &effects) {
             return Err(TestCaseError::fail(format!(
                 "round {} {diff}",
                 record.round_index

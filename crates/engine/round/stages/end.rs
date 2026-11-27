@@ -6,7 +6,7 @@ use crate::ecs::{self, PendingAction, Presence};
 use crate::intent::Intent;
 use crate::Reason;
 
-use crate::round::stage::{apply, triggers};
+use crate::round::stages::{apply, triggers};
 use crate::round::{self, Ledger};
 
 /// Finish every due action, earliest first.

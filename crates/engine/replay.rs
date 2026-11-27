@@ -4,19 +4,18 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::canon::load_canon;
-use crate::diagnostic::{first_reason, Diagnostic};
+use crate::canon;
+use crate::diagnostic::{self, Diagnostic};
 use crate::ecs::{self, Presence, Save};
 use crate::hash::blake2s_tagged;
+use crate::round;
 use crate::rules::effect::Effect;
 use crate::session;
+use crate::store;
 use crate::store::journal;
 use crate::store::records::{emit_effect, MigrateRecord, Record, RoundRecord};
-use crate::store::require_rules_rev;
 use crate::store::save;
 use crate::Reason;
-
-use crate::round::play::replay_round;
 
 #[derive(Debug)]
 #[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
@@ -131,7 +130,7 @@ impl From<Reason> for Error {
 
 impl From<Vec<Diagnostic>> for Error {
     fn from(diagnostics: Vec<Diagnostic>) -> Self {
-        Self::Reason(first_reason(&diagnostics))
+        Self::Reason(diagnostic::find_reason(&diagnostics))
     }
 }
 
@@ -250,7 +249,7 @@ pub fn apply_journal(
 /// A replay world at `base` with the pack's canon.
 pub(crate) fn open_at(pack: &Path, base: &[u8]) -> Result<session::Session<()>, Error> {
     let save = load_save_bytes(base)?;
-    let canon = load_canon(pack)?;
+    let canon = canon::load(pack)?;
     Ok(session::Session::from_parts(
         pack,
         ecs::World::new(save, Arc::new(canon)),
@@ -379,11 +378,11 @@ fn apply_recorded_round(
     session: &mut session::Session<()>,
     record: &RoundRecord,
 ) -> Result<(), Error> {
-    require_rules_rev(record.rules_rev)?;
+    store::check_rules_rev(record.rules_rev)?;
     if session.world().round_index + 1 != record.round_index {
         return Err(round_diverged(record, "round_index differed").into());
     }
-    let replayed = replay_round(
+    let replayed = round::replay(
         session,
         &record.last_round_at,
         &record.intents,
@@ -397,7 +396,7 @@ fn apply_recorded_round(
         replayed_bytes: emit_save_bytes(session).ok(),
         ..round_diverged(record, code.as_str())
     })?;
-    let effect_diff = first_effect_diff(&record.effects, &replayed);
+    let effect_diff = find_effect_diff(&record.effects, &replayed);
     if session.world().state_rev != record.state_rev_after {
         return Err(Divergence {
             replayed_bytes: emit_save_bytes(session).ok(),
@@ -418,7 +417,7 @@ fn apply_recorded_round(
     Ok(())
 }
 
-pub(crate) fn first_effect_diff(logged: &[Effect], replayed: &[Effect]) -> Option<String> {
+pub(crate) fn find_effect_diff(logged: &[Effect], replayed: &[Effect]) -> Option<String> {
     let count = logged.len().max(replayed.len());
     for index in 0..count {
         let left = logged.get(index);
@@ -495,14 +494,18 @@ mod tests {
     use std::fs;
 
     use super::apply_journal;
-    use crate::round::play_pack_once;
+    use crate::ecs::Presence;
     use crate::store::journal;
     use crate::testing::copy_pack;
+    use crate::testing::resume;
 
     #[test]
     fn two_replays_in_one_process_do_not_collide() {
         let pack = copy_pack("docks", "replay-collide");
-        play_pack_once(&pack).unwrap();
+        let mut session = resume(&pack);
+        let wall = session.world().last_round_at.clone();
+        session.play(&Presence::default(), &wall).unwrap();
+        drop(session);
         let records = journal::read_records(&pack).unwrap();
         let left = apply_journal(&pack, &records, None, None).unwrap();
         let right = apply_journal(&pack, &records, None, None).unwrap();

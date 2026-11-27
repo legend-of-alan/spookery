@@ -91,7 +91,7 @@ fn the_pack_rev_is_restamped(world: &mut World) {
     let path = pack.join("state/save.yaml");
     let mut now = spookery_engine::parse_save(&fs::read_to_string(&path).unwrap())
         .unwrap_or_else(|err| panic!("load save: {err:?}"));
-    now.pack_rev = spookery_engine::pack_rev(&pack).unwrap_or_else(|err| panic!("{err:?}"));
+    now.pack_rev = spookery_engine::canon::hash(&pack).unwrap_or_else(|err| panic!("{err:?}"));
     fs::write(&path, spookery_engine::emit_save(&now).unwrap()).unwrap();
 }
 

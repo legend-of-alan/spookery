@@ -189,7 +189,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gm_frames_ignore_unknown_fields_and_round_trip() {
+    fn gm_messages_ignore_unknown_fields_and_round_trip() {
         fn assert_reencodes<
             T: Serialize + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug,
         >(

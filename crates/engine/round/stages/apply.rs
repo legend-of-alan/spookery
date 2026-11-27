@@ -6,7 +6,7 @@ use crate::ecs::{self, component, PendingAction, Presence};
 use crate::intent::Intent;
 use crate::rules::context::Context;
 use crate::rules::cost;
-use crate::rules::effect::{Effect, EffectKind};
+use crate::rules::effect::{self, Effect};
 use crate::rules::expand::{self, Cause, Expansion};
 use crate::rules::gate;
 use crate::rules::roll;
@@ -15,8 +15,8 @@ use crate::rules::travel;
 use crate::store::records::Step;
 use crate::Reason;
 
-use crate::round::stage::pick::{Candidate, Resolution};
-use crate::round::stage::triggers;
+use crate::round::stages::pick::{Candidate, Resolution};
+use crate::round::stages::triggers;
 use crate::round::{self, Ledger};
 
 /// What became of one rule's effects in `land`.
@@ -165,7 +165,7 @@ fn pend(
     let actor_id = intent.actor_id.as_ref().ok_or(Reason::UnknownId)?;
     if let Some(exit) = exit {
         let from = world.actors().get::<component::Place>(actor_id).get();
-        let kind = EffectKind::Move {
+        let kind = effect::Kind::Move {
             actor_id: actor_id.clone(),
             from: from.ok_or(Reason::UnknownId)?.clone(),
             to: exit.walker_location(),
@@ -208,16 +208,16 @@ pub(crate) fn finish(
         }
     };
     for effect in &mut expansion.effects {
-        if let EffectKind::Move { arrived_at, .. } = &mut effect.kind {
+        if let effect::Kind::Move { arrived_at, .. } = &mut effect.kind {
             *arrived_at = Some(at);
         }
     }
     let point = world.savepoint();
-    let mut finished = match &rule.finish_cost {
+    let mut finished = match &rule.end_cost {
         Some(cost) => cost::pay(canon, world, presence, intent, cost),
         None => Ok(()),
     };
-    if rule.finish_counts_as_act {
+    if rule.end_counts_as_act {
         finished = finished.and_then(|()| count_act(world, presence, intent));
     }
     if rule.cooldown_ticks > 0 {

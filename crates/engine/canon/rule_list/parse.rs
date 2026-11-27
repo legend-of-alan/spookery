@@ -17,7 +17,7 @@ pub(in crate::canon) struct RuleYaml {
     pub(super) if_: Option<IfYaml>,
     pub(super) cost: Option<CostYaml>,
     pub(super) start: Option<ActionStartYaml>,
-    pub(super) finish: Option<ActionFinishYaml>,
+    pub(super) finish: Option<ActionEndYaml>,
     /// Ticks the actor stays busy after the finish.
     #[serde(default)]
     pub(super) cooldown_ticks: u64,
@@ -216,7 +216,7 @@ pub(super) struct ActionStartYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct ActionFinishYaml {
+pub(super) struct ActionEndYaml {
     pub cost: Option<CostYaml>,
     #[serde(default)]
     pub counts_as_act: bool,

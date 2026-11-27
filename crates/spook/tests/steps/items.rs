@@ -524,5 +524,5 @@ async fn the_poison_fades(world: &mut World, text: String) {
 #[then(expr = "spook verify reproduces both rolls")]
 fn verify_reproduces_both_rolls(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("{err:?}"));
+    spookery_engine::verification::run(pack, None).unwrap_or_else(|err| panic!("{err:?}"));
 }

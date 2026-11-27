@@ -28,7 +28,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use super::gm;
 use super::host::{report_close, Request};
 use super::limits::GM_BODY_CAP_BYTES;
-use super::seat::{frame_queue, ConnId, FrameReceiver};
+use super::seat::{self, ConnId, MessageReceiver};
 use crate::protocol::{ClientBody, ClientMessage, Seat, ToolResult, COMMANDS};
 
 pub(super) async fn serve(
@@ -97,7 +97,7 @@ impl SeatSessions {
 /// notification over SSE. It owns the seat, so when it is dropped the session is closed.
 /// A refused stream carries only its refusal and owns nothing.
 struct EventStream {
-    frames_rx: FrameReceiver,
+    messages_rx: MessageReceiver,
     /// The session whose seat this stream holds, if it holds one.
     seated: Option<(SessionId, UnboundedSender<SessionId>)>,
 }
@@ -106,7 +106,7 @@ impl Stream for EventStream {
     type Item = ServerSseMessage;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let Some(frame) = ready!(self.frames_rx.poll_frame(cx)) else {
+        let Some(frame) = ready!(self.messages_rx.poll_message(cx)) else {
             return Poll::Ready(None);
         };
         let body = serde_json::from_slice(&frame).expect("the host queues JSON");
@@ -189,7 +189,7 @@ impl SessionManager for SeatSessions {
         &self,
         id: &SessionId,
     ) -> Result<impl Stream<Item = ServerSseMessage> + Send + Sync + 'static, Self::Error> {
-        let (frames_tx, frames_rx) = frame_queue();
+        let (messages_tx, messages_rx) = seat::open_queue();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         {
             let conns = self.conns.lock().unwrap_or_else(|err| err.into_inner());
@@ -201,7 +201,7 @@ impl SessionManager for SeatSessions {
                 .send(Request::Open {
                     conn,
                     seat: Seat::Gm,
-                    frames_tx,
+                    messages_tx,
                     reply: reply_tx,
                 })
                 .map_err(|_| SessionError::SessionServiceTerminated)?;
@@ -211,14 +211,14 @@ impl SessionManager for SeatSessions {
             .map_err(|_| SessionError::SessionServiceTerminated)?
         {
             Ok(()) => Ok(EventStream {
-                frames_rx,
+                messages_rx,
                 seated: Some((id.clone(), self.close_tx.clone())),
             }),
             Err(refused) => {
-                let (refusal_tx, frames_rx) = frame_queue();
+                let (refusal_tx, messages_rx) = seat::open_queue();
                 refusal_tx.send(refused.to_text().into_bytes());
                 Ok(EventStream {
-                    frames_rx,
+                    messages_rx,
                     seated: None,
                 })
             }
@@ -364,7 +364,7 @@ mod tests {
                 match msg {
                     Request::Open {
                         conn,
-                        frames_tx: out,
+                        messages_tx: out,
                         reply,
                         ..
                     } => {

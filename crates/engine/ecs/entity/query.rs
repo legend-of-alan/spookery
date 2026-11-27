@@ -4,8 +4,9 @@
 use std::marker::PhantomData;
 
 use crate::ecs::component;
+use crate::ecs::entity::globals;
 use crate::ecs::entity::{self, Actors, Globals, Places, Stories};
-use crate::ecs::id::{ActorId, GlobalId, PlaceId, StoryId};
+use crate::ecs::id::{ActorId, PlaceId, StoryId};
 use crate::ecs::Reader;
 
 /// Entity ids, in id order, as a query walks them.
@@ -160,7 +161,7 @@ macro_rules! id_data {
         }
     )+};
 }
-id_data!(Actors: ActorId, Places: PlaceId, Stories: StoryId, Globals: GlobalId);
+id_data!(Actors: ActorId, Places: PlaceId, Stories: StoryId, Globals: globals::Id);
 
 /// Tuples of up to four parts read each part, and keep an entity when every part does.
 macro_rules! tuples {

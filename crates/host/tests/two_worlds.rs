@@ -1,5 +1,5 @@
 use spookery_engine::testing::copy_pack;
-use spookery_engine::{lock_pack, Reason};
+use spookery_engine::{lock, Reason};
 use spookery_host::{Config, Error};
 use std::{fs, io::*, net::*, path::Path};
 use tokio::sync::oneshot;
@@ -34,7 +34,7 @@ fn host(
     let mut config = Config::new("127.0.0.1:0".parse().unwrap());
     config.out = Box::new(writer);
     let (stop, stopped) = oneshot::channel::<()>();
-    let session = spookery_engine::Session::resume(dir, lock_pack(dir).unwrap()).unwrap();
+    let session = spookery_engine::Session::resume(dir, lock::take(dir).unwrap()).unwrap();
     let served = tokio::spawn(spookery_host::serve(session, config, async {
         stopped.await.unwrap()
     }));
@@ -52,7 +52,7 @@ async fn serve_on_port_zero_and_stop_independently() {
     let first_dir = copy_pack("docks", "2w-1");
     let second_dir = copy_pack("docks", "2w-2");
     let (mut c1, stop1, first) = host(&first_dir);
-    assert_eq!(lock_pack(&first_dir).err(), Some(Reason::CommitConflict));
+    assert_eq!(lock::take(&first_dir).err(), Some(Reason::CommitConflict));
     let (mut c2, stop2, second) = host(&second_dir);
     let rowan = serde_json::json!({ "actor": "rowan" });
     let none = serde_json::json!({});

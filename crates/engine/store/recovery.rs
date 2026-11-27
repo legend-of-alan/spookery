@@ -8,11 +8,11 @@ use crate::store::journal;
 use crate::store::lock::WriteGuard;
 use crate::Reason;
 
-/// Run by `lock_pack` before the writer reads a pack that a crash may have left mid-commit.
+/// Run by `lock::take` before the writer reads a pack that a crash may have left mid-commit.
 pub(crate) fn recover(root: &Path, write: &WriteGuard) -> Result<(), Reason> {
     let state = root.join("state");
-    cut_torn_tail(root)?;
-    close_finished(root, write)?;
+    cut_torn_end(root)?;
+    close_checkpointed(root, write)?;
     remove_tmp(&state);
     Ok(())
 }
@@ -20,9 +20,9 @@ pub(crate) fn recover(root: &Path, write: &WriteGuard) -> Result<(), Reason> {
 /// Gzip every plain bundle that ends in a published checkpoint.
 /// When the gzip is already complete, only the plain file is removed. A bundle whose
 /// snapshot is missing stays open, and the next commit writes the snapshot and closes it.
-pub(crate) fn close_finished(root: &Path, _write: &WriteGuard) -> Result<(), Reason> {
+pub(crate) fn close_checkpointed(root: &Path, _write: &WriteGuard) -> Result<(), Reason> {
     let mut failed = Ok(());
-    for plain in plain_bundles(root) {
+    for plain in list_uncompressed(root) {
         if journal::trailing_checkpoint(&plain).is_none() {
             continue;
         }
@@ -37,7 +37,7 @@ fn close_one(root: &Path, plain: &Path) -> Result<(), Reason> {
     let bytes = fs::read(plain).map_err(refuse_io)?;
     let gz = add_suffix(plain, ".gz");
     if gz_matches(&gz, &bytes) {
-        return remove_plain(plain);
+        return remove_uncompressed(plain);
     }
     if !journal::is_published(root, plain) || !snapshot_matches(root, plain) {
         return Ok(());
@@ -47,7 +47,7 @@ fn close_one(root: &Path, plain: &Path) -> Result<(), Reason> {
     fs::write(&tmp, gz_bytes).map_err(refuse_io)?;
     fsync_file(&tmp)?;
     rename(&tmp, &gz)?;
-    remove_plain(plain)
+    remove_uncompressed(plain)
 }
 
 fn snapshot_matches(root: &Path, plain: &Path) -> bool {
@@ -68,7 +68,7 @@ fn gz_matches(gz: &Path, plain: &[u8]) -> bool {
     journal::gunzip_bytes(&bytes).ok().as_deref() == Some(plain)
 }
 
-fn remove_plain(plain: &Path) -> Result<(), Reason> {
+fn remove_uncompressed(plain: &Path) -> Result<(), Reason> {
     fs::remove_file(plain).map_err(refuse_io)?;
     if let Some(parent) = plain.parent() {
         fsync_dir(parent)?;
@@ -76,7 +76,7 @@ fn remove_plain(plain: &Path) -> Result<(), Reason> {
     Ok(())
 }
 
-fn plain_bundles(root: &Path) -> Vec<PathBuf> {
+fn list_uncompressed(root: &Path) -> Vec<PathBuf> {
     let dir = root.join("state/journal");
     let Ok(entries) = fs::read_dir(&dir) else {
         return Vec::new();
@@ -95,7 +95,7 @@ fn plain_bundles(root: &Path) -> Vec<PathBuf> {
     plains
 }
 
-fn cut_torn_tail(root: &Path) -> Result<(), Reason> {
+fn cut_torn_end(root: &Path) -> Result<(), Reason> {
     let Some(path) = journal::find_live_bundle(root) else {
         return Ok(());
     };

@@ -52,7 +52,7 @@ pub(crate) fn fsync_file(path: &Path) -> Result<(), Reason> {
 
 #[cfg(test)]
 fn take_fail(path: &Path) -> bool {
-    fail_hook::take_fail(path)
+    fail::take_fail(path)
 }
 
 #[cfg(not(test))]
@@ -87,10 +87,10 @@ pub(crate) fn rename(from: &Path, to: &Path) -> Result<(), Reason> {
 }
 
 #[cfg(test)]
-pub(crate) use fail_hook::{clear_fail, fail_next};
+pub(crate) use fail::{clear_fail, fail_next};
 
 #[cfg(test)]
-mod fail_hook {
+mod fail {
     use std::cell::RefCell;
     use std::path::Path;
 

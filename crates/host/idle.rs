@@ -66,7 +66,7 @@ pub(super) fn catch_up_if_due(session: &mut spookery_engine::Session) -> Result<
         return Ok(false);
     }
     let before = session.world().world_time;
-    session.catch_up(&format_utc(now), elapsed / 3600)?;
+    session.play_idle(&format_utc(now), elapsed / 3600)?;
     Ok(session.world().world_time != before)
 }
 

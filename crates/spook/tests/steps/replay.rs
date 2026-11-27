@@ -242,7 +242,7 @@ fn each_journal_record_parses_back(world: &mut World) {
     assert!(rounds >= 3, "rounds {rounds}");
     for entry in &entries {
         let key = spookery_engine::testing::journal::format_record_key(entry);
-        let path = spookery_engine::testing::journal::locate(pack, &key)
+        let path = spookery_engine::testing::journal::find_bundle(pack, &key)
             .unwrap_or_else(|err| panic!("{}", err.detail));
         let again = spookery_engine::testing::journal::emit_record(entry);
         let text = fs::read_to_string(&path).unwrap();
@@ -254,7 +254,7 @@ fn each_journal_record_parses_back(world: &mut World) {
 }
 
 pub(super) fn edit_round(world: &mut World, edit: impl FnOnce(&mut Value)) {
-    let path = spookery_engine::testing::journal::locate(host::pack(world), "round-0001")
+    let path = spookery_engine::testing::journal::find_bundle(host::pack(world), "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&path).unwrap();
     let line = text
@@ -281,7 +281,7 @@ fn checkpoints_are_taken_every_n_rounds(world: &mut World, every: u64) {
 }
 
 #[when(expr = "the live bundle gains a torn tail")]
-fn the_live_bundle_gains_a_torn_tail(world: &mut World) {
+fn the_live_bundle_gains_a_torn_end(world: &mut World) {
     let pack = host::pack(world);
     let path = spookery_engine::testing::journal::find_live_bundle(pack)
         .unwrap_or_else(|| panic!("no live bundle"));
@@ -306,12 +306,12 @@ fn the_table_is_opened_again(world: &mut World) {
 
 /// Take the lock the way a host does, which recovers a crashed pack, then resume it.
 fn resume_as_writer(pack: &std::path::Path) {
-    let lock = spookery_engine::lock_pack(pack).unwrap_or_else(|err| panic!("lock: {err}"));
+    let lock = spookery_engine::lock::take(pack).unwrap_or_else(|err| panic!("lock: {err}"));
     spookery_engine::Session::resume(pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
 }
 
 #[then(expr = "the torn tail is gone")]
-fn the_torn_tail_is_gone(world: &mut World) {
+fn the_torn_end_is_gone(world: &mut World) {
     let path = spookery_engine::testing::journal::find_live_bundle(host::pack(world))
         .unwrap_or_else(|| panic!("no live bundle"));
     let text = fs::read_to_string(&path).unwrap();

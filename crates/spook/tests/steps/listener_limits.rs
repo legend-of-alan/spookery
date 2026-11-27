@@ -26,7 +26,7 @@ const BURST: usize = 10;
 /// Then it may send 5 messages a second: one per 200 ms.
 const REFILL: Duration = Duration::from_millis(200);
 /// Each connection's outbound queue holds at most 256 messages.
-const OUTBOUND_FRAME_CAP: usize = 256;
+const OUTBOUND_MESSAGE_CAP: usize = 256;
 /// And at most 64 KiB.
 const OUTBOUND_CAP_BYTES: usize = 64 * 1024;
 /// The window this test asks for: the stopped reader's receive buffer, and
@@ -275,7 +275,7 @@ async fn one_player_stops_reading(world: &mut World) {
         seat: quiet,
     });
     let say = "n".repeat(SAY_TEXT_BYTES);
-    let frame_bytes = ServerMessage {
+    let message_bytes = ServerMessage {
         id: None,
         seq: Some(u64::from(u32::MAX)),
         reply_to: None,
@@ -289,8 +289,8 @@ async fn one_player_stops_reading(world: &mut World) {
     }
     .to_text()
     .len();
-    let queue_bytes = OUTBOUND_CAP_BYTES.min(OUTBOUND_FRAME_CAP.saturating_mul(frame_bytes));
-    let margin_bytes = recv_buffer_bytes.max(send_buffer_bytes).max(frame_bytes);
+    let queue_bytes = OUTBOUND_CAP_BYTES.min(OUTBOUND_MESSAGE_CAP.saturating_mul(message_bytes));
+    let margin_bytes = recv_buffer_bytes.max(send_buffer_bytes).max(message_bytes);
     let budget_bytes = recv_buffer_bytes
         .saturating_add(send_buffer_bytes)
         .saturating_add(queue_bytes)
@@ -306,11 +306,11 @@ async fn one_player_stops_reading(world: &mut World) {
                 .map(|process| support::text_of(&process.stderr))
                 .unwrap_or_default();
             panic!(
-                "rowan still connected after {sent_bytes} bytes (recv {recv_buffer_bytes}, send {send_buffer_bytes}, frame {frame_bytes}, queue {queue_bytes}, budget {budget_bytes})\n{stderr}"
+                "rowan still connected after {sent_bytes} bytes (recv {recv_buffer_bytes}, send {send_buffer_bytes}, frame {message_bytes}, queue {queue_bytes}, budget {budget_bytes})\n{stderr}"
             );
         }
         let _ = host::gm_tool_call(world, 2, "say", &args).await;
-        sent_bytes = sent_bytes.saturating_add(frame_bytes);
+        sent_bytes = sent_bytes.saturating_add(message_bytes);
     }
     world.player_added = host::wait_actor_from(world, "harbormouse", 0, "\"kind\":\"say\"").await;
 }

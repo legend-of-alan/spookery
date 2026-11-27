@@ -440,7 +440,7 @@ fn wren_sees_neither(world: &mut World) {
 
 #[then(expr = "spook verify reproduces the journal")]
 fn verify_reproduces_the_journal(world: &mut World) {
-    spookery_engine::verify_pack(pack(world), None).unwrap_or_else(|err| panic!("{err:?}"));
+    spookery_engine::verification::run(pack(world), None).unwrap_or_else(|err| panic!("{err:?}"));
 }
 
 #[given(

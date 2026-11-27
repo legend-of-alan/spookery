@@ -4,7 +4,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery::protocol::ItemStack;
-use spookery_engine::{component, GlobalId, Meter, Note, Presence};
+use spookery_engine::{component, globals, Meter, Note, Presence};
 
 use crate::support::run_spook;
 use crate::World;
@@ -201,7 +201,7 @@ async fn the_player_resume_lists_the_door_message(world: &mut World) {
 async fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: String) {
     let pack = host::pack(world);
     let now = world_of(pack);
-    let notes = now.globals().get::<Note>(&GlobalId);
+    let notes = now.globals().get::<Note>(&globals::Id);
     assert!(notes.contains(&note), "the save has no {note}");
     let resume = read_player_resume(world, &actor).await;
     assert!(!resume.contains(&note), "resume listed {note}:\n{resume}");

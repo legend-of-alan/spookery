@@ -17,7 +17,7 @@ fn rowan_seated() -> Presence {
 
 /// One round in which the GM has Mira play `verb` at `target`.
 fn mira_plays(pack: &Path, verb: &str, target: Option<&str>) {
-    let lock = spookery_engine::lock_pack(pack).unwrap();
+    let lock = spookery_engine::lock::take(pack).unwrap();
     let mut session =
         spookery_engine::Session::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
     let intent = spookery_protocol::QueueArgs {

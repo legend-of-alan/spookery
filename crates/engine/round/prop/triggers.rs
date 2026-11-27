@@ -24,7 +24,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use crate::rules::effect::EffectKind;
+use crate::rules::effect;
 use crate::session;
 use crate::store::journal;
 use crate::store::records::{Record, RoundRecord, Step};
@@ -105,7 +105,7 @@ fn assert_triggers_stop(
 fn rowan_oil_gains(record: &RoundRecord) -> usize {
     let mut nets: Vec<(&str, i64)> = Vec::new();
     for effect in &record.effects {
-        let EffectKind::Item {
+        let effect::Kind::Item {
             actor_id,
             place,
             id,

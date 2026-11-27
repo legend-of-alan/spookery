@@ -17,6 +17,7 @@ use flate2::Compression;
 use serde::de::DeserializeOwned;
 
 use crate::hash::blake2s_tagged;
+use crate::store;
 use crate::store::durability::refuse_io;
 use crate::store::records::{CheckpointRecord, MigrateRecord, Record, RoundRecord};
 use crate::Reason;
@@ -31,8 +32,8 @@ pub(crate) fn checkpoint_path(pack: &Path, state_rev: u64) -> PathBuf {
         .join(format!("{state_rev}.yaml"))
 }
 
-pub(crate) fn head_path(pack: &Path) -> PathBuf {
-    pack.join("state/journal/head.json")
+pub(crate) fn mark_path(pack: &Path) -> PathBuf {
+    pack.join("state/journal/mark.json")
 }
 
 pub(crate) fn save_path(pack: &Path) -> PathBuf {
@@ -49,7 +50,7 @@ pub(crate) fn read_save(path: &Path) -> Result<Vec<u8>, Reason> {
 
 /// The latest checkpoint, written beside the bundles so startup can skip them.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(crate) struct CheckpointHead {
+pub(crate) struct Mark {
     /// A head without it is refused.
     pub rules_rev: u64,
     pub state_rev: u64,
@@ -58,8 +59,8 @@ pub(crate) struct CheckpointHead {
     pub chain: String,
 }
 
-pub(crate) fn read_head(pack: &Path) -> Result<Option<CheckpointHead>, Error> {
-    let path = head_path(pack);
+pub(crate) fn read_mark(pack: &Path) -> Result<Option<Mark>, Error> {
+    let path = mark_path(pack);
     if !path.is_file() {
         return Ok(None);
     }
@@ -73,16 +74,16 @@ pub(crate) fn read_head(pack: &Path) -> Result<Option<CheckpointHead>, Error> {
     let value: serde_json::Value = serde_json::from_str(&text)
         .map_err(|err| Error::new(&path, Reason::JournalDiverged, &err.to_string()))?;
     let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
-    if let Err(reason) = super::require_rules_rev(rules_rev.unwrap_or(0)) {
+    if let Err(reason) = store::check_rules_rev(rules_rev.unwrap_or(0)) {
         return Err(Error::new(&path, reason, "written by older rules"));
     }
-    Ok(Some(parse_json("head.json", &text)?))
+    Ok(Some(parse_json("mark.json", &text)?))
 }
 
 /// `true` when a save at `state_rev` claims the checkpoint head's `state_rev` but not its
 /// `bytes`. A save from before the head is a checkpoint that did not land, not an edit.
-pub(crate) fn edits_head(pack: &Path, state_rev: u64, bytes: &[u8]) -> Result<bool, Error> {
-    Ok(read_head(pack)?.is_some_and(|head| {
+pub(crate) fn edits_mark(pack: &Path, state_rev: u64, bytes: &[u8]) -> Result<bool, Error> {
+    Ok(read_mark(pack)?.is_some_and(|head| {
         head.state_rev == state_rev && head.state_hash != blake2s_tagged(bytes)
     }))
 }
@@ -167,7 +168,7 @@ pub(crate) fn checkpoint_record(round_index: u64, state_rev: u64, state_hash: &s
 }
 
 /// Chain field of one sealed line.
-pub(crate) fn sealed_chain(line: &str) -> Result<String, Error> {
+pub(crate) fn read_chain(line: &str) -> Result<String, Error> {
     let entry = parse_line("bundle", line.trim_end())?;
     Ok(entry.chain().to_string())
 }
@@ -190,7 +191,7 @@ pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, Error> {
             return check_line_chain(&bundle, line);
         }
     }
-    if let Some(head) = read_head(pack)? {
+    if let Some(head) = read_mark(pack)? {
         return Ok(head.chain);
     }
     base_hash(pack)
@@ -304,7 +305,7 @@ fn parse_line(bundle: &str, line: &str) -> Result<Record, Error> {
     parse_json(bundle, line).map_err(|fault| {
         let value: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
         let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
-        if let Some(Err(reason)) = rules_rev.map(super::require_rules_rev) {
+        if let Some(Err(reason)) = rules_rev.map(store::check_rules_rev) {
             return Error::new(Path::new(bundle), reason, "written by older rules");
         }
         name_the_field(bundle, line, &value).unwrap_or(fault)
@@ -380,7 +381,7 @@ pub(crate) fn bundle_index(bundle: &str) -> Option<u32> {
 }
 
 fn find_last_line(text: &str) -> Option<&str> {
-    let complete = trim_torn_tail(text);
+    let complete = trim_torn_end(text);
     complete.lines().rev().find(|line| !line.is_empty())
 }
 
@@ -401,7 +402,7 @@ fn check_record_chain(bundle: &str, entry: &Record) -> Result<(), Error> {
     Ok(())
 }
 
-fn trim_torn_tail(text: &str) -> &str {
+fn trim_torn_end(text: &str) -> &str {
     if text.ends_with('\n') {
         text
     } else {
@@ -414,7 +415,7 @@ fn trim_torn_tail(text: &str) -> &str {
 
 fn parse_complete(bundle: &str, text: &str) -> Result<Vec<Record>, Error> {
     let mut entries = Vec::new();
-    for line in trim_torn_tail(text).lines() {
+    for line in trim_torn_end(text).lines() {
         if line.is_empty() {
             continue;
         }
@@ -472,7 +473,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_sealed_record_chains_to_the_one_before_it() {
+    fn a_committed_record_chains_to_the_one_before_it() {
         let round = include_str!("../fixtures/round.jsonl");
         let entry = parse_line("round.jsonl", round.trim_end()).unwrap();
         let prev = blake2s_tagged(b"base");
@@ -487,7 +488,7 @@ mod tests {
     }
 
     #[test]
-    fn a_record_and_head_from_older_rules_are_rules_rev() {
+    fn a_record_and_mark_from_older_rules_are_rules_rev() {
         for old in [
             r#"{"round_index":1,"rules_rev":7,"state_rev_before":0}"#,
             r#"{"kind":"round","round_index":1,"rules_rev":7,"state_rev_before":0}"#,
@@ -513,7 +514,7 @@ mod tests {
             assert_eq!(refused.reason, Reason::JournalDiverged, "{torn}");
         }
         let pack = crate::testing::copy_pack("docks", "old-head");
-        let head = head_path(&pack);
+        let head = mark_path(&pack);
         fs::create_dir_all(head.parent().unwrap()).unwrap();
         fs::write(
             &head,
@@ -521,7 +522,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            read_head(&pack).unwrap_err().reason,
+            read_mark(&pack).unwrap_err().reason,
             Reason::RulesRevMismatch
         );
         let _ = fs::remove_dir_all(&pack);
@@ -537,7 +538,7 @@ mod tests {
         assert!(parsed.effects.iter().any(|effect| {
             matches!(
                 effect.kind,
-                crate::rules::effect::EffectKind::Move {
+                crate::rules::effect::Kind::Move {
                     arrived_at: Some(1082),
                     ..
                 }

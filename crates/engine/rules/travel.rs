@@ -2,14 +2,15 @@
 
 use crate::canon::map::{Exit, PathDef, OPEN};
 use crate::canon::Canon;
-use crate::ecs::id::{ActorId, GlobalId, PathId, PlaceId};
+use crate::ecs::entity::globals;
+use crate::ecs::id::{ActorId, PathId, PlaceId};
 use crate::ecs::{self, component, entity, PendingAction, Presence};
 use crate::intent::{Intent, Source, Target};
 use crate::round::Ledger;
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
-use crate::rules::effect::{Effect, EffectKind};
+use crate::rules::effect::{self, Effect};
 use crate::rules::gate;
 use crate::rules::lines::find_place_name;
 use crate::rules::rule::{EffectTemplate, MoveTo, Rule};
@@ -93,7 +94,7 @@ fn is_revealed(world: &ecs::World, actor_id: &ActorId, exit: Exit<'_>) -> bool {
         .contains(key)
         || world
             .globals()
-            .get::<component::Flag>(&GlobalId)
+            .get::<component::Flag>(&globals::Id)
             .contains(key)
 }
 
@@ -135,7 +136,7 @@ pub(crate) fn open_conditional_paths(
         }
         let id = format!("open:{}", path_def.id);
         let intent = Intent::new(id, world.round_index, None, Source::Engine, "open", target);
-        let kind = EffectKind::Flag {
+        let kind = effect::Kind::Flag {
             entity: entity::Id::Path(path_def.id.clone()),
             key: OPEN.to_string(),
             value: true,

@@ -168,7 +168,7 @@ pub(crate) fn admit(
             return Err(Refusal::new(intent, Reason::Schema));
         }
     }
-    cond::all_hold(context, &rule.if_).map_err(|code| Refusal::new(intent, code))?;
+    cond::eval_all(context, &rule.if_).map_err(|code| Refusal::new(intent, code))?;
     if let Some(cost) = &rule.start_cost {
         cost::afford(context, cost)?;
     }

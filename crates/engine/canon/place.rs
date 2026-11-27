@@ -23,7 +23,7 @@ pub struct Def {
     pub body: String,
 }
 
-/// The meters one place file declares, by that file, for `load_canon` to add once the meters
+/// The meters one place file declares, by that file, for `canon::load` to add once the meters
 /// every actor carries have loaded.
 pub(super) type MetersByFile = Vec<(String, BTreeMap<String, meter::Def>)>;
 

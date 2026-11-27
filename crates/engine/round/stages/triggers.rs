@@ -14,7 +14,7 @@ use crate::rules::grammar;
 use crate::rules::rule::{self, ChangeWatch, Rule};
 use crate::store::records::Step;
 
-use crate::round::stage::apply;
+use crate::round::stages::apply;
 use crate::round::{self, Ledger};
 
 /// One trigger pass: fire the change rules the changes since the last pass match, and again on
@@ -116,7 +116,7 @@ fn fire(
         return;
     };
     let context = Context::new(canon, world, presence, &intent);
-    if cond::all_hold(&context, &rule.if_).is_err() {
+    if cond::eval_all(&context, &rule.if_).is_err() {
         return;
     }
     let roller = dice.roller(ledger, &rule.id, subject);

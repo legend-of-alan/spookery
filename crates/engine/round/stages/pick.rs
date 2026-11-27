@@ -8,7 +8,7 @@ use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, Presence};
 use crate::intent::{Intent, Target};
 use crate::rules::context::Context;
-use crate::rules::effect::EffectKind;
+use crate::rules::effect;
 use crate::rules::expand;
 use crate::rules::gate;
 use crate::rules::habits::{self, is_player_at};
@@ -16,7 +16,7 @@ use crate::rules::rule::{self, Rule, TargetKind};
 use crate::Reason;
 
 use crate::round::dice::shuffle_key;
-use crate::round::stage::apply::refuse;
+use crate::round::stages::apply::refuse;
 use crate::round::Ledger;
 
 /// One candidate and how pick left it for apply.
@@ -105,7 +105,7 @@ fn stamp_target(canon: &Canon, world: &ecs::World, presence: &Presence, intent: 
     );
     for effect in &effects {
         if !keeps_empty && intent.target == Target::Empty {
-            if let EffectKind::Move {
+            if let effect::Kind::Move {
                 to: component::ActorLocation::Place(to),
                 ..
             } = &effect.kind
@@ -113,7 +113,7 @@ fn stamp_target(canon: &Canon, world: &ecs::World, presence: &Presence, intent: 
                 intent.target = Target::Place(to.clone());
             }
         }
-        if let EffectKind::Note { to_ids, .. } = &effect.kind {
+        if let effect::Kind::Note { to_ids, .. } = &effect.kind {
             intent.args.message_to = Some(to_ids.clone());
         }
     }

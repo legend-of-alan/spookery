@@ -1,4 +1,4 @@
-//! The id of an actor, of a place, of a story, of a path and of the world.
+//! The id of an actor, of a place, of a story and of a path.
 
 use std::borrow::Borrow;
 use std::fmt;
@@ -81,10 +81,6 @@ string_id! {
     PathId
 }
 
-/// The world's id. There is one world, so its id says nothing more.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub struct GlobalId; // repeats module: re-exported at the crate root
-
 /// An id of one collection, in the borrowed form the canon's lookups take.
 pub trait AsIdRef {
     fn as_id_ref(&self) -> entity::IdRef<'_>;
@@ -105,12 +101,6 @@ impl AsIdRef for PlaceId {
 impl AsIdRef for StoryId {
     fn as_id_ref(&self) -> entity::IdRef<'_> {
         entity::IdRef::Story(self)
-    }
-}
-
-impl AsIdRef for GlobalId {
-    fn as_id_ref(&self) -> entity::IdRef<'_> {
-        entity::IdRef::Global
     }
 }
 

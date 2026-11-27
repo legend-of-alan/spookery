@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use rmcp::handler::server::tool::schema_for_type;
 use serde_json::{Map, Value};
-use spookery_engine::{ActorId, Presence, Reason, TapeRecord};
+use spookery_engine::{tape, ActorId, Presence, Reason};
 
 use super::host::commit_then_fast_forward;
 use super::message_body;
@@ -17,7 +17,7 @@ pub(super) struct Reply {
     pub(super) body: ServerBody,
     /// The speech this command put on the tape. The host delivers it, and the GM's copy is
     /// the reply.
-    pub(super) speech: Option<TapeRecord>,
+    pub(super) speech: Option<tape::Record>,
     /// The GM seat is cleared once this reply is sent.
     pub(super) release_seat: bool,
     /// Rounds this command played, commit first.

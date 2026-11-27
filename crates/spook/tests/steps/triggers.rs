@@ -847,12 +847,12 @@ pub(crate) fn edit_table(
 ) {
     let path = pack.join("state/save.yaml");
     let save = parse_save(&fs::read_to_string(&path).unwrap()).unwrap();
-    let canon = spookery_engine::load_canon(pack).unwrap_or_else(|err| panic!("canon: {err:?}"));
+    let canon = spookery_engine::canon::load(pack).unwrap_or_else(|err| panic!("canon: {err:?}"));
     let mut now = ecs::World::new(save, Arc::new(canon));
     let mut seated = Presence::default();
     edit(&mut now, &mut seated);
     remember_presence(world, pack, seated);
-    now.pack_rev = spookery_engine::pack_rev(pack).unwrap();
+    now.pack_rev = spookery_engine::canon::hash(pack).unwrap();
     fs::write(path, emit_save(&now).unwrap()).unwrap();
 }
 

@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::canon::pack_rev;
+use crate::canon;
 use crate::ecs::component;
 use crate::ecs::id::ActorId;
 use crate::ecs::Presence;
@@ -15,8 +15,8 @@ use crate::store::save;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
 
-use crate::round::play;
-use crate::round::replay;
+use crate::replay;
+use crate::round;
 
 pub(crate) const CASES: u32 = 64;
 pub(crate) const SEED: u64 = 0x0018_0018;
@@ -72,7 +72,7 @@ fn pick_verb() -> impl Strategy<Value = VerbPlan> {
 /// Queue the verbs the gate accepts, then play the round. Habits are gathered with them.
 pub(crate) fn play_rounds(pack: &Path, rounds: &[Plan]) -> Result<(), String> {
     add_exert_success(pack)?;
-    let lock = crate::lock_pack(pack).map_err(|err| err.to_string())?;
+    let lock = crate::lock::take(pack).map_err(|err| err.to_string())?;
     let mut session = session::Session::resume(pack, lock).map_err(|err| err.to_string())?;
     let exert = VERBS
         .iter()
@@ -94,7 +94,7 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[Plan]) -> Result<(), String> {
             );
         }
         let wall = session.world().last_round_at.clone();
-        play::run_round(&mut session, &Presence::default(), &wall, false)
+        round::run(&mut session, &Presence::default(), &wall, false)
             .map_err(|err| format!("round {} refused to play: {err}", index + 1))?;
     }
     Ok(())
@@ -121,7 +121,7 @@ fn add_exert_success(pack: &Path) -> Result<(), String> {
         return Err("the exert check was not where the property expected".to_string());
     }
     fs::write(&path, text.replacen(needle, replacement, 1)).map_err(|err| err.to_string())?;
-    let rev = pack_rev(pack).map_err(|err| err.to_string())?;
+    let rev = canon::hash(pack).map_err(|err| err.to_string())?;
     let save_path = journal::save_path(pack);
     let save_text = fs::read_to_string(&save_path).map_err(|err| err.to_string())?;
     let mut save = save::parse(&save_text).map_err(|err| format!("{err:?}"))?;

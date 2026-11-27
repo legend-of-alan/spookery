@@ -56,7 +56,7 @@ impl Target {
 
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct IntentArgs {
+pub struct Args {
     // repeats module: re-exported at the crate root
     #[serde(rename = "to", default, skip_serializing_if = "Option::is_none")]
     pub message_to: Option<Vec<ActorId>>,
@@ -74,7 +74,7 @@ pub struct Intent {
     #[serde(rename = "verb")]
     pub verb_id: String,
     pub target: Target,
-    pub args: IntentArgs,
+    pub args: Args,
     pub rationale_code: String,
 }
 
@@ -95,7 +95,7 @@ impl Intent {
             source,
             verb_id: verb_id.to_string(),
             target,
-            args: IntentArgs::default(),
+            args: Args::default(),
             rationale_code: String::new(),
         }
     }

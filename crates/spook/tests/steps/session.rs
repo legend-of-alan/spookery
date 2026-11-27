@@ -45,7 +45,7 @@ async fn the_gm_closes_the_seat(world: &mut World) {
 
 #[then(expr = "the player sees rowan arrive at {word}")]
 async fn the_player_sees_rowan_arrive(world: &mut World, place_id: String) {
-    wait_player_frame(world, &format!("a view at {place_id}"), |frame| {
+    wait_player_message(world, &format!("a view at {place_id}"), |frame| {
         frame["kind"] == "view" && frame["viewer"] == "rowan" && frame["place"]["place"] == place_id
     })
     .await;
@@ -53,7 +53,7 @@ async fn the_player_sees_rowan_arrive(world: &mut World, place_id: String) {
 
 #[then(expr = "the player hears the GM say {string}")]
 async fn the_player_hears_the_gm(world: &mut World, text: String) {
-    wait_player_frame(world, "the GM's say", |frame| {
+    wait_player_message(world, "the GM's say", |frame| {
         frame["kind"] == "say" && frame["from"] == "gm" && frame["text"] == text
     })
     .await;
@@ -61,7 +61,7 @@ async fn the_player_hears_the_gm(world: &mut World, text: String) {
 
 #[then(expr = "the player is shown {string} with an exit to {string}")]
 async fn the_player_is_shown(world: &mut World, place_name: String, place_id: String) {
-    wait_player_frame(world, &format!("a view of {place_name}"), |frame| {
+    wait_player_message(world, &format!("a view of {place_name}"), |frame| {
         let exits = frame["place"]["exits"]
             .as_array()
             .cloned()
@@ -75,7 +75,7 @@ async fn the_player_is_shown(world: &mut World, place_name: String, place_id: St
 
 #[then(expr = "the table refuses the player with {word}")]
 async fn the_player_is_refused(world: &mut World, code: String) {
-    wait_player_frame(world, &format!("a {code} refusal"), |frame| {
+    wait_player_message(world, &format!("a {code} refusal"), |frame| {
         frame["kind"] == "refused" && frame["code"] == code
     })
     .await;
@@ -116,7 +116,7 @@ async fn the_gm_sees_no_player_seated(world: &mut World) {
 }
 
 /// Waits for a message body after `world.mark` that passes `done`.
-async fn wait_player_frame(world: &World, want: &str, done: impl Fn(&Value) -> bool) {
+async fn wait_player_message(world: &World, want: &str, done: impl Fn(&Value) -> bool) {
     host::poll_until(want, async || {
         let text = host::player_text(world);
         let after = text.get(world.mark..).unwrap_or_default();
@@ -151,7 +151,7 @@ fn parse_lines(text: &str) -> Vec<Value> {
 
 #[then(expr = "the player is offered {string}")]
 async fn the_player_is_offered(world: &mut World, command_id: String) {
-    wait_player_frame(world, &format!("help with {command_id}"), |frame| {
+    wait_player_message(world, &format!("help with {command_id}"), |frame| {
         help_command(frame, &command_id).is_some()
     })
     .await;
@@ -159,7 +159,7 @@ async fn the_player_is_offered(world: &mut World, command_id: String) {
 
 #[then(expr = "the player's map lists {string}")]
 async fn the_players_map_lists(world: &mut World, place_name: String) {
-    wait_player_frame(world, &format!("a map with {place_name}"), |frame| {
+    wait_player_message(world, &format!("a map with {place_name}"), |frame| {
         let places = frame["places"].as_array().cloned().unwrap_or_default();
         frame["kind"] == "map" && places.iter().any(|place| place["name"] == place_name)
     })

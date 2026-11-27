@@ -28,7 +28,7 @@ fn the_wait_lands_with_nothing_refused(world: &mut World) {
 
 fn play(world: &mut World, actor: &str, line: &str) {
     let pack = world.pack();
-    let lock = spookery_engine::lock_pack(pack).unwrap();
+    let lock = spookery_engine::lock::take(pack).unwrap();
     let mut opened =
         spookery_engine::Session::resume(pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
     let seated = Presence {

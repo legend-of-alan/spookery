@@ -93,7 +93,7 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
         .finish
         .as_ref()
         .and_then(|finish| finish.cost.as_ref());
-    let finish_cost = match finish_cost_yaml.map(compile::cost).transpose() {
+    let end_cost = match finish_cost_yaml.map(compile::cost).transpose() {
         Ok(Some(_)) if finish_cost_yaml.is_some_and(|cost| cost.ticks.is_some()) => {
             diagnostics.push(schema_error(
                 file,
@@ -182,13 +182,13 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
         lets,
         check,
         start_cost,
-        finish_cost,
+        end_cost,
         start_counts_as_act: entry
             .start
             .as_ref()
             .and_then(|start| start.counts_as_act)
             .unwrap_or(true),
-        finish_counts_as_act: entry
+        end_counts_as_act: entry
             .finish
             .as_ref()
             .is_some_and(|finish| finish.counts_as_act),

@@ -6,8 +6,8 @@ use crate::store::{commit, RULES_REV};
 use crate::Reason;
 
 use crate::ecs::Presence;
-use crate::round::play::StagedRound;
-use crate::round::stage::deliver::Deliveries;
+use crate::round::stages::deliver::Deliveries;
+use crate::round::StagedRound;
 use crate::round::{self, Ledger};
 
 /// What the round showed. A live round adds its commit outcome.

@@ -127,7 +127,7 @@ fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
 fn the_tape_already_holds_a_full_mib(world: &mut World) {
     let mut lines = String::new();
     for seq in 1.. {
-        let mut line = spookery_engine::emit_tape_record(&spookery_engine::TapeRecord {
+        let mut line = spookery_engine::tape::emit(&spookery_engine::tape::Record {
             seq,
             from: spookery::protocol::Speaker::Gm,
             from_name: String::new(),

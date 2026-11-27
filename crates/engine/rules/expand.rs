@@ -7,7 +7,7 @@ use crate::entity;
 use crate::intent::Target;
 use crate::round::dice::Roller;
 use crate::rules::context::Context;
-use crate::rules::effect::{Effect, EffectKind};
+use crate::rules::effect::{self, Effect};
 use crate::rules::expr::eval::{self, Dice};
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
@@ -115,7 +115,7 @@ fn push_effects(
     let (world, intent) = (context.world, context.intent);
     match template {
         EffectTemplate::Flag { of, id, value } => {
-            let kind = EffectKind::Flag {
+            let kind = effect::Kind::Flag {
                 entity: of.entity_id(context)?,
                 key: id.clone(),
                 value: *value,
@@ -126,7 +126,7 @@ fn push_effects(
             effects.push(Effect::new(
                 intent.actor_id.as_ref(),
                 &intent.id,
-                EffectKind::Modifier {
+                effect::Kind::Modifier {
                     actor_id: to.actor_id(context)?.clone(),
                     id: id.clone(),
                     add: eval::roll_number(context, add, dice)?,
@@ -157,7 +157,7 @@ fn push_effects(
             effects.push(Effect::new(
                 intent.actor_id.as_ref(),
                 &intent.id,
-                EffectKind::Meter {
+                effect::Kind::Meter {
                     entity,
                     key: id.clone(),
                     write,
@@ -176,7 +176,7 @@ fn push_effects(
             effects.push(Effect::new(
                 intent.actor_id.as_ref(),
                 &intent.id,
-                EffectKind::Item {
+                effect::Kind::Item {
                     actor_id,
                     place,
                     id: item_id,
@@ -192,7 +192,7 @@ fn push_effects(
             effects.push(Effect::new(
                 intent.actor_id.as_ref(),
                 &intent.id,
-                EffectKind::Wield {
+                effect::Kind::Wield {
                     actor_id,
                     id: context.item_id(id)?,
                 },
@@ -203,7 +203,7 @@ fn push_effects(
             effects.push(Effect::new(
                 intent.actor_id.as_ref(),
                 &intent.id,
-                EffectKind::Unwield { actor_id },
+                effect::Kind::Unwield { actor_id },
             ));
         }
         EffectTemplate::Note {
@@ -215,7 +215,7 @@ fn push_effects(
             effects.push(Effect::new(
                 intent.actor_id.as_ref(),
                 &intent.id,
-                EffectKind::Note {
+                effect::Kind::Note {
                     note_id: id.clone(),
                     to_ids: to_ids.clone(),
                     place_id: place_id.clone(),
@@ -235,7 +235,7 @@ fn push_effects(
             effects.push(Effect::new(
                 intent.actor_id.as_ref(),
                 &intent.id,
-                EffectKind::Narrate {
+                effect::Kind::Narrate {
                     to,
                     text: text.clone(),
                 },
@@ -246,7 +246,7 @@ fn push_effects(
             effects.push(Effect::new(
                 intent.actor_id.as_ref(),
                 &intent.id,
-                EffectKind::Memory {
+                effect::Kind::Memory {
                     actor_id,
                     tags: Vec::new(),
                     text: text.clone(),
@@ -304,7 +304,7 @@ fn move_effect(context: &Context, to: ActorLocation) -> Result<Effect, Reason> {
     Ok(Effect::new(
         intent.actor_id.as_ref(),
         &intent.id,
-        EffectKind::Move {
+        effect::Kind::Move {
             actor_id,
             from,
             to,

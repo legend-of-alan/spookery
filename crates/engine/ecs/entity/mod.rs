@@ -3,7 +3,7 @@
 
 mod actors;
 pub mod component;
-mod globals;
+pub mod globals;
 mod paths;
 mod places;
 pub(in crate::ecs) mod query;
@@ -106,7 +106,7 @@ macro_rules! in_collection {
             $crate::ecs::entity::Id::Path($typed) => { let $entities = $($save)+.paths; $body },
             $crate::ecs::entity::Id::Story($typed) => { let $entities = $($save)+.stories; $body },
             $crate::ecs::entity::Id::Global => {
-                let ($entities, $typed) = ($($save)+.globals, &$crate::ecs::id::GlobalId);
+                let ($entities, $typed) = ($($save)+.globals, &$crate::ecs::entity::globals::Id);
                 $body
             }
         }

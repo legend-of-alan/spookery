@@ -9,8 +9,7 @@ use spookery_engine::testing::{
     self as support, act_of, place_of, resume, stamp_pack_rev, world_of, write_save, Canon,
 };
 use spookery_engine::{
-    component, ecs, emit_save, entity, load_canon, play_pack_once, ActorId, GlobalId, Meter, Note,
-    PlaceId, Presence,
+    canon, component, ecs, emit_save, entity, globals, ActorId, Meter, Note, PlaceId, Presence,
 };
 
 use crate::World;
@@ -87,14 +86,14 @@ fn door_note() -> Note {
 fn leave_door_note(world: &mut ecs::World) {
     let mut globals = world.globals_mut();
     let left = globals
-        .get_mut::<Note>(&GlobalId)
+        .get_mut::<Note>(&globals::Id)
         .leave("note_mira_door", door_note());
     left.unwrap();
 }
 
 /// The ids of the notes left in the world, in order.
 fn note_ids(world: &ecs::World) -> Vec<&str> {
-    let notes = world.globals().get::<Note>(&GlobalId);
+    let notes = world.globals().get::<Note>(&globals::Id);
     notes.iter().map(|(id, _)| id).collect()
 }
 
@@ -106,13 +105,21 @@ fn rowan() -> Presence {
     }
 }
 
+/// Play one round at an empty table, timed at the save's last round.
+fn play_empty_round(pack: &Path) {
+    let mut session = resume(pack);
+    let wall = session.world().last_round_at.clone();
+    let played = session.play(&Presence::default(), &wall);
+    played.unwrap_or_else(|err| panic!("round: {err}"));
+}
+
 fn evening_note() {
     let pack = support::copy_pack("docks", "evening");
-    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    play_empty_round(&pack);
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 4);
     assert_eq!(place_of(&world, "mira"), "mira_rooms");
-    let notes = world.globals().get::<Note>(&GlobalId);
+    let notes = world.globals().get::<Note>(&globals::Id);
     let door = notes.get("note_mira_door").expect("the door note");
     assert_eq!(note_ids(&world), ["note_ledger_short", "note_mira_door"]);
     assert_eq!(door.place_id, Some("docks_shop".into()));
@@ -135,7 +142,7 @@ fn morning_restock() {
         write_save(&pack, &world);
     }
     assert_eq!(place_of(&world_of(&pack), "mira"), "mira_rooms");
-    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    play_empty_round(&pack);
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 8);
     assert_eq!(place_of(&world, "mira"), "mira_rooms");
@@ -164,7 +171,7 @@ fn capped_restock() -> u32 {
         shop.shift("lamp_oil", 6 - count, None).unwrap();
         write_save(&pack, &world);
     }
-    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    play_empty_round(&pack);
     let oil = lamp_oil(&world_of(&pack));
     let _ = fs::remove_dir_all(&pack);
     oil
@@ -179,7 +186,7 @@ fn off_hours_hold() {
         leave_door_note(&mut world);
         write_save(&pack, &world);
     }
-    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    play_empty_round(&pack);
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 4);
     assert_eq!(note_ids(&world), ["note_ledger_short", "note_mira_door"]);
@@ -290,7 +297,7 @@ fn claimed_note_sorts_first() {
     }
     opened.play(&rowan(), &wall).unwrap();
     let world = opened.world();
-    let notes = world.globals().get::<Note>(&GlobalId);
+    let notes = world.globals().get::<Note>(&globals::Id);
     let door = notes.get("note_mira_door").expect("the door note");
     assert_eq!(door.to_ids, BTreeSet::from(["rowan".into()]));
     assert_eq!(
@@ -308,7 +315,7 @@ fn catch_up_to_cap() {
 
 fn catch_up_for(hours: u64, rounds: u64) {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let pack = support::fresh_dir("catch_up");
+    let pack = support::fresh_dir("play_idle");
     let _ = fs::remove_dir_all(&pack);
     let rules = manifest.join("../../tests/packs/docks/rules");
     write_text(
@@ -359,8 +366,8 @@ Rowan.
         })
         .unwrap_or_else(|err| panic!("copy {file}: {err}"));
     }
-    let rev = spookery_engine::pack_rev(&pack).unwrap();
-    let mut world = empty_save(load_canon(&pack).unwrap(), "ex", &rev);
+    let rev = spookery_engine::canon::hash(&pack).unwrap();
+    let mut world = empty_save(canon::load(&pack).unwrap(), "ex", &rev);
     add_actor(&mut world, "rowan", component::ControlType::Pc, "gate", 1);
     write_text(&pack.join("state/save.yaml"), &emit_save(&world).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
@@ -368,7 +375,7 @@ Rowan.
     let mut opened = resume(&pack);
     let wall = opened.world().last_round_at.clone();
     opened
-        .catch_up(&wall, hours)
+        .play_idle(&wall, hours)
         .unwrap_or_else(|err| panic!("catch-up: {err}"));
     let saved = spookery_engine::Session::peek(&pack).unwrap_or_else(|err| panic!("peek: {err}"));
     let world = saved.world();
@@ -404,7 +411,7 @@ fn a_busy_npc_skips() {
             .unwrap();
         write_save(&pack, &world);
     }
-    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    play_empty_round(&pack);
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 4);
     assert_eq!(act_of(&world, "mira").last_act_round, 0);
@@ -474,13 +481,13 @@ rules:
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         fs::copy(rules.join(file), &dest).unwrap();
     }
-    let rev = spookery_engine::pack_rev(&pack).unwrap();
-    let mut world = empty_save(load_canon(&pack).unwrap(), "crowd", &rev);
+    let rev = spookery_engine::canon::hash(&pack).unwrap();
+    let mut world = empty_save(canon::load(&pack).unwrap(), "crowd", &rev);
     for id in &npcs {
         add_actor(&mut world, id, component::ControlType::Npc, "yard", 1);
     }
     write_text(&pack.join("state/save.yaml"), &emit_save(&world).unwrap());
-    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    play_empty_round(&pack);
     let world = world_of(&pack);
     assert_eq!(world.round_index, 1);
     assert_eq!(
@@ -518,7 +525,7 @@ fn a_gm_perceive_is_refused_and_writes_nothing() {
 fn put_mira_in_the_shop(pack: &Path) {
     let now_path = pack.join("state/save.yaml");
     let save = spookery_engine::parse_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
-    let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
+    let canon = canon::load(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
     let mut world = ecs::World::new(save, Arc::new(canon));
     world
         .actors_mut()
@@ -615,15 +622,15 @@ Rowan";
     let text = fs::read_to_string(&path).unwrap();
     write_text(&path, &text.replacen("---\nRowan", rule, 1));
     stamp_pack_rev(pack);
-    let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
+    let canon = canon::load(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
     let rules = canon.rules.ids_in_order();
     assert!(rules.contains(&"cast:rowan/debt_grows"), "{rules:?}");
 }
 
 #[when(expr = "twelve empty rounds pass")]
 fn twelve_empty_rounds_pass(world: &mut World) {
-    for round in 1..=12 {
-        play_pack_once(world.pack()).unwrap_or_else(|err| panic!("round {round}: {err}"));
+    for _ in 1..=12 {
+        play_empty_round(world.pack());
     }
     assert_eq!(
         world_of(world.pack()).round_index,

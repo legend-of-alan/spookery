@@ -165,7 +165,10 @@ fn an_engine_habit_rolls_a_check_for_mira(world: &mut World) {
     world.pack = Some(pack.clone());
     insert_brace_habit(&pack);
     support::stamp_pack_rev(&pack);
-    spookery_engine::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    let mut session = spookery_engine::testing::resume(&pack);
+    let wall = session.world().last_round_at.clone();
+    let played = session.play(&spookery_engine::Presence::default(), &wall);
+    played.unwrap_or_else(|err| panic!("round: {err}"));
 }
 
 #[when(expr = "the player sends a line with a player prefix")]

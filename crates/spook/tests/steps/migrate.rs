@@ -21,7 +21,7 @@ fn read_state_files(pack: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 
 fn docks_pack_rev() -> String {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
-    spookery_engine::pack_rev(&root).unwrap()
+    spookery_engine::canon::hash(&root).unwrap()
 }
 
 #[when(expr = "a canon file gains a byte")]
@@ -169,7 +169,7 @@ fn state_rev_is_2(world: &mut World) {
 #[then(expr = "migrate keeps the hand edit")]
 fn keeps_the_hand_edit(world: &mut World) {
     let pack = host::pack(world);
-    let rev = spookery_engine::pack_rev(pack).unwrap();
+    let rev = spookery_engine::canon::hash(pack).unwrap();
     assert_ne!(rev, docks_pack_rev());
     let now = world_of(pack);
     assert_eq!(now.pack_rev, rev);

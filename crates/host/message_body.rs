@@ -4,7 +4,7 @@ use super::seat::Claim;
 use crate::protocol::{
     self, CommitBody, HostStatus, PackSummary, QueuedVerb, Roll, ServerBody, Speech, StatusPresence,
 };
-use spookery_engine::{self as engine, ActorId, Intent, Presence, TapeRecord};
+use spookery_engine::{self as engine, tape, ActorId, Intent, Presence};
 
 /// A verb the gate or a round refused. Its `detail` is the meter or item id, or the
 /// sentence a locked exit shows.
@@ -16,7 +16,7 @@ pub(super) fn build_refusal(refusal: &engine::Refusal) -> protocol::Refusal {
 }
 
 /// One line of speech as a seat hears it. Only the GM's copy lists the recipients.
-pub(super) fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
+pub(super) fn build_speech(tape: &tape::Record, gm: bool) -> Speech {
     Speech {
         from: tape.from.clone(),
         from_name: tape.from_name.clone(),
@@ -35,7 +35,7 @@ pub(super) fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
 pub(super) fn build_claim_reply(
     now: &engine::ecs::World,
     claim: &Claim,
-    scrollback: &[TapeRecord],
+    scrollback: &[tape::Record],
     last_seq: u64,
 ) -> ServerBody {
     let (missed_messages, is_missed_truncated) = claim.messages_after(last_seq);

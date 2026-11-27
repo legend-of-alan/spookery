@@ -5,21 +5,21 @@ use crate::Reason;
 pub(crate) mod commit;
 pub(crate) mod durability;
 pub(crate) mod journal;
-pub(crate) mod lock;
+pub mod lock;
 pub(crate) mod records;
 pub(crate) mod recovery;
 pub(crate) mod save;
-pub(crate) mod tape;
+pub mod tape;
 
-pub use lock::{lock_pack, PackGuard};
-pub use tape::{emit_tape_record, TapeRecord};
+pub(crate) use commit::{commit_last_checkpoint, commit_migrate};
+pub use lock::PackGuard;
 
 /// Rules version stamped on every save and every round.
 /// A different version is refused.
 #[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub const RULES_REV: u64 = 35;
 
-pub(crate) fn require_rules_rev(rev: u64) -> Result<(), Reason> {
+pub(crate) fn check_rules_rev(rev: u64) -> Result<(), Reason> {
     if rev == RULES_REV {
         Ok(())
     } else {

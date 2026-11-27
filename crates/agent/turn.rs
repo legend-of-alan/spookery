@@ -1,5 +1,5 @@
 //! One GM turn and the graph that plays it: `ask_model` for tool calls, `run_tool_call` for
-//! each one, and `finish_turn`. The graph owns every transition inside a turn; its context
+//! each one, and `end_turn`. The graph owns every transition inside a turn; its context
 //! holds only what the edges read.
 
 use std::sync::Arc;
@@ -8,7 +8,7 @@ use graph_flow::{Graph, GraphBuilder, Session};
 
 use crate::context::TurnCause;
 use crate::model;
-use crate::task::{AskModel, FinishTurn, RunToolCall};
+use crate::task::{AskModel, EndTurn, RunToolCall};
 use crate::{Agent, Connection, Model, ToolCall};
 
 /// The most model calls one turn makes. It stops a model that never ends its turn.
@@ -17,7 +17,7 @@ pub const MAX_MODEL_CALLS: usize = 20;
 /// The graph's nodes.
 pub(crate) const ASK_MODEL: &str = "ask_model";
 pub(crate) const RUN_TOOL_CALL: &str = "run_tool_call";
-pub(crate) const FINISH_TURN: &str = "finish_turn";
+pub(crate) const END_TURN: &str = "end_turn";
 
 /// How many model calls this turn made.
 pub(crate) const MODEL_CALL_COUNT: &str = "model_call_count";
@@ -58,8 +58,8 @@ pub(crate) fn build_graph<M: Model, Conn: Connection>(agent: &Arc<Agent<M, Conn>
     GraphBuilder::new("gm_turn")
         .add_task(Arc::new(AskModel(Arc::clone(agent))))
         .add_task(Arc::new(RunToolCall(Arc::clone(agent))))
-        .add_task(Arc::new(FinishTurn(Arc::clone(agent))))
-        .add_conditional_edge(ASK_MODEL, is_done, FINISH_TURN, RUN_TOOL_CALL)
+        .add_task(Arc::new(EndTurn(Arc::clone(agent))))
+        .add_conditional_edge(ASK_MODEL, is_done, END_TURN, RUN_TOOL_CALL)
         .add_conditional_edge(
             RUN_TOOL_CALL,
             {

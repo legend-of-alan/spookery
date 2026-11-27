@@ -4,15 +4,15 @@ use std::path::Path;
 use std::sync::Arc;
 
 use super::Session;
-use crate::canon::load_canon;
+use crate::canon;
 use crate::ecs;
 use crate::hash::blake2s_tagged;
-use crate::round::replay::{
+use crate::replay::{
     apply_journal, apply_record, checkpoint_diverged, load_save_bytes, open_at, Error,
 };
 use crate::store::durability::write_atomic;
 use crate::store::journal;
-use crate::store::lock::{self, lock_pack, PackGuard};
+use crate::store::lock::{self, PackGuard};
 use crate::store::records::Record;
 use crate::store::save;
 use crate::Reason;
@@ -24,14 +24,14 @@ pub(crate) fn load_tip(pack: &Path, guard: &PackGuard) -> Result<Session<()>, Re
     choose_seed(pack, guard)?;
     rebuild_save(pack, guard)?;
     let session = peek_tip(pack)?;
-    crate::store::commit::settle_checkpoint(&session, &lock::take_write(session.root(), guard)?)?;
+    crate::store::commit_last_checkpoint(&session, &lock::take_write(session.root(), guard)?)?;
     Ok(session)
 }
 
 /// Write a fresh dice seed into `save.yaml` when it has none and the journal is still empty,
 /// so the first round, and replay from the base save, roll from it. A seed already there stays.
 fn choose_seed(pack: &Path, guard: &PackGuard) -> Result<(), Error> {
-    if journal::read_head(pack)?.is_some() || journal::find_live_bundle(pack).is_some() {
+    if journal::read_mark(pack)?.is_some() || journal::find_live_bundle(pack).is_some() {
         return Ok(());
     }
     let save_path = journal::save_path(pack);
@@ -48,7 +48,7 @@ fn choose_seed(pack: &Path, guard: &PackGuard) -> Result<(), Error> {
 /// The journal tip in memory. Writes nothing.
 pub(crate) fn peek_tip(pack: &Path) -> Result<Session<()>, Error> {
     let mut session = Session::open(pack)?;
-    if apply_tail(&mut session)? {
+    if apply_live(&mut session)? {
         save::check(session.world())?;
     }
     Ok(session)
@@ -56,10 +56,10 @@ pub(crate) fn peek_tip(pack: &Path) -> Result<Session<()>, Error> {
 
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
 pub fn migrate_pack(pack: &Path) -> Result<(), Reason> {
-    let guard = lock_pack(pack)?;
+    let guard = lock::take(pack)?;
     choose_seed(pack, &guard)?;
     let (world, edited) = load_migrate_tip(pack, &guard)?;
-    crate::store::commit::seal_migrate(pack, world, edited, &guard)?;
+    crate::store::commit_migrate(pack, world, edited, &guard)?;
     Ok(())
 }
 
@@ -68,7 +68,7 @@ pub fn migrate_pack(pack: &Path) -> Result<(), Reason> {
 fn load_migrate_tip(pack: &Path, guard: &PackGuard) -> Result<(ecs::World, bool), Error> {
     let bytes = journal::read_save(&journal::save_path(pack))?;
     let file_save = load_save_bytes(&bytes)?;
-    let edited = journal::edits_head(pack, file_save.state_rev, &bytes)?;
+    let edited = journal::edits_mark(pack, file_save.state_rev, &bytes)?;
     let ahead = journal::read_live_records(pack)?.iter().any(|record| {
         !matches!(record, Record::Checkpoint(_)) && record.state_rev_after() > file_save.state_rev
     });
@@ -76,7 +76,7 @@ fn load_migrate_tip(pack: &Path, guard: &PackGuard) -> Result<(ecs::World, bool)
         (true, true) => Err(Reason::HandEdit.into()),
         (true, false) => Ok((load_tip_unchecked(pack, guard)?.world().clone(), false)),
         (false, _) => Ok((
-            ecs::World::new(file_save, Arc::new(load_canon(pack)?)),
+            ecs::World::new(file_save, Arc::new(canon::load(pack)?)),
             edited,
         )),
     }
@@ -87,13 +87,13 @@ fn load_tip_unchecked(pack: &Path, guard: &PackGuard) -> Result<Session<()>, Err
     rebuild_save(pack, guard)?;
     let bytes = journal::read_save(&journal::save_path(pack))?;
     let mut session = open_at(pack, &bytes)?;
-    apply_tail(&mut session)?;
-    crate::store::commit::settle_checkpoint(&session, &lock::take_write(session.root(), guard)?)?;
+    apply_live(&mut session)?;
+    crate::store::commit_last_checkpoint(&session, &lock::take_write(session.root(), guard)?)?;
     Ok(session)
 }
 
 /// Replay the live records past the save. `true` when any record was replayed.
-fn apply_tail(session: &mut Session<()>) -> Result<bool, Error> {
+fn apply_live(session: &mut Session<()>) -> Result<bool, Error> {
     let records = journal::read_live_records(session.root())?;
     let base_rev = session.world().state_rev;
     let mut replayed = false;
@@ -108,7 +108,7 @@ fn apply_tail(session: &mut Session<()>) -> Result<bool, Error> {
 }
 
 fn rebuild_save(pack: &Path, guard: &PackGuard) -> Result<(), Error> {
-    let Some(head) = journal::read_head(pack)? else {
+    let Some(head) = journal::read_mark(pack)? else {
         return Ok(());
     };
     let save_path = journal::save_path(pack);

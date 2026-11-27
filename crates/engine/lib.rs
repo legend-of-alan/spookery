@@ -1,11 +1,12 @@
 //! The Spookery table engine: load a pack, run its rules, and commit or verify the journal.
 
-pub(crate) mod canon;
-pub(crate) mod check;
-pub(crate) mod diagnostic;
+pub mod canon;
+pub mod check;
+pub mod diagnostic;
 pub mod ecs;
 pub(crate) mod hash;
-pub(crate) mod intent;
+pub mod intent;
+pub(crate) mod replay;
 pub mod round;
 pub(crate) mod rules;
 pub(crate) mod session;
@@ -21,24 +22,23 @@ pub mod roll {
     pub use crate::rules::roll::Report;
 }
 
-pub use canon::{load_canon, pack_rev};
-pub use check::check_pack;
-pub use diagnostic::{first_reason, Code, Diagnostic};
+pub use diagnostic::{Code, Diagnostic};
 pub use ecs::component;
 pub use ecs::component::meter::Meter;
 pub use ecs::component::modifier::Modifier;
 pub use ecs::component::Note;
-pub use ecs::id::{ActorId, GlobalId, PathId, PlaceId, StoryId};
+pub use ecs::entity::globals;
+pub use ecs::id::{ActorId, PathId, PlaceId, StoryId};
 pub use ecs::{Presence, Reader, Save, Writer};
-pub use intent::{Intent, IntentArgs, Source, Target};
-pub use round::{play_pack_once, verify_pack, verify_quick};
+pub use intent::{Intent, Source, Target};
+pub use round::verification;
 pub use rules::gate::Refusal;
 pub use rules::perceive::View;
 pub use rules::visibility::RecipientLine;
 pub use session::{migrate_pack, Session};
 pub use spookery_protocol::Reason;
 pub use store::save::{emit as emit_save, parse as parse_save};
-pub use store::{emit_tape_record, lock_pack, PackGuard, TapeRecord};
+pub use store::{lock, tape, PackGuard};
 
 #[cfg(feature = "testing")]
 pub mod testing {
@@ -53,7 +53,7 @@ pub mod testing {
     pub use crate::ecs::{Act, PendingAction};
 
     pub mod replay {
-        pub use crate::round::replay::apply_journal;
+        pub use crate::replay::apply_journal;
     }
 
     pub mod roll {
@@ -87,7 +87,7 @@ pub mod testing {
     pub fn lock_write(session: &crate::session::Session) -> Result<WriteGuard, crate::Reason> {
         crate::store::lock::take_write(session.root(), session.lock())
     }
-    pub use crate::store::lock::call_when_read_waits;
+    pub use crate::store::lock::set_read_wait_handler;
     pub use crate::store::RULES_REV;
 
     /// A second handle on the lock file, like the copy a spawned child holds until it execs.
@@ -139,7 +139,7 @@ pub mod testing {
         }
 
         /// The bundle a logical record lives in, so a test can edit that line.
-        pub fn locate(pack: &Path, key: &str) -> Result<PathBuf, Error> {
+        pub fn find_bundle(pack: &Path, key: &str) -> Result<PathBuf, Error> {
             for (bundle, entries) in read_bundle_records(pack)? {
                 if entries.iter().any(|entry| format_record_key(entry) == key) {
                     return Ok(pack.join("state/journal").join(bundle));
@@ -223,16 +223,14 @@ pub mod testing {
 
     /// Lock the pack and open its save, for a test that plays rounds on it.
     pub fn resume(pack: &Path) -> crate::session::Session {
-        let lock = crate::lock_pack(pack)
-            .unwrap_or_else(|err| panic!("lock_pack {}: {err}", pack.display()));
+        let lock = crate::lock::take(pack)
+            .unwrap_or_else(|err| panic!("lock::take {}: {err}", pack.display()));
         crate::session::Session::resume(pack, lock)
             .unwrap_or_else(|err| panic!("Session::resume {}: {err}", pack.display()))
     }
 
     /// Read the pack's journal and replay all of it.
-    pub fn replay_pack(
-        pack: &Path,
-    ) -> Result<crate::round::replay::Report, crate::round::replay::Error> {
+    pub fn replay_pack(pack: &Path) -> Result<crate::replay::Report, crate::replay::Error> {
         let records = crate::store::journal::read_records(pack)?;
         replay::apply_journal(pack, &records, None, None)
     }
@@ -245,7 +243,7 @@ pub mod testing {
             .unwrap_or_else(|err| panic!("utf-8 {}: {err}", pack.display()));
         let save = crate::store::save::parse(yaml)
             .unwrap_or_else(|err| panic!("load {}: {err:?}", pack.display()));
-        let canon = crate::canon::load_canon(pack)
+        let canon = crate::canon::load(pack)
             .unwrap_or_else(|err| panic!("canon {}: {err:?}", pack.display()));
         crate::ecs::World::new(save, std::sync::Arc::new(canon))
     }
@@ -265,7 +263,7 @@ pub mod testing {
             .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
         let save = crate::store::save::parse(&text)
             .unwrap_or_else(|err| panic!("load {}: {err:?}", path.display()));
-        let canon = crate::canon::load_canon(pack)
+        let canon = crate::canon::load(pack)
             .unwrap_or_else(|err| panic!("canon {}: {err:?}", pack.display()));
         let mut world = crate::ecs::World::new(save, std::sync::Arc::new(canon));
         edit(&mut world);
@@ -281,8 +279,8 @@ pub mod testing {
             .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
         let mut save = crate::store::save::parse(&text)
             .unwrap_or_else(|err| panic!("load {}: {err:?}", path.display()));
-        save.pack_rev = crate::canon::pack_rev(pack)
-            .unwrap_or_else(|err| panic!("rev {}: {err}", pack.display()));
+        save.pack_rev =
+            crate::canon::hash(pack).unwrap_or_else(|err| panic!("rev {}: {err}", pack.display()));
         write_save(pack, &save);
     }
 

@@ -147,7 +147,7 @@ impl Canon {
     }
 }
 
-pub fn pack_rev(root: &Path) -> Result<String, Reason> {
+pub fn hash(root: &Path) -> Result<String, Reason> {
     let mut files = Vec::new();
     for dir in ["world", "cast", "rules"] {
         collect_files(&root.join(dir), root, &mut files)?;
@@ -168,7 +168,7 @@ pub fn pack_rev(root: &Path) -> Result<String, Reason> {
 /// place file's own meters; the optional `rules/modifiers.yaml`; a missing `rules/verbs.yaml` or
 /// `rules/budget.yaml`; verbs; `story/` and each story's own meters; rule ids across files;
 /// the budget; lints across files; and `checkpoint_every`.
-pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
+pub fn load(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     // repeats module: re-exported at the crate root
     let mut diagnostics = Diagnostics::default();
     let mut places = BTreeMap::new();
@@ -330,7 +330,7 @@ mod tests {
     #[test]
     fn menu_rows_keep_verbs_and_habits_and_control_types() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
-        let mut canon = load_canon(&root).expect("docks canon");
+        let mut canon = load(&root).expect("docks canon");
         canon.cast.get_mut("mira").unwrap().body = "CAST-BODY-SENTINEL".to_string();
         let summary = canon.to_pack_summary();
         assert!(summary.menu.iter().all(|row| row.kind != "system"));

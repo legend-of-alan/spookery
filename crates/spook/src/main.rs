@@ -145,7 +145,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         #[cfg(feature = "host")]
         Command::Run { pack, mcp_addr } => {
             let mcp_addr = parse_mcp_addr(mcp_addr)?;
-            let lock = spookery_engine::lock_pack(&pack).map_err(|e| e.to_string())?;
+            let lock = spookery_engine::lock::take(&pack).map_err(|e| e.to_string())?;
             let session =
                 spookery_engine::Session::resume(&pack, lock).map_err(|e| e.to_string())?;
             if let Some(path) = &log_path {
@@ -201,7 +201,15 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "host")]
         Command::Round { pack } => {
-            spookery_engine::play_pack_once(&pack).map_err(|e| e.to_string())
+            let lock = spookery_engine::lock::take(&pack).map_err(|e| e.to_string())?;
+            let mut session =
+                spookery_engine::Session::resume(&pack, lock).map_err(|e| e.to_string())?;
+            let wall = session.world().last_round_at.clone();
+            let presence = spookery_engine::Presence::default();
+            session
+                .play(&presence, &wall)
+                .map(drop)
+                .map_err(|e| e.to_string())
         }
         #[cfg(feature = "host")]
         Command::Status { pack } => {
@@ -219,9 +227,9 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 return Err("verify --quick does not take --from".into());
             }
             let report = if quick {
-                spookery_engine::verify_quick(&pack)
+                spookery_engine::verification::run_quick(&pack)
             } else {
-                spookery_engine::verify_pack(&pack, from.as_deref())
+                spookery_engine::verification::run(&pack, from.as_deref())
             }
             .map_err(|e| e.to_string())?;
             println!(
@@ -235,10 +243,10 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "host")]
         Command::Check { pack, json, rules } => {
-            let mut found = spookery_engine::check_pack(&pack);
+            let mut found = spookery_engine::check::run(&pack);
             if rules && found.is_empty() {
-                let canon = spookery_engine::load_canon(&pack).map_err(|diagnostics| {
-                    spookery_engine::first_reason(&diagnostics).to_string()
+                let canon = spookery_engine::canon::load(&pack).map_err(|diagnostics| {
+                    spookery_engine::diagnostic::find_reason(&diagnostics).to_string()
                 })?;
                 for id in canon.rules.ids_in_order() {
                     println!("{id}");
