@@ -232,8 +232,8 @@ pub(crate) fn visible_exits(
 /// Ticks until the rule and its exit finish, read for the acting actor. Zero means it
 /// finishes now. A negative count is `OUT_OF_RANGE`.
 pub(crate) fn span(context: &Context, rule: &Rule) -> Result<u64, Reason> {
-    let start = rule.start.cost.as_ref();
-    let mut ticks = start.map_or(Ok(0), |cost| cost::read_ticks(context, cost))?;
+    let start_cost = rule.start_cost.as_ref();
+    let mut ticks = start_cost.map_or(Ok(0), |cost| cost::read_ticks(context, cost))?;
     if let Ok(Some(exit)) = exit_of(context, rule) {
         ticks = ticks.saturating_add(cost::read_ticks(context, &exit.path_def.cost)?);
     }

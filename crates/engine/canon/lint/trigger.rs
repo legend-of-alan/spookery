@@ -5,7 +5,7 @@ use crate::canon::Canon;
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::ecs::component::meter;
 use crate::rules::grammar;
-use crate::rules::rule::{ChangeWatch, EffectTemplate, MoveTo, NarrateTo, Rule, RuleKind};
+use crate::rules::rule::{self, ChangeWatch, EffectTemplate, MoveTo, NarrateTo, Rule};
 use crate::Reason;
 
 /// Change rules that set each other's watched values.
@@ -13,7 +13,7 @@ pub(super) fn find_cycles(canon: &Canon) -> Vec<Diagnostic> {
     let rules: Vec<&Rule> = canon
         .rules
         .iter()
-        .filter(|rule| matches!(rule.kind, RuleKind::Change(_)))
+        .filter(|rule| matches!(rule.kind, rule::Kind::Change(_)))
         .collect();
     let written: Vec<Vec<EffectWrite>> = rules
         .iter()
@@ -29,7 +29,7 @@ pub(super) fn find_cycles(canon: &Canon) -> Vec<Diagnostic> {
             if from == to {
                 continue;
             }
-            let RuleKind::Change(watch) = &rule.kind else {
+            let rule::Kind::Change(watch) = &rule.kind else {
                 continue;
             };
             if writes.iter().any(|write| sets_watch(watch, write)) {
@@ -58,7 +58,7 @@ pub(super) fn find_cycles(canon: &Canon) -> Vec<Diagnostic> {
 pub(super) fn find_leaks(canon: &Canon) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for rule in canon.rules.iter() {
-        let RuleKind::Change(watch) = &rule.kind else {
+        let rule::Kind::Change(watch) = &rule.kind else {
             continue;
         };
         let sight = sight_of(canon, watch);
@@ -229,7 +229,8 @@ fn watches_actor(canon: &Canon, watch: &ChangeWatch) -> bool {
 pub(super) fn find_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for rule in canon.rules.iter() {
-        let on_world = matches!(&rule.kind, RuleKind::Change(watch) if watches_world(canon, watch));
+        let on_world =
+            matches!(&rule.kind, rule::Kind::Change(watch) if watches_world(canon, watch));
         let (message, hint) = if on_world && needs_subject(rule) {
             (
                 "watches a world change, which has no self and no here",

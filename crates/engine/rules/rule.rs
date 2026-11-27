@@ -1,25 +1,30 @@
-//! One rule shape. The id is namespaced by the file that owns it.
+//! One rule shape. The id is namespaced by the file it lives in.
 
 use crate::ecs::id::{ActorId, PlaceId};
+use crate::rules::cond::{self, Cond};
+use crate::rules::cost::Cost;
 use crate::rules::expr::Expr;
-use crate::rules::{cond, grammar, roll};
+use crate::rules::{grammar, roll};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Rule {
     pub id: String,
     pub local_id: String,
     pub scope: Scope,
-    pub kind: RuleKind,
+    pub kind: Kind,
     pub if_: Vec<Cond>,
     /// `let:`: each id and the number it stores, in the order written. They roll first, and
     /// the rule's check, effects and later ids read them by id.
     pub lets: Vec<(String, Expr)>,
     pub check: Option<roll::Check>,
-    /// Paid when the action starts. Its `cost` is the rule's `cost`, whose ticks are how long
-    /// the action takes.
-    pub start: ActionCost,
+    /// The rule's `cost`, paid when the action starts. Its ticks are how long the action takes.
+    pub start_cost: Option<Cost>,
     /// Paid when the action finishes.
-    pub finish: ActionCost,
+    pub finish_cost: Option<Cost>,
+    /// Whether the start uses the actor's act. Packs default this to true.
+    pub start_counts_as_act: bool,
+    /// Whether the finish uses the actor's act. Packs default this to false.
+    pub finish_counts_as_act: bool,
     /// Ticks the actor stays busy after the finish.
     pub cooldown_ticks: u64,
     /// Whether the actor may cancel the action while it is under way.
@@ -33,9 +38,9 @@ pub(crate) struct Rule {
 }
 
 impl Rule {
-    /// The start cost, then the finish cost.
+    /// The start cost, then the finish cost. `exprs` relies on this order.
     pub(crate) fn costs(&self) -> impl Iterator<Item = &Cost> {
-        self.start.cost.iter().chain(&self.finish.cost)
+        self.start_cost.iter().chain(&self.finish_cost)
     }
 
     /// Every effect the rule holds, in the order `visit_templates` walks them, with the effects
@@ -72,13 +77,6 @@ impl Rule {
     }
 }
 
-/// What the start or the finish of an action costs, and whether it uses the actor's act.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ActionCost {
-    pub cost: Option<Cost>,
-    pub counts_as_act: bool,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Scope {
     Verb,
@@ -111,19 +109,18 @@ impl Scope {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum RuleKind {
-    // repeats module: the concept map's word, beside TargetKind
+pub(crate) enum Kind {
     Verb { verb_id: String, target: TargetKind },
     Habit,
     Change(ChangeWatch),
 }
 
-impl RuleKind {
+impl Kind {
     /// The kind of thing the rule's verb targets. A habit and a change rule target nothing.
     pub(crate) fn target_kind(&self) -> TargetKind {
         match self {
-            RuleKind::Verb { target, .. } => *target,
-            RuleKind::Habit | RuleKind::Change(_) => TargetKind::None,
+            Kind::Verb { target, .. } => *target,
+            Kind::Habit | Kind::Change(_) => TargetKind::None,
         }
     }
 }
@@ -172,95 +169,6 @@ pub(crate) enum ChangeWatch {
         id: String,
         gained: bool,
     },
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Cost {
-    pub ticks: Expr,
-    pub meters: Vec<(String, Expr)>,
-    pub items: Vec<(String, Expr)>,
-}
-
-impl Cost {
-    /// The ticks, the meter amounts, then the item counts.
-    pub(crate) fn exprs(&self) -> impl Iterator<Item = &Expr> {
-        let amounts = self.meters.iter().chain(&self.items).map(|(_, expr)| expr);
-        std::iter::once(&self.ticks).chain(amounts)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Cond {
-    HasItem {
-        subject: grammar::Actor,
-        id: String,
-        count: Expr,
-    },
-    Meter {
-        of: grammar::Object,
-        id: String,
-        op: cond::Op,
-        value: Expr,
-    },
-    Flag {
-        of: grammar::Object,
-        id: String,
-        is: bool,
-    },
-    At {
-        subject: grammar::Actor,
-        place_id: String,
-    },
-    /// A tick of cycle `id` in `from..to`, wrapping past the cycle's end when `from > to`.
-    Cycle {
-        id: String,
-        from: Expr,
-        to: Expr,
-    },
-    Players {
-        op: cond::Op,
-        value: Expr,
-    },
-    NoteExists(String),
-    Wielding {
-        subject: grammar::Actor,
-        id: String,
-    },
-    All(Vec<Cond>),
-    Any(Vec<Cond>),
-    Not(Box<Cond>),
-}
-
-impl Cond {
-    /// Calls `visit` on every leaf condition, walking into `all`, `any` and `not`.
-    pub(crate) fn visit<'a>(&'a self, mut visit: impl FnMut(&'a Cond)) {
-        fn walk<'a>(cond: &'a Cond, visit: &mut impl FnMut(&'a Cond)) {
-            match cond {
-                Cond::All(inner) | Cond::Any(inner) => {
-                    for cond in inner {
-                        walk(cond, visit);
-                    }
-                }
-                Cond::Not(inner) => walk(inner, visit),
-                leaf => visit(leaf),
-            }
-        }
-        walk(self, &mut visit);
-    }
-
-    /// Every number a leaf holds: an item count, a meter or player value, a cycle's bounds,
-    /// walking into `all`, `any` and `not`.
-    pub(crate) fn exprs(&self) -> Vec<&Expr> {
-        let mut exprs = Vec::new();
-        self.visit(|cond| match cond {
-            Cond::HasItem { count: value, .. }
-            | Cond::Meter { value, .. }
-            | Cond::Players { value, .. } => exprs.push(value),
-            Cond::Cycle { from, to, .. } => exprs.extend([from, to]),
-            _ => {}
-        });
-        exprs
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -386,7 +294,7 @@ impl Rules {
             .iter()
             .filter(|rule| {
                 matches!(&rule.scope, Scope::Cast(id) if *actor == **id)
-                    && matches!(rule.kind, RuleKind::Habit)
+                    && matches!(rule.kind, Kind::Habit)
             })
             .collect()
     }

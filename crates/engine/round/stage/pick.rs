@@ -12,7 +12,7 @@ use crate::rules::effect::EffectKind;
 use crate::rules::expand;
 use crate::rules::gate;
 use crate::rules::habits::{self, is_player_at};
-use crate::rules::rule::{Rule, RuleKind, TargetKind};
+use crate::rules::rule::{self, Rule, TargetKind};
 use crate::Reason;
 
 use crate::round::dice::shuffle_key;
@@ -98,7 +98,7 @@ fn stamp_target(canon: &Canon, world: &ecs::World, presence: &Presence, intent: 
     };
     let keeps_empty = matches!(
         &rule.kind,
-        RuleKind::Verb {
+        rule::Kind::Verb {
             target: TargetKind::None,
             ..
         }

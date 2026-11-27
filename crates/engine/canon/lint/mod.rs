@@ -12,9 +12,9 @@ use crate::canon::{item, place, Canon};
 use crate::diagnostic::{schema_error, warning, Diagnostic};
 use crate::ecs::component::modifier;
 use crate::ecs::id::PlaceId;
-use crate::rules::cond;
+use crate::rules::cond::{self, Cond};
 use crate::rules::grammar;
-use crate::rules::rule::{ChangeWatch, Cond, EffectTemplate, RuleKind, Rules, Scope};
+use crate::rules::rule::{ChangeWatch, EffectTemplate, Rules, Scope};
 
 /// Paths whose ends are not places, and items a path names but the pack does not.
 pub(super) fn find_unknown_path_ids(
@@ -158,7 +158,7 @@ fn find_unset_flags(canon: &Canon, saved_flags: &BTreeSet<&str>) -> Vec<Diagnost
         }
     }
     for rule in canon.rules.iter() {
-        let RuleKind::Change(ChangeWatch::Flag { id, .. }) = &rule.kind else {
+        let crate::rules::rule::Kind::Change(ChangeWatch::Flag { id, .. }) = &rule.kind else {
             continue;
         };
         if id != OPEN && !is_ever_set(id) {

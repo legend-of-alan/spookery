@@ -9,9 +9,10 @@ use crate::diagnostic::{schema_error, Diagnostic};
 use crate::ecs::component::meter;
 use crate::ecs::id::{ActorId, PlaceId, StoryId};
 use crate::entity;
+use crate::rules::cond::Cond;
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
-use crate::rules::rule::{self, Cond, EffectTemplate, Rule, RuleKind, Scope, TargetKind};
+use crate::rules::rule::{self, EffectTemplate, Rule, Scope, TargetKind};
 
 pub(in crate::canon) fn find_unknown_meter_reads(
     entity_defs: &EntityDefs,
@@ -95,7 +96,7 @@ pub(in crate::canon) fn find_missing_components(
 /// The actor `self` always is on `rule`: the cast member, on its own habit.
 fn fixed_self_id(rule: &Rule) -> Option<&str> {
     match (&rule.scope, &rule.kind) {
-        (Scope::Cast(id), RuleKind::Habit) => Some(id),
+        (Scope::Cast(id), rule::Kind::Habit) => Some(id),
         _ => None,
     }
 }

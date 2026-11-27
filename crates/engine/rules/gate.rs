@@ -11,7 +11,7 @@ use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::perceive;
-use crate::rules::rule::{Rule, RuleKind, Scope, TargetKind};
+use crate::rules::rule::{self, Rule, Scope, TargetKind};
 use crate::Reason;
 
 /// One refused intent: its id, its code, and a detail when there is one. Returned from the
@@ -109,7 +109,7 @@ pub(crate) fn verb_for<'a>(
 fn scope_verb<'a>(canon: &'a Canon, scope: &Scope, verb_id: &str) -> Option<&'a Rule> {
     canon.rules.iter().find(|rule| {
         &rule.scope == scope
-            && matches!(&rule.kind, RuleKind::Verb { verb_id: id, .. } if id == verb_id)
+            && matches!(&rule.kind, rule::Kind::Verb { verb_id: id, .. } if id == verb_id)
     })
 }
 
@@ -145,7 +145,7 @@ pub(crate) fn admit(
     if let Some(id) = intent.actor_id.as_ref() {
         let act = world.actors().get::<component::Act>(id);
         let acted = act.get().last_act_round == intent.round_index;
-        if acted && rule.start.counts_as_act && matches!(rule.kind, RuleKind::Habit) {
+        if acted && rule.start_counts_as_act && matches!(rule.kind, rule::Kind::Habit) {
             return Err(Refusal::new(intent, Reason::Ineligible));
         }
         if act.is_busy(world.world_time) {
@@ -153,7 +153,7 @@ pub(crate) fn admit(
         }
     }
     crate::rules::travel::admit(context, rule)?;
-    if let RuleKind::Verb { target, .. } = &rule.kind {
+    if let rule::Kind::Verb { target, .. } = &rule.kind {
         if !can_name(context, ids) {
             return Err(Refusal::new(intent, Reason::NotInSpec));
         }
@@ -169,7 +169,7 @@ pub(crate) fn admit(
         }
     }
     cond::all_hold(context, &rule.if_).map_err(|code| Refusal::new(intent, code))?;
-    if let Some(cost) = &rule.start.cost {
+    if let Some(cost) = &rule.start_cost {
         cost::afford(context, cost)?;
     }
     Ok(())
