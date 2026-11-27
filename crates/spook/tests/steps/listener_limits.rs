@@ -61,21 +61,21 @@ fn the_socket_was_closed_without_a_reply(world: &mut World) {
     );
 }
 
-#[then(expr = "a second player can claim and wait")]
-async fn a_second_player_can_claim_and_wait(world: &mut World) {
+#[then(expr = "a player can claim and wait")]
+async fn a_player_can_claim_and_wait(world: &mut World) {
     host::release_probe_gm(world).await;
     let pack = host::pack(world).to_path_buf();
     host::seat_actor(world, &pack, "harbormouse").await;
     host::actor_send(world, "harbormouse", "wait", r#""kind":"round""#).await;
 }
 
-#[when(expr = "the GM releases the seat")]
-async fn the_gm_releases_the_seat(world: &mut World) {
+#[when(expr = "the GM releases its claim")]
+async fn the_gm_releases_its_claim(world: &mut World) {
     world.scratch = host::release_gm(world).await;
 }
 
-#[then(expr = "the server confirms the seat is free")]
-fn the_server_confirms_the_seat_is_free(world: &mut World) {
+#[then(expr = "the host confirms the GM claim is released")]
+fn the_host_confirms_the_gm_claim_is_released(world: &mut World) {
     assert!(
         world.scratch.contains("{\"kind\":\"released\"}"),
         "{}",
@@ -83,8 +83,8 @@ fn the_server_confirms_the_seat_is_free(world: &mut World) {
     );
 }
 
-#[when(expr = "the GM releases the seat and keeps the session")]
-async fn the_gm_releases_the_seat_and_keeps_the_session(world: &mut World) {
+#[when(expr = "the GM releases its claim and keeps the session")]
+async fn the_gm_releases_its_claim_and_keeps_the_session(world: &mut World) {
     world.scratch = host::release_gm_keep_session(world).await;
 }
 
@@ -303,7 +303,7 @@ async fn one_player_stops_reading(world: &mut World) {
             let stderr = host::live_mut(world)
                 .process
                 .as_ref()
-                .map(|server| support::text_of(&server.stderr))
+                .map(|process| support::text_of(&process.stderr))
                 .unwrap_or_default();
             panic!(
                 "rowan still connected after {sent_bytes} bytes (recv {recv_buffer_bytes}, send {send_buffer_bytes}, frame {frame_bytes}, queue {queue_bytes}, budget {budget_bytes})\n{stderr}"

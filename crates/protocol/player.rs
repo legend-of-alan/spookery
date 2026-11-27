@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Sent from the host to a player client as the `view` body and to a GM client as the
 /// `perceive` reply. Always written `protocol::View`: the engine's `View` is what the
-/// server renders this from.
+/// host renders this from.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct View {

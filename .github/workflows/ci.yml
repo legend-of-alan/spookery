@@ -74,24 +74,24 @@ jobs:
               (.features | to_entries[] | [$n, "feature", .key, (.value | join(",") | if . == "" then "-" else . end)])
             | join(" ")' | sort) <<'EOF'
           spook feature client dep:spookery-agent,dep:spookery-client
-          spook feature default server,client
-          spook feature server dep:spookery-engine,dep:spookery-server,dep:serde_json
+          spook feature default host,client
+          spook feature host dep:spookery-engine,dep:spookery-host,dep:serde_json
           spook spookery-agent normal optional -
           spook spookery-client normal optional -
           spook spookery-engine dev - testing
           spook spookery-engine normal optional -
+          spook spookery-host normal optional -
           spook spookery-protocol normal - -
-          spook spookery-server normal optional -
           spookery-agent spookery-protocol normal - -
           spookery-client spookery-agent normal - -
           spookery-client spookery-protocol normal - -
           spookery-engine feature testing -
           spookery-engine spookery-engine dev - testing
           spookery-engine spookery-protocol normal - -
+          spookery-host spookery-engine dev - testing
+          spookery-host spookery-engine normal - -
+          spookery-host spookery-protocol normal - schema
           spookery-protocol feature schema dep:schemars
-          spookery-server spookery-engine dev - testing
-          spookery-server spookery-engine normal - -
-          spookery-server spookery-protocol normal - schema
           EOF
           cargo tree -e normal -p spookery-engine --locked | (! grep -E 'tracing-subscriber')
           cargo tree -e normal -p spookery-client --locked | (! grep -E 'rmcp|tracing-subscriber')
@@ -127,16 +127,16 @@ jobs:
               }
               END { exit bad }'
           done
-          cargo tree -e normal -p spookery-server --locked | (! grep -E 'reqwest|tracing-subscriber')
+          cargo tree -e normal -p spookery-host --locked | (! grep -E 'reqwest|tracing-subscriber')
           # Only the `spook play` and `spook gm` terminals print. Library code hands output to a writer.
-          (! grep -rnE '\b(e?print(ln)?!|io::std(out|err)\(\))' crates/{engine,protocol,agent,server,client} --include='*.rs' | grep -vE '^crates/client/(terminal|gm)\.rs:')
+          (! grep -rnE '\b(e?print(ln)?!|io::std(out|err)\(\))' crates/{engine,protocol,agent,host,client} --include='*.rs' | grep -vE '^crates/client/(terminal|gm)\.rs:')
           # Rust source has no plain comments: only ///, //! and the rule-8 marker on an item's line or
           # the next one (CONTRIBUTING.md No plain comments).
           git ls-files -z '*.rs' | xargs -0 awk -v item_re="$item_re" 'FNR == 1 { on_item = 0 } { after_item = on_item; on_item = $0 ~ item_re }
             /(^|[[:space:]])(\/\/(\/\/+|[^\/!]|$)|\/\*)/ && !((on_item || after_item) && /\/\/ repeats module: ./) { print FILENAME ":" FNR ": " $0; bad = 1 }
             END { exit bad }'
-          cargo tree -e normal -p spook --no-default-features --features server --locked | (! grep -E 'reqwest')
-          cargo build -p spook --no-default-features --features server --locked
+          cargo tree -e normal -p spook --no-default-features --features host --locked | (! grep -E 'reqwest')
+          cargo build -p spook --no-default-features --features host --locked
           cargo build -p spook --no-default-features --features client --locked
           cargo build -p spook --locked
 
