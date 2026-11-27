@@ -475,6 +475,16 @@ fn break_pack(pack: &Path, fault: &str) {
             "press",
             "    partial:\n      - flag: { of: self, id: halfway, value: true }\n",
         ),
+        "a miss without success" => add_verb_rule(
+            pack,
+            "press",
+            "    check:\n      total: 2d6 + self.vigor\n      success_at: 10\n    miss:\n      - flag: { of: self, id: halfway, value: true }\n",
+        ),
+        "a change rule with a cooldown" => replace_in_file(
+            &pack.join("story/ending.yaml"),
+            "        subject: pc\n    do:\n",
+            "        subject: pc\n    cooldown_ticks: 2\n    do:\n",
+        ),
         "a cast id world" => write_file(
             pack,
             "cast/world.md",

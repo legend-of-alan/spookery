@@ -86,7 +86,9 @@ Feature: spook check explains a broken pack
       | partial_at without partial          | rules/verbs.yaml           | SCHEMA            | without a partial                                        |
       | partial without partial_at          | rules/verbs.yaml           | SCHEMA            | without partial_at                                       |
       | partial_at above success_at         | rules/verbs.yaml           | SCHEMA            | at or above success_at                                   |
-      | partial without a check             | rules/verbs.yaml           | SCHEMA            | outcome without a check                                  |
+      | partial without a check             | rules/verbs.yaml           | SCHEMA            | verbs.yaml:87: rule 'press' lists an outcome without     |
+      | a miss without success              | rules/verbs.yaml           | SCHEMA            | verbs.yaml:87: rule 'press' has a check without          |
+      | a change rule with a cooldown       | story/ending.yaml          | SCHEMA            | ending.yaml:4: rule 'lane_clear' has a cost, start       |
       | a nested partial_at without partial | rules/verbs.yaml           | SCHEMA            | rule 'press' sets partial_at without a partial list      |
       | a cast id world                     | cast/world.md              | SCHEMA            | rename this cast member                                  |
       | a saved actor world                 | state/save.yaml            | SCHEMA            | actor id world is reserved                               |

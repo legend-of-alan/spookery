@@ -135,32 +135,33 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
     let partial = compile::effect_templates(file, &entry.partial)?;
     let miss = compile::effect_templates(file, &entry.miss)?;
     if let Some(kind) = &kind {
-        let timed = start_cost.is_some()
+        let has_action_fields = start_cost.is_some()
             || entry.start.is_some()
             || entry.finish.is_some()
             || entry.cooldown_ticks > 0
             || entry.cancellable;
-        if matches!(kind, rule::Kind::Change(_)) && timed {
-            diagnostics.push(schema_error(
-                file,
-                "a change rule has a cost, start, finish, cooldown_ticks, or cancellable",
-                "remove them; a change is a consequence, not an action",
-            ));
-        }
-        if check.is_none() && (!success.is_empty() || !partial.is_empty() || !miss.is_empty()) {
-            diagnostics.push(schema_error(
-                file,
-                &format!("rule '{local_id}' lists an outcome without a check"),
-                "add check or move those effects to do",
-            ));
-        }
-        if check.is_some() && success.is_empty() && (!partial.is_empty() || !miss.is_empty()) {
-            diagnostics.push(schema_error(
-                file,
-                &format!("rule '{local_id}' has a check without a success list"),
-                "add success",
-            ));
-        }
+        diagnostics.extend(lint::rule::find_change_with_action_fields(
+            &file_text,
+            index,
+            &entry.id,
+            kind,
+            has_action_fields,
+        ));
+        let outcome_lists = [&success[..], &partial, &miss];
+        diagnostics.extend(lint::rule::find_outcome_without_check(
+            &file_text,
+            index,
+            &entry.id,
+            check.as_ref(),
+            outcome_lists,
+        ));
+        diagnostics.extend(lint::rule::find_check_without_success(
+            &file_text,
+            index,
+            &entry.id,
+            check.as_ref(),
+            outcome_lists,
+        ));
         let own_check = check.as_ref().map(|check| (check, &partial[..]));
         let effect_lists = [&do_[..], &success, &partial, &miss];
         diagnostics.extend(lint::rule::find_broken_partial_band(
@@ -275,7 +276,7 @@ fn change_watch(yaml: &ChangeYaml, scope: &Scope) -> Result<ChangeWatch, String>
             .crosses
             .as_deref()
             .ok_or_else(|| "a meter change needs crosses".to_string())?;
-        let (op, bound) = parse_crosses(crosses)?;
+        let (op, bound) = compile::crosses(crosses)?;
         return Ok(ChangeWatch::Meter {
             id: id.clone(),
             op,
@@ -315,23 +316,23 @@ fn conds(yaml: &IfYaml) -> Result<Vec<Cond>, CompileError> {
 pub(in crate::canon) fn cond(yaml: &CondYaml) -> Result<Cond, CompileError> {
     Ok(match yaml {
         CondYaml::HasItem(item) => Cond::HasItem {
-            subject: parse_actor(&item.subject)?,
+            subject: compile::actor(&item.subject)?,
             id: item.id.clone(),
             count: (item.count.as_ref()).map_or(Ok(Expr::Num(1)), compile::expr_without_dice)?,
         },
         CondYaml::Meter(meter) => Cond::Meter {
-            of: parse_object(&meter.of)?,
+            of: compile::object(&meter.of)?,
             id: meter.id.clone(),
-            op: parse_op(&meter.op)?,
+            op: compile::op(&meter.op)?,
             value: compile::expr_without_dice(&meter.value)?,
         },
         CondYaml::Flag(flag) => Cond::Flag {
-            of: parse_object(&flag.of)?,
+            of: compile::object(&flag.of)?,
             id: flag.id.clone(),
             is: flag.is_,
         },
         CondYaml::At(at) => Cond::At {
-            subject: parse_actor(&at.subject)?,
+            subject: compile::actor(&at.subject)?,
             place_id: at.place_id.clone(),
         },
         CondYaml::Cycle(cycle) => {
@@ -347,12 +348,12 @@ pub(in crate::canon) fn cond(yaml: &CondYaml) -> Result<Cond, CompileError> {
             }
         }
         CondYaml::Players(players) => Cond::Players {
-            op: parse_op(&players.op)?,
+            op: compile::op(&players.op)?,
             value: compile::expr_without_dice(&players.value)?,
         },
         CondYaml::NoteExists(id) => Cond::NoteExists(id.clone()),
         CondYaml::Wielding(wielding) => Cond::Wielding {
-            subject: parse_actor(&wielding.subject)?,
+            subject: compile::actor(&wielding.subject)?,
             id: wielding.id.clone(),
         },
         CondYaml::All(all) => Cond::All(all.iter().map(compile::cond).collect::<Result<_, _>>()?),
@@ -452,7 +453,7 @@ fn effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
             return Err("a meter effect needs add or set, not both".into());
         }
         EffectYaml::Meter(meter) => EffectTemplate::Meter {
-            of: parse_object(&meter.of)?,
+            of: compile::object(&meter.of)?,
             id: meter.id.clone(),
             add: meter.add.as_ref().map(compile::expr).transpose()?,
             set: meter.set.as_ref().map(compile::expr).transpose()?,
@@ -461,7 +462,7 @@ fn effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
             return Err("flag id busy is not a flag".into());
         }
         EffectYaml::Flag(flag) => EffectTemplate::Flag {
-            of: parse_object(&flag.of)?,
+            of: compile::object(&flag.of)?,
             id: flag.id.clone(),
             value: flag.value,
         },
@@ -473,7 +474,7 @@ fn effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
                 );
             }
             EffectTemplate::Modifier {
-                to: parse_actor(&modifier.to)?,
+                to: compile::actor(&modifier.to)?,
                 id: modifier.id.clone(),
                 add: compile::expr(&modifier.add)?,
                 ticks,
@@ -509,21 +510,21 @@ fn effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
             text: narrate.text.clone(),
         },
         EffectYaml::Memory(memory) => EffectTemplate::Memory {
-            to: parse_actor(&memory.to)?,
+            to: compile::actor(&memory.to)?,
             text: memory.text.clone(),
         },
         EffectYaml::Item(item) => EffectTemplate::Item {
-            of: parse_object(&item.of)?,
+            of: compile::object(&item.of)?,
             id: item.id.clone(),
             add: compile::expr(&item.add)?,
             max: item.max.as_ref().map(compile::expr).transpose()?,
         },
         EffectYaml::Wield(wield) => EffectTemplate::Wield {
-            subject: parse_actor(&wield.subject)?,
+            subject: compile::actor(&wield.subject)?,
             id: wield.id.clone(),
         },
         EffectYaml::Unwield(unwield) => EffectTemplate::Unwield {
-            subject: parse_actor(&unwield.subject)?,
+            subject: compile::actor(&unwield.subject)?,
         },
         EffectYaml::Check(nested) => {
             let list_of = |list: &[EffectYaml]| {
@@ -533,7 +534,7 @@ fn effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
             };
             EffectTemplate::Check {
                 by: match &nested.by {
-                    Some(by) => parse_actor(by)?,
+                    Some(by) => compile::actor(by)?,
                     None => grammar::Actor::Self_,
                 },
                 check: compile::check(
@@ -549,7 +550,7 @@ fn effect_template(yaml: &EffectYaml) -> Result<EffectTemplate, CompileError> {
     })
 }
 
-fn parse_object(yaml: &Spanned<String>) -> Result<grammar::Object, CompileError> {
+fn object(yaml: &Spanned<String>) -> Result<grammar::Object, CompileError> {
     grammar::Object::parse(&yaml.value).map_err(|message| CompileError {
         message,
         file_location: file_location_of(yaml),
@@ -557,18 +558,18 @@ fn parse_object(yaml: &Spanned<String>) -> Result<grammar::Object, CompileError>
 }
 
 /// The actor a slot that needs one names, refused on the word's line when it is another entity.
-fn parse_actor(yaml: &Spanned<String>) -> Result<grammar::Actor, CompileError> {
+fn actor(yaml: &Spanned<String>) -> Result<grammar::Actor, CompileError> {
     grammar::Actor::parse(&yaml.value).map_err(|message| CompileError {
         message,
         file_location: file_location_of(yaml),
     })
 }
 
-fn parse_op(word: &str) -> Result<cond::Op, String> {
+fn op(word: &str) -> Result<cond::Op, String> {
     cond::Op::parse(word).ok_or_else(|| format!("op '{word}' is not <, <=, ==, >=, or >"))
 }
 
-fn parse_crosses(text: &str) -> Result<(cond::Op, i64), String> {
+fn crosses(text: &str) -> Result<(cond::Op, i64), String> {
     let text = text.trim();
     let split = text.find(|ch| !matches!(ch, '<' | '=' | '>'));
     let (op, bound) = text.split_at(split.unwrap_or(text.len()));
