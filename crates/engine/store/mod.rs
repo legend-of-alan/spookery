@@ -9,10 +9,10 @@ pub(crate) mod records;
 pub(crate) mod recovery;
 pub(crate) mod save;
 pub mod tape;
-mod write;
+mod writer;
 
 pub use lock::PackGuard;
-pub(crate) use write::{
+pub(crate) use writer::{
     commit_migrate, commit_round, keep_in_memory, publish_last_checkpoint, Outcome,
 };
 
