@@ -89,6 +89,34 @@ async fn the_seat_page_matches_a_live_table() {
     );
 }
 
+#[test]
+fn the_seat_page_lists_every_refusal_code_once() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let doc = std::fs::read_to_string(root.join("docs/seat-protocol.md")).unwrap();
+    let errors = doc
+        .split("## Errors")
+        .nth(1)
+        .and_then(|rest| rest.split("\n## ").next())
+        .expect("seat-protocol.md has an Errors section");
+    let mut documented: Vec<&str> = errors
+        .lines()
+        .filter_map(|line| line.strip_prefix("| ")?.split(" |").next())
+        .flat_map(|cell| cell.split(", "))
+        .filter_map(|code| code.strip_prefix('`')?.strip_suffix('`'))
+        .collect();
+    documented.sort_unstable();
+    let schema = std::fs::read_to_string(root.join("crates/protocol/schema/server.json")).unwrap();
+    let schema: Value = serde_json::from_str(&schema).unwrap();
+    let mut expected: Vec<&str> = schema["$defs"]["Reason"]["enum"]
+        .as_array()
+        .expect("server.json lists the Reason codes")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    expected.sort_unstable();
+    assert_eq!(documented, expected);
+}
+
 async fn capture() -> BTreeMap<String, Example> {
     let mut out = BTreeMap::new();
     let host = listen();
