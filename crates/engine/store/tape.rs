@@ -102,7 +102,7 @@ pub(crate) fn append(root: &Path, mut record: Record) -> Result<Record, Reason> 
 /// The filter runs before the limit.
 pub(crate) fn read_recent(root: &Path, player: &str) -> Result<Vec<Record>, Reason> {
     let mut matched = Vec::new();
-    for record in read_records(root)? {
+    for record in read(root)? {
         if record.recipient_ids.iter().any(|id| id == player) {
             matched.push(record);
         }
@@ -113,7 +113,7 @@ pub(crate) fn read_recent(root: &Path, player: &str) -> Result<Vec<Record>, Reas
 
 /// Every complete record, oldest first. A missing file is empty. A trailing partial line is
 /// not a record. A complete line that does not parse is `SCHEMA`. Past 1 MiB is `OUT_OF_RANGE`.
-pub(crate) fn read_records(root: &Path) -> Result<Vec<Record>, Reason> {
+pub(crate) fn read(root: &Path) -> Result<Vec<Record>, Reason> {
     let path = root.join("state/tape.jsonl");
     if !path.is_file() {
         return Ok(Vec::new());
@@ -142,17 +142,22 @@ fn parse(line: &str) -> Result<Record, Reason> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::fs;
+
+    use spookery_protocol::{Audience, Speaker};
+
+    use crate::store::tape;
     use crate::testing::fresh_dir;
+    use crate::Reason;
 
     #[test]
     fn an_appended_speech_keeps_the_tape_bytes() {
         let root = fresh_dir("tape-bytes");
-        let stored = append(&root, sample(0, "rowan", "line0")).unwrap();
+        let stored = tape::append(&root, sample(0, "rowan", "line0")).unwrap();
         let bytes = fs::read(root.join("state/tape.jsonl")).unwrap();
         let line = "{\"seq\":1,\"from\":\"gm\",\"to\":{\"actor\":\"rowan\"},\"recipients\":[\"rowan\"],\"text\":\"line0\",\"round_index\":0,\"world_time\":1080}\n";
         assert_eq!(bytes, line.as_bytes());
-        assert_eq!(parse(line.trim_end()).unwrap(), stored);
+        assert_eq!(tape::parse(line.trim_end()).unwrap(), stored);
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -161,13 +166,13 @@ mod tests {
         let root = fresh_dir("tape-cap-bytes");
         let path = root.join("state/tape.jsonl");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, vec![b'\n'; (MAX_BYTES as usize) + 1]).unwrap();
-        assert_eq!(read_records(&root).unwrap_err(), Reason::OutOfRange);
+        fs::write(&path, vec![b'\n'; (tape::MAX_BYTES as usize) + 1]).unwrap();
+        assert_eq!(tape::read(&root).unwrap_err(), Reason::OutOfRange);
         let _ = fs::remove_dir_all(&root);
     }
 
-    fn sample(seq: u64, player: &str, text: &str) -> Record {
-        Record {
+    fn sample(seq: u64, player: &str, text: &str) -> tape::Record {
+        tape::Record {
             seq,
             from: Speaker::Gm,
             from_name: String::new(),

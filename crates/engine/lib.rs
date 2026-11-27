@@ -103,7 +103,7 @@ pub mod testing {
 
         pub use crate::hash::blake2s_tagged;
         pub use crate::store::journal::{
-            emit_record, find_live_bundle, gunzip_bytes, gzip_bytes, latest_checkpoint,
+            emit_record, find_latest_checkpoint, find_live_bundle, gunzip_bytes, gzip_bytes,
             list_bundles, read_records, read_verified,
         };
         pub use crate::store::records::Record;

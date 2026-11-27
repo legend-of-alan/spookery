@@ -7,13 +7,11 @@ use super::Session;
 use crate::canon;
 use crate::ecs;
 use crate::hash::blake2s_tagged;
-use crate::replay::{
-    apply_journal, apply_record, checkpoint_diverged, load_save_bytes, open_at, Error,
-};
+use crate::replay;
 use crate::store::durability::write_atomic;
 use crate::store::journal;
 use crate::store::lock::{self, PackGuard};
-use crate::store::records::Record;
+use crate::store::records;
 use crate::store::save;
 use crate::Reason;
 
@@ -30,12 +28,12 @@ pub(crate) fn load_tip(pack: &Path, guard: &PackGuard) -> Result<Session<()>, Re
 
 /// Write a fresh dice seed into `save.yaml` when it has none and the journal is still empty,
 /// so the first round, and replay from the base save, roll from it. A seed already there stays.
-fn choose_seed(pack: &Path, guard: &PackGuard) -> Result<(), Error> {
+fn choose_seed(pack: &Path, guard: &PackGuard) -> Result<(), replay::Error> {
     if journal::read_mark(pack)?.is_some() || journal::find_live_bundle(pack).is_some() {
         return Ok(());
     }
     let save_path = journal::save_path(pack);
-    let mut file_save = load_save_bytes(&journal::read_save(&save_path)?)?;
+    let mut file_save = replay::parse_save_bytes(&journal::read_save(&save_path)?)?;
     if !file_save.seed.is_empty() {
         return Ok(());
     }
@@ -46,7 +44,7 @@ fn choose_seed(pack: &Path, guard: &PackGuard) -> Result<(), Error> {
 }
 
 /// The journal tip in memory. Writes nothing.
-pub(crate) fn peek_tip(pack: &Path) -> Result<Session<()>, Error> {
+pub(crate) fn peek_tip(pack: &Path) -> Result<Session<()>, replay::Error> {
     let mut session = Session::open(pack)?;
     if apply_live(&mut session)? {
         save::check(session.world())?;
@@ -65,12 +63,13 @@ pub fn migrate_pack(pack: &Path) -> Result<(), Reason> {
 
 /// The world to migrate, and whether it is a hand edit of the checkpoint mark. A hand edit
 /// with live rounds past it is refused, because the tip does not hold it.
-fn load_migrate_tip(pack: &Path, guard: &PackGuard) -> Result<(ecs::World, bool), Error> {
+fn load_migrate_tip(pack: &Path, guard: &PackGuard) -> Result<(ecs::World, bool), replay::Error> {
     let bytes = journal::read_save(&journal::save_path(pack))?;
-    let file_save = load_save_bytes(&bytes)?;
+    let file_save = replay::parse_save_bytes(&bytes)?;
     let edited = journal::edits_mark(pack, file_save.state_rev, &bytes)?;
     let ahead = journal::read_live_records(pack)?.iter().any(|record| {
-        !matches!(record, Record::Checkpoint(_)) && record.state_rev_after() > file_save.state_rev
+        !matches!(record, records::Record::Checkpoint(_))
+            && record.state_rev_after() > file_save.state_rev
     });
     match (ahead, edited) {
         (true, true) => Err(Reason::HandEdit.into()),
@@ -83,31 +82,31 @@ fn load_migrate_tip(pack: &Path, guard: &PackGuard) -> Result<(ecs::World, bool)
 }
 
 /// The journal tip in memory and unchecked. Migrate checks it after adding its meters.
-fn load_tip_unchecked(pack: &Path, guard: &PackGuard) -> Result<Session<()>, Error> {
+fn load_tip_unchecked(pack: &Path, guard: &PackGuard) -> Result<Session<()>, replay::Error> {
     rebuild_save(pack, guard)?;
     let bytes = journal::read_save(&journal::save_path(pack))?;
-    let mut session = open_at(pack, &bytes)?;
+    let mut session = replay::open_at(pack, &bytes)?;
     apply_live(&mut session)?;
     crate::store::publish_last_checkpoint(&session, &lock::take_write(session.root(), guard)?)?;
     Ok(session)
 }
 
 /// Replay the live records past the save. `true` when any record was replayed.
-fn apply_live(session: &mut Session<()>) -> Result<bool, Error> {
-    let records = journal::read_live_records(session.root())?;
+fn apply_live(session: &mut Session<()>) -> Result<bool, replay::Error> {
+    let entries = journal::read_live_records(session.root())?;
     let base_rev = session.world().state_rev;
     let mut replayed = false;
-    for record in &records {
+    for record in &entries {
         if record.state_rev_after() <= base_rev {
             continue;
         }
-        apply_record(session, record)?;
+        replay::apply_record(session, record)?;
         replayed = true;
     }
     Ok(replayed)
 }
 
-fn rebuild_save(pack: &Path, guard: &PackGuard) -> Result<(), Error> {
+fn rebuild_save(pack: &Path, guard: &PackGuard) -> Result<(), replay::Error> {
     let Some(mark) = journal::read_mark(pack)? else {
         return Ok(());
     };
@@ -134,14 +133,16 @@ fn rebuild_save(pack: &Path, guard: &PackGuard) -> Result<(), Error> {
         Err(Reason::NotInSpec) => {}
         Err(reason) => return Err(reason.into()),
     }
-    let records = journal::read_records(pack)?;
-    let report = apply_journal(pack, &records, None, Some(mark.state_rev))?;
+    let entries = journal::read_records(pack)?;
+    let report = replay::apply_journal(pack, &entries, None, Some(mark.state_rev))?;
     if blake2s_tagged(&report.now_yaml) != mark.state_hash {
-        return Err(
-            checkpoint_diverged(mark.state_rev, mark.round_index, "state hash differed")
-                .with_replayed_bytes(report.now_yaml)
-                .into(),
-        );
+        return Err(replay::checkpoint_diverged(
+            mark.state_rev,
+            mark.round_index,
+            "state hash differed",
+        )
+        .with_replayed_bytes(report.now_yaml)
+        .into());
     }
     let _write = lock::take_write(pack, guard)?;
     Ok(write_atomic(&save_path, &report.now_yaml)?)

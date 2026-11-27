@@ -19,7 +19,7 @@ use crate::ecs::{self, component, Save};
 use crate::entity;
 use crate::store;
 use crate::store::journal;
-use crate::store::records::{DroppedMeter, MigrateRecord, Record};
+use crate::store::records::{self, DroppedMeter, MigrateRecord};
 use crate::Reason;
 
 const FILE: &str = "state/save.yaml";
@@ -334,23 +334,23 @@ fn meter_error(entity_id: &entity::Id, key: &str, message: &str, hint: &str) -> 
 }
 
 /// Hash of the newest migrate in `live` past the checkpoint, or the save's own hash.
-fn read_tip<'rec>(live: &'rec [Record], save: &'rec Save) -> &'rec str {
+fn find_tip_pack_rev<'rec>(live: &'rec [records::Record], save: &'rec Save) -> &'rec str {
     live.iter()
         .rev()
         .filter(|entry| entry.state_rev_after() > save.state_rev)
         .find_map(|entry| match entry {
-            Record::Migrate(record) => Some(record.pack_rev_after.as_str()),
+            records::Record::Migrate(record) => Some(record.pack_rev_after.as_str()),
             _ => None,
         })
         .unwrap_or(&save.pack_rev)
 }
 
 /// `Some` when the canon files are not the journal tip's hash.
-fn find_rev_mismatch(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagnostic> {
+fn find_rev_mismatch(root: &Path, tip_pack_rev: &str, bytes: &[u8]) -> Option<Diagnostic> {
     match canon::hash(root) {
-        Ok(rev) if tip != rev => {
+        Ok(rev) if tip_pack_rev != rev => {
             let mut diagnostic = error(
-                "state/save.yaml",
+                FILE,
                 Reason::PackRevMismatch,
                 "pack_rev does not match the canon hash",
                 "run spook migrate to store the current hash",
@@ -365,7 +365,7 @@ fn find_rev_mismatch(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagnostic>
         Ok(_) => None,
         Err(_) => Some(
             error(
-                "state/save.yaml",
+                FILE,
                 Reason::Schema,
                 "the canon files could not be hashed",
                 "check that world/, cast/, and rules/ are readable",
@@ -376,9 +376,9 @@ fn find_rev_mismatch(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagnostic>
 }
 
 /// The on-disk save is a checkpoint. Later live records still have to be replayed.
-fn journal_continues(live: &[Record], save: &Save) -> bool {
+fn has_later_records(live: &[records::Record], save: &Save) -> bool {
     live.iter().any(|entry| match entry {
-        Record::Checkpoint(_) => false,
+        records::Record::Checkpoint(_) => false,
         _ => entry.state_rev_after() > save.state_rev,
     })
 }
@@ -392,23 +392,21 @@ pub(crate) fn load(
     bytes: &[u8],
 ) -> Result<Save, Vec<Diagnostic>> {
     let text = std::str::from_utf8(bytes).map_err(|_| {
-        vec![schema_error(
-            "state/save.yaml",
-            "this file is not UTF-8 text",
-            "save it as UTF-8",
-        )
-        .at_key_path("schema")]
+        vec![
+            schema_error(FILE, "this file is not UTF-8 text", "save it as UTF-8")
+                .at_key_path("schema"),
+        ]
     })?;
     let save = parse(text)?;
     let live = journal::read_live_records(root).unwrap_or_default();
-    let mut diagnostics = diagnose_save_text(&save, bytes);
-    if let Some(diagnostic) = find_rev_mismatch(root, read_tip(&live, &save), bytes) {
+    let mut diagnostics = diagnose_text(&save, bytes);
+    if let Some(diagnostic) = find_rev_mismatch(root, find_tip_pack_rev(&live, &save), bytes) {
         diagnostics.insert(0, diagnostic);
     }
     let migrate_follows = live.iter().any(|entry| {
-        matches!(entry, Record::Migrate(_)) && entry.state_rev_after() > save.state_rev
+        matches!(entry, records::Record::Migrate(_)) && entry.state_rev_after() > save.state_rev
     });
-    let continues = journal_continues(&live, &save);
+    let has_later = has_later_records(&live, &save);
     let is_hand_edit = |diagnostic: &Diagnostic| diagnostic.code == Code::Error(Reason::HandEdit);
     if migrate_follows {
         diagnostics.retain(|diagnostic| !is_hand_edit(diagnostic));
@@ -417,7 +415,7 @@ pub(crate) fn load(
             Ok(false) => {}
             Ok(true) => diagnostics.push(
                 error(
-                    "state/save.yaml",
+                    FILE,
                     Reason::HandEdit,
                     "this save differs from the checkpoint mark it claims",
                     "restore the file, or run spook migrate to keep the edit if no round follows it",
@@ -435,7 +433,7 @@ pub(crate) fn load(
             ),
         }
     }
-    if let Some(canon) = canon.filter(|_| !continues) {
+    if let Some(canon) = canon.filter(|_| !has_later) {
         if let Err(more) = check(&ecs::World::new(save.clone(), Arc::clone(canon))) {
             diagnostics.extend(more);
         }
@@ -448,15 +446,11 @@ pub(crate) fn load(
 }
 
 /// The reserved actor id `world` in the save, and a save that is not its own canonical text.
-fn diagnose_save_text(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
+fn diagnose_text(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     let saved = serde_json::to_value(save).unwrap_or_default();
     if saved["actors"]["control_type"].get("world").is_some() {
-        let diagnostic = schema_error(
-            "state/save.yaml",
-            "actor id world is reserved",
-            "rename that actor",
-        );
+        let diagnostic = schema_error(FILE, "actor id world is reserved", "rename that actor");
         diagnostics.push(diagnostic.at_key_path("actors.world"));
     }
     match emit(save) {
@@ -465,7 +459,7 @@ fn diagnose_save_text(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
                 find_first_diverged_line(live, &emitted).map(|(line_no, _)| line_no)
             });
             let mut diagnostic = error(
-                "state/save.yaml",
+                FILE,
                 Reason::HandEdit,
                 "this save does not match the canonical text",
                 "run spook migrate to keep the edit, or restore the file",
@@ -479,7 +473,7 @@ fn diagnose_save_text(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
         Ok(_) => {}
         Err(_) => diagnostics.push(
             error(
-                "state/save.yaml",
+                FILE,
                 Reason::Schema,
                 "the save could not be written back as YAML",
                 "fix the values so they match the save format",

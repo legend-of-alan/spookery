@@ -17,7 +17,7 @@ use std::path::Path;
 
 use crate::session;
 use crate::store::journal;
-use crate::store::records::Record;
+use crate::store::records;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
 use super::support::{arb_rounds, play_rounds, runner_config, TempPack};
@@ -39,12 +39,12 @@ fn running_a_round_again_matches_the_logged_effects() {
 }
 
 fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
-    let records = journal::read_verified(played)
+    let entries = journal::read_verified(played)
         .map_err(|fault| TestCaseError::fail(format!("{}: {}", fault.file, fault.detail)))?;
-    let round_records: Vec<_> = records
+    let round_records: Vec<_> = entries
         .into_iter()
         .filter_map(|entry| match entry {
-            Record::Round(record) => Some(record),
+            records::Record::Round(record) => Some(record),
             _ => None,
         })
         .collect();

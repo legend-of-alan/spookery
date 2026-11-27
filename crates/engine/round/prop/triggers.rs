@@ -27,7 +27,7 @@ use std::path::Path;
 use crate::rules::effect;
 use crate::session;
 use crate::store::journal;
-use crate::store::records::{Record, RoundRecord, Step};
+use crate::store::records::{self, RoundRecord, Step};
 use proptest::prelude::*;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
@@ -80,21 +80,21 @@ fn assert_triggers_stop(
         .max_trigger_depth;
     let entries = journal::read_records(pack)
         .map_err(|fault| TestCaseError::fail(format!("{}: {}", fault.file, fault.detail)))?;
-    let records: Vec<&RoundRecord> = entries
+    let round_records: Vec<&RoundRecord> = entries
         .iter()
         .filter_map(|entry| match entry {
-            Record::Round(record) => Some(record),
+            records::Record::Round(record) => Some(record),
             _ => None,
         })
         .collect();
-    if records.len() != rounds {
+    if round_records.len() != rounds {
         return Err(TestCaseError::fail(format!(
             "played {rounds} rounds but the journal has {} round records",
-            records.len()
+            round_records.len()
         )));
     }
     let mut flags = BTreeSet::new();
-    for record in records {
+    for record in round_records {
         flags = check_round(record, rules, max, flags, rowan_oil_gains(record))?;
     }
     assert_replay_matches(pack)

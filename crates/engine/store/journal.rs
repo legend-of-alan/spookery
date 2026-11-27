@@ -19,7 +19,7 @@ use serde::de::DeserializeOwned;
 use crate::hash::blake2s_tagged;
 use crate::store;
 use crate::store::durability::refuse_io;
-use crate::store::records::{CheckpointRecord, MigrateRecord, Record, RoundRecord};
+use crate::store::records::{self, CheckpointRecord, MigrateRecord, RoundRecord};
 use crate::Reason;
 
 pub(crate) fn base_path(pack: &Path) -> PathBuf {
@@ -107,27 +107,30 @@ impl Error {
 
 /// Parse every complete record. A torn last line is left unread. The chain is not checked.
 #[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
-pub fn read_records(pack: &Path) -> Result<Vec<Record>, Error> {
+pub fn read_records(pack: &Path) -> Result<Vec<records::Record>, Error> {
     Ok(flatten_bundles(&read_bundle_records(pack)?))
 }
 
 /// Read the bundles and check that each record's chain matches the one before it.
 #[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
-pub fn read_verified(pack: &Path) -> Result<Vec<Record>, Error> {
+pub fn read_verified(pack: &Path) -> Result<Vec<records::Record>, Error> {
     let bundles = read_bundle_records(pack)?;
     check_chain(pack, &bundles)?;
     Ok(flatten_bundles(&bundles))
 }
 
 /// Every record of `bundles`, in file order.
-pub(crate) fn flatten_bundles(bundles: &[(String, Vec<Record>)]) -> Vec<Record> {
+pub(crate) fn flatten_bundles(bundles: &[(String, Vec<records::Record>)]) -> Vec<records::Record> {
     bundles
         .iter()
         .flat_map(|(_, entries)| entries.clone())
         .collect()
 }
 
-pub(crate) fn check_chain(pack: &Path, bundles: &[(String, Vec<Record>)]) -> Result<(), Error> {
+pub(crate) fn check_chain(
+    pack: &Path,
+    bundles: &[(String, Vec<records::Record>)],
+) -> Result<(), Error> {
     if bundles.iter().all(|(_, entries)| entries.is_empty()) {
         return Ok(());
     }
@@ -149,7 +152,7 @@ pub(crate) fn check_chain(pack: &Path, bundles: &[(String, Vec<Record>)]) -> Res
 }
 
 /// Blake2s of `prev` and the record bytes with `chain` omitted.
-pub(crate) fn chain_hash(prev: &str, body: &str) -> String {
+pub(crate) fn hash_chain(prev: &str, body: &str) -> String {
     let mut bytes = Vec::with_capacity(prev.len() + 1 + body.len());
     bytes.extend(prev.as_bytes());
     bytes.push(0);
@@ -157,8 +160,12 @@ pub(crate) fn chain_hash(prev: &str, body: &str) -> String {
     blake2s_tagged(&bytes)
 }
 
-pub(crate) fn checkpoint_record(round_index: u64, state_rev: u64, state_hash: &str) -> Record {
-    Record::Checkpoint(CheckpointRecord {
+pub(crate) fn build_checkpoint(
+    round_index: u64,
+    state_rev: u64,
+    state_hash: &str,
+) -> records::Record {
+    records::Record::Checkpoint(CheckpointRecord {
         round_index,
         state_rev,
         state_hash: state_hash.to_string(),
@@ -174,12 +181,12 @@ pub(crate) fn read_chain(line: &str) -> Result<String, Error> {
 }
 
 /// `prev` is the chain to continue. The returned line ends with a newline.
-pub(crate) fn commit(entry: &Record, prev: &str) -> String {
+pub(crate) fn commit(entry: &records::Record, prev: &str) -> String {
     let mut committed = entry.clone();
     committed.set_prev(prev.to_string());
     committed.set_chain(String::new());
     let body = emit_record(&committed);
-    let chain = chain_hash(prev, body.trim_end());
+    let chain = hash_chain(prev, body.trim_end());
     committed.set_chain(chain);
     emit_record(&committed)
 }
@@ -198,7 +205,7 @@ pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, Error> {
 }
 
 /// Records in the uncompressed live bundle. Closed bundles stay unread.
-pub(crate) fn read_live_records(pack: &Path) -> Result<Vec<Record>, Error> {
+pub(crate) fn read_live_records(pack: &Path) -> Result<Vec<records::Record>, Error> {
     let Some((bundle, text)) = read_live_bundle(pack)? else {
         return Ok(Vec::new());
     };
@@ -223,15 +230,17 @@ fn base_hash(pack: &Path) -> Result<String, Error> {
 }
 
 #[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
-pub fn latest_checkpoint(entries: &[Record]) -> Option<&CheckpointRecord> {
+pub fn find_latest_checkpoint(entries: &[records::Record]) -> Option<&CheckpointRecord> {
     entries.iter().rev().find_map(|entry| match entry {
-        Record::Checkpoint(record) => Some(record),
+        records::Record::Checkpoint(record) => Some(record),
         _ => None,
     })
 }
 
 /// Records in each bundle, in file order. A torn end is not included.
-pub(crate) fn read_bundle_records(pack: &Path) -> Result<Vec<(String, Vec<Record>)>, Error> {
+pub(crate) fn read_bundle_records(
+    pack: &Path,
+) -> Result<Vec<(String, Vec<records::Record>)>, Error> {
     let mut out = Vec::new();
     for (bundle, path) in list_bundles(pack)? {
         let entries = parse_complete(&bundle, &read_bundle(&bundle, &path)?)?;
@@ -257,7 +266,7 @@ pub(crate) fn trailing_checkpoint(path: &Path) -> Option<CheckpointRecord> {
     let text = fs::read_to_string(path).ok()?;
     let line = find_last_line(&text)?;
     match parse_line("bundle", line).ok()? {
-        Record::Checkpoint(record) => Some(record),
+        records::Record::Checkpoint(record) => Some(record),
         _ => None,
     }
 }
@@ -290,19 +299,19 @@ pub(crate) fn next_bundle_path(pack: &Path) -> PathBuf {
 }
 
 #[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
-pub fn emit_record(entry: &Record) -> String {
+pub fn emit_record(entry: &records::Record) -> String {
     let json = serde_json::to_string(entry).expect("record");
     format!("{json}\n")
 }
 
-fn chain_of(entry: &Record) -> String {
+fn hash_record(entry: &records::Record) -> String {
     let mut bare = entry.clone();
     bare.set_chain(String::new());
     let body = emit_record(&bare);
-    chain_hash(entry.prev(), body.trim_end())
+    hash_chain(entry.prev(), body.trim_end())
 }
 
-fn parse_line(bundle: &str, line: &str) -> Result<Record, Error> {
+fn parse_line(bundle: &str, line: &str) -> Result<records::Record, Error> {
     parse_json(bundle, line).map_err(|fault| {
         let value: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
         let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
@@ -392,8 +401,8 @@ fn check_line_chain(bundle: &str, line: &str) -> Result<String, Error> {
     Ok(entry.chain().to_string())
 }
 
-fn check_record_chain(bundle: &str, entry: &Record) -> Result<(), Error> {
-    if entry.chain() != chain_of(entry) {
+fn check_record_chain(bundle: &str, entry: &records::Record) -> Result<(), Error> {
+    if entry.chain() != hash_record(entry) {
         return Err(Error::new(
             Path::new(bundle),
             Reason::JournalDiverged,
@@ -414,7 +423,7 @@ fn trim_torn_end(text: &str) -> &str {
     }
 }
 
-fn parse_complete(bundle: &str, text: &str) -> Result<Vec<Record>, Error> {
+fn parse_complete(bundle: &str, text: &str) -> Result<Vec<records::Record>, Error> {
     let mut entries = Vec::new();
     for line in trim_torn_end(text).lines() {
         if line.is_empty() {
@@ -481,7 +490,7 @@ mod tests {
         let line = commit(&entry, &prev);
         let again = parse_line("bundle-0000.jsonl", line.trim_end()).unwrap();
         assert_eq!(again.prev(), prev);
-        assert_eq!(again.chain(), chain_of(&again));
+        assert_eq!(again.chain(), hash_record(&again));
         let next = commit(&entry, again.chain());
         let next_entry = parse_line("bundle-0000.jsonl", next.trim_end()).unwrap();
         assert_eq!(next_entry.prev(), again.chain());
@@ -532,10 +541,11 @@ mod tests {
     #[test]
     fn golden_round_and_migrate_round_trip() {
         let round = include_str!("../fixtures/round.jsonl");
-        let Record::Round(parsed) = parse_line("round.jsonl", round.trim_end()).unwrap() else {
+        let records::Record::Round(parsed) = parse_line("round.jsonl", round.trim_end()).unwrap()
+        else {
             panic!("not a round record");
         };
-        assert_eq!(emit_record(&Record::Round(parsed.clone())), round);
+        assert_eq!(emit_record(&records::Record::Round(parsed.clone())), round);
         assert!(parsed.effects.iter().any(|effect| {
             matches!(
                 effect.kind,

@@ -17,7 +17,7 @@ pub(in crate::ecs) type Ids<'a, E> =
 /// four of them. `&C` gives the value of a component an entity holds one of, and a
 /// `component::Ref` of one it holds many of, by entry id.
 pub trait QueryData<E: entity::Collection> {
-    // repeats module: mirrors Bevy's QueryData (Naming rule 15)
+    // repeats module: mirrors Bevy's QueryData (Naming rule 8)
     type Item<'a>
     where
         E: 'a;
@@ -33,7 +33,7 @@ pub trait QueryData<E: entity::Collection> {
 
 /// Which entities a query keeps: `With<C>`, `Without<C>`, or a tuple of up to four of them.
 pub trait QueryFilter<E: entity::Collection> {
-    // repeats module: mirrors Bevy's QueryFilter (Naming rule 15)
+    // repeats module: mirrors Bevy's QueryFilter (Naming rule 8)
     /// The ids of the entities that have the first component this requires, or `None` when it requires none.
     fn entity_ids<'a>(_: Reader<'a, E>) -> Option<Ids<'a, E>> {
         None

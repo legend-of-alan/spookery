@@ -76,7 +76,6 @@ impl PackGuard {
 
 /// Held while the writer publishes, so no reader sees a write halfway done.
 /// The inner write helpers take `&WriteGuard`, so a write without one does not compile.
-#[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub struct WriteGuard {
     _file: LockedFile,
 }

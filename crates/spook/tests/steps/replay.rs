@@ -443,7 +443,7 @@ fn the_save_hash_matches_the_latest_checkpoint(world: &mut World) {
     let pack = host::pack(world);
     let entries = spookery_engine::testing::journal::read_records(pack)
         .unwrap_or_else(|err| panic!("{}", err.detail));
-    let mark = spookery_engine::testing::journal::latest_checkpoint(&entries)
+    let mark = spookery_engine::testing::journal::find_latest_checkpoint(&entries)
         .unwrap_or_else(|| panic!("no checkpoint"));
     let save = fs::read(pack.join("state/save.yaml")).unwrap();
     assert_eq!(
@@ -493,7 +493,7 @@ fn the_checkpoints_save_and_snapshot_are_rolled_back(world: &mut World) {
     let pack = host::pack(world).to_path_buf();
     let entries = spookery_engine::testing::journal::read_records(&pack)
         .unwrap_or_else(|err| panic!("{}", err.detail));
-    let mark = spookery_engine::testing::journal::latest_checkpoint(&entries)
+    let mark = spookery_engine::testing::journal::find_latest_checkpoint(&entries)
         .unwrap_or_else(|| panic!("no checkpoint"));
     let snap = pack
         .join("state/checkpoints")

@@ -13,7 +13,7 @@ use crate::rules::effect::Effect;
 use crate::session;
 use crate::store;
 use crate::store::journal;
-use crate::store::records::{emit_effect, MigrateRecord, Record, RoundRecord};
+use crate::store::records::{self, emit_effect, MigrateRecord, RoundRecord};
 use crate::store::save;
 use crate::Reason;
 
@@ -48,12 +48,12 @@ impl DivergenceKind {
     }
 }
 
-impl From<&Record> for DivergenceKind {
-    fn from(entry: &Record) -> Self {
+impl From<&records::Record> for DivergenceKind {
+    fn from(entry: &records::Record) -> Self {
         match entry {
-            Record::Round(_) => Self::Round,
-            Record::Migrate(_) => Self::Migrate,
-            Record::Checkpoint(_) => Self::Checkpoint,
+            records::Record::Round(_) => Self::Round,
+            records::Record::Migrate(_) => Self::Migrate,
+            records::Record::Checkpoint(_) => Self::Checkpoint,
         }
     }
 }
@@ -178,13 +178,13 @@ pub(crate) fn checkpoint_diverged(
     )
 }
 
-/// Replay the journal's `records`. `from` is a directory whose `state/save.yaml` replaces
-/// the base. `until` ignores records with a later `state_rev`, so a live host cannot race
+/// Replay the journal's `entries`. `from` is a directory whose `state/save.yaml` replaces
+/// the base. `until` ignores entries with a later `state_rev`, so a live host cannot race
 /// a verify.
 #[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn apply_journal(
     pack: &Path,
-    records: &[Record],
+    entries: &[records::Record],
     from: Option<&Path>,
     until: Option<u64>,
 ) -> Result<Report, Error> {
@@ -198,26 +198,26 @@ pub fn apply_journal(
         journal::read_save(&base_path)?
     } else {
         let now_yaml = journal::read_save(&journal::save_path(pack))?;
-        if records.is_empty() {
+        if entries.is_empty() {
             return Ok(Report {
-                state_rev: state_rev_of(&now_yaml)?,
+                state_rev: parse_state_rev(&now_yaml)?,
                 applied: 0,
                 now_yaml,
             });
         }
         now_yaml
     };
-    let base_rev = state_rev_of(&base_bytes)?;
+    let base_rev = parse_state_rev(&base_bytes)?;
     let cap = until.unwrap_or_else(|| {
-        records
+        entries
             .iter()
-            .map(Record::state_rev_after)
+            .map(records::Record::state_rev_after)
             .max()
             .unwrap_or(base_rev)
     });
-    check_sequence(records, cap, base_rev, from.is_none(), &base_bytes)?;
+    check_sequence(entries, cap, base_rev, from.is_none(), &base_bytes)?;
     let mut applied = 0u64;
-    let needs_apply = records.iter().any(|entry| {
+    let needs_apply = entries.iter().any(|entry| {
         let rev = entry.state_rev_after();
         entry.changes_state() && rev > base_rev && rev <= cap
     });
@@ -229,7 +229,7 @@ pub fn apply_journal(
         });
     }
     let mut session = open_at(pack, &base_bytes)?;
-    for entry in records.iter() {
+    for entry in entries.iter() {
         let rev = entry.state_rev_after();
         if rev <= base_rev || rev > cap {
             continue;
@@ -248,7 +248,7 @@ pub fn apply_journal(
 
 /// A replay world at `base` with the pack's canon.
 pub(crate) fn open_at(pack: &Path, base: &[u8]) -> Result<session::Session<()>, Error> {
-    let save = load_save_bytes(base)?;
+    let save = parse_save_bytes(base)?;
     let canon = canon::load(pack)?;
     Ok(session::Session::from_parts(
         pack,
@@ -272,14 +272,14 @@ impl From<crate::store::journal::Error> for Error {
 }
 
 fn check_sequence(
-    records: &[Record],
+    entries: &[records::Record],
     cap: u64,
     base_rev: u64,
     engine_base: bool,
     base_bytes: &[u8],
 ) -> Result<(), Error> {
     let mut marks: Vec<(u64, u64, usize)> = Vec::new();
-    for (index, entry) in records.iter().enumerate() {
+    for (index, entry) in entries.iter().enumerate() {
         if !entry.changes_state() {
             continue;
         }
@@ -299,7 +299,7 @@ fn check_sequence(
         if rev != expected {
             return Err(missing(expected).into());
         }
-        let entry = &records[index];
+        let entry = &entries[index];
         if before.saturating_add(1) != rev {
             return Err(Divergence::new(
                 entry.into(),
@@ -321,8 +321,8 @@ fn check_sequence(
     Ok(())
 }
 
-fn check_base_migrate(entry: &Record, base_bytes: &[u8]) -> Result<(), Error> {
-    let Record::Migrate(record) = entry else {
+fn check_base_migrate(entry: &records::Record, base_bytes: &[u8]) -> Result<(), Error> {
+    let records::Record::Migrate(record) = entry else {
         return Err(Divergence::new(
             entry.into(),
             entry.state_rev_after(),
@@ -344,7 +344,7 @@ fn check_base_migrate(entry: &Record, base_bytes: &[u8]) -> Result<(), Error> {
     if record.state_hash != blake2s_tagged(base_bytes) {
         return Err(migrate_diverged("state_hash differed").into());
     }
-    let base_state = load_save_bytes(base_bytes)?;
+    let base_state = parse_save_bytes(base_bytes)?;
     if record.pack_rev_after != base_state.pack_rev {
         return Err(migrate_diverged("pack_rev differed").into());
     }
@@ -353,12 +353,12 @@ fn check_base_migrate(entry: &Record, base_bytes: &[u8]) -> Result<(), Error> {
 
 pub(crate) fn apply_record(
     session: &mut session::Session<()>,
-    entry: &Record,
+    entry: &records::Record,
 ) -> Result<(), Error> {
     match entry {
-        Record::Round(record) => apply_recorded_round(session, record),
-        Record::Migrate(record) => apply_migrate(session, record),
-        Record::Checkpoint(record) => {
+        records::Record::Round(record) => apply_recorded_round(session, record),
+        records::Record::Migrate(record) => apply_migrate(session, record),
+        records::Record::Checkpoint(record) => {
             let written = emit_save_bytes(session)?;
             if blake2s_tagged(&written) != record.state_hash {
                 return Err(checkpoint_diverged(
@@ -462,7 +462,7 @@ fn apply_migrate(session: &mut session::Session<()>, record: &MigrateRecord) -> 
                 .into());
         }
         let canon = Arc::clone(session.world().canon());
-        session.replace_world(ecs::World::new(load_save_bytes(&bytes)?, canon));
+        session.replace_world(ecs::World::new(parse_save_bytes(&bytes)?, canon));
         return Ok(());
     }
     let next = save::migrate(session.world().clone(), record)?;
@@ -476,13 +476,13 @@ fn apply_migrate(session: &mut session::Session<()>, record: &MigrateRecord) -> 
     Ok(())
 }
 
-pub(crate) fn load_save_bytes(bytes: &[u8]) -> Result<Save, Error> {
+pub(crate) fn parse_save_bytes(bytes: &[u8]) -> Result<Save, Error> {
     let text = std::str::from_utf8(bytes).map_err(|_| Reason::Schema)?;
     Ok(save::parse(text)?)
 }
 
-pub(crate) fn state_rev_of(bytes: &[u8]) -> Result<u64, Error> {
-    Ok(load_save_bytes(bytes)?.state_rev)
+pub(crate) fn parse_state_rev(bytes: &[u8]) -> Result<u64, Error> {
+    Ok(parse_save_bytes(bytes)?.state_rev)
 }
 
 pub(crate) fn emit_save_bytes<Lock>(session: &session::Session<Lock>) -> Result<Vec<u8>, Error> {
@@ -502,9 +502,9 @@ mod tests {
     fn two_replays_in_one_process_do_not_collide() {
         let pack = copy_pack("docks", "replay-collide");
         play_empty_round(&pack);
-        let records = journal::read_records(&pack).unwrap();
-        let left = apply_journal(&pack, &records, None, None).unwrap();
-        let right = apply_journal(&pack, &records, None, None).unwrap();
+        let entries = journal::read_records(&pack).unwrap();
+        let left = apply_journal(&pack, &entries, None, None).unwrap();
+        let right = apply_journal(&pack, &entries, None, None).unwrap();
         assert_eq!(left.now_yaml, right.now_yaml);
         assert_eq!(left.applied, 1);
         assert_eq!(right.applied, 1);
