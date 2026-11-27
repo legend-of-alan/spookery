@@ -140,27 +140,24 @@ fn rule(file: &str, index: usize, entry: RuleYaml, scope: &Scope) -> Result<Rule
             || entry.finish.is_some()
             || entry.cooldown_ticks > 0
             || entry.cancellable;
-        if matches!(kind, rule::Kind::Change(_)) && timed {
-            diagnostics.push(schema_error(
-                file,
-                "a change rule has a cost, start, finish, cooldown_ticks, or cancellable",
-                "remove them; a change is a consequence, not an action",
-            ));
-        }
-        if check.is_none() && (!success.is_empty() || !partial.is_empty() || !miss.is_empty()) {
-            diagnostics.push(schema_error(
-                file,
-                &format!("rule '{local_id}' lists an outcome without a check"),
-                "add check or move those effects to do",
-            ));
-        }
-        if check.is_some() && success.is_empty() && (!partial.is_empty() || !miss.is_empty()) {
-            diagnostics.push(schema_error(
-                file,
-                &format!("rule '{local_id}' has a check without a success list"),
-                "add success",
-            ));
-        }
+        diagnostics.extend(lint::rule::find_timed_change(
+            &file_text, index, &entry.id, kind, timed,
+        ));
+        let outcome_lists = [&success[..], &partial, &miss];
+        diagnostics.extend(lint::rule::find_outcome_without_check(
+            &file_text,
+            index,
+            &entry.id,
+            check.as_ref(),
+            outcome_lists,
+        ));
+        diagnostics.extend(lint::rule::find_check_without_success(
+            &file_text,
+            index,
+            &entry.id,
+            check.as_ref(),
+            outcome_lists,
+        ));
         let own_check = check.as_ref().map(|check| (check, &partial[..]));
         let effect_lists = [&do_[..], &success, &partial, &miss];
         diagnostics.extend(lint::rule::find_broken_partial_band(

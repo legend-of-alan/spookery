@@ -1,5 +1,6 @@
-//! Lints that compile runs on one rule: a misplaced target, a `let:` read that fails, and a
-//! broken partial band.
+//! Lints that compile runs on one rule: a timed change rule, an outcome without a check, a
+//! check without a success list, a misplaced target, a `let:` read that fails, and a broken
+//! partial band.
 
 use serde_saphyr::Spanned;
 
@@ -7,7 +8,59 @@ use crate::canon::refusal::FileText;
 use crate::diagnostic::Diagnostic;
 use crate::rules::expr::Expr;
 use crate::rules::roll;
-use crate::rules::rule::{EffectTemplate, Rule};
+use crate::rules::rule::{self, EffectTemplate, Rule};
+
+/// A change rule that is `timed`, refused on the line of `rule_id`, the id of rule `rule_index`.
+pub(in crate::canon) fn find_timed_change(
+    file_text: &FileText,
+    rule_index: usize,
+    rule_id: &Spanned<String>,
+    kind: &rule::Kind,
+    timed: bool,
+) -> Vec<Diagnostic> {
+    if !matches!(kind, rule::Kind::Change(_)) || !timed {
+        return Vec::new();
+    }
+    let message = "a change rule has a cost, start, finish, cooldown_ticks, or cancellable";
+    let hint = "remove them; a change is a consequence, not an action";
+    vec![file_text.refuse_at_rule_id(rule_index, rule_id, message.into(), hint)]
+}
+
+/// Rule `rule_index` with no `check` but a success, partial or miss list, refused on the line
+/// of `rule_id`.
+pub(in crate::canon) fn find_outcome_without_check(
+    file_text: &FileText,
+    rule_index: usize,
+    rule_id: &Spanned<String>,
+    check: Option<&roll::Check>,
+    [success, partial, miss]: [&[EffectTemplate]; 3],
+) -> Vec<Diagnostic> {
+    if check.is_some() || (success.is_empty() && partial.is_empty() && miss.is_empty()) {
+        return Vec::new();
+    }
+    let message = format!("rule '{}' lists an outcome without a check", rule_id.value);
+    let hint = "add check or move those effects to do";
+    vec![file_text.refuse_at_rule_id(rule_index, rule_id, message, hint)]
+}
+
+/// Rule `rule_index` with a `check` and a partial or miss list but no success list, refused
+/// on the line of `rule_id`.
+pub(in crate::canon) fn find_check_without_success(
+    file_text: &FileText,
+    rule_index: usize,
+    rule_id: &Spanned<String>,
+    check: Option<&roll::Check>,
+    [success, partial, miss]: [&[EffectTemplate]; 3],
+) -> Vec<Diagnostic> {
+    if check.is_none() || !success.is_empty() || (partial.is_empty() && miss.is_empty()) {
+        return Vec::new();
+    }
+    let message = format!(
+        "rule '{}' has a check without a success list",
+        rule_id.value
+    );
+    vec![file_text.refuse_at_rule_id(rule_index, rule_id, message, "add success")]
+}
 
 /// The first key in `rule` whose `target` needs a target kind other than the rule's own,
 /// refused on the line of `rule_id`.
