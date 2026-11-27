@@ -6,8 +6,7 @@ use crate::store::{commit, RULES_REV};
 use crate::Reason;
 
 use crate::ecs::Presence;
-use crate::round::stages::deliver::Deliveries;
-use crate::round::StagedRound;
+use crate::round::stages::{self, deliver::Deliveries};
 use crate::round::{self, Ledger};
 
 /// What the round showed. A live round adds its commit outcome.
@@ -26,12 +25,12 @@ pub(crate) fn take_output(ledger: &mut Ledger, delivered: Deliveries) -> round::
 /// Write the round line and commit it. The session owns the pack lock.
 pub(crate) fn run(
     session: &mut session::Session,
-    staged: StagedRound,
+    staged: stages::Output,
     presence: &Presence,
     wall: &str,
     fast_forward: bool,
 ) -> Result<round::Output, Reason> {
-    let StagedRound {
+    let stages::Output {
         world,
         clock,
         mut ledger,

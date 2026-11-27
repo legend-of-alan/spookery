@@ -51,7 +51,7 @@ The map is exactly as big as it needs to be to tell terms apart and give each a 
 | tick | clock |
 | source: where an intent came from | origin |
 | handle, handler: receiving a message or event. A stored handler is written `handler()`. | on_, receive_, hook |
-| call: a request to an outside API or model. Std's `Fn::call` is exempt. | invoke |
+| call: a request to an outside API or model. Std's Fn::call is exempt. | invoke |
 | run: executing our own code, including a check or a verification. | invoke |
 | start, end: the two ends of a span, such as a bundle, a round, a file, or a timed action. init: setting up a singleton, or a value after it is created. | finish, begin, initialize |
 | tip: the newest record of the hash-chained journal. base: the starting snapshot, `state/journal/base.yaml`. mark: the latest published checkpoint stamp, `state/journal/mark.json`. Meter base is a different concept. | head (for the journal) |

@@ -11,7 +11,6 @@ pub(crate) mod recovery;
 pub(crate) mod save;
 pub mod tape;
 
-pub(crate) use commit::{commit_last_checkpoint, commit_migrate};
 pub use lock::PackGuard;
 
 /// Rules version stamped on every save and every round.

@@ -34,10 +34,10 @@ pub(crate) fn run(
 ) -> Result<Outcome, Reason> {
     let started = std::time::Instant::now();
     let write = lock::take_write(session.root(), session.lock())?;
-    commit_last_checkpoint(session, &write)?;
+    publish_last_checkpoint(session, &write)?;
     bump_state_rev(&mut world)?;
     let now_bytes = save::emit(&world)?.into_bytes();
-    let line = commit_round(
+    let line = build_round_line(
         record,
         session.world().state_rev,
         &mut world,
@@ -46,7 +46,7 @@ pub(crate) fn run(
     )?;
     let due = is_checkpoint_due(session.canon().checkpoint_every, world.round_index);
     let (payload, chain) = if due {
-        let (payload, chain) = commit_checkpoint(line, &world, &now_bytes)?;
+        let (payload, chain) = build_checkpoint_line(line, &world, &now_bytes)?;
         (payload, Some(chain))
     } else {
         (line, None)
@@ -97,7 +97,7 @@ fn bump_state_rev(world: &mut ecs::World) -> Result<(), Reason> {
 /// that edit, so a checkpoint of the migrated save follows the record and replay restarts
 /// from it. Its snapshot is on disk before the record, so a crash after the append still
 /// replays. The caller holds the pack lock.
-pub(crate) fn commit_migrate(
+pub(crate) fn migrate(
     root: &Path,
     world: ecs::World,
     edited: bool,
@@ -132,7 +132,7 @@ pub(crate) fn commit_migrate(
     let line = journal::commit(&entry, &prev);
     if edited {
         write_atomic(&journal::checkpoint_path(root, world.state_rev), &emitted)?;
-        let (payload, chain) = commit_checkpoint(line, &world, &emitted)?;
+        let (payload, chain) = build_checkpoint_line(line, &world, &emitted)?;
         append_to_bundle(root, &payload, &write)?;
         store_checkpoint(
             root,
@@ -157,7 +157,7 @@ pub(crate) fn commit_migrate(
 
 /// Follow a committed `line` with a checkpoint of `world`. Returns both lines and the
 /// checkpoint's chain.
-fn commit_checkpoint(
+fn build_checkpoint_line(
     line: String,
     world: &ecs::World,
     now_bytes: &[u8],
@@ -173,7 +173,7 @@ fn commit_checkpoint(
     Ok((format!("{line}{committed}"), chain))
 }
 
-fn commit_round(
+fn build_round_line(
     mut record: RoundRecord,
     state_rev_before: u64,
     world: &mut ecs::World,
@@ -279,7 +279,7 @@ fn warn_if_left_open(closed: Result<(), Reason>) -> bool {
 
 /// Publish `save.yaml` and the snapshot for a checkpoint that is already in the
 /// journal, then close that bundle. The next round can then start a new file.
-pub(crate) fn commit_last_checkpoint<Lock>(
+pub(crate) fn publish_last_checkpoint<Lock>(
     session: &session::Session<Lock>,
     write: &WriteGuard,
 ) -> Result<(), Reason> {

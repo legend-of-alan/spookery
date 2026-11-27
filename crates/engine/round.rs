@@ -134,7 +134,7 @@ pub(crate) fn replay(
 ) -> Result<Output, Reason> {
     let canon = Arc::clone(session.world().canon());
     let world = session.start_round();
-    let StagedRound {
+    let stages::Output {
         world,
         mut ledger,
         delivered,
@@ -145,15 +145,6 @@ pub(crate) fn replay(
     Ok(output)
 }
 
-/// What the stages leave for `record`: the round's working copy of the save, its time, its ledger,
-/// and what each seat hears.
-pub(crate) struct StagedRound {
-    pub(crate) world: ecs::World,
-    pub(crate) clock: Time,
-    pub(crate) ledger: Ledger,
-    pub(crate) delivered: deliver::Deliveries,
-}
-
 /// Every stage but `record`, in order, on `world`, the round's working copy of the save. The
 /// candidates' rules borrow the canon, not the save, while the later stages write it.
 fn stage(
@@ -162,7 +153,7 @@ fn stage(
     presence: &Presence,
     wall: &str,
     queue: &[Intent],
-) -> Result<StagedRound, Reason> {
+) -> Result<stages::Output, Reason> {
     let clock = advance::run(canon, &mut world, presence, wall)?;
     let mut dice = Dice::new(world.seed.clone(), clock.round_index);
     let mut ledger = Ledger::default();
@@ -182,7 +173,7 @@ fn stage(
     triggers::run(canon, &mut world, presence, &mut dice, &mut ledger);
     travel::note_exits(canon, &mut world)?;
     let delivered = deliver::run(canon, &world, presence, &ledger.changes, &ledger.effects);
-    Ok(StagedRound {
+    Ok(stages::Output {
         world,
         clock,
         ledger,
