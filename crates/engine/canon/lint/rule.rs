@@ -22,9 +22,12 @@ pub(in crate::canon) fn find_timed_change(
     if !matches!(kind, rule::Kind::Change(_)) || !timed {
         return Vec::new();
     }
-    let message = "a change rule has a cost, start, finish, cooldown_ticks, or cancellable";
+    let message = format!(
+        "rule '{}' has a cost, start, finish, cooldown_ticks, or cancellable",
+        rule_id.value
+    );
     let hint = "remove them; a change is a consequence, not an action";
-    vec![file_text.refuse_at_rule_id(rule_index, rule_id, message.into(), hint)]
+    vec![file_text.refuse_at_rule_id(rule_index, rule_id, message, hint)]
 }
 
 /// Rule `rule_index` with no `check` but a success, partial or miss list, refused on the line
