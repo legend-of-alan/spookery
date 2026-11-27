@@ -204,7 +204,7 @@ fn set_first_diverged_line(mut diverged: Divergence, live: &[u8]) -> Error {
     diverged.save_line = diverged.replayed_bytes.as_deref().and_then(|replayed| {
         let live_text = std::str::from_utf8(live).ok()?;
         let replayed_text = std::str::from_utf8(replayed).ok()?;
-        crate::check::find_first_diverged_line(live_text, replayed_text)
+        save::find_first_diverged_line(live_text, replayed_text)
     });
     diverged.into()
 }

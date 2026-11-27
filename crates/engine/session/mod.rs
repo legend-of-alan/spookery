@@ -23,6 +23,7 @@ use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind};
 use crate::store::journal;
 use crate::store::records;
+use crate::store::save;
 use crate::store::tape;
 use crate::Reason;
 use spookery_protocol::{Audience, QueuedVerb, Refusal, Speaker};
@@ -562,7 +563,7 @@ impl Session<()> {
         let canon = Arc::new(
             canon::load(root).map_err(|diagnostics| diagnostic::find_reason(&diagnostics))?,
         );
-        let save = crate::check::load(root, Some(&canon), &now_bytes)
+        let save = save::load(root, Some(&canon), &now_bytes)
             .map_err(|diagnostics| diagnostic::find_reason(&diagnostics))?;
         Ok(Self {
             root: root.to_path_buf(),
