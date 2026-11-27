@@ -71,7 +71,7 @@ fn the_host_reports_the_game_port_and_the_mcp_addr(world: &mut World) {
     let stdout = live
         .process
         .as_ref()
-        .map(|server| support::text_of(&server.stdout))
+        .map(|process| support::text_of(&process.stdout))
         .unwrap_or_default();
     let game = live.game_port;
     let mcp_port = live.mcp_port;

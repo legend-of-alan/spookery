@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Message",
-  "description": "One message on a seat's stream. `id` is chosen by the client and comes back as\n`reply_to` on the reply. `seq` is set by the server, from one counter per host, on\neverything it sends but the hello. The body is nested, so its fields never clash with\nthese.",
+  "description": "One message on a seat's stream. `id` is chosen by the client and comes back as\n`reply_to` on the reply. `seq` is set by the host from its one counter, on\neverything it sends but the hello. The body is nested, so its fields never clash with\nthese.",
   "type": "object",
   "properties": {
     "id": {
@@ -869,7 +869,7 @@
       ]
     },
     "View": {
-      "description": "Sent from the host to a player client as the `view` body and to a GM client as the\n`perceive` reply. Always written `protocol::View`: the engine's `View` is what the\nserver renders this from.",
+      "description": "Sent from the host to a player client as the `view` body and to a GM client as the\n`perceive` reply. Always written `protocol::View`: the engine's `View` is what the\nhost renders this from.",
       "type": "object",
       "properties": {
         "viewer": {

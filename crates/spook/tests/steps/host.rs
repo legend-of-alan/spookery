@@ -223,7 +223,7 @@ pub(crate) async fn serve_in_process(world: &mut World, pack: &Path) {
     let (out, out_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let stderr = Arc::new(Mutex::new(String::new()));
     let loopback: SocketAddr = "127.0.0.1:0".parse().unwrap();
-    let mut config = spookery_server::Config::new(loopback);
+    let mut config = spookery_host::Config::new(loopback);
     config.mcp_addr = Some(loopback);
     config.out = Box::new(out_pipe);
     let (advance, mut advances) = tokio::sync::mpsc::unbounded_channel::<Advance>();
@@ -245,7 +245,7 @@ pub(crate) async fn serve_in_process(world: &mut World, pack: &Path) {
             let shutdown = async {
                 let _ = stopped.await;
             };
-            if let Err(err) = spookery_server::serve(opened, config, shutdown).await {
+            if let Err(err) = spookery_host::serve(opened, config, shutdown).await {
                 failed.lock().unwrap().push_str(&format!("serve: {err}\n"));
             }
         });
@@ -832,8 +832,11 @@ pub(crate) async fn poll_until<T, Seen: std::fmt::Display>(
 
 pub(crate) fn stdout(world: &World) -> String {
     let live = live(world);
-    let process = live.process.as_ref().map(|server| &server.stdout);
-    let in_process = live.in_process.as_ref().map(|server| &server.stdout);
+    let process = live.process.as_ref().map(|process| &process.stdout);
+    let in_process = live
+        .in_process
+        .as_ref()
+        .map(|in_process| &in_process.stdout);
     process
         .or(in_process)
         .map(support::text_of)
@@ -969,7 +972,7 @@ async fn close_gm(world: &mut World, keep_session: bool) -> String {
     let text = gm_tool_call(world, 91, "release", "{}").await;
     assert!(
         text.contains("{\"kind\":\"released\"}"),
-        "the server did not confirm the seat was free\n{text}"
+        "the host did not confirm the GM claim was released\n{text}"
     );
     let live = live_mut(world);
     let gm = live.gm.take();

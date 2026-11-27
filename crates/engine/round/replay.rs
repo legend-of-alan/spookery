@@ -180,7 +180,7 @@ pub(crate) fn checkpoint_diverged(
 }
 
 /// Replay the journal's `records`. `from` is a directory whose `state/save.yaml` replaces
-/// the base. `until` ignores records with a later `state_rev`, so a live server cannot race
+/// the base. `until` ignores records with a later `state_rev`, so a live host cannot race
 /// a verify.
 #[cfg_attr(not(feature = "testing"), expect(unreachable_pub))]
 pub fn apply_journal(

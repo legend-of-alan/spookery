@@ -42,7 +42,7 @@ cargo test -p spook --test features_world -- --name "Locked exit"
 - `engine` is synchronous and depends only on `protocol`. It logs through `tracing`.
 - `agent` is async but runtime-free: it never builds, enters or blocks on a runtime.
 - `client` talks to the host only over the wire.
-- `spook` is the clap binary, and its `server` and `client` features each build alone.
+- `spook` is the clap binary, and its `host` and `client` features each build alone.
 - Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib.rs`).
 - The host's ports, wire format and MCP setup are in `docs/seat-protocol.md`.
 - Engine modules are `pub(crate)` except `entity`, `ecs` and `round`. The rest of the public surface is the re-export list in `crates/engine/lib.rs`, and the `unreachable_pub` lint enforces it.

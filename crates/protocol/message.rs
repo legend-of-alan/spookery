@@ -14,7 +14,7 @@ use crate::{
 pub const VERSION: u32 = 8;
 
 /// One message on a seat's stream. `id` is chosen by the client and comes back as
-/// `reply_to` on the reply. `seq` is set by the server, from one counter per host, on
+/// `reply_to` on the reply. `seq` is set by the host from its one counter, on
 /// everything it sends but the hello. The body is nested, so its fields never clash with
 /// these.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

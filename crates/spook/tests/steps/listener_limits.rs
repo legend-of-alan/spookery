@@ -74,8 +74,8 @@ async fn the_gm_releases_the_seat(world: &mut World) {
     world.scratch = host::release_gm(world).await;
 }
 
-#[then(expr = "the server confirms the seat is free")]
-fn the_server_confirms_the_seat_is_free(world: &mut World) {
+#[then(expr = "the host confirms the GM claim is released")]
+fn the_host_confirms_the_gm_claim_is_released(world: &mut World) {
     assert!(
         world.scratch.contains("{\"kind\":\"released\"}"),
         "{}",
@@ -303,7 +303,7 @@ async fn one_player_stops_reading(world: &mut World) {
             let stderr = host::live_mut(world)
                 .process
                 .as_ref()
-                .map(|server| support::text_of(&server.stderr))
+                .map(|process| support::text_of(&process.stderr))
                 .unwrap_or_default();
             panic!(
                 "rowan still connected after {sent_bytes} bytes (recv {recv_buffer_bytes}, send {send_buffer_bytes}, frame {frame_bytes}, queue {queue_bytes}, budget {budget_bytes})\n{stderr}"

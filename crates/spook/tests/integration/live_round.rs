@@ -46,13 +46,13 @@ fn a_live_model_plays_one_round() {
     let port = free_port();
     let addr = format!("127.0.0.1:{port}");
 
-    let mut server = crate::support::spawn(&["--addr", &addr, "run", &pack_text]);
-    wait_port(&addr, &mut server);
+    let mut host = crate::support::spawn(&["--addr", &addr, "run", &pack_text]);
+    wait_port(&addr, &mut host);
 
     let (proxy, calls) = start_proxy(upstream);
     let gm_dir = fresh_dir("live-round-ai-gm");
-    let mut host = spawn_ai_gm(&gm_dir, &addr, &key, &format!("http://{proxy}"), &model);
-    wait_text(&host, &host.stderr, "listening");
+    let mut ai_gm = spawn_ai_gm(&gm_dir, &addr, &key, &format!("http://{proxy}"), &model);
+    wait_text(&ai_gm, &ai_gm.stderr, "listening");
 
     let start_ticks = world_time(&pack);
     let mut player = crate::support::spawn(&["--addr", &addr, "play"]);
@@ -66,9 +66,9 @@ fn a_live_model_plays_one_round() {
         .expect("send travel");
     stdin.flush().expect("flush travel");
 
-    let advanced = wait_advance(&pack, start_ticks, &mut host);
-    let host_err = text_of(&host.stderr);
-    let up = host.child.try_wait().ok().flatten().is_none();
+    let advanced = wait_advance(&pack, start_ticks, &mut ai_gm);
+    let ai_gm_stderr = text_of(&ai_gm.stderr);
+    let up = ai_gm.child.try_wait().ok().flatten().is_none();
     let recorded: Vec<(u16, String)> = calls
         .lock()
         .unwrap()
@@ -86,8 +86,8 @@ fn a_live_model_plays_one_round() {
     }
 
     drop(player);
+    drop(ai_gm);
     drop(host);
-    drop(server);
     let _ = fs::remove_dir_all(&pack);
     let logs = fs::read_dir(gm_dir.join("logs"));
     for log in logs.into_iter().flatten().flatten() {
@@ -96,7 +96,7 @@ fn a_live_model_plays_one_round() {
 
     assert!(
         !recorded.is_empty(),
-        "ai-gm never called the model\n{host_err}"
+        "ai-gm never called the model\n{ai_gm_stderr}"
     );
     for (status, body) in &recorded {
         assert!(
@@ -105,15 +105,15 @@ fn a_live_model_plays_one_round() {
             shorten(body)
         );
     }
-    let failures: Vec<&str> = host_err
+    let failures: Vec<&str> = ai_gm_stderr
         .lines()
         .filter(|line| line.starts_with("model call"))
         .collect();
     assert!(failures.is_empty(), "ai-gm reported {failures:?}");
-    assert!(up, "ai-gm exited\n{host_err}");
+    assert!(up, "ai-gm exited\n{ai_gm_stderr}");
     assert!(
         advanced,
-        "the queued verb did not commit a round\n{host_err}"
+        "the queued verb did not commit a round\n{ai_gm_stderr}"
     );
     println!(
         "live round passed: {} model call(s), one round committed",
@@ -241,11 +241,11 @@ fn free_port() -> u16 {
         .port()
 }
 
-fn wait_port(addr: &str, server: &mut Process) {
+fn wait_port(addr: &str, host: &mut Process) {
     let start = Instant::now();
     while TcpStream::connect(addr).is_err() {
-        if let Some(status) = server.child.try_wait().unwrap() {
-            panic!("spook run exited {status:?}\n{}", text_of(&server.stderr));
+        if let Some(status) = host.child.try_wait().unwrap() {
+            panic!("spook run exited {status:?}\n{}", text_of(&host.stderr));
         }
         if start.elapsed() > WAIT_LIMIT {
             panic!("spook run did not listen");

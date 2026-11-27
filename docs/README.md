@@ -62,7 +62,7 @@ crates/
   engine/              spookery-engine: world model, rules, rounds, and journal
   agent/               spookery-agent: the reusable GM brain: connection, model, chat_completions, context (the observation), tool, turn and task (the turn graph)
   client/              spookery-client: player, gm, ai_gm (the three clients), terminal (plain lines or the play window), websocket, http_model, text
-  server/              spookery-server: the host, the game port's WebSocket endpoint, MCP endpoint, GM commands, seats, idle timer
+  host/                spookery-host: the host, the game port's WebSocket endpoint, MCP endpoint, GM commands, seats, idle timer
   spook/               package and binary spook, library spookery
     tests/features/    BDD scenarios
 ```
@@ -82,7 +82,7 @@ These are the host options and the commands that touch a save.
 | `spook migrate <pack>` | Stores the current canon hash in the save. |
 | `spook verify <pack>` | Replays the journal and checks the save byte for byte. It does not write the pack, take the lock, or bind a port. |
 
-Each commit that changes the save appends one journal record under `state/journal`, and the first commit stores a replay base there. `verify` prints `verified <n> records, state_rev <r>` when the save matches. A fresh copy has never committed, so verify prints `verified 0 records, state_rev 0`. A later commit from a running server is ignored, because verify reads the save once and stops at that counter.
+Each commit that changes the save appends one journal record under `state/journal`, and the first commit stores a replay base there. `verify` prints `verified <n> records, state_rev <r>` when the save matches. A fresh copy has never committed, so verify prints `verified 0 records, state_rev 0`. A later commit from a running host is ignored, because verify reads the save once and stops at that counter.
 
 ```sh
 cp -r tests/packs/docks /tmp/docks
@@ -96,7 +96,7 @@ At a terminal, `spook play` opens a game window: the transcript on the left, the
 
 If you join as a character who's already seated, `spook play` exits 1 with `That character is already taken. [SEAT_TAKEN]`. A fourth player gets `The table is full. [TABLE_FULL]`.
 
-`spook` builds with both the `server` and `client` features by default. To build just one, pass `--no-default-features --features server` or `--no-default-features --features client`.
+`spook` builds with both the `host` and `client` features by default. To build just one, pass `--no-default-features --features host` or `--no-default-features --features client`.
 
 ## Game master
 

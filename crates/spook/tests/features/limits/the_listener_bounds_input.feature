@@ -46,13 +46,13 @@ Feature: The listener bounds input
   Scenario: The GM seat confirms it is free
     Given a docks table with a seated GM
     When the GM releases the seat
-    Then the server confirms the seat is free
+    Then the host confirms the GM claim is released
     And a second player can claim and wait
 
   Scenario: A closed GM session cannot call tools
     Given a docks table with a seated GM
     When the GM releases the seat and keeps the session
-    Then the server confirms the seat is free
+    Then the host confirms the GM claim is released
     When another GM connects
     And the closed session calls say
     Then that call is refused and nothing was written

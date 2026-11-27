@@ -45,7 +45,7 @@ pub(crate) static TOOLS: LazyLock<Value> = LazyLock::new(|| {
         ),
         tool(
             queue,
-            "Queue a verb from the menu for an actor. The server answers queued or refused.",
+            "Queue a verb from the menu for an actor. The host answers queued or refused.",
             args("QueueArgs"),
         ),
         tool(
@@ -56,7 +56,7 @@ pub(crate) static TOOLS: LazyLock<Value> = LazyLock::new(|| {
     ])
 });
 
-/// Answers `tool_call`: the server's reply to the command it asks for, or the agent's own
+/// Answers `tool_call`: the host's reply to the command it asks for, or the agent's own
 /// answer when no command goes out.
 pub(crate) async fn call<M: Model, Conn: Connection>(
     agent: &Agent<M, Conn>,
@@ -83,7 +83,7 @@ pub(crate) async fn call<M: Model, Conn: Connection>(
 /// One reply as the model reads it in a tool result: the body as sent, but for a view.
 fn render_result(pack: &PackSummary, body: ServerBody) -> String {
     let ServerBody::View(view) = body else {
-        return serde_json::to_string(&body).expect("server body");
+        return serde_json::to_string(&body).expect("host reply");
     };
     let cut = |body: &String| body.chars().take(PERCEIVE_BODY_CHARS).collect::<String>();
     let cast = std::iter::once(&view.viewer)

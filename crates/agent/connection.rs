@@ -1,18 +1,18 @@
-//! The GM's connection to the server, as the client implements it.
+//! The GM's connection to the host, as the client implements it.
 
 use std::fmt;
 use std::future::Future;
 
 use crate::protocol::{ClientMessage, ServerMessage};
 
-/// The GM's connection to the server: the server's one ordered stream of messages, as the
+/// The GM's connection to the host: the host's one ordered stream of messages, as the
 /// client carries it.
 pub trait Connection: Send + Sync + 'static {
     fn send(
         &self,
         message: ClientMessage,
     ) -> impl Future<Output = Result<(), ConnectionError>> + Send;
-    /// The server's next message. `None` when the server closed the connection.
+    /// The host's next message. `None` when the host closed the connection.
     fn recv(&self) -> impl Future<Output = Option<Result<ServerMessage, ConnectionError>>> + Send;
 }
 

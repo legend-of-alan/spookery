@@ -34,7 +34,7 @@ fn the_operator_runs_ai_gm_with_nothing_listening(world: &mut World) {
     apply_model_env(&mut command, None);
     let output = command
         .output()
-        .unwrap_or_else(|err| panic!("spawn host: {err}"));
+        .unwrap_or_else(|err| panic!("spawn ai-gm: {err}"));
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -50,7 +50,7 @@ fn the_operator_runs_ai_gm_without(world: &mut World, var: String) {
     apply_model_env(&mut command, Some(&var));
     let output = command
         .output()
-        .unwrap_or_else(|err| panic!("spawn host: {err}"));
+        .unwrap_or_else(|err| panic!("spawn ai-gm: {err}"));
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -96,7 +96,7 @@ async fn ai_gm_is_pointed_at_a_game_port(world: &mut World) {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .unwrap_or_else(|err| panic!("spawn host: {err}"));
+        .unwrap_or_else(|err| panic!("spawn ai-gm: {err}"));
     world.children.push(child);
     host::poll_until(&format!("a dial on {addr}"), async || {
         match listener.accept() {
@@ -137,26 +137,24 @@ async fn play_and_ai_gm_and_a_stub(world: &mut World) {
     let (stub_port, seen) = start_model_stub(std::iter::repeat(Reply::Tools(&[])));
     host::listen(world, &pack).await;
     let addr = host::game_addr(world);
-    let mut host_cmd = Command::new(env!("CARGO_BIN_EXE_spook"));
-    host_cmd
+    let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
+    command
         .args(["ai-gm", "--addr", &addr])
         .current_dir(env!("CARGO_TARGET_TMPDIR"))
         .stdin(Stdio::null());
-    apply_model_env(&mut host_cmd, None);
-    let mut host = host_cmd
+    apply_model_env(&mut command, None);
+    let mut ai_gm = command
         .env("SPOOK_GM_URL", format!("http://127.0.0.1:{stub_port}"))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .unwrap_or_else(|err| panic!("spawn host: {err}"));
-    let host_out = host.stdout.take().unwrap();
-    let host_err = host.stderr.take().unwrap();
-    let host_stdout = Arc::new(Mutex::new(String::new()));
-    let host_stderr = Arc::new(Mutex::new(String::new()));
-    support::drain(host_out, Arc::clone(&host_stdout));
-    support::drain(host_err, Arc::clone(&host_stderr));
-    world.children.push(host);
-    host::wait_suffix(&host_stderr, 0, "listening").await;
+        .unwrap_or_else(|err| panic!("spawn ai-gm: {err}"));
+    let ai_gm_stdout = Arc::new(Mutex::new(String::new()));
+    let ai_gm_stderr = Arc::new(Mutex::new(String::new()));
+    support::drain(ai_gm.stdout.take().unwrap(), Arc::clone(&ai_gm_stdout));
+    support::drain(ai_gm.stderr.take().unwrap(), Arc::clone(&ai_gm_stderr));
+    world.children.push(ai_gm);
+    host::wait_suffix(&ai_gm_stderr, 0, "listening").await;
     let mut play = super::common::spawn_play(&addr, "rowan", &[]);
     host::wait_suffix(&play.stdout, 0, "Docks Shop").await;
     let mut play_in = play.stdin.take().unwrap();
@@ -183,9 +181,9 @@ async fn play_and_ai_gm_and_a_stub(world: &mut World) {
     assert_eq!(world_of(&pack).world_time, 1085, "travel played two rounds");
     assert_eq!(seen.lock().unwrap().posts.len(), 2);
     assert!(
-        support::text_of(&host_stdout).is_empty(),
+        support::text_of(&ai_gm_stdout).is_empty(),
         "{}",
-        support::text_of(&host_stdout)
+        support::text_of(&ai_gm_stdout)
     );
     drop(play_in);
     drop(play);

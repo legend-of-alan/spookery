@@ -12,7 +12,7 @@ use crate::Reason;
 /// save.
 ///
 /// The bare name stands beside `std::task::Context`: the engine library has no async code, so
-/// that one is never in scope here, and two server files are its only users in the workspace.
+/// that one is never in scope here, and two host files are its only users in the workspace.
 pub(crate) struct Context<'c, 'a> {
     pub canon: &'c Canon,
     pub world: &'a ecs::World,

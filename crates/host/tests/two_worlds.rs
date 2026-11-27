@@ -1,6 +1,6 @@
 use spookery_engine::testing::copy_pack;
 use spookery_engine::{lock_pack, Reason};
-use spookery_server::{Config, Error};
+use spookery_host::{Config, Error};
 use std::{fs, io::*, net::*, path::Path};
 use tokio::sync::oneshot;
 use tungstenite::{Message, WebSocket};
@@ -35,7 +35,7 @@ fn host(
     config.out = Box::new(writer);
     let (stop, stopped) = oneshot::channel::<()>();
     let session = spookery_engine::Session::resume(dir, lock_pack(dir).unwrap()).unwrap();
-    let served = tokio::spawn(spookery_server::serve(session, config, async {
+    let served = tokio::spawn(spookery_host::serve(session, config, async {
         stopped.await.unwrap()
     }));
     let mut line = String::new();

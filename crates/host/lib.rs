@@ -1,5 +1,5 @@
-//! The Spookery server: bind the game port's WebSocket endpoint and the MCP endpoint,
-//! then run the host.
+//! The Spookery host: bind the game port's WebSocket endpoint and the MCP endpoint,
+//! then run `Host`, the one owner of the session.
 
 mod gm;
 mod host;
