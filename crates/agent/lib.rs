@@ -3,7 +3,7 @@
 //! host's one ordered stream and decides from everything up to the last `seq` it read.
 
 pub mod chat_completions;
-mod connection;
+pub mod connection;
 mod context;
 pub mod model;
 mod task;
@@ -18,7 +18,7 @@ use graph_flow::GraphError;
 use serde_json::{json, Value};
 use spookery_protocol as protocol;
 
-pub use crate::connection::{Connection, ConnectionError};
+pub use crate::connection::Connection;
 use crate::context::ClientState;
 pub use crate::model::{CompletionError, Model, ToolCall};
 use crate::protocol::{ClientMessage, CommitArgs, Refusal, ServerBody};
@@ -33,7 +33,7 @@ pub enum Error {
     /// The `status` reply was some other body.
     Unexpected,
     /// The connection failed between turns.
-    Connection(ConnectionError),
+    Connection(connection::Error),
     /// `command` was sent and its reply never read, so the host may have applied it.
     Unanswered { command: String },
     /// The turn graph stopped with no command in flight.
@@ -265,7 +265,7 @@ mod tests {
     }
 
     impl Connection for Arc<ScriptedConnection> {
-        async fn send(&self, message: ClientMessage) -> Result<(), ConnectionError> {
+        async fn send(&self, message: ClientMessage) -> Result<(), connection::Error> {
             let answer = self.answers.lock().unwrap().pop_front();
             let answer = answer.unwrap_or_else(|| panic!("unscripted {:?}", message.body));
             assert_eq!(message.body.kind, answer.command, "{:?}", message.body);
@@ -281,11 +281,11 @@ mod tests {
             Ok(())
         }
 
-        async fn recv(&self) -> Option<Result<ServerMessage, ConnectionError>> {
+        async fn recv(&self) -> Option<Result<ServerMessage, connection::Error>> {
             let message = self.inbox.lock().unwrap().pop_front()?;
             match &message.body {
                 ServerBody::Lines { text } if text == BROKEN => {
-                    Some(Err(ConnectionError("reset".to_string())))
+                    Some(Err(connection::Error("reset".to_string())))
                 }
                 ServerBody::Lines { text } if text == SILENT => std::future::pending().await,
                 _ => Some(Ok(message)),

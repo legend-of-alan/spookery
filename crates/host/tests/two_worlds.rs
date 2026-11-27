@@ -48,7 +48,7 @@ fn host(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn two_worlds_serve_on_port_zero_and_stop_independently() {
+async fn serve_on_port_zero_and_stop_independently() {
     let first_dir = copy_pack("docks", "2w-1");
     let second_dir = copy_pack("docks", "2w-2");
     let (mut c1, stop1, first) = host(&first_dir);

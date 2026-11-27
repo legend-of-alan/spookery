@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::net::SocketAddr;
 
-use spookery_agent::{ConnectionError, Model};
+use spookery_agent::{connection, Model};
 use tokio::sync::Mutex;
 
 use crate::protocol::{ClientMessage, ServerMessage};
@@ -17,13 +17,13 @@ pub async fn play(
     model: impl Model,
     err: impl Write + Send + 'static,
 ) -> Result<(), Error> {
-    let (connection, _hello) = websocket::Connection::open(addr, "gm").await?;
+    let (socket, _hello) = websocket::Connection::open(addr, "gm").await?;
     let err = std::sync::Mutex::new(err);
     let report = move |line: &str| {
         let mut err = err.lock().unwrap_or_else(|err| err.into_inner());
         let _ = writeln!(err, "{line}").and_then(|()| err.flush());
     };
-    spookery_agent::run(model, GmConnection(Mutex::new(connection)), report).await?;
+    spookery_agent::run(model, GmConnection(Mutex::new(socket)), report).await?;
     Ok(())
 }
 
@@ -32,20 +32,20 @@ pub async fn play(
 struct GmConnection(Mutex<websocket::Connection>);
 
 impl spookery_agent::Connection for GmConnection {
-    async fn send(&self, message: ClientMessage) -> Result<(), ConnectionError> {
-        let mut connection = self.0.lock().await;
-        connection.send_message(&message).await.map_err(Into::into)
+    async fn send(&self, message: ClientMessage) -> Result<(), connection::Error> {
+        let mut socket = self.0.lock().await;
+        socket.send_message(&message).await.map_err(Into::into)
     }
 
-    async fn recv(&self) -> Option<Result<ServerMessage, ConnectionError>> {
-        let mut connection = self.0.lock().await;
-        Some(connection.recv().await?.map_err(Into::into))
+    async fn recv(&self) -> Option<Result<ServerMessage, connection::Error>> {
+        let mut socket = self.0.lock().await;
+        Some(socket.recv().await?.map_err(Into::into))
     }
 }
 
-impl From<Error> for ConnectionError {
+impl From<Error> for connection::Error {
     fn from(err: Error) -> Self {
-        ConnectionError(err.to_string())
+        connection::Error(err.to_string())
     }
 }
 
