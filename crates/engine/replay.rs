@@ -155,7 +155,7 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 /// A round record that did not replay as written.
-fn round_diverged(record: &RoundRecord, detail: impl Into<String>) -> Divergence {
+fn build_round_divergence(record: &RoundRecord, detail: impl Into<String>) -> Divergence {
     Divergence::new(
         DivergenceKind::Round,
         record.state_rev_after,
@@ -165,7 +165,7 @@ fn round_diverged(record: &RoundRecord, detail: impl Into<String>) -> Divergence
 }
 
 /// A checkpoint whose hash no longer matches.
-pub(crate) fn checkpoint_diverged(
+pub(crate) fn build_checkpoint_divergence(
     state_rev: u64,
     round_index: u64,
     detail: impl Into<String>,
@@ -191,13 +191,13 @@ pub fn apply_journal(
     if !pack.join("pack.yaml").is_file() {
         return Err(Error::Reason(Reason::NotInSpec));
     }
-    let base_path = journal::base_path(pack);
+    let base_path = pack.join(journal::BASE);
     let base_bytes = if let Some(from) = from {
-        journal::read_save(&journal::save_path(from))?
+        journal::read_save(&from.join(save::FILE))?
     } else if base_path.exists() {
         journal::read_save(&base_path)?
     } else {
-        let now_yaml = journal::read_save(&journal::save_path(pack))?;
+        let now_yaml = journal::read_save(&pack.join(save::FILE))?;
         if entries.is_empty() {
             return Ok(Report {
                 state_rev: parse_state_rev(&now_yaml)?,
@@ -361,7 +361,7 @@ pub(crate) fn apply_record(
         records::Record::Checkpoint(record) => {
             let written = emit_save_bytes(session)?;
             if blake2s_tagged(&written) != record.state_hash {
-                return Err(checkpoint_diverged(
+                return Err(build_checkpoint_divergence(
                     record.state_rev,
                     record.round_index,
                     "state hash differed",
@@ -380,7 +380,7 @@ fn apply_recorded_round(
 ) -> Result<(), Error> {
     store::check_rules_rev(record.rules_rev)?;
     if session.world().round_index + 1 != record.round_index {
-        return Err(round_diverged(record, "round_index differed").into());
+        return Err(build_round_divergence(record, "round_index differed").into());
     }
     let replayed = round::replay(
         session,
@@ -394,25 +394,25 @@ fn apply_recorded_round(
     .map(|output| output.effects)
     .map_err(|code| Divergence {
         replayed_bytes: emit_save_bytes(session).ok(),
-        ..round_diverged(record, code.as_str())
+        ..build_round_divergence(record, code.as_str())
     })?;
     let effect_diff = find_effect_diff(&record.effects, &replayed);
     if session.world().state_rev != record.state_rev_after {
         return Err(Divergence {
             replayed_bytes: emit_save_bytes(session).ok(),
-            ..round_diverged(record, "state_rev differed")
+            ..build_round_divergence(record, "state_rev differed")
         }
         .into());
     }
     let written = emit_save_bytes(session)?;
     if blake2s_tagged(&written) != record.state_hash {
         let detail = effect_diff.unwrap_or_else(|| "state_hash differed".to_string());
-        return Err(round_diverged(record, detail)
+        return Err(build_round_divergence(record, detail)
             .with_replayed_bytes(written)
             .into());
     }
     if let Some(detail) = effect_diff {
-        return Err(round_diverged(record, detail).into());
+        return Err(build_round_divergence(record, detail).into());
     }
     Ok(())
 }
@@ -427,14 +427,14 @@ pub(crate) fn find_effect_diff(logged: &[Effect], replayed: &[Effect]) -> Option
         }
         return Some(format!(
             "effect {index} differed: logged {} replayed {}",
-            effect_text(left),
-            effect_text(right)
+            format_effect(left),
+            format_effect(right)
         ));
     }
     None
 }
 
-fn effect_text(effect: Option<&Effect>) -> String {
+fn format_effect(effect: Option<&Effect>) -> String {
     match effect {
         Some(effect) => emit_effect(effect),
         None => "none".to_string(),
@@ -454,7 +454,7 @@ fn apply_migrate(session: &mut session::Session<()>, record: &MigrateRecord) -> 
         return Err(diverged("pack_rev differed").into());
     }
     if record.edited {
-        let path = journal::checkpoint_path(session.root(), record.state_rev_after);
+        let path = journal::build_checkpoint_path(session.root(), record.state_rev_after);
         let bytes = fs::read(path).map_err(|_| diverged("missing snapshot"))?;
         if blake2s_tagged(&bytes) != record.state_hash {
             return Err(diverged("state_hash differed")

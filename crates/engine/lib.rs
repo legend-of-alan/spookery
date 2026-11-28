@@ -212,7 +212,7 @@ pub mod testing {
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let pack = fresh_dir(label);
         copy_dir(&manifest.join("../../tests/packs").join(dir), &pack);
-        let text = fs::read_to_string(crate::store::journal::save_path(&pack))
+        let text = fs::read_to_string(pack.join(crate::store::save::FILE))
             .unwrap_or_else(|err| panic!("read {dir} save: {err}"));
         let mut save = crate::store::save::parse(&text)
             .unwrap_or_else(|err| panic!("load {dir} save: {err:?}"));
@@ -257,7 +257,7 @@ pub mod testing {
     }
 
     pub fn write_save(pack: &Path, save: &crate::ecs::Save) {
-        let path = crate::store::journal::save_path(pack);
+        let path = pack.join(crate::store::save::FILE);
         let bytes = crate::store::save::emit(save)
             .unwrap_or_else(|err| panic!("emit {}: {err}", path.display()));
         fs::write(&path, bytes).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
@@ -266,7 +266,7 @@ pub mod testing {
     /// Edit the pack's save through the writers, with no round open, on the pack's canon, and
     /// write it back stamped with the pack's revision.
     pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::ecs::World)) {
-        let path = crate::store::journal::save_path(pack);
+        let path = pack.join(crate::store::save::FILE);
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
         let save = crate::store::save::parse(&text)
@@ -282,7 +282,7 @@ pub mod testing {
 
     /// Stamp the save with the pack's revision, as its file holds it: the canon need not load.
     pub fn stamp_pack_rev(pack: &Path) {
-        let path = crate::store::journal::save_path(pack);
+        let path = pack.join(crate::store::save::FILE);
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
         let mut save = crate::store::save::parse(&text)

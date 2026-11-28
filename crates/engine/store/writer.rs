@@ -131,7 +131,10 @@ pub(crate) fn commit_migrate(
     let prev = journal::read_chain_tip(root).map_err(|fault| fault.reason)?;
     let line = journal::commit(&entry, &prev);
     if edited {
-        write_atomic(&journal::checkpoint_path(root, world.state_rev), &emitted)?;
+        write_atomic(
+            &journal::build_checkpoint_path(root, world.state_rev),
+            &emitted,
+        )?;
         let (payload, chain) = commit_checkpoint(line, &world, &emitted)?;
         append_to_bundle(root, &payload, &write)?;
         store_checkpoint(
@@ -194,7 +197,7 @@ fn is_checkpoint_due(every: u64, round_index: u64) -> bool {
 
 fn append_to_bundle(root: &Path, payload: &str, write: &WriteGuard) -> Result<String, Reason> {
     warn_if_left_open(close_checkpointed(root, write));
-    let path = journal::next_bundle_path(root);
+    let path = journal::build_next_bundle_path(root);
     let created = !path.is_file();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(refuse_io)?;
@@ -236,9 +239,9 @@ fn store_checkpoint(
         chain: chain.to_string(),
     })
     .map_err(|_| Reason::Schema)?;
-    write_atomic(&journal::mark_path(root), mark.as_bytes())?;
-    let save = journal::save_path(root);
-    let base = journal::base_path(root);
+    write_atomic(&root.join(journal::MARK), mark.as_bytes())?;
+    let save = root.join(save::FILE);
+    let base = root.join(journal::BASE);
     if !base.is_file() {
         fs::copy(&save, &base).map_err(refuse_io)?;
         fsync_file(&base)?;
@@ -246,7 +249,7 @@ fn store_checkpoint(
             fsync_dir(parent)?;
         }
     }
-    let snap = journal::checkpoint_path(root, state_rev);
+    let snap = journal::build_checkpoint_path(root, state_rev);
     if let Some(parent) = snap.parent() {
         fs::create_dir_all(parent).map_err(refuse_io)?;
     }
@@ -286,15 +289,15 @@ pub(crate) fn publish_last_checkpoint<Lock>(
     let Some(path) = journal::find_live_bundle(session.root()) else {
         return Ok(());
     };
-    let Some(checkpoint) = journal::trailing_checkpoint(&path) else {
+    let Some(checkpoint) = journal::read_trailing_checkpoint(&path) else {
         return Ok(());
     };
     let now_bytes = save::emit(session.world())?.into_bytes();
     if blake2s_tagged(&now_bytes) != checkpoint.state_hash {
         return Ok(());
     }
-    let save = journal::save_path(session.root());
-    let snap = journal::checkpoint_path(session.root(), checkpoint.state_rev);
+    let save = session.root().join(save::FILE);
+    let snap = journal::build_checkpoint_path(session.root(), checkpoint.state_rev);
     let save_ok = journal::hashes_to(&save, &checkpoint.state_hash);
     let snap_ok = journal::hashes_to(&snap, &checkpoint.state_hash);
     if !save_ok || !snap_ok {
@@ -394,7 +397,7 @@ mod tests {
         let saved = fs::read(root.join("state/save.yaml")).unwrap();
         let kept = crate::store::journal::find_latest_checkpoint(first_entries).unwrap();
         assert_eq!(crate::hash::blake2s_tagged(&saved), kept.state_hash);
-        let snap = crate::store::journal::checkpoint_path(&root, kept.state_rev);
+        let snap = crate::store::journal::build_checkpoint_path(&root, kept.state_rev);
         assert_eq!(fs::read(snap).unwrap(), saved);
         let _ = fs::remove_dir_all(&root);
     }

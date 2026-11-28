@@ -32,7 +32,7 @@ fn choose_seed(pack: &Path, guard: &PackGuard) -> Result<(), replay::Error> {
     if journal::read_mark(pack)?.is_some() || journal::find_live_bundle(pack).is_some() {
         return Ok(());
     }
-    let save_path = journal::save_path(pack);
+    let save_path = pack.join(save::FILE);
     let mut file_save = replay::parse_save_bytes(&journal::read_save(&save_path)?)?;
     if !file_save.seed.is_empty() {
         return Ok(());
@@ -64,7 +64,7 @@ pub fn migrate_pack(pack: &Path) -> Result<(), Reason> {
 /// The world to migrate, and whether it is a hand edit of the checkpoint mark. A hand edit
 /// with live rounds past it is refused, because the tip does not hold it.
 fn load_migrate_tip(pack: &Path, guard: &PackGuard) -> Result<(ecs::World, bool), replay::Error> {
-    let bytes = journal::read_save(&journal::save_path(pack))?;
+    let bytes = journal::read_save(&pack.join(save::FILE))?;
     let file_save = replay::parse_save_bytes(&bytes)?;
     let edited = journal::edits_mark(pack, file_save.state_rev, &bytes)?;
     let ahead = journal::read_live_records(pack)?.iter().any(|record| {
@@ -84,7 +84,7 @@ fn load_migrate_tip(pack: &Path, guard: &PackGuard) -> Result<(ecs::World, bool)
 /// The journal tip in memory and unchecked. Migrate checks it after adding its meters.
 fn load_tip_unchecked(pack: &Path, guard: &PackGuard) -> Result<Session<()>, replay::Error> {
     rebuild_save(pack, guard)?;
-    let bytes = journal::read_save(&journal::save_path(pack))?;
+    let bytes = journal::read_save(&pack.join(save::FILE))?;
     let mut session = replay::open_at(pack, &bytes)?;
     apply_live(&mut session)?;
     crate::store::publish_last_checkpoint(&session, &lock::take_write(session.root(), guard)?)?;
@@ -110,7 +110,7 @@ fn rebuild_save(pack: &Path, guard: &PackGuard) -> Result<(), replay::Error> {
     let Some(mark) = journal::read_mark(pack)? else {
         return Ok(());
     };
-    let save_path = journal::save_path(pack);
+    let save_path = pack.join(save::FILE);
     match journal::read_save(&save_path) {
         Ok(bytes) => {
             if blake2s_tagged(&bytes) == mark.state_hash {
@@ -136,7 +136,7 @@ fn rebuild_save(pack: &Path, guard: &PackGuard) -> Result<(), replay::Error> {
     let entries = journal::read_records(pack)?;
     let report = replay::apply_journal(pack, &entries, None, Some(mark.state_rev))?;
     if blake2s_tagged(&report.now_yaml) != mark.state_hash {
-        return Err(replay::checkpoint_diverged(
+        return Err(replay::build_checkpoint_divergence(
             mark.state_rev,
             mark.round_index,
             "state hash differed",

@@ -122,7 +122,7 @@ fn add_exert_success(pack: &Path) -> Result<(), String> {
     }
     fs::write(&path, text.replacen(needle, replacement, 1)).map_err(|err| err.to_string())?;
     let rev = canon::hash(pack).map_err(|err| err.to_string())?;
-    let save_path = journal::save_path(pack);
+    let save_path = pack.join(save::FILE);
     let save_text = fs::read_to_string(&save_path).map_err(|err| err.to_string())?;
     let mut save = save::parse(&save_text).map_err(|err| format!("{err:?}"))?;
     save.pack_rev = rev;

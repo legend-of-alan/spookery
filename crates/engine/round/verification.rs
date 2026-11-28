@@ -25,7 +25,7 @@ pub fn run(pack: &Path, from: Option<&Path>) -> Result<Report, replay::Error> {
     if !pack.join("pack.yaml").is_file() {
         return Err(replay::Error::Reason(Reason::NotInSpec));
     }
-    if !journal::save_path(pack).exists() && !journal::base_path(pack).exists() {
+    if !pack.join(save::FILE).exists() && !pack.join(journal::BASE).exists() {
         return Err(replay::Error::Reason(Reason::NotInSpec));
     }
     let bundles = journal::read_bundle_records(pack)?;
@@ -115,13 +115,13 @@ fn check_bundle_starts<'a>(
             .into());
         };
         let diverged = |detail: &str| {
-            replay::checkpoint_diverged(
+            replay::build_checkpoint_divergence(
                 checkpoint.state_rev,
                 checkpoint.round_index,
                 format!("{bundle}: {detail}"),
             )
         };
-        current = fs::read(journal::checkpoint_path(pack, checkpoint.state_rev))
+        current = fs::read(journal::build_checkpoint_path(pack, checkpoint.state_rev))
             .map_err(|_| diverged("missing snapshot"))?;
         if blake2s_tagged(&current) != checkpoint.state_hash {
             return Err(diverged("state hash differed")
@@ -142,7 +142,7 @@ fn check_bundle_end(
     if let Some(checkpoint) = journal::find_latest_checkpoint(entries) {
         if blake2s_tagged(&end) != checkpoint.state_hash {
             let detail = format!("{bundle}: state hash differed");
-            return Err(replay::checkpoint_diverged(
+            return Err(replay::build_checkpoint_divergence(
                 checkpoint.state_rev,
                 checkpoint.round_index,
                 detail,
@@ -155,7 +155,7 @@ fn check_bundle_end(
 }
 
 fn check_save(pack: &Path, entries: &[records::Record], base: &[u8]) -> Result<(), replay::Error> {
-    let live = journal::read_save(&journal::save_path(pack))?;
+    let live = journal::read_save(&pack.join(save::FILE))?;
     let save = replay::parse_save_bytes(&live)?;
     if entries.is_empty() {
         let canonical = save::emit(&save)?.into_bytes();
@@ -174,7 +174,7 @@ fn check_save(pack: &Path, entries: &[records::Record], base: &[u8]) -> Result<(
     }
     if let Some(checkpoint) = journal::find_latest_checkpoint(entries) {
         if blake2s_tagged(&live) != checkpoint.state_hash {
-            let snap = fs::read(journal::checkpoint_path(pack, checkpoint.state_rev)).ok();
+            let snap = fs::read(journal::build_checkpoint_path(pack, checkpoint.state_rev)).ok();
             let diverged = replay::Divergence {
                 replayed_bytes: snap,
                 ..replay::Divergence::new(
@@ -216,18 +216,18 @@ fn read_first_diverged_line(pack: &Path, err: replay::Error) -> replay::Error {
     let replay::Error::Diverged(diverged) = err else {
         return err;
     };
-    let live = fs::read(journal::save_path(pack))
-        .or_else(|_| fs::read(journal::base_path(pack)))
+    let live = fs::read(pack.join(save::FILE))
+        .or_else(|_| fs::read(pack.join(journal::BASE)))
         .unwrap_or_default();
     set_first_diverged_line(diverged, &live)
 }
 
 fn read_base(pack: &Path) -> Result<Vec<u8>, replay::Error> {
-    let base = journal::base_path(pack);
+    let base = pack.join(journal::BASE);
     if base.exists() {
         return Ok(journal::read_save(&base)?);
     }
-    Ok(journal::read_save(&journal::save_path(pack))?)
+    Ok(journal::read_save(&pack.join(save::FILE))?)
 }
 
 fn replay_bundle(
@@ -252,8 +252,8 @@ fn replay_bundle(
 mod tests {
     use std::fs;
 
-    use super::journal;
     use crate::round::verification;
+    use crate::store::save;
     use crate::testing::copy_pack;
     use crate::testing::play_empty_round;
 
@@ -266,7 +266,7 @@ mod tests {
         fs::write(&pack_yaml, cfg).unwrap();
         play_empty_round(&pack);
         play_empty_round(&pack);
-        let save = journal::save_path(&pack);
+        let save = pack.join(save::FILE);
         let text = fs::read_to_string(&save).unwrap();
         let tampered = text.replacen("state_rev: 2", "state_rev: 99", 1);
         assert_ne!(tampered, text);

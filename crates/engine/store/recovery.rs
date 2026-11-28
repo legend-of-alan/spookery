@@ -23,7 +23,7 @@ pub(crate) fn recover(root: &Path, write: &WriteGuard) -> Result<(), Reason> {
 pub(crate) fn close_checkpointed(root: &Path, _write: &WriteGuard) -> Result<(), Reason> {
     let mut failed = Ok(());
     for bundle in list_uncompressed(root) {
-        if journal::trailing_checkpoint(&bundle).is_none() {
+        if journal::read_trailing_checkpoint(&bundle).is_none() {
             continue;
         }
         if let Err(reason) = close_one(root, &bundle) {
@@ -51,10 +51,10 @@ fn close_one(root: &Path, bundle: &Path) -> Result<(), Reason> {
 }
 
 fn snapshot_matches(root: &Path, bundle: &Path) -> bool {
-    let Some(checkpoint) = journal::trailing_checkpoint(bundle) else {
+    let Some(checkpoint) = journal::read_trailing_checkpoint(bundle) else {
         return false;
     };
-    let snap = journal::checkpoint_path(root, checkpoint.state_rev);
+    let snap = journal::build_checkpoint_path(root, checkpoint.state_rev);
     journal::hashes_to(&snap, &checkpoint.state_hash)
 }
 
@@ -87,7 +87,7 @@ fn list_uncompressed(root: &Path) -> Vec<PathBuf> {
         let Some(file) = file.to_str() else {
             continue;
         };
-        if file.ends_with(".jsonl") && journal::bundle_index(file).is_some() {
+        if file.ends_with(".jsonl") && journal::parse_bundle_index(file).is_some() {
             bundles.push(entry.path());
         }
     }

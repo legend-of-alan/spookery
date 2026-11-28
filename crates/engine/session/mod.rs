@@ -559,7 +559,7 @@ impl Session<()> {
         if !root.join("pack.yaml").is_file() {
             return Err(Reason::NotInSpec);
         }
-        let now_bytes = journal::read_save(&journal::save_path(root))?;
+        let now_bytes = journal::read_save(&root.join(save::FILE))?;
         let canon = Arc::new(
             canon::load(root).map_err(|diagnostics| diagnostic::find_reason(&diagnostics))?,
         );

@@ -21,7 +21,7 @@ pub fn run(root: &Path) -> Vec<Diagnostic> {
         }
     };
     let mut save = None;
-    match journal::read_save(&journal::save_path(root)) {
+    match journal::read_save(&root.join(save::FILE)) {
         Ok(bytes) => match save::load(root, canon.as_ref(), &bytes) {
             Ok(loaded) => save = Some(loaded),
             Err(more) => diagnostics.extend(more),

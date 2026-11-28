@@ -18,6 +18,7 @@ use std::path::Path;
 use crate::session;
 use crate::store::journal;
 use crate::store::records;
+use crate::store::save;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
 use super::support::{arb_rounds, play_rounds, runner_config, TempPack};
@@ -53,16 +54,16 @@ fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
             "the rounds wrote no record".to_string(),
         ));
     }
-    let base = journal::base_path(played);
+    let base = played.join(journal::BASE);
     let snapshot = if base.is_file() {
         fs::read(&base)
     } else {
-        fs::read(journal::save_path(played))
+        fs::read(played.join(save::FILE))
     }
     .map_err(|err| TestCaseError::fail(err.to_string()))?;
     let pack = TempPack(fresh_dir("prop-rerun-again"));
     copy_dir(played, &pack.0);
-    fs::write(journal::save_path(&pack.0), snapshot)
+    fs::write(pack.0.join(save::FILE), snapshot)
         .map_err(|err| TestCaseError::fail(err.to_string()))?;
     let mut session =
         session::Session::open(&pack.0).map_err(|err| TestCaseError::fail(err.to_string()))?;

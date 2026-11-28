@@ -20,24 +20,16 @@ use crate::hash::blake2s_tagged;
 use crate::store;
 use crate::store::durability::refuse_io;
 use crate::store::records::{self, CheckpointRecord, MigrateRecord, RoundRecord};
+use crate::store::save;
 use crate::Reason;
 
-pub(crate) fn base_path(pack: &Path) -> PathBuf {
-    pack.join("state/journal/base.yaml")
-}
+pub(crate) const BASE: &str = "state/journal/base.yaml";
+pub(crate) const MARK: &str = "state/journal/mark.json";
 
 /// The snapshot a checkpoint at `state_rev` publishes.
-pub(crate) fn checkpoint_path(pack: &Path, state_rev: u64) -> PathBuf {
+pub(crate) fn build_checkpoint_path(pack: &Path, state_rev: u64) -> PathBuf {
     pack.join("state/checkpoints")
         .join(format!("{state_rev}.yaml"))
-}
-
-pub(crate) fn mark_path(pack: &Path) -> PathBuf {
-    pack.join("state/journal/mark.json")
-}
-
-pub(crate) fn save_path(pack: &Path) -> PathBuf {
-    pack.join("state/save.yaml")
 }
 
 /// Read a save or base snapshot. A missing one is `NOT_IN_SPEC`; any other failure is the disk's.
@@ -60,7 +52,7 @@ pub(crate) struct Mark {
 }
 
 pub(crate) fn read_mark(pack: &Path) -> Result<Option<Mark>, Error> {
-    let path = mark_path(pack);
+    let path = pack.join(MARK);
     if !path.is_file() {
         return Ok(None);
     }
@@ -134,7 +126,7 @@ pub(crate) fn check_chain(
     if bundles.iter().all(|(_, entries)| entries.is_empty()) {
         return Ok(());
     }
-    let mut prev = base_hash(pack)?;
+    let mut prev = hash_base(pack)?;
     for (bundle, entries) in bundles {
         for entry in entries {
             if entry.prev() != prev {
@@ -201,7 +193,7 @@ pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, Error> {
     if let Some(mark) = read_mark(pack)? {
         return Ok(mark.chain);
     }
-    base_hash(pack)
+    hash_base(pack)
 }
 
 /// Records in the uncompressed live bundle. Closed bundles stay unread.
@@ -221,9 +213,13 @@ fn read_live_bundle(pack: &Path) -> Result<Option<(String, String)>, Error> {
     Ok(Some((bundle.to_string(), read_bundle(&bundle, &path)?)))
 }
 
-fn base_hash(pack: &Path) -> Result<String, Error> {
-    let base = base_path(pack);
-    let path = if base.exists() { base } else { save_path(pack) };
+fn hash_base(pack: &Path) -> Result<String, Error> {
+    let base = pack.join(BASE);
+    let path = if base.exists() {
+        base
+    } else {
+        pack.join(save::FILE)
+    };
     let bytes = fs::read(&path)
         .map_err(|_| Error::new(&path, Reason::StoreIo, "the snapshot could not be read"))?;
     Ok(blake2s_tagged(&bytes))
@@ -262,7 +258,7 @@ pub fn find_live_bundle(pack: &Path) -> Option<PathBuf> {
 }
 
 /// Checkpoint record at the end of an uncompressed bundle, if that is the last line.
-pub(crate) fn trailing_checkpoint(path: &Path) -> Option<CheckpointRecord> {
+pub(crate) fn read_trailing_checkpoint(path: &Path) -> Option<CheckpointRecord> {
     let text = fs::read_to_string(path).ok()?;
     let line = find_last_line(&text)?;
     match parse_line("bundle", line).ok()? {
@@ -274,8 +270,8 @@ pub(crate) fn trailing_checkpoint(path: &Path) -> Option<CheckpointRecord> {
 /// The checkpoint hash is already in `save.yaml`, so the bundle is complete.
 /// Until then it stays the live file and startup can still replay it.
 pub(crate) fn is_published(pack: &Path, path: &Path) -> bool {
-    trailing_checkpoint(path)
-        .is_some_and(|checkpoint| hashes_to(&save_path(pack), &checkpoint.state_hash))
+    read_trailing_checkpoint(path)
+        .is_some_and(|checkpoint| hashes_to(&pack.join(save::FILE), &checkpoint.state_hash))
 }
 
 /// The file at `path` can be read and its bytes hash to `hash`.
@@ -286,13 +282,13 @@ pub(crate) fn hashes_to(path: &Path, hash: &str) -> bool {
 /// Next append lands here. The file may not exist yet.
 /// An uncompressed bundle that already ends in a published checkpoint is skipped, so a
 /// failed gzip cannot take the next round.
-pub(crate) fn next_bundle_path(pack: &Path) -> PathBuf {
+pub(crate) fn build_next_bundle_path(pack: &Path) -> PathBuf {
     if let Some(path) = find_live_bundle(pack).filter(|path| !is_published(pack, path)) {
         return path;
     }
     let files = list_bundles(pack).unwrap_or_default();
     let index = files.last().map_or(0, |(bundle, _)| {
-        bundle_index(bundle).unwrap_or(0).saturating_add(1)
+        parse_bundle_index(bundle).unwrap_or(0).saturating_add(1)
     });
     pack.join("state/journal")
         .join(format!("bundle-{index:04}.jsonl"))
@@ -365,7 +361,7 @@ pub fn list_bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
         })?;
         let bundle = entry.file_name();
         let bundle = bundle.to_string_lossy().into_owned();
-        let Some(index) = bundle_index(&bundle) else {
+        let Some(index) = parse_bundle_index(&bundle) else {
             continue;
         };
         let replace = match by_index.get(&index) {
@@ -379,7 +375,7 @@ pub fn list_bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
     Ok(by_index.into_values().collect())
 }
 
-pub(crate) fn bundle_index(bundle: &str) -> Option<u32> {
+pub(crate) fn parse_bundle_index(bundle: &str) -> Option<u32> {
     let rest = bundle.strip_prefix("bundle-")?;
     let digits = rest
         .strip_suffix(".jsonl.gz")
@@ -524,7 +520,7 @@ mod tests {
             assert_eq!(refused.reason, Reason::JournalDiverged, "{torn}");
         }
         let pack = crate::testing::copy_pack("docks", "old-mark");
-        let mark = mark_path(&pack);
+        let mark = pack.join(MARK);
         fs::create_dir_all(mark.parent().unwrap()).unwrap();
         fs::write(
             &mark,

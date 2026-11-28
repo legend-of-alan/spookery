@@ -22,7 +22,7 @@ use crate::store::journal;
 use crate::store::records::{self, DroppedMeter, MigrateRecord};
 use crate::Reason;
 
-const FILE: &str = "state/save.yaml";
+pub(crate) const FILE: &str = "state/save.yaml";
 
 pub(crate) fn emit_options() -> SerializerOptions {
     serde_saphyr::ser_options! {
@@ -51,7 +51,7 @@ pub fn parse(text: &str) -> Result<Save, Vec<Diagnostic>> {
     }
     if let Ok(probe) = serde_saphyr::from_str::<RulesProbe>(text) {
         if store::check_rules_rev(probe.rules_rev).is_err() {
-            return Err(vec![rules_rev_diagnostic(text)]);
+            return Err(vec![build_rules_rev_diagnostic(text)]);
         }
     }
     parse_file(FILE, text, false)
@@ -63,10 +63,10 @@ pub fn emit(save: &Save) -> Result<String, Reason> {
     canonical.rules_rev = super::RULES_REV;
     let text = serde_saphyr::to_string_with_options(&canonical, emit_options())
         .map_err(|_| Reason::Schema)?;
-    Ok(one_trailing_lf(text))
+    Ok(ensure_trailing_lf(text))
 }
 
-fn rules_rev_diagnostic(text: &str) -> Diagnostic {
+fn build_rules_rev_diagnostic(text: &str) -> Diagnostic {
     let mut diagnostic = error(
         FILE,
         Reason::RulesRevMismatch,
@@ -78,7 +78,7 @@ fn rules_rev_diagnostic(text: &str) -> Diagnostic {
     diagnostic
 }
 
-fn one_trailing_lf(mut text: String) -> String {
+fn ensure_trailing_lf(mut text: String) -> String {
     while text.ends_with('\n') {
         text.pop();
     }
@@ -87,7 +87,7 @@ fn one_trailing_lf(mut text: String) -> String {
 }
 
 /// Every meter the save lists, with the actor, place, story or world that holds it.
-fn saved_meters(world: &ecs::World) -> impl Iterator<Item = (entity::Id, &str, &Meter)> {
+fn find_saved_meters(world: &ecs::World) -> impl Iterator<Item = (entity::Id, &str, &Meter)> {
     let actors = world.actors().query::<&Meter>();
     let places = world.places().query::<&Meter>();
     let stories = world.stories().query::<&Meter>();
@@ -120,7 +120,7 @@ pub(crate) fn find_saved_flags(world: &ecs::World) -> BTreeSet<&str> {
 
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
 pub(crate) fn find_stale_meters(world: &ecs::World) -> Vec<DroppedMeter> {
-    saved_meters(world)
+    find_saved_meters(world)
         .filter(|(entity_id, id, _)| world.canon().meter_def(entity_id.as_ref(), id).is_none())
         .map(|(entity_id, id, _)| DroppedMeter {
             id: id.to_string(),
@@ -207,14 +207,19 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
             meter.id
         );
         let hint = "run spook migrate to drop the meter";
-        diagnostics.push(meter_error(&meter.entity_id, &meter.id, &message, hint));
+        diagnostics.push(build_meter_error(
+            &meter.entity_id,
+            &meter.id,
+            &message,
+            hint,
+        ));
     }
-    for (entity_id, key, meter) in saved_meters(world) {
+    for (entity_id, key, meter) in find_saved_meters(world) {
         let def = canon.meter_def(entity_id.as_ref(), key);
         if def.is_some_and(|def| !meter::is_storable(def, meter.base, meter.offset)) {
             let message = format!("meter '{key}' is outside the rules");
             let hint = "set base and offset so the stored pair fits the meter";
-            diagnostics.push(meter_error(&entity_id, key, &message, hint));
+            diagnostics.push(build_meter_error(&entity_id, key, &message, hint));
         }
     }
     for (id, key, modifier) in find_stale_modifiers(world) {
@@ -321,7 +326,7 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
 
 /// A save error on meter `key` of `entity_id`, at the meter's key path: the entity, then
 /// `message`.
-fn meter_error(entity_id: &entity::Id, key: &str, message: &str, hint: &str) -> Diagnostic {
+fn build_meter_error(entity_id: &entity::Id, key: &str, message: &str, hint: &str) -> Diagnostic {
     let (entity_text, key_path) = match entity_id {
         entity::Id::Actor(id) => (format!("actor '{id}'"), format!("actors.meters.{id}")),
         entity::Id::Place(id) => (entity_id.to_string(), format!("places.meters.{id}")),
