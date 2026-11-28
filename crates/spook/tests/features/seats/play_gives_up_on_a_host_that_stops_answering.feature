@@ -9,6 +9,6 @@ Feature: Play gives up on a host that stops answering
     Examples:
       | behavior                                         | error                             |
       | accepts the connection and says nothing          | Opening the connection timed out. |
-      | finishes the handshake and sends no hello        | Opening the connection timed out. |
+      | completes the handshake and sends no hello        | Opening the connection timed out. |
       | sends the hello and only chatter after the claim | Claiming the character timed out. |
       | answers the claim and then says nothing          | Releasing the character timed out. |

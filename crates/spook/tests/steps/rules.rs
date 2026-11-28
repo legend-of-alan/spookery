@@ -7,7 +7,7 @@ use spookery_engine::testing::roll;
 
 use crate::support::{edit_as_saved, edit_meter, insert_before_fence, put_items, put_meter};
 use spookery_engine::{
-    self as engine, component, entity, ActorId, GlobalId, Meter, Note, Presence, Reason,
+    self as engine, component, entity, globals, ActorId, Meter, Note, Presence, Reason,
 };
 
 use super::common::flags_of;
@@ -80,7 +80,7 @@ async fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     world.pack = Some(pack.clone());
     host::run(world, &["round", pack.to_str().unwrap()]).await;
     assert_eq!(world.code, Some(0), "{}", world.stderr);
-    let path = spookery_engine::testing::journal::locate(&pack, "round-0001")
+    let path = spookery_engine::testing::journal::find_bundle(&pack, "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read round: {err}"));
     let line = text
@@ -364,7 +364,7 @@ fn play_an_empty_round(pack: &Path) {
             panic!(
                 "empty round {}: {}",
                 err.as_str(),
-                spookery_engine::check_pack(pack)
+                spookery_engine::check::run(pack)
                     .iter()
                     .map(|diagnostic| diagnostic.to_string())
                     .collect::<Vec<_>>()
@@ -572,7 +572,7 @@ fn an_effect_key_is_bogus(world: &mut World) {
 #[then(expr = "spook check reports that key at its own line and column")]
 async fn check_reports_the_key(world: &mut World) {
     let text = fs::read_to_string(world.pack.as_ref().unwrap().join("rules/verbs.yaml")).unwrap();
-    let (line, column) = locate_key(&text, "bogus:");
+    let (line, column) = find_key(&text, "bogus:");
     let tale_line = text
         .lines()
         .position(|row| row.contains("the bogus tale"))
@@ -623,7 +623,7 @@ fn two_keys_in_one_line(world: &mut World, field: String, form: String) {
 #[then(expr = "spook check reports two keys in one condition or effect at the second key")]
 async fn check_reports_two_keys(world: &mut World) {
     let text = fs::read_to_string(world.pack.as_ref().unwrap().join("rules/verbs.yaml")).unwrap();
-    let (line, _) = locate_key(&text, SECOND_KEY);
+    let (line, _) = find_key(&text, SECOND_KEY);
     run(world, &["check"]).await;
     assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
     let want = format!(
@@ -733,7 +733,7 @@ fn both_full_ids_are_refused(world: &mut World) {
     assert_eq!(place_of(&now, "rowan"), "docks_shop");
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
-    let notes = now.globals().get::<Note>(&GlobalId);
+    let notes = now.globals().get::<Note>(&globals::Id);
     assert!(
         !notes.contains("note_mira_door"),
         "the habit note was stored"
@@ -941,12 +941,12 @@ async fn run(world: &mut World, args: &[&str]) {
 
 /// The world owns the pack lock, so the caller writes while holding it.
 pub(super) fn open(pack: &Path) -> spookery_engine::Session {
-    let lock = spookery_engine::lock_pack(pack).unwrap();
+    let lock = spookery_engine::lock::take(pack).unwrap();
     spookery_engine::Session::resume(pack, lock).unwrap_or_else(|err| {
         panic!(
             "open {}: {}",
             err.as_str(),
-            spookery_engine::check_pack(pack)
+            spookery_engine::check::run(pack)
                 .iter()
                 .map(|diagnostic| diagnostic.to_string())
                 .collect::<Vec<_>>()
@@ -962,7 +962,7 @@ fn write(path: &Path, text: &str) {
     fs::write(path, text).unwrap();
 }
 
-fn locate_key(text: &str, key: &str) -> (u64, u64) {
+fn find_key(text: &str, key: &str) -> (u64, u64) {
     for (index, line) in text.lines().enumerate() {
         if let Some(column) = line.find(key) {
             return ((index + 1) as u64, (column + 1) as u64);

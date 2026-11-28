@@ -3,7 +3,8 @@
 use crate::canon::Canon;
 use crate::ecs::component::Meter;
 use crate::ecs::component::Note;
-use crate::ecs::id::{ActorId, GlobalId, PlaceId};
+use crate::ecs::entity::globals;
+use crate::ecs::id::{ActorId, PlaceId};
 use crate::ecs::{self, component, Presence};
 use crate::entity;
 use crate::rules::habits::list_whose_if_holds;
@@ -73,7 +74,7 @@ pub(crate) fn build_view(
     visible_actors.sort();
 
     let mut notes = Vec::new();
-    for (note_id, note) in world.globals().get::<Note>(&GlobalId).iter() {
+    for (note_id, note) in world.globals().get::<Note>(&globals::Id).iter() {
         if !note.is_read_by(viewer_id, place_id.map(PlaceId::as_str)) {
             continue;
         }

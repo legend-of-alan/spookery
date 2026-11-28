@@ -4,7 +4,7 @@ Feature: Status reads the pack between writes
   state/.pack.rw.lock only while a write publishes. Status holds a shared lock
   on state/.pack.rw.lock while it reads, so it waits out a write in progress.
   The steps redo the write by hand: holding the write guard, they put the files
-  back as they stood halfway through, start status, then finish the write.
+  back as they stood halfway through, start status, then end the write.
 
   Scenario: Status during a commit sees a whole round
     Given the writer holds a docks pack

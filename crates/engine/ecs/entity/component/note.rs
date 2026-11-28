@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::ecs::change::{Change, ChangeValue};
 use crate::ecs::component::{Component, Mut};
 use crate::ecs::entity;
-use crate::ecs::id::{ActorId, GlobalId, PlaceId};
+use crate::ecs::entity::globals;
+use crate::ecs::id::{ActorId, PlaceId};
 use crate::Reason;
 
 /// A note: who it is for, where it lies, and what it says. The world holds it under its id.
@@ -38,7 +39,7 @@ impl Component for Note {
 impl Mut<'_, entity::Globals, Note> {
     /// Leave `note` under `note_id`. A note id is left once: `UNKNOWN_ID` again.
     pub fn leave(&mut self, note_id: &str, note: Note) -> Result<(), Reason> {
-        let entry_id = (GlobalId, note_id.to_string());
+        let entry_id = (globals::Id, note_id.to_string());
         if self.store().contains_key(&entry_id) {
             return Err(Reason::UnknownId);
         }

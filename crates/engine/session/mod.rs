@@ -11,19 +11,20 @@ use std::sync::Arc;
 use spookery_protocol::{CommandView, PlaceView};
 
 use crate::canon::budget::Budget;
-use crate::canon::{load_canon, Canon};
-use crate::diagnostic::first_reason;
+use crate::canon::{self, Canon};
+use crate::diagnostic;
 use crate::ecs::id::{ActorId, PlaceId};
 use crate::ecs::{self, component, Presence};
 use crate::entity;
-use crate::intent::{Intent, IntentArgs, Source, Target};
+use crate::intent::{self, Intent, Source, Target};
 use crate::rules::context::Context;
-use crate::rules::effect::{payload_json, Effect};
+use crate::rules::effect::{self, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind};
 use crate::store::journal;
-use crate::store::records::Record;
-use crate::store::tape::{append_record, read_scrollback, TapeRecord};
+use crate::store::records;
+use crate::store::save;
+use crate::store::tape;
 use crate::Reason;
 use spookery_protocol::{Audience, QueuedVerb, Refusal, Speaker};
 
@@ -75,7 +76,7 @@ impl Session {
         presence: &Presence,
         now_wall: &str,
     ) -> Result<crate::round::Output, Reason> {
-        crate::round::play::run_round(self, presence, now_wall, false)
+        crate::round::run(self, presence, now_wall, false)
     }
 
     /// Commit a queued round, then fast-forward while every seated PC is busy.
@@ -95,9 +96,9 @@ impl Session {
         Ok(outputs)
     }
 
-    /// Play the rounds an absence earns. Only an empty table catches up.
-    pub fn catch_up(&mut self, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {
-        crate::round::play::catch_up(self, now_wall, downtime_hours)
+    /// Play the rounds an absence earns. Only an empty table plays them.
+    pub fn play_idle(&mut self, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {
+        crate::round::play_idle(self, now_wall, downtime_hours)
     }
 
     /// Append a player's speech. `presence` is who can hear it. Speech to an actor reads
@@ -111,7 +112,7 @@ impl Session {
         actor_id: &ActorId,
         audience: &Audience,
         text: &str,
-    ) -> Result<TapeRecord, Refusal> {
+    ) -> Result<tape::Record, Refusal> {
         let actors = self.world.actors();
         if !actors.get::<component::ControlType>(actor_id).is_pc() {
             return Err(Reason::Schema.into());
@@ -148,7 +149,7 @@ impl Session {
         npc_id: Option<&ActorId>,
         audience: Option<&Audience>,
         text: &str,
-    ) -> Result<TapeRecord, Reason> {
+    ) -> Result<tape::Record, Reason> {
         let from = match npc_id {
             None => Speaker::Gm,
             Some(id)
@@ -172,7 +173,7 @@ impl Session {
         speaker: Option<&ActorId>,
         audience: Option<&Audience>,
         text: &str,
-    ) -> Result<TapeRecord, Reason> {
+    ) -> Result<tape::Record, Reason> {
         let text = check_speech_text(text)?.to_string();
         let actors = self.world.actors();
         let here = speaker.and_then(|speaker| actors.get::<component::Place>(speaker).place_id());
@@ -193,12 +194,12 @@ impl Session {
             Some(audience) => audience.clone(),
             None => Audience::Place(here.ok_or(Reason::Schema)?.to_string()),
         };
-        let recipient_ids = speech_recipients(&self.world, presence, speaker, &to);
+        let recipient_ids = list_recipient_ids(&self.world, presence, speaker, &to);
         let from_name = match speaker {
             Some(id) => self.canon().name(id.as_str()).ok_or(Reason::UnknownId)?,
             None => "",
         };
-        let record = TapeRecord {
+        let record = tape::Record {
             seq: 0,
             from,
             from_name: from_name.to_string(),
@@ -208,7 +209,7 @@ impl Session {
             round_index: self.world.round_index,
             world_time: self.world.world_time,
         };
-        append_record(&self.root, record)
+        tape::append(&self.root, record)
     }
 }
 
@@ -226,8 +227,8 @@ impl<Lock> Session<Lock> {
     }
 
     /// Every verb the pack's rules name: the commands a player seat may send as verbs.
-    pub fn verbs(&self) -> Vec<String> {
-        self.canon().verbs()
+    pub fn list_verbs(&self) -> Vec<String> {
+        self.canon().list_verbs()
     }
 
     /// Every PC in the cast.
@@ -388,7 +389,7 @@ impl<Lock> Session<Lock> {
                 .checked_add(1)
                 .ok_or(Reason::Schema)?,
         };
-        let args = IntentArgs {
+        let args = intent::Args {
             message_to: spec
                 .message_to
                 .map(|ids| ids.into_iter().map(ActorId::from).collect()),
@@ -413,8 +414,8 @@ impl<Lock> Session<Lock> {
         })
     }
 
-    pub fn player_scrollback(&self, actor_id: &ActorId) -> Result<Vec<TapeRecord>, Reason> {
-        read_scrollback(&self.root, actor_id.as_str())
+    pub fn player_scrollback(&self, actor_id: &ActorId) -> Result<Vec<tape::Record>, Reason> {
+        tape::read_recent(&self.root, actor_id.as_str())
     }
 
     pub fn budget(&self) -> &Budget {
@@ -455,7 +456,7 @@ impl<Lock> Session<Lock> {
         let entries = journal::read_verified(&self.root).map_err(|fault| fault.reason)?;
         let mut effects = Vec::new();
         for entry in &entries {
-            let Record::Round(record) = entry else {
+            let records::Record::Round(record) = entry else {
                 continue;
             };
             for effect in &record.effects {
@@ -469,7 +470,7 @@ impl<Lock> Session<Lock> {
     /// `meter <entity> <id> <value> <max>`, the entity spelled as a rule's `of` names it.
     /// A working copy of the save with a round open on it under the pack's budget. A stage that
     /// refuses, or a commit that fails, drops the copy and the save stays as it was.
-    pub(crate) fn begin_round(&self) -> ecs::World {
+    pub(crate) fn start_round(&self) -> ecs::World {
         let mut world = self.world.clone();
         world.open_round(&self.canon().budget);
         world
@@ -516,7 +517,7 @@ impl<Lock> Session<Lock> {
             rows.push(format!(
                 "effect {} {round_index} {}",
                 effect.kind.as_str(),
-                payload_json(effect)
+                effect::to_json(effect)
             ));
         }
         rows.extend(self.carried_meter_rows());
@@ -558,10 +559,12 @@ impl Session<()> {
         if !root.join("pack.yaml").is_file() {
             return Err(Reason::NotInSpec);
         }
-        let now_bytes = journal::read_save(&journal::save_path(root))?;
-        let canon = Arc::new(load_canon(root).map_err(|diagnostics| first_reason(&diagnostics))?);
-        let save = crate::check::load_save_file(root, Some(&canon), &now_bytes)
-            .map_err(|diagnostics| first_reason(&diagnostics))?;
+        let now_bytes = journal::read_save(&root.join(save::FILE))?;
+        let canon = Arc::new(
+            canon::load(root).map_err(|diagnostics| diagnostic::find_reason(&diagnostics))?,
+        );
+        let save = save::load(root, Some(&canon), &now_bytes)
+            .map_err(|diagnostics| diagnostic::find_reason(&diagnostics))?;
         Ok(Self {
             root: root.to_path_buf(),
             world: ecs::World::new(save, canon),
@@ -583,7 +586,7 @@ impl Session<()> {
 }
 
 /// Seated players who hear this speech. A seated speaker is included.
-fn speech_recipients(
+fn list_recipient_ids(
     world: &ecs::World,
     presence: &Presence,
     speaker: Option<&ActorId>,

@@ -52,7 +52,7 @@ pub(crate) struct GmClient {
 }
 
 impl GmClient {
-    /// Dial `http://<mcp_addr>/mcp`, finish the handshake, and wait for the event stream to
+    /// Dial `http://<mcp_addr>/mcp`, complete the handshake, and wait for the event stream to
     /// take the seat: its hello. A refused seat is the refusal's sentence.
     pub(crate) async fn connect(mcp_addr: SocketAddr) -> Result<Self, String> {
         let url = format!("http://{mcp_addr}/mcp");

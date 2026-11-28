@@ -30,7 +30,7 @@ async fn a_human_gm_connects(world: &mut World) {
     let _ = connect_gm(world, false).await;
 }
 
-#[when(expr = "a human GM connects with raw frames on a free loopback port")]
+#[when(expr = "a human GM connects with raw messages on a free loopback port")]
 async fn a_human_gm_connects_raw(world: &mut World) {
     let _ = connect_gm(world, true).await;
 }

@@ -1,6 +1,6 @@
 Feature: One action lifecycle
 
-  Every verb starts and finishes through one path. One that takes no ticks finishes
+  Every verb starts and ends through one path. One that takes no ticks ends
   in the round it starts. A walk that takes ticks puts the walker on the exit until they arrive.
 
   Background:
@@ -46,7 +46,7 @@ Feature: One action lifecycle
     When rounds pass until tick 1090
     Then Rowan is at mira_rooms
 
-  Scenario: A cooldown keeps the actor busy after the finish
+  Scenario: A cooldown keeps the actor busy after the end
     Given the rule "chant" takes 5 ticks and has a cooldown of 3 ticks
     When Rowan plays "chant"
     Then Rowan's look shows "recovering until tick 1088"
@@ -57,12 +57,12 @@ Feature: One action lifecycle
   Scenario: A free instant drink does not use the act
     Given the rule "drink" does not count its start as an act
     When Rowan plays "drink"
-    Then "drink" finished
+    Then "drink" ended
     And Rowan has used no act
 
   Scenario: A free instant drink and a take both land in one round
     Given the rule "drink" does not count its start as an act
     When Rowan plays "drink" and "take lamp_oil" in the same round
-    Then "drink" finished
+    Then "drink" ended
     And Rowan holds 1 lamp_oil
     And Rowan has used the act of round 1

@@ -7,7 +7,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::world_of;
-use spookery_engine::{component, entity, load_canon, ActorId, GlobalId, Meter, Note, Presence};
+use spookery_engine::{canon, component, entity, globals, ActorId, Meter, Note, Presence};
 
 use super::common::{add_verb, replace_in_file};
 use super::host;
@@ -125,7 +125,7 @@ fn mira_declares_a_meter(world: &mut World, key: String) {
 
 #[when(expr = "the pack loads")]
 fn the_pack_loads(world: &mut World) {
-    load_canon(pack(world)).unwrap_or_else(|err| panic!("load: {err:?}"));
+    canon::load(pack(world)).unwrap_or_else(|err| panic!("load: {err:?}"));
 }
 
 #[then(expr = "Mira has a shop_day meter")]
@@ -157,7 +157,7 @@ fn miras_habit_reads_and_resets(world: &mut World) {
 #[then(expr = "the habit runs as it did when shop_day was a clock")]
 fn the_habit_runs_as_before(world: &mut World) {
     let now = world_of(pack(world));
-    let notes = now.globals().get::<Note>(&GlobalId);
+    let notes = now.globals().get::<Note>(&globals::Id);
     let to_ids = notes.get("note_mira_door").map(|note| note.to_ids.clone());
     assert_eq!(to_ids, Some(BTreeSet::from(["rowan".into()])));
     assert_eq!(value_on(pack(world), &mira(), "shop_day"), Some(0));

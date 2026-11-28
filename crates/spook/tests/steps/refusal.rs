@@ -71,8 +71,8 @@ async fn the_player_waits_for_the_resume(world: &mut World) {
     world.player_added = added;
 }
 
-#[then(expr = "the player sees no refused frame")]
-fn the_player_sees_no_refused_frame(world: &mut World) {
+#[then(expr = "the player sees no refused message")]
+fn the_player_sees_no_refused_message(world: &mut World) {
     assert!(
         !world.player_added.contains("\"kind\":\"refused\""),
         "{}",
@@ -238,8 +238,8 @@ fn the_gms_queue_is_refused(world: &mut World, code: String) {
     assert!(!text.contains("\"kind\":\"queued\""), "{text}");
 }
 
-#[then(expr = "Harbormouse's refused frame for {string} has no missing field")]
-async fn harbormouses_refused_frame_has_no_missing_field(world: &mut World, code: String) {
+#[then(expr = "Harbormouse's refused message for {string} has no missing field")]
+async fn harbormouses_refused_message_has_no_missing_field(world: &mut World, code: String) {
     let body = serde_json::json!({ "kind": "refused", "code": code });
     let added = host::wait_player_from(world, world.mark, &format!("\"code\":\"{code}\"")).await;
     let refusals: Vec<serde_json::Value> = added

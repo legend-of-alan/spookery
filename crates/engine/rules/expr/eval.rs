@@ -6,9 +6,9 @@ use crate::rules::expr::{BinOp, Expr, Func, Keep};
 use crate::rules::grammar;
 use crate::Reason;
 
-/// Faces for one expression. `begin` starts a new roll seed. `push_line` records the shown line.
+/// Faces for one expression. `start` starts a new roll seed. `push_line` records the shown line.
 pub(crate) trait Dice {
-    fn begin(&mut self);
+    fn start(&mut self);
     fn draw(&mut self, count: u32, sides: u32) -> Result<Vec<u32>, Reason>;
     fn push_line(&mut self, text: String);
 }
@@ -17,7 +17,7 @@ pub(crate) trait Dice {
 struct NoDice;
 
 impl Dice for NoDice {
-    fn begin(&mut self) {}
+    fn start(&mut self) {}
 
     fn draw(&mut self, _count: u32, _sides: u32) -> Result<Vec<u32>, Reason> {
         Err(Reason::Schema)
@@ -74,7 +74,7 @@ fn roll_with_label(
     dice: &mut dyn Dice,
     label: &str,
 ) -> Result<ShownValue, Reason> {
-    dice.begin();
+    dice.start();
     let shown = roll_node(context, expr, dice)?;
     if !shown.dice_lines.is_empty() {
         dice.push_line(format!(

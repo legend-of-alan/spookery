@@ -9,10 +9,11 @@ use crate::ecs::change::{Change, ChangeValue};
 use crate::ecs::component::{
     Act, ActorLocation, Component, Item, Meter, Modifier, Note, Place, WieldedItem,
 };
-use crate::ecs::id::{ActorId, GlobalId, PlaceId};
+use crate::ecs::entity::globals;
+use crate::ecs::id::{ActorId, PlaceId};
 use crate::ecs::{self, component};
 use crate::entity;
-use crate::rules::effect::{Effect, EffectKind};
+use crate::rules::effect::{self, Effect};
 use crate::rules::grammar;
 
 /// Who is asking.
@@ -134,7 +135,7 @@ fn find_place_change_name(
 fn narrations(effects: &[Effect], viewer: Option<&ActorId>) -> Vec<String> {
     let mut lines = Vec::new();
     for effect in effects {
-        let EffectKind::Narrate { to, text } = &effect.kind else {
+        let effect::Kind::Narrate { to, text } = &effect.kind else {
             continue;
         };
         if viewer.is_none_or(|id| to.contains(id)) {
@@ -215,6 +216,6 @@ fn is_at(world: &ecs::World, viewer_id: &ActorId, change_side: Option<&ChangeVal
 }
 
 fn can_see_note(world: &ecs::World, viewer_id: &ActorId, id: &str) -> bool {
-    let note = world.globals().get::<Note>(&GlobalId).get(id);
+    let note = world.globals().get::<Note>(&globals::Id).get(id);
     note.is_some_and(|note| note.is_read_by(viewer_id, place_of(world, viewer_id)))
 }

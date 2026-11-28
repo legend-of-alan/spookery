@@ -11,7 +11,7 @@ use crate::World;
 /// change. Rowan holds a seat, so the round is a short seated one.
 fn plays(world: &mut World, actor: &str, verb: &str, target: Option<&str>) {
     let pack = world.pack().to_path_buf();
-    let lock = spookery_engine::lock_pack(&pack).unwrap();
+    let lock = spookery_engine::lock::take(&pack).unwrap();
     let mut opened =
         spookery_engine::Session::resume(&pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
     let round = opened.world().round_index + 1;
@@ -194,7 +194,7 @@ fn a_rule_locks_the_door(world: &mut World) {
 
 #[then(expr = "the GM's travel for Aldric up the stairs is refused NO_EXIT at once")]
 fn the_door_refuses_aldric(world: &mut World) {
-    let lock = spookery_engine::lock_pack(world.pack()).unwrap();
+    let lock = spookery_engine::lock::take(world.pack()).unwrap();
     let mut opened = spookery_engine::Session::resume(world.pack(), lock).unwrap();
     let intent = spookery_protocol::QueueArgs {
         id: Some("aldric-stairs".to_string()),

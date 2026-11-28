@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ecs::change;
 use crate::ecs::component::{modifier, Component, Mut, Ref};
-use crate::ecs::entity::{self, in_collection, Id};
+use crate::ecs::entity::{self, in_collection};
 use crate::ecs::prelude::*;
 use crate::ecs::{Reader, Save, Writer};
 use crate::Reason;
@@ -142,7 +142,7 @@ impl Ref<'_, Save, Meter> {
     pub fn value(&self, entry_id: &str) -> Result<i64, Reason> {
         let (save, canon) = (self.entities.components, self.entities.canon);
         match self.id {
-            Id::Actor(actor_id) => {
+            entity::Id::Actor(actor_id) => {
                 modifier::value(Reader::new(&save.actors, canon), actor_id, entry_id)
             }
             id => {

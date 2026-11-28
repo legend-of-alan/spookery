@@ -45,29 +45,31 @@ async fn the_gm_closes_the_seat(world: &mut World) {
 
 #[then(expr = "the player sees rowan arrive at {word}")]
 async fn the_player_sees_rowan_arrive(world: &mut World, place_id: String) {
-    wait_player_frame(world, &format!("a view at {place_id}"), |frame| {
-        frame["kind"] == "view" && frame["viewer"] == "rowan" && frame["place"]["place"] == place_id
+    wait_player_message(world, &format!("a view at {place_id}"), |message| {
+        message["kind"] == "view"
+            && message["viewer"] == "rowan"
+            && message["place"]["place"] == place_id
     })
     .await;
 }
 
 #[then(expr = "the player hears the GM say {string}")]
 async fn the_player_hears_the_gm(world: &mut World, text: String) {
-    wait_player_frame(world, "the GM's say", |frame| {
-        frame["kind"] == "say" && frame["from"] == "gm" && frame["text"] == text
+    wait_player_message(world, "the GM's say", |message| {
+        message["kind"] == "say" && message["from"] == "gm" && message["text"] == text
     })
     .await;
 }
 
 #[then(expr = "the player is shown {string} with an exit to {string}")]
 async fn the_player_is_shown(world: &mut World, place_name: String, place_id: String) {
-    wait_player_frame(world, &format!("a view of {place_name}"), |frame| {
-        let exits = frame["place"]["exits"]
+    wait_player_message(world, &format!("a view of {place_name}"), |message| {
+        let exits = message["place"]["exits"]
             .as_array()
             .cloned()
             .unwrap_or_default();
-        frame["kind"] == "view"
-            && frame["place"]["name"] == place_name
+        message["kind"] == "view"
+            && message["place"]["name"] == place_name
             && exits.iter().any(|exit| exit["place"] == place_id)
     })
     .await;
@@ -75,8 +77,8 @@ async fn the_player_is_shown(world: &mut World, place_name: String, place_id: St
 
 #[then(expr = "the table refuses the player with {word}")]
 async fn the_player_is_refused(world: &mut World, code: String) {
-    wait_player_frame(world, &format!("a {code} refusal"), |frame| {
-        frame["kind"] == "refused" && frame["code"] == code
+    wait_player_message(world, &format!("a {code} refusal"), |message| {
+        message["kind"] == "refused" && message["code"] == code
     })
     .await;
 }
@@ -116,7 +118,7 @@ async fn the_gm_sees_no_player_seated(world: &mut World) {
 }
 
 /// Waits for a message body after `world.mark` that passes `done`.
-async fn wait_player_frame(world: &World, want: &str, done: impl Fn(&Value) -> bool) {
+async fn wait_player_message(world: &World, want: &str, done: impl Fn(&Value) -> bool) {
     host::poll_until(want, async || {
         let text = host::player_text(world);
         let after = text.get(world.mark..).unwrap_or_default();
@@ -151,26 +153,26 @@ fn parse_lines(text: &str) -> Vec<Value> {
 
 #[then(expr = "the player is offered {string}")]
 async fn the_player_is_offered(world: &mut World, command_id: String) {
-    wait_player_frame(world, &format!("help with {command_id}"), |frame| {
-        help_command(frame, &command_id).is_some()
+    wait_player_message(world, &format!("help with {command_id}"), |message| {
+        help_command(message, &command_id).is_some()
     })
     .await;
 }
 
 #[then(expr = "the player's map lists {string}")]
 async fn the_players_map_lists(world: &mut World, place_name: String) {
-    wait_player_frame(world, &format!("a map with {place_name}"), |frame| {
-        let places = frame["places"].as_array().cloned().unwrap_or_default();
-        frame["kind"] == "map" && places.iter().any(|place| place["name"] == place_name)
+    wait_player_message(world, &format!("a map with {place_name}"), |message| {
+        let places = message["places"].as_array().cloned().unwrap_or_default();
+        message["kind"] == "map" && places.iter().any(|place| place["name"] == place_name)
     })
     .await;
 }
 
 /// The command `command_id` of a `help` body.
-fn help_command<'a>(frame: &'a Value, command_id: &str) -> Option<&'a Value> {
-    if frame["kind"] != "help" {
+fn help_command<'a>(message: &'a Value, command_id: &str) -> Option<&'a Value> {
+    if message["kind"] != "help" {
         return None;
     }
-    let commands = frame["commands"].as_array()?;
+    let commands = message["commands"].as_array()?;
     commands.iter().find(|command| command["id"] == command_id)
 }

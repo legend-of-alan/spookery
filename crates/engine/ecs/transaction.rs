@@ -282,7 +282,7 @@ mod tests {
         let save = Save::clone(opened.world());
         let session =
             session::Session::from_parts(opened.root(), ecs::World::new(save, Arc::new(canon)));
-        let mut world = session.begin_round();
+        let mut world = session.start_round();
         let mira = ActorId::from("mira");
         for delta in [-1, 1] {
             let shifted = world
@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn a_rollback_takes_an_added_actor_off_every_store_it_was_put_on() {
         let session = docks();
-        let mut world = session.begin_round();
+        let mut world = session.start_round();
         let before = world.clone();
         let point = world.savepoint();
         let nell = ActorId::from("nell");
@@ -336,7 +336,7 @@ mod tests {
     #[test]
     fn a_flag_goes_only_on_a_place_or_story_the_pack_defines() {
         let session = docks();
-        let mut world = session.begin_round();
+        let mut world = session.start_round();
         let before = world.clone();
         let place = world
             .places_mut()

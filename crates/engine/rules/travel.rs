@@ -2,14 +2,15 @@
 
 use crate::canon::map::{Exit, PathDef, OPEN};
 use crate::canon::Canon;
-use crate::ecs::id::{ActorId, GlobalId, PathId, PlaceId};
+use crate::ecs::entity::globals;
+use crate::ecs::id::{ActorId, PathId, PlaceId};
 use crate::ecs::{self, component, entity, PendingAction, Presence};
 use crate::intent::{Intent, Source, Target};
 use crate::round::Ledger;
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
-use crate::rules::effect::{Effect, EffectKind};
+use crate::rules::effect::{self, Effect};
 use crate::rules::gate;
 use crate::rules::lines::find_place_name;
 use crate::rules::rule::{EffectTemplate, MoveTo, Rule};
@@ -93,7 +94,7 @@ fn is_revealed(world: &ecs::World, actor_id: &ActorId, exit: Exit<'_>) -> bool {
         .contains(key)
         || world
             .globals()
-            .get::<component::Flag>(&GlobalId)
+            .get::<component::Flag>(&globals::Id)
             .contains(key)
 }
 
@@ -135,7 +136,7 @@ pub(crate) fn open_conditional_paths(
         }
         let id = format!("open:{}", path_def.id);
         let intent = Intent::new(id, world.round_index, None, Source::Engine, "open", target);
-        let kind = EffectKind::Flag {
+        let kind = effect::Kind::Flag {
             entity: entity::Id::Path(path_def.id.clone()),
             key: OPEN.to_string(),
             value: true,
@@ -229,8 +230,8 @@ pub(crate) fn visible_exits(
     })
 }
 
-/// Ticks until the rule and its exit finish, read for the acting actor. Zero means it
-/// finishes now. A negative count is `OUT_OF_RANGE`.
+/// Ticks until the rule and its exit end, read for the acting actor. Zero means it
+/// ends now. A negative count is `OUT_OF_RANGE`.
 pub(crate) fn span(context: &Context, rule: &Rule) -> Result<u64, Reason> {
     let start_cost = rule.start_cost.as_ref();
     let mut ticks = start_cost.map_or(Ok(0), |cost| cost::read_ticks(context, cost))?;
@@ -240,35 +241,38 @@ pub(crate) fn span(context: &Context, rule: &Rule) -> Result<u64, Reason> {
     Ok(ticks)
 }
 
-/// One action whose finish tick has been reached. The actor is no longer busy.
+/// One action whose end tick has been reached. The actor is no longer busy.
 pub(crate) struct DueAction {
     pub actor_id: ActorId,
     pub until: u64,
     pub pending: PendingAction,
 }
 
-/// Clear every action that finishes at or before `end`, earliest first.
-pub(crate) fn take_due_actions(world: &mut ecs::World, end: u64) -> Result<Vec<DueAction>, Reason> {
+/// Clear every action that ends at or before `until`, earliest first.
+pub(crate) fn take_due_actions(
+    world: &mut ecs::World,
+    until: u64,
+) -> Result<Vec<DueAction>, Reason> {
     let mut due_keys: Vec<(u64, ActorId)> = (world.actors().query::<(ActorId, &component::Act)>())
         .iter()
         .filter_map(|(id, act)| {
-            let until = act.busy_until?;
-            if act.pending.is_none() || until > end {
+            let busy_until = act.busy_until?;
+            if act.pending.is_none() || busy_until > until {
                 return None;
             }
-            Some((until, id.clone()))
+            Some((busy_until, id.clone()))
         })
         .collect();
     due_keys.sort();
     let mut due_actions = Vec::new();
-    for (until, actor_id) in due_keys {
+    for (busy_until, actor_id) in due_keys {
         let mut actors = world.actors_mut();
         let Some(pending) = actors.get_mut::<component::Act>(&actor_id).take_pending()? else {
             continue;
         };
         due_actions.push(DueAction {
             actor_id,
-            until,
+            until: busy_until,
             pending,
         });
     }

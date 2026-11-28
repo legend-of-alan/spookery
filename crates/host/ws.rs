@@ -22,7 +22,7 @@ use super::limits::{
     wait_for_token, TokenBucket, BURST, CLIENT_MESSAGE_CAP_BYTES, KEEPALIVE, MESSAGE_CAP_BYTES,
     RATE_PER_SEC, REQUESTED_SEND_BUFFER_BYTES,
 };
-use super::seat::{frame_queue, write_frames, ConnId};
+use super::seat::{self, write_messages, ConnId};
 use crate::protocol::{ClientMessage, Seat};
 
 #[derive(Clone)]
@@ -106,12 +106,12 @@ fn is_loopback(headers: &HeaderMap) -> bool {
 
 async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
     let conn = ConnId::new(&acceptor.next_conn);
-    let (frames_tx, frames_rx) = frame_queue();
+    let (messages_tx, messages_rx) = seat::open_queue();
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     let open = Request::Open {
         conn,
         seat,
-        frames_tx,
+        messages_tx,
         reply: reply_tx,
     };
     if acceptor.tx.send(open).is_err() {
@@ -126,13 +126,13 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
         let _ = sink.close().await;
         return;
     }
-    let mut cancel_rx = frames_rx.cancel.clone();
-    let writer = tokio::spawn(write_frames(
-        async move |frame: &[u8]| match std::str::from_utf8(frame) {
+    let mut cancel_rx = messages_rx.cancel.clone();
+    let writer = tokio::spawn(write_messages(
+        async move |message: &[u8]| match std::str::from_utf8(message) {
             Ok(text) => sink.send(Message::text(text)).await.is_ok(),
             Err(_) => false,
         },
-        frames_rx,
+        messages_rx,
     ));
     let mut bucket = TokenBucket::new(RATE_PER_SEC, BURST);
     let mut spoke = false;

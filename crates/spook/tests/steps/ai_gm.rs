@@ -375,7 +375,7 @@ async fn a_model_answers_500_once_and_then_speaks(world: &mut World) {
     let gm = start_ai_gm(world, http_model(stub)).await;
     wait_stub(&seen, 1, 1).await;
     gm.advance(RETRY_BACKOFF).await;
-    finish_http_turn(world, gm, pack, seen).await;
+    end_http_turn(world, gm, pack, seen).await;
 }
 
 #[when(expr = "a model answers 401")]
@@ -384,7 +384,7 @@ async fn a_model_answers_401(world: &mut World) {
     let (stub, seen) = start_model_stub([Reply::Status(401, UNAUTHORIZED_BODY)]);
     let gm = start_ai_gm(world, http_model(stub)).await;
     host::wait_suffix(&gm.err, 0, "model call returned 401").await;
-    finish_http_turn(world, gm, pack, seen).await;
+    end_http_turn(world, gm, pack, seen).await;
 }
 
 /// A provider 401 body that echoes the key back, the way some providers do.
@@ -441,7 +441,7 @@ fn lock_stub_seen(world: &World) -> std::sync::MutexGuard<'_, Seen> {
 
 /// Waits for the queued travel's round, then stops the AI GM and keeps its error text, the
 /// pack and what the stub saw.
-async fn finish_http_turn(world: &mut World, gm: AiGm, pack: PathBuf, seen: Arc<Mutex<Seen>>) {
+async fn end_http_turn(world: &mut World, gm: AiGm, pack: PathBuf, seen: Arc<Mutex<Seen>>) {
     world.round_ticks = host::wait_rounds_to_view(world, world.mark).await;
     world.stderr = support::text_of(&gm.err);
     stop_ai_gm(world, gm);

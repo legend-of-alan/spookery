@@ -57,16 +57,16 @@ fn format_utc(now: DateTime<Utc>) -> String {
     now.format(STAMP_FORMAT).to_string()
 }
 
-/// Plays the catch-up rounds when the last round is an interval old.
+/// Plays the idle rounds when the last round is an interval old.
 /// Returns whether `world_time` advanced.
-pub(super) fn catch_up_if_due(session: &mut spookery_engine::Session) -> Result<bool, Reason> {
+pub(super) fn play_if_due(session: &mut spookery_engine::Session) -> Result<bool, Reason> {
     let now = Utc::now();
     let elapsed = elapsed_secs(&session.world().last_round_at, now)?;
     if elapsed < session.budget().round_every_real_seconds {
         return Ok(false);
     }
     let before = session.world().world_time;
-    session.catch_up(&format_utc(now), elapsed / 3600)?;
+    session.play_idle(&format_utc(now), elapsed / 3600)?;
     Ok(session.world().world_time != before)
 }
 

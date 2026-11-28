@@ -44,7 +44,7 @@ pub struct Save {
     pub rules_rev: u64,
     pub state_rev: u64,
     pub round_index: u64,
-    /// Ticks since the world began.
+    /// Ticks since the world started.
     pub world_time: u64,
     pub last_round_at: String,
     actors: entity::Actors,

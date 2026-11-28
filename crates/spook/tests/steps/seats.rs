@@ -1,6 +1,6 @@
 use spookery::protocol::{ServerBody, ServerMessage, VERSION};
 use spookery_engine::testing::{act_of, world_of};
-use spookery_engine::{component, GlobalId, Note};
+use spookery_engine::{component, globals, Note};
 use std::fs;
 use std::io::ErrorKind;
 use std::net;
@@ -233,7 +233,7 @@ fn a_docks_table_where_one_pc_has_a_private_note(world: &mut World) {
             text: PRIVATE_NOTE_TEXT.to_string(),
         };
         let mut globals = now.globals_mut();
-        (globals.get_mut::<Note>(&GlobalId))
+        (globals.get_mut::<Note>(&globals::Id))
             .leave(PRIVATE_NOTE_ID, note)
             .unwrap();
     });
@@ -512,7 +512,7 @@ enum StubHostStop {
 fn a_stub_host(world: &mut World, behavior: String) {
     let stop = match behavior.as_str() {
         "accepts the connection and says nothing" => StubHostStop::Accept,
-        "finishes the handshake and sends no hello" => StubHostStop::Handshake,
+        "completes the handshake and sends no hello" => StubHostStop::Handshake,
         "sends the hello and only chatter after the claim" => StubHostStop::Hello,
         "answers the claim and then says nothing" => StubHostStop::Claim,
         other => panic!("unknown stub host {other}"),

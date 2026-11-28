@@ -18,8 +18,8 @@ use crate::canon::Canon;
 use crate::ecs::id::{ActorId, PlaceId};
 use crate::ecs::{self, component};
 use crate::entity;
-use crate::intent::{Intent, IntentArgs, Source, Target};
-use crate::rules::effect::{Effect, EffectKind};
+use crate::intent::{self, Intent, Source, Target};
+use crate::rules::effect::{self, Effect};
 use crate::session;
 use crate::testing::copy_pack;
 
@@ -64,7 +64,7 @@ fn apply_changes(
     steps: &[ItemChange],
 ) -> Result<(), TestCaseError> {
     let nobody = crate::ecs::Presence::default();
-    let (canon, mut world) = (session.canon(), session.begin_round());
+    let (canon, mut world) = (session.canon(), session.start_round());
     let intent = npc_intent();
     for step in steps {
         let before = world.clone();
@@ -171,7 +171,7 @@ fn npc_intent() -> Intent {
         source: Source::Engine,
         verb_id: "shift_item".to_string(),
         target: Target::Empty,
-        args: IntentArgs::default(),
+        args: intent::Args::default(),
         rationale_code: String::new(),
     }
 }
@@ -183,7 +183,7 @@ fn item_effect(step: &ItemChange) -> Effect {
         entity::Id::Path(_) | entity::Id::Story(_) | entity::Id::Global => (None, None),
     };
     Effect {
-        kind: EffectKind::Item {
+        kind: effect::Kind::Item {
             actor_id,
             place,
             id: step.id.clone(),

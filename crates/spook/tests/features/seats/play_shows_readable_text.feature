@@ -35,10 +35,10 @@ Feature: Play shows readable text
       Wren
       """
 
-  Scenario: Raw play shows protocol frames
+  Scenario: Raw play shows protocol messages
     Given a docks table
-    When play joins the table with raw frames
-    Then play shows protocol frames
+    When play joins the table with raw messages
+    Then play shows protocol messages
 
   Scenario: The resume shows the door note as a sentence
     Given a docks table
@@ -50,7 +50,7 @@ Feature: Play shows readable text
   Scenario: Raw play keeps the resume as the raw digest
     Given a docks table
     When thirteen rounds pass
-    And play joins the table with raw frames
+    And play joins the table with raw messages
     Then play shows the raw resume digest
 
   Scenario: A round while seated shows no away heading

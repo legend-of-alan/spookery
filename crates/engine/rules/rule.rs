@@ -19,13 +19,13 @@ pub(crate) struct Rule {
     pub check: Option<roll::Check>,
     /// The rule's `cost`, paid when the action starts. Its ticks are how long the action takes.
     pub start_cost: Option<Cost>,
-    /// Paid when the action finishes.
-    pub finish_cost: Option<Cost>,
+    /// Paid when the action ends.
+    pub end_cost: Option<Cost>,
     /// Whether the start uses the actor's act. Packs default this to true.
     pub start_counts_as_act: bool,
-    /// Whether the finish uses the actor's act. Packs default this to false.
-    pub finish_counts_as_act: bool,
-    /// Ticks the actor stays busy after the finish.
+    /// Whether the end uses the actor's act. Packs default this to false.
+    pub end_counts_as_act: bool,
+    /// Ticks the actor stays busy after the end.
     pub cooldown_ticks: u64,
     /// Whether the actor may cancel the action while it is under way.
     pub cancellable: bool,
@@ -38,9 +38,9 @@ pub(crate) struct Rule {
 }
 
 impl Rule {
-    /// The start cost, then the finish cost. `exprs` relies on this order.
+    /// The start cost, then the end cost. `exprs` relies on this order.
     pub(crate) fn costs(&self) -> impl Iterator<Item = &Cost> {
-        self.start_cost.iter().chain(&self.finish_cost)
+        self.start_cost.iter().chain(&self.end_cost)
     }
 
     /// Every effect the rule holds, in the order `visit_templates` walks them, with the effects

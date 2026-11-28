@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::roll;
-use spookery_engine::{self as engine, component, GlobalId, Note};
+use spookery_engine::{self as engine, component, globals, Note};
 
 use crate::{resolve_id, World};
 use spookery_engine::round::Output;
@@ -67,7 +67,7 @@ fn a_played_d20_strike(world: &mut World) {
 #[then(expr = "spook verify passes and re-derives every roll")]
 fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    spookery_engine::verify_pack(pack, None).expect("verify");
+    spookery_engine::verification::run(pack, None).expect("verify");
 }
 
 #[given(expr = "two fresh copies of the docks pack as shipped")]
@@ -97,7 +97,7 @@ fn the_two_saves_hold_different_seeds(world: &mut World) {
 #[then(expr = "spook verify passes on each")]
 fn spook_verify_passes_on_each(world: &mut World) {
     for pack in &world.copies {
-        spookery_engine::verify_pack(pack, None)
+        spookery_engine::verification::run(pack, None)
             .unwrap_or_else(|err| panic!("verify {}: {err:?}", pack.display()));
     }
 }
@@ -192,7 +192,7 @@ fn the_gm_queues_mira_wait(world: &mut World) {
 fn the_wait_lands_and_miras_habit_does_not_run(world: &mut World) {
     let ecs_world = support::world_of(world.pack());
     assert_eq!(act_of(&ecs_world, "mira").last_act_round, 1);
-    let notes = ecs_world.globals().get::<Note>(&GlobalId);
+    let notes = ecs_world.globals().get::<Note>(&globals::Id);
     assert!(
         !notes.contains("note_mira_door"),
         "the door note was stored"
@@ -303,10 +303,10 @@ rules:
     world.pack = Some(pack);
 }
 
-#[when(expr = "Rowan asks Aldric and the table plays until the action finishes")]
-fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
+#[when(expr = "Rowan asks Aldric and the table plays until the action ends")]
+fn rowan_asks_aldric_until_it_ends(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    let lock = spookery_engine::lock_pack(&pack).unwrap();
+    let lock = spookery_engine::lock::take(&pack).unwrap();
     let mut session =
         spookery_engine::Session::resume(&pack, lock).unwrap_or_else(|e| panic!("{e}"));
     let rowan = spookery_engine::Presence {
@@ -357,8 +357,8 @@ fn a_docks_pack_with_a_timed_haul(world: &mut World, oil: i64) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "Rowan hauls with no lamp oil and the table plays until the action finishes")]
-fn rowan_hauls_until_it_finishes(world: &mut World) {
+#[when(expr = "Rowan hauls with no lamp oil and the table plays until the action ends")]
+fn rowan_hauls_until_it_ends(world: &mut World) {
     let pack = world.pack().to_path_buf();
     let mut session = support::resume(&pack);
     let rowan = spookery_engine::Presence {
@@ -386,16 +386,16 @@ fn rowan_hauls_until_it_finishes(world: &mut World) {
 }
 
 #[then(
-    expr = "the finishing round commits with Rowan's haul refused MISSING_ITEM, Rowan is no longer busy, and spook verify passes"
+    expr = "the ending round commits with Rowan's haul refused MISSING_ITEM, Rowan is no longer busy, and spook verify passes"
 )]
-fn the_refused_finish_commits(world: &mut World) {
+fn the_refused_end_commits(world: &mut World) {
     assert!(world.scratch.is_empty(), "{}", world.scratch);
     assert_eq!(world.seen, "rowan MISSING_ITEM");
     let pack = world.pack();
     let saved = spookery_engine::Session::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let ecs_world = saved.world();
     assert!(!support::is_busy(ecs_world, "rowan"));
-    spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
+    spookery_engine::verification::run(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
 }
 
 #[given(expr = "a docks pack whose \"pick\" rule has a success_at that divides by zero")]
@@ -432,7 +432,7 @@ fn wrens_pick_is_refused(world: &mut World, code: String) {
 #[then(expr = "the next round plays and spook verify passes")]
 fn the_next_round_plays_and_verify_passes(world: &mut World) {
     let pack = world.pack();
-    let lock = spookery_engine::lock_pack(pack).unwrap();
+    let lock = spookery_engine::lock::take(pack).unwrap();
     let mut table =
         spookery_engine::Session::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
     let wall = table.world().last_round_at.clone();
@@ -448,7 +448,7 @@ fn the_next_round_plays_and_verify_passes(world: &mut World) {
         .unwrap_or_else(|err| panic!("play: {err}"));
     assert_eq!(table.world().round_index, 2);
     drop(table);
-    spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
+    spookery_engine::verification::run(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
 }
 
 #[given(
@@ -802,7 +802,7 @@ fn play_queued(
     seated: &[&str],
     intents: Vec<spookery_protocol::QueueArgs>,
 ) -> (spookery_engine::ecs::World, Output) {
-    let lock = spookery_engine::lock_pack(pack).unwrap();
+    let lock = spookery_engine::lock::take(pack).unwrap();
     let mut session =
         spookery_engine::Session::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
     let presence = spookery_engine::Presence {

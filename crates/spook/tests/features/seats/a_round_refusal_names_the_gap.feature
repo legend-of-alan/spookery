@@ -22,14 +22,14 @@ Feature: A round refusal names the gap
     When Harbormouse queues "drop tonic"
     And Harbormouse queues "use tonic"
     And the GM commits the round
-    Then Harbormouse's refused frame for "MISSING_ITEM" has no missing field
+    Then Harbormouse's refused message for "MISSING_ITEM" has no missing field
 
   Scenario: A strike on someone who is out of sight when the round applies is refused
     Given a docks table with a stub GM, Harbormouse seated and a strike success_at of "1d20 + 18"
     When Harbormouse queues "travel wheel_shed"
     And Harbormouse queues "strike briar"
     And the GM commits the round
-    Then Harbormouse's refused frame for "NOT_IN_SPEC" has no missing field
+    Then Harbormouse's refused message for "NOT_IN_SPEC" has no missing field
     And the GM sees no roll
 
   Scenario: A strike the GM sends across rooms is refused at once
@@ -41,10 +41,10 @@ Feature: A round refusal names the gap
     Given a docks table where one effect is over budget and the GM is seated
     When Harbormouse queues "tap"
     And the GM commits the round
-    Then Harbormouse's refused frame for "BUDGET" has no missing field
+    Then Harbormouse's refused message for "BUDGET" has no missing field
 
-  Scenario: An NPC habit refused for cost sends no player frame
+  Scenario: An NPC habit refused for cost sends no player message
     Given Bram can pay for a habit until Harbormouse spends Bram's vigor
     When Harbormouse saps Bram
-    Then the player sees no refused frame
+    Then the player sees no refused message
     And Bram does not have flag heaved

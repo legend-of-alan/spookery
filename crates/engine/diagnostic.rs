@@ -144,7 +144,7 @@ impl fmt::Display for Diagnostic {
     }
 }
 
-pub fn first_reason(diagnostics: &[Diagnostic]) -> Reason {
+pub fn find_reason(diagnostics: &[Diagnostic]) -> Reason {
     diagnostics
         .iter()
         .find_map(|diagnostic| match diagnostic.code {
@@ -167,7 +167,7 @@ pub(crate) fn warning(file: &str, message: &str, hint: &str) -> Diagnostic {
 }
 
 /// Line and column of the `nth` match of `needle` in `text`. Both are 1-based.
-pub(crate) fn locate_nth(text: &str, needle: &str, nth: usize) -> Option<FileLocation> {
+pub(crate) fn find_nth(text: &str, needle: &str, nth: usize) -> Option<FileLocation> {
     if needle.is_empty() {
         return None;
     }
@@ -360,7 +360,7 @@ mod tests {
         assert_eq!(json["path"], "rules[0].when");
         assert_eq!(json["code"], "SCHEMA");
         assert!(json["hint"].as_str().unwrap().contains("add when"));
-        assert_eq!(first_reason(&[diagnostic]), Reason::Schema);
+        assert_eq!(find_reason(&[diagnostic]), Reason::Schema);
     }
 
     #[test]

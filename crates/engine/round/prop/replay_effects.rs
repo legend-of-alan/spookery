@@ -17,13 +17,14 @@ use std::path::Path;
 
 use crate::session;
 use crate::store::journal;
-use crate::store::records::Record;
+use crate::store::records;
+use crate::store::save;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
 use super::support::{arb_rounds, play_rounds, runner_config, TempPack};
 use crate::ecs::Presence;
-use crate::round::play::replay_round;
-use crate::round::replay::first_effect_diff;
+use crate::replay;
+use crate::round;
 use crate::testing::{copy_dir, copy_pack, fresh_dir};
 
 #[test]
@@ -39,12 +40,12 @@ fn running_a_round_again_matches_the_logged_effects() {
 }
 
 fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
-    let records = journal::read_verified(played)
+    let entries = journal::read_verified(played)
         .map_err(|fault| TestCaseError::fail(format!("{}: {}", fault.file, fault.detail)))?;
-    let round_records: Vec<_> = records
+    let round_records: Vec<_> = entries
         .into_iter()
         .filter_map(|entry| match entry {
-            Record::Round(record) => Some(record),
+            records::Record::Round(record) => Some(record),
             _ => None,
         })
         .collect();
@@ -53,21 +54,21 @@ fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
             "the rounds wrote no record".to_string(),
         ));
     }
-    let base = journal::base_path(played);
+    let base = played.join(journal::BASE);
     let snapshot = if base.is_file() {
         fs::read(&base)
     } else {
-        fs::read(journal::save_path(played))
+        fs::read(played.join(save::FILE))
     }
     .map_err(|err| TestCaseError::fail(err.to_string()))?;
     let pack = TempPack(fresh_dir("prop-rerun-again"));
     copy_dir(played, &pack.0);
-    fs::write(journal::save_path(&pack.0), snapshot)
+    fs::write(pack.0.join(save::FILE), snapshot)
         .map_err(|err| TestCaseError::fail(err.to_string()))?;
     let mut session =
         session::Session::open(&pack.0).map_err(|err| TestCaseError::fail(err.to_string()))?;
     for record in &round_records {
-        let effects = replay_round(
+        let effects = round::replay(
             &mut session,
             &record.last_round_at,
             &record.intents,
@@ -80,7 +81,7 @@ fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
         .map_err(|err| {
             TestCaseError::fail(format!("round {} failed: {err}", record.round_index))
         })?;
-        if let Some(diff) = first_effect_diff(&record.effects, &effects) {
+        if let Some(diff) = replay::find_effect_diff(&record.effects, &effects) {
             return Err(TestCaseError::fail(format!(
                 "round {} {diff}",
                 record.round_index

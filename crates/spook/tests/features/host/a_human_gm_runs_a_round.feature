@@ -36,9 +36,9 @@ Feature: A human GM runs a round
     And the GM queues Wren's exert and commits
     Then the GM shows 2 rolls
 
-  Scenario: Raw frames are JSON lines
+  Scenario: Raw messages are JSON lines
     Given a docks table
-    When a human GM connects with raw frames on a free loopback port
+    When a human GM connects with raw messages on a free loopback port
     Then the GM shows protocol JSON
 
   Scenario: A second GM is told the table is full

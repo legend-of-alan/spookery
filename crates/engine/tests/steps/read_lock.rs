@@ -5,13 +5,13 @@ use std::thread;
 
 use cucumber::{given, then, when};
 
-use spookery_engine::testing::{call_when_read_waits, copy_pack, journal, lock_write};
-use spookery_engine::{emit_save, lock_pack};
+use spookery_engine::testing::{copy_pack, journal, lock_write, set_read_wait_handler};
+use spookery_engine::{emit_save, lock};
 
 use crate::{World, Writer};
 
 fn hold(world: &mut World, pack: PathBuf) {
-    let lock = lock_pack(&pack).unwrap_or_else(|err| panic!("lock {}: {err}", pack.display()));
+    let lock = lock::take(&pack).unwrap_or_else(|err| panic!("lock {}: {err}", pack.display()));
     let opened = spookery_engine::Session::resume(&pack, lock)
         .unwrap_or_else(|err| panic!("resume {}: {err}", pack.display()));
     world.writer = Some(Writer { session: opened });
@@ -50,23 +50,23 @@ enum StatusEvent {
     Done(Result<String, String>),
 }
 
-/// Hold the write guard while the disk is `halfway`, start status, then `finish` and drop it
+/// Hold the write guard while the disk is `halfway`, start status, then `end` and drop it
 /// once status is waiting on the guard. `scratch` gets the text status printed.
-fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce()) {
+fn peek_during(world: &mut World, halfway: impl FnOnce(), end: impl FnOnce()) {
     let pack = world.pack().to_path_buf();
     let write = lock_write(writer(world)).unwrap_or_else(|err| panic!("write guard: {err}"));
     halfway();
     let (status_tx, status_rx) = mpsc::channel();
     let waiting_tx = status_tx.clone();
-    call_when_read_waits(&pack, move || {
+    set_read_wait_handler(&pack, move || {
         let _ = waiting_tx.send(StatusEvent::Waiting);
     });
     let peeked = thread::scope(|scope| {
         scope.spawn(|| status_tx.send(StatusEvent::Done(peek_digest(&pack))));
         let Ok(StatusEvent::Waiting) = status_rx.recv() else {
-            panic!("status finished without waiting on the write guard, so it read the half-written pack");
+            panic!("status returned without waiting on the write guard, so it read the half-written pack");
         };
-        finish();
+        end();
         drop(write);
         match status_rx.recv() {
             Ok(StatusEvent::Done(peeked)) => peeked,
@@ -163,7 +163,7 @@ fn the_writer_drops_its_lock(world: &mut World) {
 
 #[then(expr = "a new writer can lock the pack")]
 fn a_new_writer_can_lock_the_pack(world: &mut World) {
-    if let Err(err) = lock_pack(world.pack()) {
-        panic!("lock_pack: {err}");
+    if let Err(err) = lock::take(world.pack()) {
+        panic!("lock::take: {err}");
     }
 }

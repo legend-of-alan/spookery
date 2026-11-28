@@ -10,7 +10,7 @@ use crate::rules::expr::Expr;
 use crate::rules::roll;
 use crate::rules::rule::{self, EffectTemplate, Rule};
 
-/// A change rule with action fields (it sets a cost, start, finish, cooldown_ticks or
+/// A change rule with action fields (it sets a cost, start, end, cooldown_ticks or
 /// cancellable), refused on the line of `rule_id`, the id of rule `rule_index`.
 pub(in crate::canon) fn find_change_with_action_fields(
     file_text: &FileText,
@@ -23,7 +23,7 @@ pub(in crate::canon) fn find_change_with_action_fields(
         return Vec::new();
     }
     let message = format!(
-        "rule '{}' has a cost, start, finish, cooldown_ticks, or cancellable",
+        "rule '{}' has a cost, start, end, cooldown_ticks, or cancellable",
         rule_id.value
     );
     let hint = "remove them; a change is a consequence, not an action";

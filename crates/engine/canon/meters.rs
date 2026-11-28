@@ -144,7 +144,7 @@ pub(super) struct MeterYaml {
 
 #[cfg(test)]
 mod tests {
-    use crate::diagnostic::first_reason;
+    use crate::diagnostic;
     use crate::Reason;
 
     #[test]
@@ -162,6 +162,6 @@ meters:
         assert_eq!(err.len(), 1, "{err:?}");
         assert!(err[0].message.contains("unknown field 'kind'"), "{err:?}");
         assert_eq!(err[0].line, Some(8), "{err:?}");
-        assert_eq!(first_reason(&err), Reason::Schema);
+        assert_eq!(diagnostic::find_reason(&err), Reason::Schema);
     }
 }

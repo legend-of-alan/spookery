@@ -22,8 +22,7 @@ const SCROLLBACK_LINES: usize = 256;
 /// `from_name` is the speaking actor's name, left out when the GM speaks as itself. Any other
 /// missing key is not a record.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapeRecord {
-    // repeats module: re-exported at the crate root
+pub struct Record {
     pub seq: u64,
     pub from: Speaker,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -38,7 +37,7 @@ pub struct TapeRecord {
 }
 
 /// The JSON object written as one tape line, without the trailing newline.
-pub fn emit_tape_record(record: &TapeRecord) -> String {
+pub fn emit(record: &Record) -> String {
     serde_json::to_string(record).expect("tape json")
 }
 
@@ -46,7 +45,7 @@ pub fn emit_tape_record(record: &TapeRecord) -> String {
 /// `seq` is set one past the last complete line. Drops a trailing partial line and opens no
 /// round. When the line would pass `MAX_BYTES`, the oldest whole lines go first, keeping the
 /// newest half.
-pub(crate) fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeRecord, Reason> {
+pub(crate) fn append(root: &Path, mut record: Record) -> Result<Record, Reason> {
     let state = root.join("state");
     fs::create_dir_all(&state).map_err(refuse_io)?;
     let path = state.join("tape.jsonl");
@@ -68,12 +67,12 @@ pub(crate) fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeR
     let last_seq = match lines.next() {
         Some(last) => {
             let last = last.strip_suffix(b"\r").unwrap_or(last);
-            parse_record(std::str::from_utf8(last).map_err(|_| Reason::Schema)?)?.seq
+            parse(std::str::from_utf8(last).map_err(|_| Reason::Schema)?)?.seq
         }
         None => 0,
     };
     record.seq = last_seq.checked_add(1).ok_or(Reason::OutOfRange)?;
-    let mut line = emit_tape_record(&record);
+    let mut line = emit(&record);
     if line.is_empty() || line.bytes().any(|byte| byte == b'\n' || byte == b'\r') {
         return Err(Reason::Schema);
     }
@@ -101,9 +100,9 @@ pub(crate) fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeR
 
 /// The newest `SCROLLBACK_LINES` records whose recipients include `player`, oldest first.
 /// The filter runs before the limit.
-pub(crate) fn read_scrollback(root: &Path, player: &str) -> Result<Vec<TapeRecord>, Reason> {
+pub(crate) fn read_recent(root: &Path, player: &str) -> Result<Vec<Record>, Reason> {
     let mut matched = Vec::new();
-    for record in read_records(root)? {
+    for record in read(root)? {
         if record.recipient_ids.iter().any(|id| id == player) {
             matched.push(record);
         }
@@ -114,7 +113,7 @@ pub(crate) fn read_scrollback(root: &Path, player: &str) -> Result<Vec<TapeRecor
 
 /// Every complete record, oldest first. A missing file is empty. A trailing partial line is
 /// not a record. A complete line that does not parse is `SCHEMA`. Past 1 MiB is `OUT_OF_RANGE`.
-pub(crate) fn read_records(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
+pub(crate) fn read(root: &Path) -> Result<Vec<Record>, Reason> {
     let path = root.join("state/tape.jsonl");
     if !path.is_file() {
         return Ok(Vec::new());
@@ -132,28 +131,33 @@ pub(crate) fn read_records(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
     for line in text.split_inclusive('\n') {
         let line = line.strip_suffix('\n').unwrap_or(line);
         let line = line.strip_suffix('\r').unwrap_or(line);
-        records.push(parse_record(line)?);
+        records.push(parse(line)?);
     }
     Ok(records)
 }
 
-fn parse_record(line: &str) -> Result<TapeRecord, Reason> {
+fn parse(line: &str) -> Result<Record, Reason> {
     serde_json::from_str(line).map_err(|_| Reason::Schema)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::fs;
+
+    use spookery_protocol::{Audience, Speaker};
+
+    use crate::store::tape;
     use crate::testing::fresh_dir;
+    use crate::Reason;
 
     #[test]
     fn an_appended_speech_keeps_the_tape_bytes() {
         let root = fresh_dir("tape-bytes");
-        let stored = append_record(&root, sample(0, "rowan", "line0")).unwrap();
+        let stored = tape::append(&root, sample(0, "rowan", "line0")).unwrap();
         let bytes = fs::read(root.join("state/tape.jsonl")).unwrap();
         let line = "{\"seq\":1,\"from\":\"gm\",\"to\":{\"actor\":\"rowan\"},\"recipients\":[\"rowan\"],\"text\":\"line0\",\"round_index\":0,\"world_time\":1080}\n";
         assert_eq!(bytes, line.as_bytes());
-        assert_eq!(parse_record(line.trim_end()).unwrap(), stored);
+        assert_eq!(tape::parse(line.trim_end()).unwrap(), stored);
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -162,13 +166,13 @@ mod tests {
         let root = fresh_dir("tape-cap-bytes");
         let path = root.join("state/tape.jsonl");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, vec![b'\n'; (MAX_BYTES as usize) + 1]).unwrap();
-        assert_eq!(read_records(&root).unwrap_err(), Reason::OutOfRange);
+        fs::write(&path, vec![b'\n'; (tape::MAX_BYTES as usize) + 1]).unwrap();
+        assert_eq!(tape::read(&root).unwrap_err(), Reason::OutOfRange);
         let _ = fs::remove_dir_all(&root);
     }
 
-    fn sample(seq: u64, player: &str, text: &str) -> TapeRecord {
-        TapeRecord {
+    fn sample(seq: u64, player: &str, text: &str) -> tape::Record {
+        tape::Record {
             seq,
             from: Speaker::Gm,
             from_name: String::new(),

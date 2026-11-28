@@ -5,14 +5,11 @@ use std::path::Path;
 
 use crate::hash::blake2s_tagged;
 use crate::store::journal;
-use crate::store::records::Record;
+use crate::store::records;
 use crate::store::save;
 use crate::Reason;
 
-use crate::round::replay::{
-    self, checkpoint_diverged, emit_save_bytes, load_save_bytes, state_rev_of, Divergence,
-    DivergenceKind, Error,
-};
+use crate::replay;
 
 #[derive(Debug)]
 pub struct Report {
@@ -24,32 +21,34 @@ pub struct Report {
 
 /// Read the journal, replay it, and check checkpoints and `state/save.yaml`. A pack with
 /// neither a save nor a base is refused `NOT_IN_SPEC`, with or without `from`.
-pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
-    // repeats module: re-exported at the crate root
+pub fn run(pack: &Path, from: Option<&Path>) -> Result<Report, replay::Error> {
     if !pack.join("pack.yaml").is_file() {
-        return Err(Error::Reason(Reason::NotInSpec));
+        return Err(replay::Error::Reason(Reason::NotInSpec));
     }
-    if !journal::save_path(pack).exists() && !journal::base_path(pack).exists() {
-        return Err(Error::Reason(Reason::NotInSpec));
+    if !pack.join(save::FILE).exists() && !pack.join(journal::BASE).exists() {
+        return Err(replay::Error::Reason(Reason::NotInSpec));
     }
     let bundles = journal::read_bundle_records(pack)?;
-    let records = journal::flatten_bundles(&bundles);
-    if records.is_empty() && from.is_none() {
+    let journal_entries = journal::flatten_bundles(&bundles);
+    if journal_entries.is_empty() && from.is_none() {
         let base = read_base(pack)?;
-        check_save_file(pack, &records, &base)?;
+        check_save(pack, &journal_entries, &base)?;
         return Ok(Report {
-            state_rev: state_rev_of(&base)?,
+            state_rev: replay::parse_state_rev(&base)?,
             applied: 0,
             trusted_edits: Vec::new(),
         });
     }
-    let cap = records.iter().map(Record::state_rev_after).max();
-    let report = replay::apply_journal(pack, &records, from, cap)
-        .map_err(|err| name_save_line(pack, err))?;
-    let trusted_edits = records
+    let cap = journal_entries
+        .iter()
+        .map(records::Record::state_rev_after)
+        .max();
+    let report = replay::apply_journal(pack, &journal_entries, from, cap)
+        .map_err(|err| read_first_diverged_line(pack, err))?;
+    let trusted_edits = journal_entries
         .iter()
         .filter_map(|entry| match entry {
-            Record::Migrate(record) if record.edited => Some(record.state_rev_after),
+            records::Record::Migrate(record) if record.edited => Some(record.state_rev_after),
             _ => None,
         })
         .collect();
@@ -64,42 +63,41 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
     journal::check_chain(pack, &bundles)?;
     let base = read_base(pack)?;
     check_bundle_starts(pack, &base, &bundles)?;
-    check_save_file(pack, &records, &base)?;
+    check_save(pack, &journal_entries, &base)?;
     Ok(verified)
 }
 
 /// Check every chain hash, then replay the latest bundle from the snapshot it starts at.
-pub fn verify_quick(pack: &Path) -> Result<Report, Error> {
-    // repeats module: re-exported at the crate root
+pub fn run_quick(pack: &Path) -> Result<Report, replay::Error> {
     let bundles = journal::read_bundle_records(pack)?;
     journal::check_chain(pack, &bundles)?;
-    let records = journal::flatten_bundles(&bundles);
+    let journal_entries = journal::flatten_bundles(&bundles);
     let base = read_base(pack)?;
     let Some((start, entries)) = check_bundle_starts(pack, &base, &bundles)?.pop() else {
-        check_save_file(pack, &records, &base)?;
+        check_save(pack, &journal_entries, &base)?;
         return Ok(Report {
-            state_rev: state_rev_of(&base)?,
+            state_rev: replay::parse_state_rev(&base)?,
             applied: 0,
             trusted_edits: Vec::new(),
         });
     };
     let (bundle, _) = bundles.last().expect("bundle");
     let end = check_bundle_end(pack, bundle, entries, replay_bundle(pack, &start, entries))?;
-    check_save_file(pack, &records, &base)?;
+    check_save(pack, &journal_entries, &base)?;
     Ok(Report {
-        state_rev: state_rev_of(&end)?,
+        state_rev: replay::parse_state_rev(&end)?,
         applied: entries.iter().filter(|entry| entry.changes_state()).count() as u64,
         trusted_edits: Vec::new(),
     })
 }
 
-type BundleStart<'a> = (Vec<u8>, &'a [Record]);
+type BundleStart<'a> = (Vec<u8>, &'a [records::Record]);
 
 fn check_bundle_starts<'a>(
     pack: &Path,
     base: &[u8],
-    bundles: &'a [(String, Vec<Record>)],
-) -> Result<Vec<BundleStart<'a>>, Error> {
+    bundles: &'a [(String, Vec<records::Record>)],
+) -> Result<Vec<BundleStart<'a>>, replay::Error> {
     let mut starts = Vec::with_capacity(bundles.len());
     let mut current = base.to_vec();
     for (index, (bundle, entries)) in bundles.iter().enumerate() {
@@ -107,9 +105,9 @@ fn check_bundle_starts<'a>(
         if index + 1 == bundles.len() {
             break;
         }
-        let Some(mark) = journal::latest_checkpoint(entries) else {
-            return Err(Divergence::new(
-                DivergenceKind::Checkpoint,
+        let Some(checkpoint) = journal::find_latest_checkpoint(entries) else {
+            return Err(replay::Divergence::new(
+                replay::DivergenceKind::Checkpoint,
                 0,
                 None,
                 format!("{bundle}: a closed bundle has no checkpoint"),
@@ -117,15 +115,15 @@ fn check_bundle_starts<'a>(
             .into());
         };
         let diverged = |detail: &str| {
-            checkpoint_diverged(
-                mark.state_rev,
-                mark.round_index,
+            replay::build_checkpoint_divergence(
+                checkpoint.state_rev,
+                checkpoint.round_index,
                 format!("{bundle}: {detail}"),
             )
         };
-        current = fs::read(journal::checkpoint_path(pack, mark.state_rev))
+        current = fs::read(journal::build_checkpoint_path(pack, checkpoint.state_rev))
             .map_err(|_| diverged("missing snapshot"))?;
-        if blake2s_tagged(&current) != mark.state_hash {
+        if blake2s_tagged(&current) != checkpoint.state_hash {
             return Err(diverged("state hash differed")
                 .with_replayed_bytes(current)
                 .into());
@@ -137,63 +135,65 @@ fn check_bundle_starts<'a>(
 fn check_bundle_end(
     pack: &Path,
     bundle: &str,
-    entries: &[Record],
-    end: Result<Vec<u8>, Error>,
-) -> Result<Vec<u8>, Error> {
-    let end = end.map_err(|err| name_save_line(pack, err))?;
-    if let Some(mark) = journal::latest_checkpoint(entries) {
-        if blake2s_tagged(&end) != mark.state_hash {
+    entries: &[records::Record],
+    end: Result<Vec<u8>, replay::Error>,
+) -> Result<Vec<u8>, replay::Error> {
+    let end = end.map_err(|err| read_first_diverged_line(pack, err))?;
+    if let Some(checkpoint) = journal::find_latest_checkpoint(entries) {
+        if blake2s_tagged(&end) != checkpoint.state_hash {
             let detail = format!("{bundle}: state hash differed");
-            return Err(
-                checkpoint_diverged(mark.state_rev, mark.round_index, detail)
-                    .with_replayed_bytes(end)
-                    .into(),
-            );
+            return Err(replay::build_checkpoint_divergence(
+                checkpoint.state_rev,
+                checkpoint.round_index,
+                detail,
+            )
+            .with_replayed_bytes(end)
+            .into());
         }
     }
     Ok(end)
 }
 
-fn check_save_file(pack: &Path, records: &[Record], base: &[u8]) -> Result<(), Error> {
-    let live = journal::read_save(&journal::save_path(pack))?;
-    let save = load_save_bytes(&live)?;
-    if records.is_empty() {
+fn check_save(pack: &Path, entries: &[records::Record], base: &[u8]) -> Result<(), replay::Error> {
+    let live = journal::read_save(&pack.join(save::FILE))?;
+    let save = replay::parse_save_bytes(&live)?;
+    if entries.is_empty() {
         let canonical = save::emit(&save)?.into_bytes();
         if live != canonical {
-            let diverged = Divergence::new(
-                DivergenceKind::Save,
+            let diverged = replay::Divergence::new(
+                replay::DivergenceKind::Save,
                 save.state_rev,
                 None,
                 Reason::HandEdit.as_str(),
             );
-            return Err(set_save_line(
+            return Err(set_first_diverged_line(
                 diverged.with_replayed_bytes(canonical),
                 &live,
             ));
         }
     }
-    if let Some(mark) = journal::latest_checkpoint(records) {
-        if blake2s_tagged(&live) != mark.state_hash {
-            let snap = fs::read(journal::checkpoint_path(pack, mark.state_rev)).ok();
-            let diverged = Divergence {
+    if let Some(checkpoint) = journal::find_latest_checkpoint(entries) {
+        if blake2s_tagged(&live) != checkpoint.state_hash {
+            let snap = fs::read(journal::build_checkpoint_path(pack, checkpoint.state_rev)).ok();
+            let diverged = replay::Divergence {
                 replayed_bytes: snap,
-                ..Divergence::new(
-                    DivergenceKind::Save,
-                    mark.state_rev,
-                    Some(mark.round_index),
+                ..replay::Divergence::new(
+                    replay::DivergenceKind::Save,
+                    checkpoint.state_rev,
+                    Some(checkpoint.round_index),
                     "state hash differed",
                 )
             };
-            return Err(set_save_line(diverged, &live));
+            return Err(set_first_diverged_line(diverged, &live));
         }
     } else if live != base {
-        let diverged = Divergence::new(
-            DivergenceKind::Save,
+        let diverged = replay::Divergence::new(
+            replay::DivergenceKind::Save,
             save.state_rev,
             None,
             "state hash differed",
         );
-        return Err(set_save_line(
+        return Err(set_first_diverged_line(
             diverged.with_replayed_bytes(base.to_vec()),
             &live,
         ));
@@ -202,35 +202,39 @@ fn check_save_file(pack: &Path, records: &[Record], base: &[u8]) -> Result<(), E
 }
 
 /// Name the first line of `live` that differs from the replayed bytes.
-fn set_save_line(mut diverged: Divergence, live: &[u8]) -> Error {
+fn set_first_diverged_line(mut diverged: replay::Divergence, live: &[u8]) -> replay::Error {
     diverged.save_line = diverged.replayed_bytes.as_deref().and_then(|replayed| {
         let live_text = std::str::from_utf8(live).ok()?;
         let replayed_text = std::str::from_utf8(replayed).ok()?;
-        crate::check::first_diff_line(live_text, replayed_text)
+        save::find_first_diverged_line(live_text, replayed_text)
     });
     diverged.into()
 }
 
 /// A replay divergence names the first differing line of the save, or of the base without one.
-fn name_save_line(pack: &Path, err: Error) -> Error {
-    let Error::Diverged(diverged) = err else {
+fn read_first_diverged_line(pack: &Path, err: replay::Error) -> replay::Error {
+    let replay::Error::Diverged(diverged) = err else {
         return err;
     };
-    let live = fs::read(journal::save_path(pack))
-        .or_else(|_| fs::read(journal::base_path(pack)))
+    let live = fs::read(pack.join(save::FILE))
+        .or_else(|_| fs::read(pack.join(journal::BASE)))
         .unwrap_or_default();
-    set_save_line(diverged, &live)
+    set_first_diverged_line(diverged, &live)
 }
 
-fn read_base(pack: &Path) -> Result<Vec<u8>, Error> {
-    let base = journal::base_path(pack);
+fn read_base(pack: &Path) -> Result<Vec<u8>, replay::Error> {
+    let base = pack.join(journal::BASE);
     if base.exists() {
         return Ok(journal::read_save(&base)?);
     }
-    Ok(journal::read_save(&journal::save_path(pack))?)
+    Ok(journal::read_save(&pack.join(save::FILE))?)
 }
 
-fn replay_bundle(pack: &Path, start: &[u8], entries: &[Record]) -> Result<Vec<u8>, Error> {
+fn replay_bundle(
+    pack: &Path,
+    start: &[u8],
+    entries: &[records::Record],
+) -> Result<Vec<u8>, replay::Error> {
     let mut session = replay::open_at(pack, start)?;
     let mut changed = false;
     for entry in entries {
@@ -238,7 +242,7 @@ fn replay_bundle(pack: &Path, start: &[u8], entries: &[Record]) -> Result<Vec<u8
         changed |= entry.changes_state();
     }
     if changed {
-        emit_save_bytes(&session)
+        replay::emit_save_bytes(&session)
     } else {
         Ok(start.to_vec())
     }
@@ -248,9 +252,10 @@ fn replay_bundle(pack: &Path, start: &[u8], entries: &[Record]) -> Result<Vec<u8
 mod tests {
     use std::fs;
 
-    use super::{journal, verify_pack, verify_quick};
-    use crate::round::play_pack_once;
+    use crate::round::verification;
+    use crate::store::save;
     use crate::testing::copy_pack;
+    use crate::testing::play_empty_round;
 
     #[test]
     fn verify_and_quick_verify_reject_tampered_save_after_checkpoint() {
@@ -259,17 +264,17 @@ mod tests {
         let mut cfg = fs::read_to_string(&pack_yaml).unwrap();
         cfg.push_str("\ncheckpoint_every: 2\n");
         fs::write(&pack_yaml, cfg).unwrap();
-        play_pack_once(&pack).unwrap();
-        play_pack_once(&pack).unwrap();
-        let save = journal::save_path(&pack);
+        play_empty_round(&pack);
+        play_empty_round(&pack);
+        let save = pack.join(save::FILE);
         let text = fs::read_to_string(&save).unwrap();
         let tampered = text.replacen("state_rev: 2", "state_rev: 99", 1);
         assert_ne!(tampered, text);
         fs::write(&save, tampered).unwrap();
-        let full_err = verify_pack(&pack, None).unwrap_err().to_string();
+        let full_err = verification::run(&pack, None).unwrap_err().to_string();
         assert!(full_err.contains("state_rev 2 save"), "{full_err}");
         assert!(full_err.contains("save.yaml:"), "{full_err}");
-        let quick_err = verify_quick(&pack).unwrap_err().to_string();
+        let quick_err = verification::run_quick(&pack).unwrap_err().to_string();
         assert!(quick_err.contains("state_rev 2 save"), "{quick_err}");
         assert!(quick_err.contains("save.yaml:"), "{quick_err}");
         let _ = fs::remove_dir_all(&pack);

@@ -165,7 +165,7 @@ fn an_engine_habit_rolls_a_check_for_mira(world: &mut World) {
     world.pack = Some(pack.clone());
     insert_brace_habit(&pack);
     support::stamp_pack_rev(&pack);
-    spookery_engine::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    spookery_engine::testing::play_empty_round(&pack);
 }
 
 #[when(expr = "the player sends a line with a player prefix")]
@@ -200,8 +200,8 @@ async fn the_gm_sees_miras_failed_notice(world: &mut World) {
     assert_one_roll(world, 1, 14, "miss").await;
 }
 
-#[then(expr = "the player sees no check frame")]
-async fn the_player_sees_no_check_frame(world: &mut World) {
+#[then(expr = "the player sees no check message")]
+async fn the_player_sees_no_check_message(world: &mut World) {
     let added = host::wait_player_from(world, world.mark, "\"kind\":\"view\"").await;
     assert!(!added.contains("\"kind\":\"check\""), "{added}");
 }

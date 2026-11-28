@@ -1,4 +1,4 @@
-//! Steps for one action lifecycle: start, pending, finish and cooldown, on the docks pack.
+//! Steps for one action lifecycle: start, pending, end and cooldown, on the docks pack.
 
 use std::fs;
 
@@ -101,7 +101,7 @@ fn a_free_start(world: &mut World, verb: String) {
     add_verb(world, &timed_verb(&verb, 0, free));
 }
 
-/// A timed rule whose finish sets the world flag `<verb>_done`.
+/// A timed rule whose end sets the world flag `<verb>_done`.
 fn timed_verb(verb: &str, ticks: u64, extra: &str) -> String {
     format!(
         "
@@ -158,8 +158,8 @@ fn travel_is_cancellable(world: &mut World) {
     stamp_pack_rev(pack);
 }
 
-#[then(expr = "{string} never finished and Rowan paid {int} rest")]
-fn never_finished(world: &mut World, verb: String, rest: i64) {
+#[then(expr = "{string} never ended and Rowan paid {int} rest")]
+fn never_ended(world: &mut World, verb: String, rest: i64) {
     let now = world_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
     let done = format!("{verb}_done");
@@ -173,8 +173,8 @@ fn never_finished(world: &mut World, verb: String, rest: i64) {
     assert_eq!(meter.base + meter.offset, 3 - rest);
 }
 
-#[then(expr = "{string} finished")]
-fn finished(world: &mut World, verb: String) {
+#[then(expr = "{string} ended")]
+fn ended(world: &mut World, verb: String) {
     let now = world_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
     let done = format!("{verb}_done");

@@ -237,7 +237,7 @@ fn rounds_never_shorten(_world: &mut World) {
     seated_session.play(&one_human, &wall).unwrap();
     drop(seated_session);
     let idle = copy_pack("docks", "idle-length");
-    spookery_engine::play_pack_once(&idle).unwrap();
+    spookery_engine::testing::play_empty_round(&idle);
     let start = world_of(&copy_pack("docks", "start-time")).world_time;
     assert_eq!(world_of(&seated).world_time - start, 5);
     assert_eq!(world_of(&idle).world_time - start, 60);

@@ -2,7 +2,8 @@
 
 use crate::canon::Canon;
 use crate::ecs::component::Note;
-use crate::ecs::id::{ActorId, GlobalId};
+use crate::ecs::entity::globals;
+use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, Presence};
 use crate::intent::{Intent, Source, Target};
 use crate::rules::context::Context;
@@ -85,7 +86,7 @@ impl Cond {
 }
 
 /// Every condition holds. A failed `has_item` is [`Reason::MissingItem`].
-pub(crate) fn all_hold(context: &Context, conds: &[Cond]) -> Result<(), Reason> {
+pub(crate) fn eval_all(context: &Context, conds: &[Cond]) -> Result<(), Reason> {
     for cond in conds {
         if !holds(context, cond)? {
             return Err(refusal_code(cond));
@@ -114,7 +115,7 @@ pub(crate) fn if_holds(
         verb,
         target,
     );
-    all_hold(&Context::new(canon, world, presence, &probe), conds).is_ok()
+    eval_all(&Context::new(canon, world, presence, &probe), conds).is_ok()
 }
 
 fn refusal_code(cond: &Cond) -> Reason {
@@ -172,7 +173,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let players = i64::from(context.presence.players);
             Ok(op.holds(players, eval::eval(context, value)?))
         }
-        Cond::NoteExists(id) => Ok(world.globals().get::<Note>(&GlobalId).contains(id)),
+        Cond::NoteExists(id) => Ok(world.globals().get::<Note>(&globals::Id).contains(id)),
         Cond::All(inner) => {
             for cond in inner {
                 if !holds(context, cond)? {

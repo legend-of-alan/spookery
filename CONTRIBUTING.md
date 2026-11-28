@@ -70,7 +70,7 @@ A **log** is everything else: a `tracing` event that records what the program di
 | `error` | A fault stopped part of the program, and no output says so. | The game port stopped serving. |
 | `warn` | The program worked around a fault or runs degraded, and no output says so. A healthy run logs none. | A journal bundle left open, a torn journal record cut at startup, a model call retried. |
 | `info` | One event per thing on an operator's timeline: a claim opened or released, a round committed, a model call. | `round committed round_index=4 state_rev=9 elapsed_ms=3` |
-| `debug` | One event per command or reply, for a developer. Never one per frame, tick or loop pass. | A command received, a refusal sent, the cause behind an output code. |
+| `debug` | One event per command or reply, for a developer. Never one per message, tick or loop pass. | A command received, a refusal sent, the cause behind an output code. |
 | `trace` | Spookery logs nothing here. Dependencies do. | |
 
 With `RUST_LOG` unset or empty, `spook run` and `spook ai-gm` write Spookery's `info` events and every crate's warnings and errors (`warn,spook=info`) to their file. Every other command writes only warnings and errors (`warn`) to stderr. `RUST_LOG` replaces that default. It takes `EnvFilter` directives, and a target matches by prefix, so `spook` names every Spookery crate and no dependency:
@@ -88,17 +88,19 @@ A `RUST_LOG` that names only targets turns every other target off, so start it w
 
 Default to the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/checklist.html) (casing, `as_`/`to_`/`into_` conversions, getters, constructors, typed units and the rest), with these exceptions and additions:
 
+The default at a use site is one module level. Two or more is acceptable if there's a good reason to use more. Fewer than one requires strong justification. That stops a use site from leaving a bare name like `Args` where `intent::Args` belongs.
+
 1. Choose names that let a human newcomer follow a file top to bottom from its names and types alone, and easily trace the code without already knowing its implementation.
    A short name is useful only when its meaning is clear where it appears. Review names from the caller's perspective, not the author's.
-2. Types are nouns and functions are verbs. A getter can be a noun. A pair constructor that mirrors `mpsc::channel()`, like `frame_queue()`, can be a noun when its doc comment says so.
+2. Modules are nouns, including a module that is re-exported. Types are nouns and functions are verbs. A word that can be either a noun or a verb is a noun in modules, types and fields, and a verb in function names. There are no special cases. If a module name only reads as a verb, rename the module to a noun. Function names carry a verb first, then its object or modifier, the way std writes `sort_unstable`. Type names end in a noun. `run` is always a verb. It is never a module, a type, or a field. When the module noun already names the job, its main entry point is `run`. Free functions, and anything that does work, use a real verb. Methods that only return a field stay a plain noun, for example `session.world()`. Never use a `get_` prefix (Rust API guidelines C-GETTER).
    Ask "a value of this type is a ___". If the answer is a noun, that noun is the name, so not `Evaluated` but `Verdict`. A past participle or adjective is a name only for an enum variant that is a state or past event of its enum's noun (`Cow::Borrowed`, `Bound::Excluded`, `ErrorKind::TimedOut`), for the type a same-named method returns (`Iterator::copied()` returns `Copied`), or under rule 15.
    A past participle or adjective is not a function name (`suffixed`, `parsed`), except an adapter that copies a std name, such as `cloned` or `copied`. So not `suffixed(path)` but `add_suffix(path)`.
 3. Borrow words from Rust, std, the crates we use and this codebase before inventing new ones. If std says `try_lock`, say that.
 4. No vague words. A name says what the thing shows, sends, reads or refuses.
 5. Two names that look alike must do alike jobs.
 6. Use game terms like tick and round only in the sense the [glossary](docs/README.md#glossary) gives them. Game time is ticks, and a batch of work is a round. A bare game-time number carries the suffix `_ticks`. Minutes and hours are real time, or the time the client shows.
-7. A type that carries messages between layers, such as a request, reply, frame, event or queue half, says in its doc comment which two layers it connects. Similar names get that comment, not a rename.
-8. Don't repeat the module name inside a name. A name that is the module name, such as `query::Query`, is fine. CI checks the files a PR touches; a name kept on purpose, under rule 15 or as a pair like `ClientMessage`, ends its line with `// repeats module: <reason>`, or on the next line when rustfmt moves it there.
+7. A type that carries messages between layers, such as a request, reply, event or queue half, says in its doc comment which two layers it connects. Similar names get that comment, not a rename.
+8. Don't repeat the module name inside a name. A name that is the module name, such as `query::Query`, is fine. CI checks the files a PR touches. A `// repeats module: <reason>` marker is allowed only when the name is a true import of an outside library's name, or a name deliberately copied from a well-known library's API so readers who know that library recognize it, for example Bevy's `QueryData` and `QueryFilter`. Put it at the end of the item's line, or on the next line when rustfmt moves it there.
 9. A comment shouldn't have to explain a name. If it does, fix the name.
 10. Names collide only within one namespace, so `tokio::fs` and `std::fs` are fine. When a name exists in two namespaces anywhere in the project, a `use` keeps the path prefix (`fs::read`, never a bare `read`).
 11. Fix a bad name in the code you touch, even if it is older than your change. A rename-only commit changes no logic and updates the docs that mention the name.

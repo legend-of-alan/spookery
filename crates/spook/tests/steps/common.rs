@@ -776,7 +776,7 @@ fn has_flag(world: &mut World, actor: String, has: String, flag: String) {
 
 #[when(regex = r"^the player marks (?P<actor>\S+)$")]
 async fn the_player_marks(world: &mut World, actor: String) {
-    let canon = spookery_engine::load_canon(host::pack(world))
+    let canon = spookery_engine::canon::load(host::pack(world))
         .unwrap_or_else(|err| panic!("load: {err:?}"));
     let line = format!("mark {}", resolve_id(&canon, &actor));
     let (mark, added) = host::player_send(world, &line, "\"kind\":").await;

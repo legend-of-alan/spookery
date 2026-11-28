@@ -1,7 +1,7 @@
 Feature: Cancelling your own action
 
   A player may cancel their own timed action when its rule is cancellable. The action is
-  dropped with no refund and its finish never runs. Any other cancel is refused, and the
+  dropped with no refund and its end never runs. Any other cancel is refused, and the
   action still lands.
 
   Background:
@@ -12,13 +12,13 @@ Feature: Cancelling your own action
     And the rule "brew" takes 20 ticks
     When Rowan plays "chant"
     And Rowan plays "cancel"
-    Then "chant" never finished and Rowan paid 1 rest
+    Then "chant" never ended and Rowan paid 1 rest
     And Rowan's "wait" lands
     When Rowan plays "brew"
     Then Rowan's "cancel" is refused INELIGIBLE at once
     When rounds pass until tick 1115
-    Then "brew" finished
-    And "chant" never finished and Rowan paid 1 rest
+    Then "brew" ended
+    And "chant" never ended and Rowan paid 1 rest
     And spook verify passes on this pack
 
   Scenario: A walk cannot be cancelled

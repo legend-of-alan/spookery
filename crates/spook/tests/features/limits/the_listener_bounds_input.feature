@@ -41,7 +41,7 @@ Feature: The listener bounds input
     Given a docks table
     When one player stops reading and the GM says many lines
     Then that player is disconnected and still holds its PC
-    And the other player keeps receiving frames
+    And the other player keeps receiving messages
 
   Scenario: A released GM claim is confirmed and a player can then claim
     Given a docks table with a seated GM

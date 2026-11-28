@@ -226,10 +226,10 @@ mod tests {
 
     #[test]
     fn an_empty_idle_word_is_schema() {
-        use crate::diagnostic::first_reason;
+        use crate::diagnostic;
         let mut empty = text("budget");
         empty.push_str("idle:\n");
         let err = load(&empty).unwrap_err();
-        assert_eq!(first_reason(&err), Reason::Schema);
+        assert_eq!(diagnostic::find_reason(&err), Reason::Schema);
     }
 }

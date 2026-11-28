@@ -1,24 +1,28 @@
-//! Read, write, migrate and check the save.
+//! Load, read, write, migrate and check the save.
 
 use std::collections::BTreeSet;
+use std::path::Path;
+use std::sync::Arc;
 
 use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 
-use crate::canon::item;
 use crate::canon::lint::refuse_unknown_item;
+use crate::canon::{self, item, Canon};
 use crate::diagnostic::{
-    diagnose_schema_tag, error, locate_nth, parse_file, schema_error, Diagnostic,
+    self, diagnose_schema_tag, error, parse_file, schema_error, Code, Diagnostic,
 };
 use crate::ecs::component::meter::{self, Meter};
 use crate::ecs::component::modifier::{self, Modifier};
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, Save};
 use crate::entity;
-use crate::store::records::{DroppedMeter, MigrateRecord};
+use crate::store;
+use crate::store::journal;
+use crate::store::records::{self, DroppedMeter, MigrateRecord};
 use crate::Reason;
 
-const FILE: &str = "state/save.yaml";
+pub(crate) const FILE: &str = "state/save.yaml";
 
 pub(crate) fn emit_options() -> SerializerOptions {
     serde_saphyr::ser_options! {
@@ -46,8 +50,8 @@ pub fn parse(text: &str) -> Result<Save, Vec<Diagnostic>> {
         rules_rev: u64,
     }
     if let Ok(probe) = serde_saphyr::from_str::<RulesProbe>(text) {
-        if super::require_rules_rev(probe.rules_rev).is_err() {
-            return Err(vec![rules_rev_diagnostic(text)]);
+        if store::check_rules_rev(probe.rules_rev).is_err() {
+            return Err(vec![build_rules_rev_diagnostic(text)]);
         }
     }
     parse_file(FILE, text, false)
@@ -59,10 +63,10 @@ pub fn emit(save: &Save) -> Result<String, Reason> {
     canonical.rules_rev = super::RULES_REV;
     let text = serde_saphyr::to_string_with_options(&canonical, emit_options())
         .map_err(|_| Reason::Schema)?;
-    Ok(one_trailing_lf(text))
+    Ok(ensure_trailing_lf(text))
 }
 
-fn rules_rev_diagnostic(text: &str) -> Diagnostic {
+fn build_rules_rev_diagnostic(text: &str) -> Diagnostic {
     let mut diagnostic = error(
         FILE,
         Reason::RulesRevMismatch,
@@ -70,11 +74,11 @@ fn rules_rev_diagnostic(text: &str) -> Diagnostic {
         "start a fresh save",
     )
     .at_key_path("rules_rev");
-    diagnostic = diagnostic.at_file_location(locate_nth(text, "rules_rev:", 0));
+    diagnostic = diagnostic.at_file_location(diagnostic::find_nth(text, "rules_rev:", 0));
     diagnostic
 }
 
-fn one_trailing_lf(mut text: String) -> String {
+fn ensure_trailing_lf(mut text: String) -> String {
     while text.ends_with('\n') {
         text.pop();
     }
@@ -83,7 +87,7 @@ fn one_trailing_lf(mut text: String) -> String {
 }
 
 /// Every meter the save lists, with the actor, place, story or world that holds it.
-fn saved_meters(world: &ecs::World) -> impl Iterator<Item = (entity::Id, &str, &Meter)> {
+fn find_saved_meters(world: &ecs::World) -> impl Iterator<Item = (entity::Id, &str, &Meter)> {
     let actors = world.actors().query::<&Meter>();
     let places = world.places().query::<&Meter>();
     let stories = world.stories().query::<&Meter>();
@@ -116,7 +120,7 @@ pub(crate) fn find_saved_flags(world: &ecs::World) -> BTreeSet<&str> {
 
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
 pub(crate) fn find_stale_meters(world: &ecs::World) -> Vec<DroppedMeter> {
-    saved_meters(world)
+    find_saved_meters(world)
         .filter(|(entity_id, id, _)| world.canon().meter_def(entity_id.as_ref(), id).is_none())
         .map(|(entity_id, id, _)| DroppedMeter {
             id: id.to_string(),
@@ -203,14 +207,19 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
             meter.id
         );
         let hint = "run spook migrate to drop the meter";
-        diagnostics.push(meter_error(&meter.entity_id, &meter.id, &message, hint));
+        diagnostics.push(build_meter_error(
+            &meter.entity_id,
+            &meter.id,
+            &message,
+            hint,
+        ));
     }
-    for (entity_id, key, meter) in saved_meters(world) {
+    for (entity_id, key, meter) in find_saved_meters(world) {
         let def = canon.meter_def(entity_id.as_ref(), key);
         if def.is_some_and(|def| !meter::is_storable(def, meter.base, meter.offset)) {
             let message = format!("meter '{key}' is outside the rules");
             let hint = "set base and offset so the stored pair fits the meter";
-            diagnostics.push(meter_error(&entity_id, key, &message, hint));
+            diagnostics.push(build_meter_error(&entity_id, key, &message, hint));
         }
     }
     for (id, key, modifier) in find_stale_modifiers(world) {
@@ -317,7 +326,7 @@ pub(crate) fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
 
 /// A save error on meter `key` of `entity_id`, at the meter's key path: the entity, then
 /// `message`.
-fn meter_error(entity_id: &entity::Id, key: &str, message: &str, hint: &str) -> Diagnostic {
+fn build_meter_error(entity_id: &entity::Id, key: &str, message: &str, hint: &str) -> Diagnostic {
     let (entity_text, key_path) = match entity_id {
         entity::Id::Actor(id) => (format!("actor '{id}'"), format!("actors.meters.{id}")),
         entity::Id::Place(id) => (entity_id.to_string(), format!("places.meters.{id}")),
@@ -327,6 +336,182 @@ fn meter_error(entity_id: &entity::Id, key: &str, message: &str, hint: &str) -> 
     };
     let diagnostic = schema_error(FILE, &format!("{entity_text} {message}"), hint);
     diagnostic.at_key_path(format!("{key_path}.{key}"))
+}
+
+/// Hash of the newest migrate in `live` past the checkpoint, or the save's own hash.
+fn find_tip_pack_rev<'rec>(live: &'rec [records::Record], save: &'rec Save) -> &'rec str {
+    live.iter()
+        .rev()
+        .filter(|entry| entry.state_rev_after() > save.state_rev)
+        .find_map(|entry| match entry {
+            records::Record::Migrate(record) => Some(record.pack_rev_after.as_str()),
+            _ => None,
+        })
+        .unwrap_or(&save.pack_rev)
+}
+
+/// `Some` when the canon files are not the journal tip's hash.
+fn find_rev_mismatch(root: &Path, tip_pack_rev: &str, bytes: &[u8]) -> Option<Diagnostic> {
+    match canon::hash(root) {
+        Ok(rev) if tip_pack_rev != rev => {
+            let mut diagnostic = error(
+                FILE,
+                Reason::PackRevMismatch,
+                "pack_rev does not match the canon hash",
+                "run spook migrate to store the current hash",
+            )
+            .at_key_path("pack_rev");
+            if let Ok(text) = std::str::from_utf8(bytes) {
+                diagnostic =
+                    diagnostic.at_file_location(diagnostic::find_nth(text, "pack_rev:", 0));
+            }
+            Some(diagnostic)
+        }
+        Ok(_) => None,
+        Err(_) => Some(
+            error(
+                FILE,
+                Reason::Schema,
+                "the canon files could not be hashed",
+                "check that world/, cast/, and rules/ are readable",
+            )
+            .at_key_path("pack_rev"),
+        ),
+    }
+}
+
+/// The on-disk save is a checkpoint. Later live records still have to be replayed.
+fn has_later_records(live: &[records::Record], save: &Save) -> bool {
+    live.iter().any(|entry| match entry {
+        records::Record::Checkpoint(_) => false,
+        _ => entry.state_rev_after() > save.state_rev,
+    })
+}
+
+/// The save in `bytes`, or every diagnostic for it. A hand edit is refused unless a later
+/// migrate record accepted it. A checkpoint save is not the tip, so only a save that no
+/// record continues is checked against `canon`.
+pub(crate) fn load(
+    root: &Path,
+    canon: Option<&Arc<Canon>>,
+    bytes: &[u8],
+) -> Result<Save, Vec<Diagnostic>> {
+    let text = std::str::from_utf8(bytes).map_err(|_| {
+        vec![
+            schema_error(FILE, "this file is not UTF-8 text", "save it as UTF-8")
+                .at_key_path("schema"),
+        ]
+    })?;
+    let save = parse(text)?;
+    let live = journal::read_live_records(root).unwrap_or_default();
+    let mut diagnostics = diagnose_text(&save, bytes);
+    if let Some(diagnostic) = find_rev_mismatch(root, find_tip_pack_rev(&live, &save), bytes) {
+        diagnostics.insert(0, diagnostic);
+    }
+    let migrate_follows = live.iter().any(|entry| {
+        matches!(entry, records::Record::Migrate(_)) && entry.state_rev_after() > save.state_rev
+    });
+    let has_later = has_later_records(&live, &save);
+    let is_hand_edit = |diagnostic: &Diagnostic| diagnostic.code == Code::Error(Reason::HandEdit);
+    if migrate_follows {
+        diagnostics.retain(|diagnostic| !is_hand_edit(diagnostic));
+    } else if !diagnostics.iter().any(is_hand_edit) {
+        match journal::edits_mark(root, save.state_rev, bytes) {
+            Ok(false) => {}
+            Ok(true) => diagnostics.push(
+                error(
+                    FILE,
+                    Reason::HandEdit,
+                    "this save differs from the checkpoint mark it claims",
+                    "restore the file, or run spook migrate to keep the edit if no round follows it",
+                )
+                .at_key_path("save"),
+            ),
+            Err(err) => diagnostics.push(
+                error(
+                    "state/journal/mark.json",
+                    err.reason,
+                    "the checkpoint mark could not be read",
+                    "check that state/journal/mark.json is readable",
+                )
+                .at_key_path("schema"),
+            ),
+        }
+    }
+    if let Some(canon) = canon.filter(|_| !has_later) {
+        if let Err(more) = check(&ecs::World::new(save.clone(), Arc::clone(canon))) {
+            diagnostics.extend(more);
+        }
+    }
+    if diagnostics.is_empty() {
+        Ok(save)
+    } else {
+        Err(diagnostics)
+    }
+}
+
+/// The reserved actor id `world` in the save, and a save that is not its own canonical text.
+fn diagnose_text(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    let saved = serde_json::to_value(save).unwrap_or_default();
+    if saved["actors"]["control_type"].get("world").is_some() {
+        let diagnostic = schema_error(FILE, "actor id world is reserved", "rename that actor");
+        diagnostics.push(diagnostic.at_key_path("actors.world"));
+    }
+    match emit(save) {
+        Ok(emitted) if emitted.as_bytes() != bytes => {
+            let line = std::str::from_utf8(bytes).ok().and_then(|live| {
+                find_first_diverged_line(live, &emitted).map(|(line_no, _)| line_no)
+            });
+            let mut diagnostic = error(
+                FILE,
+                Reason::HandEdit,
+                "this save does not match the canonical text",
+                "run spook migrate to keep the edit, or restore the file",
+            );
+            diagnostic = match line {
+                Some(line) => diagnostic.at_line(line, None),
+                None => diagnostic.at_key_path("save"),
+            };
+            diagnostics.push(diagnostic);
+        }
+        Ok(_) => {}
+        Err(_) => diagnostics.push(
+            error(
+                FILE,
+                Reason::Schema,
+                "the save could not be written back as YAML",
+                "fix the values so they match the save format",
+            )
+            .at_key_path("save"),
+        ),
+    }
+    diagnostics
+}
+
+/// First 1-based line number and line text from `live` that differs from `expected`.
+pub(crate) fn find_first_diverged_line(live: &str, expected: &str) -> Option<(u32, String)> {
+    for (index, (left, right)) in live.lines().zip(expected.lines()).enumerate() {
+        if left != right {
+            return Some(((index + 1) as u32, left.to_string()));
+        }
+    }
+    let live_count = live.lines().count();
+    let expected_count = expected.lines().count();
+    if live_count != expected_count {
+        let number = live_count.min(expected_count) + 1;
+        let line = live
+            .lines()
+            .nth(number - 1)
+            .or_else(|| expected.lines().nth(number - 1))
+            .unwrap_or("")
+            .to_string();
+        return Some((number as u32, line));
+    }
+    if live.as_bytes() != expected.as_bytes() {
+        return Some((1, live.lines().next().unwrap_or("").to_string()));
+    }
+    None
 }
 
 #[cfg(test)]

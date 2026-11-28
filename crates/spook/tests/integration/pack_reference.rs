@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use spookery_engine::{check_pack, Code, Diagnostic, Reason};
+use spookery_engine::{check, Code, Diagnostic, Reason};
 
 const EFFECT_KEYS: &[&str] = &[
     "- meter:",
@@ -87,7 +87,7 @@ fn examples_pass_spook_check() {
     let examples = read_examples();
     assert_catalog(&examples);
     let pack = write_pack(&examples, "clean");
-    let found = check_pack(pack.path());
+    let found = check::run(pack.path());
     assert!(found.is_empty(), "{}", report(&found));
 }
 
@@ -95,7 +95,7 @@ fn examples_pass_spook_check() {
 fn a_drifted_example_fails_spook_check() {
     let examples = read_examples();
     let clean = write_pack(&examples, "before-drift");
-    let found = check_pack(clean.path());
+    let found = check::run(clean.path());
     assert!(
         found.is_empty(),
         "drift compared against a pack that already fails\n{}",
@@ -113,7 +113,7 @@ fn a_drifted_example_fails_spook_check() {
     );
     verbs.body = verbs.body.replacen("\n    when:", "\n    wen:", 1);
     let pack = write_pack(&drifted, "drift");
-    let found = check_pack(pack.path());
+    let found = check::run(pack.path());
     assert!(
         found
             .iter()

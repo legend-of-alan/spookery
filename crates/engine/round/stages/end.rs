@@ -1,4 +1,4 @@
-//! Finish each timed action whose ticks have passed, a walk's arrival among them, and run the
+//! End each timed action whose ticks have passed, a walk's arrival among them, and run the
 //! trigger pass after each.
 
 use crate::canon::Canon;
@@ -6,10 +6,10 @@ use crate::ecs::{self, PendingAction, Presence};
 use crate::intent::Intent;
 use crate::Reason;
 
-use crate::round::stage::{apply, triggers};
+use crate::round::stages::{apply, triggers};
 use crate::round::{self, Ledger};
 
-/// Finish every due action, earliest first.
+/// End every due action, earliest first.
 pub(crate) fn run(
     canon: &Canon,
     world: &mut ecs::World,
@@ -27,10 +27,10 @@ pub(crate) fn run(
             rule,
         } = due_action.pending;
         let actor_id = &due_action.actor_id;
-        let intent = Intent::finish(world, actor_id, source, &verb, target)?;
+        let intent = Intent::end(world, actor_id, source, &verb, target)?;
         let rule = canon.rules.get(&rule).ok_or(Reason::UnknownVerb)?;
         let until = due_action.until;
-        apply::finish(canon, world, presence, &intent, rule, until, dice, ledger);
+        apply::end(canon, world, presence, &intent, rule, until, dice, ledger);
         triggers::run(canon, world, presence, dice, ledger);
     }
     Ok(())
