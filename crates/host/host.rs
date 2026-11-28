@@ -408,7 +408,7 @@ impl Host {
     ) {
         let presence = self.seats.presence();
         match self.session.say_as_player(&presence, actor_id, to, text) {
-            Ok(speech) => self.deliver_speech(&speech, Some((conn, id))),
+            Ok(speech) => self.notify_recipients(&speech, Some((conn, id))),
             Err(refusal) => self.reply(conn, id, ServerBody::Refused(refusal)),
         }
     }
@@ -472,7 +472,7 @@ impl Host {
             .unwrap_or_else(Reply::refused);
         self.after_rounds(&reply.outputs);
         match &reply.speech {
-            Some(speech) => self.deliver_speech(speech, Some((conn, id))),
+            Some(speech) => self.notify_recipients(speech, Some((conn, id))),
             None => self.reply(conn, id, reply.body),
         }
         if reply.release_seat {
@@ -563,7 +563,11 @@ impl Host {
 
     /// The one speech path: the host's tape line, then one `say` with one `seq` to the GM and
     /// to each player who hears it. The sender's copy is its reply.
-    fn deliver_speech(&mut self, speech: &tape::Record, sender: Option<(ConnId, Option<String>)>) {
+    fn notify_recipients(
+        &mut self,
+        speech: &tape::Record,
+        sender: Option<(ConnId, Option<String>)>,
+    ) {
         let _ = writeln!(self.out, "{}", tape::emit(speech));
         let _ = self.out.flush();
         let seq = self.next_seq();
